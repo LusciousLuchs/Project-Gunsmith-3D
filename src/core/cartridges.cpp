@@ -1,0 +1,585 @@
+// Gunsmith3D - cartridges as physical objects.
+// Loose rounds on the bench, rounds guided in by hand, and (with physical feeding) the whole cycle: the magazine
+// holds its top round up under the lips, the breech strips it forward, it rides the feed ramp, the chamber takes it
+// only if it arrives straight, the extractor pulls the case back on the breech face, an ejector you draw kicks it
+// round, and it has to get out through the port before the breech comes back. Anything that goes wrong is a jam.
+#include "solver_internal.hpp"
+#include <algorithm>
+#include <cmath>
+
+namespace sim {
+
+static V2 vsub(V2 a, V2 b) { return {a.x - b.x, a.y - b.y}; }
+static double vdot(V2 a, V2 b) { return a.x * b.x + a.y * b.y; }
+static double vcross(V2 a, V2 b) { return a.x * b.y - a.y * b.x; }
+static V2 rot(V2 v, double a) { double c = std::cos(a), s = std::sin(a); return {c * v.x - s * v.y, s * v.x + c * v.y}; }
+
+const char* malfName(Malf m) {
+    switch (m) {
+    case Malf::FailureToFeed: return "Failure to feed";
+    case Malf::DoubleFeed: return "Double feed";
+    case Malf::Stovepipe: return "Stovepipe";
+    case Malf::FailureToEject: return "Failure to eject";
+    case Malf::FailureToReturn: return "Failure to return to battery";
+    case Malf::LightStrike: return "Light strike";
+    default: return "";
+    }
+}
+const char* malfAdvice(Malf m) {
+    switch (m) {
+    case Malf::FailureToFeed: return "The round stuck on its way to the chamber. Check the feed ramp angle, the height of the magazine lips, and that the breech is moving fast enough to push it home.";
+    case Malf::DoubleFeed: return "Two rounds in the action at once. The magazine let the next round up before the first was out of the way.";
+    case Malf::Stovepipe: return "The empty case didn't get clear before the breech came back. Move the ejector, enlarge the ejection port, or let the breech travel further or faster.";
+    case Malf::FailureToEject: return "The empty case stayed on the breech face. Nothing kicked it off: add or move an ejector so the case hits it as the breech opens.";
+    case Malf::FailureToReturn: return "The breech stopped short of closing. The spring is too weak for the friction, or something is in the way.";
+    case Malf::LightStrike: return "The striker or hammer reached the primer too slowly to fire it. Use a stronger spring or a longer run.";
+    default: return "";
+    }
+}
+int jamCount(const Sim& S) {
+    int n = 0;
+    for (int i = 1; i < (int)Malf::Count; i++) n += S.malfCount[i];
+    return n;
+}
+
+// ---------- the bore ----------
+BoreLine boreLine(const Sim& S) {
+    BoreLine L;
+    if (!S.BR || !S.hasFace || !S.CH) return L;
+    L.face = wpt(*S.CH, S.faceC);
+    V2 m = S.hasMuzzle ? wpt(*S.CH, S.muzC) : V2{L.face.x + std::cos(S.CH->a), L.face.y + std::sin(S.CH->a)};
+    double dx = m.x - L.face.x, dy = m.y - L.face.y, l = std::hypot(dx, dy);
+    if (l < 1e-9) return L;
+    L.dir = {dx / l, dy / l};
+    V2 f = wpt(*S.BR, S.faceB);
+    double rx = L.face.x - f.x, ry = L.face.y - f.y;
+    L.faceS = rx * L.dir.x + ry * L.dir.y;               // how far the breech face is behind the chamber mouth
+    L.faceLat = std::fabs(rx * L.dir.y - ry * L.dir.x);  // and how far off the bore line it is
+    L.ok = true;
+    return L;
+}
+static double chamberRadius(const Sim& S, double a) {  // a: metres forward of the chamber face
+    if (S.chamberR.empty()) return 0.005;
+    int i = (int)(a / 0.0005);
+    if (i < 0) i = 0;
+    if (i >= (int)S.chamberR.size()) return S.chamberR.back();
+    return S.chamberR[i];
+}
+
+void cartridgeSetup(Sim& S) {
+    const Cartridge& c = S.design.breech.cart;
+    std::vector<V2> top;
+    for (auto& p : cartridgeOutline(c)) if (p.y <= 0) top.push_back({p.x, -p.y});
+    std::sort(top.begin(), top.end(), [](V2 a, V2 b) { return a.x < b.x; });
+    S.chamberR.clear();
+    for (double a = 0; a <= c.oal + 3; a += 0.5) {  // the chamber is cut to the cartridge, then the bore carries on
+        double r = c.bulletDia / 2;
+        if (a < c.caseLen) {
+            r = 0;
+            for (size_t i = 0; i + 1 < top.size(); i++)
+                if (a >= top[i].x && a <= top[i + 1].x) {
+                    double t = top[i + 1].x > top[i].x ? (a - top[i].x) / (top[i + 1].x - top[i].x) : 0;
+                    r = std::max(r, top[i].y + (top[i + 1].y - top[i].y) * t);
+                }
+            r = std::max(r, c.bulletDia / 2);
+        }
+        S.chamberR.push_back((r + 0.15) / 1000);  // a little clearance
+    }
+    S.gunZmin = 1e9; S.gunZmax = -1e9;
+    for (auto& b : S.bodies) {
+        if (b.isRound || b.d->layer == "none") continue;
+        S.gunZmin = std::min(S.gunZmin, b.z - b.zh); S.gunZmax = std::max(S.gunZmax, b.z + b.zh);
+    }
+    if (S.gunZmin > S.gunZmax) S.gunZmin = S.gunZmax = 0;
+    S.gunBox[0] = S.gunBox[1] = 1e9; S.gunBox[2] = S.gunBox[3] = -1e9;  // the whole gun as drawn, solid or not
+    for (auto& b : S.bodies) {
+        if (b.isRound || b.isMag) continue;
+        for (auto& l : b.lp) {
+            V2 w = wpt(b, l);
+            S.gunBox[0] = std::min(S.gunBox[0], w.x); S.gunBox[1] = std::min(S.gunBox[1], w.y);
+            S.gunBox[2] = std::max(S.gunBox[2], w.x); S.gunBox[3] = std::max(S.gunBox[3], w.y);
+        }
+    }
+    S.physicalFeed = S.design.breech.on && S.design.breech.physicalFeed && S.hasFace && S.feedMode != "internal";
+}
+
+static void setState(Body& b, RS s) {
+    b.rs = s;
+    b.loose = s == RS::Loose;
+    b.staged = s == RS::Staged;
+}
+static Body* newCartridge(Sim& S, V2 head, bool isCase) {
+    if (S.bodies.size() >= S.bodies.capacity()) return nullptr;
+    const Cartridge& c = S.design.breech.cart;
+    S.extraDefs.emplace_back();
+    BodyDef& d = S.extraDefs.back();
+    d.id = (isCase ? "case#" : "round#") + std::to_string(++S.spawned);
+    d.name = c.name + (isCase ? " case" : " round");
+    d.mass = isCase ? cartridgeMass(c) - c.bulletMass : cartridgeMass(c);
+    d.thick = c.headDia();
+    d.color = "#d9a441";
+    for (auto& p : cartridgeOutline(c, isCase)) d.pts.push_back({head.x + p.x, head.y + p.y});
+    fixShape(d);
+    Body b;
+    if (!makeBody(d, b)) { S.extraDefs.pop_back(); return nullptr; }
+    b.tmpl = "round";
+    b.isRound = true;
+    b.isCase = isCase;
+    b.z = 0; b.zh = c.headDia() / 2000;
+    b.headLx = head.x / 1000 - b.x;
+    BoreLine L = boreLine(S);
+    if (L.ok) {  // lie it level with the bore, keeping the head where asked
+        b.a = std::atan2(L.dir.y, L.dir.x);
+        b.x = head.x / 1000 - std::cos(b.a) * b.headLx;
+        b.y = head.y / 1000 - std::sin(b.a) * b.headLx;
+    }
+    b.px = b.x; b.py = b.y; b.pa = b.a;
+    S.bodies.push_back(b);
+    return &S.bodies.back();
+}
+static void placeHead(Body& b, V2 head, double a) {
+    b.a = a; b.x = head.x - std::cos(a) * b.headLx; b.y = head.y - std::sin(a) * b.headLx;
+    b.px = b.x; b.py = b.y; b.pa = b.a;
+}
+Body* spawnRound(Sim& S, V2 head, double vx, double vy) {
+    Body* b = newCartridge(S, head, false);
+    if (!b) return nullptr;
+    setState(*b, RS::Loose);
+    b->vx = vx; b->vy = vy;
+    return b;
+}
+int looseRounds(const Sim& S) {
+    int n = 0;
+    for (auto& b : S.bodies) if (b.isRound && !b.isCase && !b.gone && (b.rs == RS::Loose || b.rs == RS::Staged)) n++;
+    return n;
+}
+static void retire(Sim& S, Body& b) {
+    if (S.hand.on && S.hand.b == &b) S.hand.on = false;
+    if (b.mag && b.mag->top == &b) b.mag->top = nullptr;
+    b.gone = true; b.fixed = true; b.loose = false; b.staged = false; b.rs = RS::None; b.mag = nullptr;
+}
+
+// ---------- rounds guided in by hand ----------
+static void poseStaged(Body& b, const BoreLine& L) {
+    double a = std::atan2(L.dir.y, L.dir.x);
+    V2 head{L.face.x - L.dir.x * b.stageS, L.face.y - L.dir.y * b.stageS};
+    b.px = b.x; b.py = b.y; b.pa = b.a;
+    b.a = a; b.x = head.x - std::cos(a) * b.headLx; b.y = head.y - std::sin(a) * b.headLx;
+}
+// Rounds in the hand line up with the bore and drop into the open action when held in the right place;
+// staged rounds ride the bore line and are pushed home by the breech face (or by hand).
+static void handRounds(Sim& S, const BoreLine& L) {
+    const Cartridge& c = S.design.breech.cart;
+    double headR = c.headDia() / 2000 + 0.001;
+    bool faceOnLine = L.ok && L.faceLat < headR;
+    double room = faceOnLine ? L.faceS : c.oal / 1000 * 1.5;  // how far back a round can sit before it meets the face
+    bool canTake = L.ok && !S.chambered && !S.spent && !S.inTransit;
+    for (auto& b : S.bodies) {
+        if (!b.isRound || b.gone || b.isCase) continue;
+        bool held = S.hand.on && S.hand.b == &b;
+        if (b.rs == RS::Staged) {
+            if (!canTake) { setState(b, RS::Loose); continue; }
+            double s = b.stageS;
+            if (held) {  // slide it along the bore with the hand, or pull it back out sideways
+                V2 t = S.hand.t;
+                double rx = t.x - L.face.x, ry = t.y - L.face.y;
+                double along = rx * L.dir.x + ry * L.dir.y, lat = std::fabs(rx * L.dir.y - ry * L.dir.x);
+                if (lat > 0.012) { setState(b, RS::Loose); continue; }
+                s = (S.hand.l.x - b.headLx) - along;
+            }
+            if (faceOnLine) s = std::min(s, L.faceS);  // the breech face pushes it forward
+            s = std::max(0.0, std::min(s, c.oal / 1000 * 1.5));
+            b.stageS = s;
+            if (s < 0.0006) {  // seated
+                retire(S, b);
+                S.chambered = true; S.gripped = false;
+                S.events.push_back({Ev::Chambered, S.t});
+                continue;
+            }
+            poseStaged(b, L);
+            continue;
+        }
+        if (held && L.ok && b.rs == RS::Loose) {
+            b.a = std::atan2(L.dir.y, L.dir.x); b.w = 0;  // a hand holds a round level with the bore
+            if (!canTake) continue;
+            V2 head = wpt(b, {b.headLx, 0});
+            double rx = L.face.x - head.x, ry = L.face.y - head.y;
+            double s = rx * L.dir.x + ry * L.dir.y, lat = std::fabs(rx * L.dir.y - ry * L.dir.x);
+            double latTol = std::max(0.006, c.headDia() / 1000);  // within about one head width of the bore line
+            if (lat < latTol && s > -c.oal / 1000 * 0.6 && s < room + 0.004 && room > 0.004) {
+                setState(b, RS::Staged); b.stageS = std::max(0.0, std::min(s, room));
+                b.vx = b.vy = b.w = 0;
+                poseStaged(b, L);
+            }
+        }
+    }
+}
+
+void legacyRoundsStep(Sim& S) {
+    BoreLine L = boreLine(S);
+    handRounds(S, L);
+}
+
+// ---------- physical feeding ----------
+static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL) {  // where the top round's head sits, in the magazine's frame
+    const BodyDef& d = *M.d;
+    const Cartridge& c = S.design.breech.cart;
+    V2 cen = centroidOf(d);
+    if (d.gen.on) {
+        double dia = c.headDia() * 1.02, phi;
+        V2 m = magCentre(d.gen, 3 + dia / 2, &phi);
+        V2 f{std::cos(phi * D2R), -std::sin(phi * D2R)};
+        headL = {(m.x - f.x * c.oal / 2 - cen.x) / 1000, (m.y - f.y * c.oal / 2 - cen.y) / 1000};
+        fwdL = f;
+        return true;
+    }
+    double x0 = 1e9, x1 = -1e9, y0 = 1e9;
+    for (auto& p : d.pts) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); }
+    headL = {((x0 + x1) / 2 - c.oal / 2 - cen.x) / 1000, (y0 + 1.5 + c.headDia() / 2 - cen.y) / 1000};
+    fwdL = {1, 0};
+    return true;
+}
+
+void cartridgeForces(Sim& S) {
+    if (!S.physicalFeed) return;
+    for (auto& b : S.bodies) {  // the follower spring pushes the top round up against the lips
+        if (b.rs != RS::Presented || !b.mag || b.gone) continue;
+        V2 f = rot(b.feedL, b.mag->a), n{f.y, -f.x};
+        double F = 10 + 0.5 * b.mag->rounds;
+        b.fx += n.x * F; b.fy += n.y * F;
+        b.mag->fx -= n.x * F; b.mag->fy -= n.y * F;
+    }
+}
+
+static void chamberContacts(Sim& S, Body& r, const BoreLine& L) {
+    Body& C = *S.CH;
+    const Cartridge& c = S.design.breech.cart;
+    V2 u = L.dir, p{-u.y, u.x};
+    double len = (r.isCase ? c.caseLen : c.oal) / 1000;
+    V2 tip = wpt(r, {r.headLx + len, 0}), head = wpt(r, {r.headLx, 0});
+    double ta = vdot(vsub(tip, L.face), u), tl = vdot(vsub(tip, L.face), p);
+    double ra = std::fabs(std::remainder(r.a - std::atan2(u.y, u.x), 2 * 3.14159265358979323846));
+    if (!r.inChamber) {  // the nose has to arrive at the mouth, roughly straight, to go in
+        if (ta > -0.001 && ta < 0.004 && std::fabs(tl) < chamberRadius(S, std::max(0.0, ta)) + 0.0008 && ra < 12 * D2R) r.inChamber = true;  // at the mouth
+    } else if (vdot(vsub(tip, L.face), u) < -0.0005) r.inChamber = false;  // pulled back out
+    (void)head;
+    for (auto& s : r.samples) {
+        V2 w = wpt(r, s), rel = vsub(w, L.face);
+        double a = vdot(rel, u), l = vdot(rel, p);
+        if (r.inChamber && a >= 0) {  // inside the chamber: its walls hold it on the bore line
+            double R = chamberRadius(S, a);
+            if (std::fabs(l) > R) {
+                double d = std::fabs(l) - R, sg = l > 0 ? 1 : -1;
+                V2 q{w.x - p.x * sg * d, w.y - p.y * sg * d};
+                solve(r, C, w, q, -p.x * sg, -p.y * sg, d);
+            }
+            continue;
+        }
+        // anywhere else the barrel is solid: the round is stopped by its rear face, or slides up the feed ramp
+        V2 lc = lpt(C, w);
+        if (w.x < C.bb[0] || w.x > C.bb[2] || w.y < C.bb[1] || w.y > C.bb[3] || !inPoly(lc.x, lc.y, C.lp)) continue;
+        double best = 1e18; V2 bq;
+        for (size_t i = 0; i < C.lp.size(); i++) {
+            double d2; V2 q = closestOnSeg(lc, C.lp[i], C.lp[(i + 1) % C.lp.size()], &d2);
+            if (d2 < best) { best = d2; bq = q; }
+        }
+        double d = std::sqrt(best);
+        if (d < 1e-7 || d > 0.005) continue;
+        V2 qw = wpt(C, bq);
+        solve(r, C, w, qw, (qw.x - w.x) / d, (qw.y - w.y) / d, d);
+    }
+    if (!r.inChamber) contacts(r, C, 0);  // the barrel's corners pushing into the round
+}
+
+static bool inAction(const Body& b) { return b.isRound && !b.gone && (b.rs == RS::Free || b.rs == RS::Clawed || b.rs == RS::Presented); }
+static bool solidPart(const Sim& S, const Body& b) {
+    if (b.isRound) return inAction(b);  // rounds and cases in the action get in each other's way
+    const Body* ch = S.CH ? (S.CH->root ? S.CH->root : S.CH) : nullptr;  // the chamber and anything welded to it: the
+    return !b.gone && !b.isMag && &b != S.CH && b.root != ch && &b != ch && b.d && b.d->layer != "none";  // walls handle those
+}
+static void partContacts(Sim& S, Body& r) {  // a cartridge in the action against every solid part it meets in depth
+    bbox(r);
+    for (auto& P : S.bodies) {
+        if (&P == &r || !solidPart(S, P)) continue;
+        // the top round under the lips is solid to a loose empty case (the spring holds it up); a round being fed
+        // over it gives way to it instead
+        if (P.rs == RS::Presented && !(r.isCase && r.rs == RS::Free)) continue;
+        if (P.isRound) bbox(P);
+        if (std::fabs(P.z - r.z) >= P.zh + r.zh) continue;
+        if (P.bb[0] > r.bb[2] || r.bb[0] > P.bb[2] || P.bb[1] > r.bb[3] || r.bb[1] > P.bb[3]) continue;
+        contacts(P, r, S.design.friction);
+        contacts(r, P, S.design.friction);
+        bbox(r);
+    }
+}
+
+// Under the lips a round can only go two ways: down into the magazine (the slide riding over it) or forward
+// (the breech face catching its rim). Contacts are steered that way so a corner can't flick it off the lips.
+// Returns true when a feed ramp lifts the nose of a round that is being stripped: the lips let it go and it tips up.
+static bool presentedContacts(Sim& S, Body& r, V2 f, V2 n, double stripped) {
+    bool lifted = false;
+    bbox(r);
+    const Cartridge& c = S.design.breech.cart;
+    for (auto& P : S.bodies) {
+        if (&P == &r || !solidPart(S, P) || std::fabs(P.z - r.z) >= P.zh + r.zh) continue;
+        if (P.isCase && P.rs == RS::Free) continue;  // a loose empty case lands on it rather than pushing it down
+        if (P.isRound) bbox(P);
+        if (P.bb[0] > r.bb[2] || r.bb[0] > P.bb[2] || P.bb[1] > r.bb[3] || r.bb[1] > P.bb[3]) continue;
+        for (auto& s : r.samples) {
+            V2 w = wpt(r, s), lc = lpt(P, w);
+            if (!inPoly(lc.x, lc.y, P.lp)) continue;
+            double best = 1e18; V2 bq;
+            for (size_t i = 0; i < P.lp.size(); i++) {
+                double d2; V2 q = closestOnSeg(lc, P.lp[i], P.lp[(i + 1) % P.lp.size()], &d2);
+                if (d2 < best) { best = d2; bq = q; }
+            }
+            double d = std::sqrt(best);
+            if (d < 1e-7 || d > 0.006) continue;
+            V2 qw = wpt(P, bq), nc{(qw.x - w.x) / d, (qw.y - w.y) / d};
+            double t = (s.x - r.headLx) / (c.oal / 1000);       // 0 at the head, 1 at the tip
+            Body* br = S.BR->root ? S.BR->root : S.BR;
+            bool breechPart = (P.root ? P.root : &P) == br;
+            bool closing = (br->vx - r.vx) * f.x + (br->vy - r.vy) * f.y > 0.05;  // the breech coming forward onto the rim
+            if (vdot(nc, f) > 0.5 && t < 0.25 && breechPart && closing) {  // the breech face catching the rim: stripping
+                solve(r, P, w, qw, nc.x, nc.y, d);
+            } else if (t > 0.55 && vdot(nc, n) > 0.3 && !breechPart && stripped > 0.002) {  // nose up a feed ramp: it tips up
+                solve(r, P, w, qw, nc.x, nc.y, d);                                                // while the lips hold its head
+                lifted = true;
+                double rel = std::remainder(r.a - std::atan2(f.y, f.x), 2 * 3.14159265358979323846);
+                r.tilt = std::clamp(std::min(r.tilt, rel), -25 * D2R, 0.0);
+            } else {  // anything else rides over it and presses it down; the follower is soft, so only the round moves
+                double dn = std::max(0.0, -vdot(vsub(qw, w), n));
+                if (dn > 1e-7) { r.x -= n.x * dn; r.y -= n.y * dn; }
+            }
+        }
+    }
+    return lifted;
+}
+
+static void groundContact(Sim& S, Body& b) {
+    for (auto& l : b.lp) {
+        V2 w = wpt(b, l);
+        if (w.y > S.groundY) { solve(b, S.world, w, {w.x, S.groundY}, 0, -1, w.y - S.groundY); b.grounded = true; }
+    }
+}
+
+void cartridgeStep(Sim& S) {
+    BoreLine L = boreLine(S);
+    const Cartridge& c = S.design.breech.cart;
+    // a hand that grabs a cartridge in the action takes it out of the cycle: that's how you clear a jam
+    if (S.hand.on && S.hand.b && S.hand.b->isRound) {
+        Body& h = *S.hand.b;
+        if (h.rs == RS::Presented || h.rs == RS::Free || h.rs == RS::Clawed) {
+            if (h.rs == RS::Presented && h.mag) { h.mag->rounds--; h.mag->top = nullptr; h.mag = nullptr; }
+            setState(h, RS::Loose); h.vz = 0; h.z = 0;
+        }
+    }
+    for (auto& b : S.bodies) {  // loose rounds and cases keep their sideways motion until the bench stops them
+        if (!b.isRound || b.gone || b.rs != RS::Loose) continue;
+        if (S.hand.on && S.hand.b == &b) {  // a hand brings it back to the bore plane, where it can be loaded
+            b.vz = 0;
+            double step = 0.5 * H;
+            b.z = std::fabs(b.z) < step ? 0 : b.z - std::copysign(step, b.z);
+            continue;
+        }
+        if (b.vz == 0) continue;
+        b.z = std::clamp(b.z + b.vz * H, -2.5, 2.5);
+        if (b.grounded) b.vz *= std::max(0.0, 1 - 12 * H);
+        if (std::fabs(b.vz) < 0.01 || std::fabs(b.z) >= 2.5) b.vz = 0;
+    }
+    handRounds(S, L);
+    if (!S.physicalFeed || !L.ok) return;
+    V2 u = L.dir, up{u.y, -u.x};
+    double ang = std::atan2(u.y, u.x), rimR = c.headDia() / 2000;
+    double gap = breechGap(S) / 1000;
+
+    // extraction: a breech that closed on a round or case pulls it back out with it
+    if (S.gripped && (S.chambered || S.spent) && L.faceS > 0.0008) {  // the breech face has drawn back along the bore
+        bool cs = S.spent;
+        S.chambered = S.spent = false; S.gripped = false;
+        if (Body* r = newCartridge(S, {L.face.x * 1000, L.face.y * 1000}, cs)) {
+            setState(*r, RS::Clawed);
+            placeHead(*r, L.face, ang);
+            r->inChamber = true;
+            V2 f = wpt(*S.BR, S.faceB);
+            V2 claw{f.x + up.x * rimR + u.x * 0.0003, f.y + up.y * rimR + u.y * 0.0003};
+            r->clawB = lpt(*S.BR, claw);
+            r->clawR = {r->headLx + 0.0003, -rimR};
+            r->vx = S.BR->vx; r->vy = S.BR->vy;
+        }
+    }
+    // the magazine holds its top round up under the lips, once the way is clear
+    Body* M = seatedMag(S);
+    for (auto& b : S.bodies)  // a magazine leaving the gun takes its top round with it
+        if (b.rs == RS::Presented && b.mag && (b.mag != M)) { b.mag->top = nullptr; b.mag = nullptr; retire(S, b); }
+    if (M && M->rounds > 0 && !M->top) {
+        V2 hl, fl;
+        magLips(S, *M, hl, fl);
+        V2 LH = wpt(*M, hl), f = rot(fl, M->a);
+        bool clear = true;
+        for (auto& b : S.bodies) {
+            if (!b.isRound || b.gone || b.rs == RS::Loose || b.rs == RS::None) continue;
+            V2 h = wpt(b, {b.headLx, 0}), d = vsub(h, LH);
+            if (std::fabs(vdot(d, f)) < c.oal / 1000 * 0.95 && std::fabs(vcross(f, d)) < c.headDia() / 1000 * 1.2) clear = false;
+        }
+        if (clear)
+            if (Body* r = newCartridge(S, {LH.x * 1000, LH.y * 1000}, false)) {
+                setState(*r, RS::Presented);
+                placeHead(*r, LH, std::atan2(f.y, f.x));
+                r->mag = M; r->lipsL = hl; r->feedL = fl;
+                M->top = r;
+            }
+    }
+    int spentOnBench = 0;
+    for (int pass = 0; pass < 2; pass++)
+        for (auto& b : S.bodies) {
+            if (!b.isRound || b.gone) continue;
+            if (b.rs == RS::Presented && b.mag) {  // under the lips: it can slide forward, or be pushed down into the magazine
+                Body& Mg = *b.mag;
+                V2 LH = wpt(Mg, b.lipsL), f = rot(b.feedL, Mg.a), n{f.y, -f.x};
+                double fa = std::atan2(f.y, f.x);
+                auto holdLevel = [&]() { b.a = fa + b.tilt; b.pa = b.a; b.w = 0; };  // level, or as far as a feed ramp tipped it
+                holdLevel();
+                V2 h = wpt(b, {b.headLx, 0}), d = vsub(h, LH);
+                double s = vdot(d, f), e = vdot(d, n);
+                if (s < 0) solve(b, Mg, h, {h.x - f.x * s, h.y - f.y * s}, f.x, f.y, -s);
+                h = wpt(b, {b.headLx, 0}); d = vsub(h, LH); e = vdot(d, n);
+                if (e > 0) solve(b, Mg, h, {h.x - n.x * e, h.y - n.y * e}, -n.x, -n.y, e);
+                else if (e < -0.008) solve(b, Mg, h, {h.x - n.x * (e + 0.008), h.y - n.y * (e + 0.008)}, n.x, n.y, -(e + 0.008));
+                bool lifted = presentedContacts(S, b, f, n, s);
+                b.wasOut = true;
+                {   // held by the lips; the follower can lift it briskly but contacts can't fling it about
+                    holdLevel();
+                    (void)lifted;
+                    V2 mv{Mg.vx, Mg.vy};
+                    double dx = b.x - b.px - mv.x * H, dy = b.y - b.py - mv.y * H, dn = dx * n.x + dy * n.y;
+                    double lim = 2.5 * H;  // 2.5 m/s, about what a magazine spring manages
+                    double cl = std::clamp(dn, -lim, lim);
+                    b.px += n.x * (dn - cl); b.py += n.y * (dn - cl);
+                    double df = dx * f.x + dy * f.y;  // the lips grip it: it only moves forward while something pushes it
+                    b.px += f.x * df * 0.2; b.py += f.y * df * 0.2;
+                }
+                h = wpt(b, {b.headLx, 0});
+                if (pass == 0) chamberContacts(S, b, L);  // only to notice the nose entering the chamber mouth
+                double fwd = vdot(vsub(h, LH), f);
+                // stripped off the lips, or pushed forward into the chamber (a barrel that recoils back to sit just in
+                // front of the round doesn't count: something has to push it)
+                if (fwd > c.oal / 1000 * 0.45 || (b.inChamber && fwd > 0.002)) {
+                    Mg.rounds--; Mg.top = nullptr; b.mag = nullptr;
+                    setState(b, RS::Free);
+                }
+                continue;
+            }
+            if (b.rs == RS::Clawed) {  // the extractor holds its rim to the breech face; it can swing about the claw
+                // the rim sits in a slot across the breech face: it is held tight along the bore, but can slide a little
+                // up and down the face (a tilting barrel drops the chamber away under it)
+                V2 pr = wpt(b, b.clawR), pb = wpt(*S.BR, b.clawB);
+                double ca = std::cos(S.BR->a), sa = std::sin(S.BR->a);
+                double dx = pb.x - pr.x, dy = pb.y - pr.y;
+                double ax = dx * ca + dy * sa, lat = -dx * sa + dy * ca;
+                if (std::fabs(ax) > 0.004 || std::fabs(lat) > 0.006) { setState(b, RS::Free); continue; }  // torn off
+                if (std::fabs(ax) > 1e-9) solve(b, *S.BR, pr, {pr.x + ca * ax, pr.y + sa * ax}, ax > 0 ? ca : -ca, ax > 0 ? sa : -sa, std::fabs(ax));
+                const double play = 0.003;
+                if (std::fabs(lat) > play) {
+                    double e = lat - std::copysign(play, lat);
+                    pr = wpt(b, b.clawR);
+                    solve(b, *S.BR, pr, {pr.x - sa * e, pr.y + ca * e}, e > 0 ? -sa : sa, e > 0 ? ca : -ca, std::fabs(e));
+                }
+                chamberContacts(S, b, L);
+                partContacts(S, b);
+                double swing = std::remainder(b.a - ang, 2 * 3.14159265358979323846);
+                if (std::fabs(swing) > 18 * D2R && !b.inChamber) {  // knocked round off the claw: out it goes, sideways
+                    setState(b, RS::Free);
+                    // the ejector really spins it about the vertical and out to the side; drawn flat we only see the
+                    // pitch, so hand most of the throw over to sideways motion
+                    double dx = b.x - b.px, dy = b.y - b.py;  // velocities come from the positions after this
+                    b.vz = std::max(1.0, 0.6 * std::hypot(dx, dy) / H);
+                    b.px = b.x - 0.45 * dx; b.py = b.y - 0.45 * dy;
+                    // likewise most of the spin: tumbling end over end at the ejector's full rate would be about the
+                    // vertical in a real gun, not in the plane where it would smash into the slide
+                    b.pa = b.a - std::clamp(0.6 * (b.a - b.pa), -400 * H, 400 * H);
+                    S.events.push_back({b.isCase ? Ev::Eject : Ev::EjectLive, S.t});
+                }
+            } else if (b.rs == RS::Free) {
+                if (pass == 0 && b.vz != 0) {  // moving sideways: a wall it runs into stops it, unless it lines up with a port
+                    double nz = b.z + b.vz * H;
+                    bbox(b);
+                    for (auto& P : S.bodies) {
+                        if (&P == &b || !solidPart(S, P)) continue;
+                        bool now = std::fabs(P.z - b.z) < P.zh + b.zh, next = std::fabs(P.z - nz) < P.zh + b.zh;
+                        if (now || !next) continue;
+                        if (P.bb[0] > b.bb[2] || b.bb[0] > P.bb[2] || P.bb[1] > b.bb[3] || b.bb[1] > P.bb[3]) continue;
+                        bool hit = false;
+                        for (auto& s : b.samples) { V2 w = wpt(b, s), l = lpt(P, w); if (inPoly(l.x, l.y, P.lp)) { hit = true; break; } }
+                        if (hit) { nz = b.z; b.vz = -0.25 * b.vz; break; }
+                    }
+                    b.z = nz;
+                }
+                bool inGun = b.z - b.zh < S.gunZmax && b.z + b.zh > S.gunZmin && b.x > S.gunBox[0] - 0.02 && b.x < S.gunBox[2] + 0.02 &&
+                             b.y > S.gunBox[1] - 0.02 && b.y < S.gunBox[3] + 0.02;  // fell or flew clear of the gun
+                if (inGun) { chamberContacts(S, b, L); partContacts(S, b); }
+                else setState(b, RS::Loose);  // out through the port: it keeps flying sideways onto the bench
+                b.grounded = false;
+                groundContact(S, b);
+                if (b.grounded && b.rs == RS::Free) setState(b, RS::Loose);  // fell out onto the bench
+            } else continue;
+            // seated in the chamber
+            V2 h = wpt(b, {b.headLx, 0});
+            double aH = vdot(vsub(h, L.face), u);
+            if (aH < -0.002) b.wasOut = true;
+            // seated: pushed home after it had been out, or the breech closed on it again (a short stroke)
+            if (b.inChamber && (b.wasOut || L.faceS < 0.0003) && aH > -0.0006 && !S.chambered && !S.spent) {
+                bool wasCase = b.isCase;
+                retire(S, b);
+                if (wasCase) {  // the empty case went back in: nothing kicked it out (counted when the breech closes)
+                    S.spent = true;
+                    if (!S.breechSprung && S.malf == Malf::None) { S.malf = Malf::FailureToEject; S.malfCount[(int)Malf::FailureToEject]++; S.events.push_back({Ev::Malfunction, S.t}); }
+                } else {
+                    S.chambered = true;
+                    if (b.wasOut) S.fed++;  // (not again for a round the breech merely closed on once more)
+                    S.events.push_back({Ev::Chambered, S.t});
+                }
+            }
+        }
+    // keep the bench tidy: only the most recent empty cases stay
+    for (auto it = S.bodies.rbegin(); it != S.bodies.rend(); ++it)
+        if (it->isCase && !it->gone && it->rs == RS::Loose && ++spentOnBench > 30) retire(S, *it);
+
+    // jams: the action has sat open and still, nobody is holding it, and the springs can't close it
+    bool open = gap > 0.0015, still = std::hypot(S.BR->vx, S.BR->vy) < 0.02;
+    if (gap > c.oal / 1000 * 0.9) S.cycledOpen = true;
+    if (gap < 0.0006 && S.cycledOpen) {  // closed again: did it pick up a round?
+        S.cycledOpen = false;
+        Body* Mg = seatedMag(S);
+        bool caseBack = S.spent;
+        for (auto& b : S.bodies)  // an empty case still in the action, on the extractor or lying loose in it: it never got out
+            if (b.isCase && !b.gone && (b.rs == RS::Clawed || b.rs == RS::Free)) caseBack = true;
+        Malf m = caseBack ? Malf::FailureToEject : (!S.chambered && Mg && Mg->rounds > 0) ? Malf::FailureToFeed : Malf::None;
+        if (m != Malf::None && S.malf == Malf::None && S.breechSprung) {
+            S.malf = m; S.malfCount[(int)m]++;
+            S.events.push_back({Ev::Malfunction, S.t});
+        }
+    }
+    S.stuckT = ((open || !inBattery(S)) && still && !S.hand.on && S.breechSprung) ? S.stuckT + H : 0;  // stuck open, or short of battery
+    if (!open && S.chambered) S.malf = Malf::None;                       // ready to fire again: cleared
+    if (inBattery(S) && S.malf == Malf::FailureToReturn) S.malf = Malf::None;
+    if (S.stuckT > 0.3 && S.malf == Malf::None) {
+        int lives = 0, cases = 0, clawed = 0;
+        for (auto& b : S.bodies) {
+            if (!b.isRound || b.gone || !(b.rs == RS::Free || b.rs == RS::Clawed)) continue;
+            if (b.rs == RS::Clawed) clawed++;
+            (b.isCase ? cases : lives)++;
+        }
+        Malf m = cases && clawed ? Malf::FailureToEject : cases ? Malf::Stovepipe : lives >= 2 ? Malf::DoubleFeed
+               : lives ? Malf::FailureToFeed : Malf::FailureToReturn;
+        // an open action with nothing left to feed is just empty, not jammed
+        Body* Mg = seatedMag(S);
+        bool empty = !lives && !cases && (!Mg || Mg->rounds == 0) && !S.chambered;
+        if (!empty) {
+            S.malf = m; S.malfCount[(int)m]++;
+            S.events.push_back({Ev::Malfunction, S.t});
+        }
+    }
+}
+
+}  // namespace sim

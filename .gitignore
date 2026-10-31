@@ -1,0 +1,8 @@
+build/
+build-*/
+*.exe
+*.o
+*.obj
+/maps/autosave*.json
+gunsmith3d_autosave.json
+gunsmith3d_settings.json

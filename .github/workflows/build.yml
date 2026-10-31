@@ -1,0 +1,24 @@
+name: build
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  # The game ships for Windows only (on Linux it runs under Wine-GE / Proton-GE).
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build
+      - run: cmake --build build --config Release
+      - run: build\Release\gunsmith3d_tests.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: gunsmith3d-windows, path: build/Release/gunsmith3d.exe }
+
+  # The physics core and its tests are plain C++ with no graphics, so they are also checked on Linux.
+  core-tests-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - run: cmake --build build -j
+      - run: ./build/gunsmith3d_tests

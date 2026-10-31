@@ -1,0 +1,340 @@
+// Gunsmith3D - Build mode: editing operations and the drawing tools.
+#include "app/app.hpp"
+#include "app/gfx.hpp"
+#include "app/view.hpp"
+#include "app/editor.hpp"
+
+#include <algorithm>
+#include <cmath>
+#include <string>
+#include <vector>
+
+// ---------------------------------------------------------------- editing operations
+void moveBody(int i, double dx, double dy) {
+    BodyDef& d = A.design.bodies[i];
+    for (auto& p : d.pts) { p.x += dx; p.y += dy; }
+    auto mv = [&](V2& p) { p.x += dx; p.y += dy; };
+    for (auto& j : A.design.joints) {
+        if ((j.type == "pin" || j.type == "weld") && j.a == d.id) mv(j.p);
+        if (j.type == "track") { if (j.a == d.id) mv(j.p); if (j.b == d.id) for (auto& q : j.path) mv(q); }
+        if (j.type == "magwell" && j.a == d.id) { mv(j.p); for (auto& q : j.path) mv(q); }
+        if (j.type == "spring") { if (j.a == d.id) mv(j.pa); if (j.b == d.id) mv(j.pb); }
+    }
+    auto& br = A.design.breech;
+    if (br.on) { if (br.breech == d.id && br.hasFace) mv(br.face); if (br.chamber == d.id && br.hasMuzzle) mv(br.muzzle); }
+}
+void deleteSel() {
+    auto& D = A.design;
+    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) {
+        BodyDef& d = D.bodies[A.sel.idx];
+        if (!A.selVs.empty() && d.pts.size() >= A.selVs.size() + 3) {
+            fixShape(d);
+            std::vector<int> vs = A.selVs;
+            std::sort(vs.rbegin(), vs.rend());
+            for (int v : vs) if (v < (int)d.pts.size()) { d.pts.erase(d.pts.begin() + v); d.rad.erase(d.rad.begin() + v); d.bulge.erase(d.bulge.begin() + v); }
+            A.selVs.clear(); A.sel.v = -1;
+        } else if (!A.selVs.empty()) { toast("A part needs at least 3 vertices."); return; }
+        else {
+            std::string id = d.id;
+            D.bodies.erase(D.bodies.begin() + A.sel.idx);
+            D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.a == id || j.b == id || j.rel == id; }), D.joints.end());
+            A.sel = {};
+        }
+    } else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) {
+        D.joints.erase(D.joints.begin() + A.sel.idx);
+        A.sel = {};
+    } else return;
+    commit();
+}
+void duplicateSel() {
+    if (A.sel.kind != 1 || A.sel.idx >= (int)A.design.bodies.size()) return;
+    BodyDef c = A.design.bodies[A.sel.idx];
+    c.id = uid(); c.name += " copy"; c.magazine = false;
+    for (auto& p : c.pts) { p.x += 10; p.y += 10; }
+    if (c.ctrl != "none") { c.ctrlPt.x += 10; c.ctrlPt.y += 10; }
+    A.design.bodies.push_back(c);
+    A.sel = {1, (int)A.design.bodies.size() - 1, -1}; A.selVs.clear();
+    commit();
+}
+
+void finishBody() {
+    if (A.draft.size() >= 3) {
+        static const char* pal[] = {"#3f7fe0", "#c9ccd2", "#f0a43a", "#5cb85c", "#d9534f", "#9b7fd4", "#e8d44d"};
+        BodyDef b;
+        b.id = uid(); b.name = "Part " + std::to_string(A.design.bodies.size() + 1);
+        b.layer = "ABC"; b.thick = 12; b.color = pal[A.design.bodies.size() % 7]; b.pts = A.draft;
+        fixShape(b);
+        A.design.bodies.push_back(b);
+        A.sel = {1, (int)A.design.bodies.size() - 1, -1};
+        commit();
+    }
+    A.drafting = false; A.draft.clear(); A.tool = Tool::Select;
+}
+void finishTrack() {
+    if (A.draftHasF && A.draft.size() >= 2) {
+        JointDef j; j.type = "track"; j.a = A.draftA; j.p = A.draftF; j.path = A.draft; j.b = "world";
+        for (int i = (int)A.design.bodies.size() - 1; i >= 0; i--) {
+            auto& d = A.design.bodies[i];
+            if (d.id != A.draftA && sim::inPoly(A.draft[0].x, A.draft[0].y, d.pts)) { j.b = d.id; break; }
+        }
+        A.design.joints.push_back(j);
+        A.sel = {2, (int)A.design.joints.size() - 1, -1};
+        commit();
+    }
+    A.drafting = false; A.draft.clear(); A.draftHasF = false; A.tool = Tool::Select;
+}
+void makeMagwell(const BodyDef& b) {  // give a magazine a straight well, sliding out downward
+    double y0 = 1e9, y1 = -1e9;
+    for (auto& p : b.pts) { y0 = std::min(y0, p.y); y1 = std::max(y1, p.y); }
+    V2 c = sim::polyCentroid(b.pts);
+    JointDef j; j.type = "magwell"; j.a = b.id; j.b = "world"; j.p = {std::round(c.x * 2) / 2, std::round(c.y * 2) / 2};
+    for (int i = (int)A.design.bodies.size() - 1; i >= 0; i--) {
+        auto& d = A.design.bodies[i];
+        if (d.fixed && sim::inPoly(c.x, c.y, d.pts)) { j.b = d.id; break; }
+    }
+    if (j.b == "world") for (auto& d : A.design.bodies) if (d.fixed) { j.b = d.id; break; }
+    j.path = {j.p, {j.p.x, j.p.y + std::round(y1 - y0 + 4)}};
+    A.design.joints.push_back(j);
+}
+
+void buildInput(bool overUI) {
+    {   // vertex selection belongs to one part: drop it when the selection moves elsewhere
+        static std::string selVsPart;
+        std::string cur = (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()) ? A.design.bodies[A.sel.idx].id : "";
+        if (cur != selVsPart) { A.selVs.clear(); selVsPart = cur; }
+        if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
+    }
+    Vector2 m = GetMousePosition();
+    V2 w = snapMM(mouseMM(0));
+    if (!overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        float now = (float)GetTime();
+        bool dbl = now - A.lastClickT < 0.32f && Vector2Distance(m, A.lastClickPos) < 6;
+        A.lastClickT = now; A.lastClickPos = m;
+        switch (A.tool) {
+        case Tool::Body: {
+            if (A.draft.size() >= 3 && Vector2Distance(toScreen(W3(A.draft[0], 0)), m) < 10) { finishBody(); return; }
+            A.drafting = true; A.draft.push_back(w);
+            return;
+        }
+        case Tool::Pin: case Tool::Weld: {
+            auto hits = bodiesUnderMouse();
+            if (hits.empty()) { toast("Click on a part."); return; }
+            JointDef j; j.type = A.tool == Tool::Pin ? "pin" : "weld";
+            j.a = A.design.bodies[hits[0].body].id;
+            j.b = hits.size() > 1 ? A.design.bodies[hits[1].body].id : "world";
+            j.p = w;
+            A.design.joints.push_back(j); A.sel = {2, (int)A.design.joints.size() - 1, -1}; commit();
+            return;
+        }
+        case Tool::Spring: {
+            auto hits = bodiesUnderMouse();
+            if (!A.draftHasF) { A.draftHasF = true; A.draftF = w; A.draftA = hits.empty() ? "world" : A.design.bodies[hits[0].body].id; return; }
+            JointDef j; j.type = "spring"; j.a = A.draftA; j.pa = A.draftF; j.pb = w; j.b = "world";
+            for (auto& h : hits) if (A.design.bodies[h.body].id != j.a) { j.b = A.design.bodies[h.body].id; break; }
+            j.rest = std::round(std::hypot(j.pb.x - j.pa.x, j.pb.y - j.pa.y) * 1.15); j.k = 1;
+            j.kind = "coil"; j.coilDia = 6; j.wire = 0.8; j.turns = std::max(4.0, std::round(j.rest / 5));
+            A.design.joints.push_back(j); A.sel = {2, (int)A.design.joints.size() - 1, -1};
+            A.draftHasF = false; commit(); A.tool = Tool::Select;
+            return;
+        }
+        case Tool::Track: {
+            if (!A.draftHasF) {
+                auto hits = bodiesUnderMouse();
+                if (hits.empty()) { toast("Start a track on the part that will ride in it."); return; }
+                A.draftHasF = true; A.draftF = w; A.draftA = A.design.bodies[hits[0].body].id; A.drafting = true;
+                return;
+            }
+            if (dbl && A.draft.size() >= 2) { finishTrack(); return; }
+            A.draft.push_back(w);
+            return;
+        }
+        case Tool::Face: case Tool::Muzzle: {
+            auto& br = A.design.breech;
+            if (!br.on) { br = BreechDef(); br.on = true; }
+            if (A.tool == Tool::Face) { br.face = w; br.hasFace = true; } else { br.muzzle = w; br.hasMuzzle = true; }
+            commit(); A.tool = Tool::Select;
+            return;
+        }
+        case Tool::Rect: case Tool::Circle: case Tool::Knife: A.shapeStart = w; A.shaping = true; return;
+        case Tool::Mirror:
+            if (A.sel.kind != 1) { toast("Select the part to mirror first."); A.tool = Tool::Select; return; }
+            A.shapeStart = w; A.shaping = true; return;
+        case Tool::CtrlPt: {
+            if (A.sel.kind == 1 && A.sel.idx < (int)A.design.bodies.size()) { A.design.bodies[A.sel.idx].ctrlPt = w; commit(); }
+            A.tool = Tool::Select; return;
+        }
+        case Tool::StrikerTip: {
+            auto& br = A.design.breech;
+            br.strikerTip = w; commit(); A.tool = Tool::Select; return;
+        }
+        case Tool::Select: break;
+        }
+        if (dbl && A.sel.kind == 1) {  // insert vertex on an edge of the selected part
+            auto& d = A.design.bodies[A.sel.idx];
+            float z = bodyFront(A.sel.idx);
+            int best = -1; float bd = 10;
+            for (size_t k = 0; k < d.pts.size(); k++) {
+                Vector2 a = toScreen(W3(d.pts[k], z)), b = toScreen(W3(d.pts[(k + 1) % d.pts.size()], z));
+                double d2; sim::closestOnSeg({m.x, m.y}, {a.x, a.y}, {b.x, b.y}, &d2);
+                if (std::sqrt(d2) < bd) { bd = (float)std::sqrt(d2); best = (int)k; }
+            }
+            if (best >= 0) {
+                fixShape(d);
+                d.pts.insert(d.pts.begin() + best + 1, snapMM(mouseMM(z)));
+                d.rad.insert(d.rad.begin() + best + 1, 0.0);
+                d.bulge.insert(d.bulge.begin() + best + 1, 0.0);
+                d.bulge[best] = 0;
+                A.sel.v = best + 1; A.selVs = {best + 1}; commit(); return;
+            }
+        }
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        if (auto* h = handleAt(m)) {
+            Handle hh = *h;
+            A.dragKind = 1; A.dragH = hh; A.dragMoved = false;
+            if (hh.kind == 0 || hh.kind == 7) {
+                auto& d = A.design.bodies[hh.i];
+                fixShape(d);
+                float z = bodyFront(hh.i);
+                if (hh.kind == 0) {
+                    auto it = std::find(A.selVs.begin(), A.selVs.end(), hh.v);
+                    if (shift) { if (it != A.selVs.end()) A.selVs.erase(it); else A.selVs.push_back(hh.v); A.dragKind = 0; }
+                    else if (it == A.selVs.end()) A.selVs = {hh.v};
+                    A.sel.v = hh.v;
+                } else {
+                    int n = (int)d.pts.size(), v = hh.v;
+                    if (shift) {  // extrude: duplicate the edge's two vertices and drag the copies
+                        V2 a = d.pts[v], b = d.pts[(v + 1) % n];
+                        int at = v + 1;
+                        d.pts.insert(d.pts.begin() + at, {a, b});
+                        d.rad.insert(d.rad.begin() + at, {0.0, 0.0});
+                        d.bulge.insert(d.bulge.begin() + at, {0.0, 0.0});
+                        d.bulge[v] = 0;
+                        A.selVs = {at, at + 1};
+                        A.dragMoved = true;
+                    } else A.selVs = {v, (v + 1) % n};
+                    A.sel.v = -1;
+                }
+                A.dragOrig = d.pts;
+                A.dragMM = mouseMM(z);
+            } else if (hh.i >= 0) { A.sel = {2, hh.i, -1}; A.selVs.clear(); }
+            return;
+        }
+        auto hits = bodiesUnderMouse();
+        if (!hits.empty()) {
+            if (!(A.sel.kind == 1 && A.sel.idx == hits[0].body)) A.selVs.clear();
+            A.sel = {1, hits[0].body, -1};
+            A.dragKind = 2; A.dragStart = w; A.dragLast = {0, 0}; A.dragMoved = false;
+            return;
+        }
+        // empty space: box-select vertices of the selected part (a plain click deselects)
+        A.boxing = true; A.boxStart = m;
+        return;
+    }
+    if (A.boxing && !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        A.boxing = false;
+        Rectangle r{std::min(A.boxStart.x, m.x), std::min(A.boxStart.y, m.y), std::fabs(m.x - A.boxStart.x), std::fabs(m.y - A.boxStart.y)};
+        bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+        if (r.width < 4 && r.height < 4) { if (!shift) { A.sel = {}; A.selVs.clear(); } return; }
+        if (A.sel.kind == 1 && A.sel.idx < (int)A.design.bodies.size()) {
+            auto& d = A.design.bodies[A.sel.idx];
+            float z = bodyFront(A.sel.idx);
+            if (!shift) A.selVs.clear();
+            for (size_t v = 0; v < d.pts.size(); v++)
+                if (CheckCollisionPointRec(toScreen(W3(d.pts[v], z)), r) && std::find(A.selVs.begin(), A.selVs.end(), (int)v) == A.selVs.end()) A.selVs.push_back((int)v);
+            if (!A.selVs.empty()) toast(TextFormat("%d vert%s selected. Drag one to move them together; arrow keys nudge.", (int)A.selVs.size(), A.selVs.size() == 1 ? "ex" : "ices"));
+        }
+        return;
+    }
+    if (A.shaping && !IsMouseButtonDown(MOUSE_BUTTON_LEFT) && (A.tool == Tool::Knife || A.tool == Tool::Mirror)) {
+        A.shaping = false;
+        V2 a = A.shapeStart;
+        if (std::hypot(w.x - a.x, w.y - a.y) < 1) { A.tool = Tool::Select; return; }
+        auto& D = A.design;
+        if (A.tool == Tool::Mirror && A.sel.kind == 1) {
+            BodyDef c = D.bodies[A.sel.idx];
+            mirrorBody(c, a, w);
+            c.id = uid(); c.name += " (mirror)"; c.magazine = false;
+            D.bodies.push_back(c);
+            A.sel = {1, (int)D.bodies.size() - 1, -1}; A.selVs.clear();
+            commit(); toast("Mirrored copy added.");
+        } else if (A.tool == Tool::Knife) {
+            std::vector<int> targets;
+            if (A.sel.kind == 1) targets.push_back(A.sel.idx);
+            else for (int i = 0; i < (int)D.bodies.size(); i++) targets.push_back(i);
+            int made = 0, last = -1;
+            for (int ti = (int)targets.size() - 1; ti >= 0; ti--) {
+                int i = targets[ti];
+                auto pcs = splitBody(D.bodies[i], a, w);
+                if (pcs.size() < 2) continue;
+                std::string base = D.bodies[i].name;
+                D.bodies[i] = pcs[0];
+                for (size_t k = 1; k < pcs.size(); k++) {
+                    BodyDef nb = pcs[k];
+                    nb.id = uid(); nb.name = base + " " + std::to_string(k + 1); nb.magazine = false; nb.ctrl = "none";
+                    D.bodies.push_back(nb);
+                    last = (int)D.bodies.size() - 1;
+                }
+                made += (int)pcs.size() - 1;
+            }
+            if (made) { if (last >= 0) A.sel = {1, last, -1}; A.selVs.clear(); commit(); toast(TextFormat("Cut: %d new part%s. Delete one to carve, or keep it.", made, made > 1 ? "s" : "")); }
+            else toast("The cut must cross a part completely.");
+        }
+        A.tool = Tool::Select;
+        return;
+    }
+    if (A.shaping && !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {  // finish a rectangle or circle
+        A.shaping = false;
+        V2 a = A.shapeStart;
+        BodyDef b;
+        static const char* pal[] = {"#3f7fe0", "#c9ccd2", "#f0a43a", "#5cb85c", "#d9534f", "#9b7fd4", "#e8d44d"};
+        b.id = uid(); b.name = "Part " + std::to_string(A.design.bodies.size() + 1);
+        b.layer = "ABC"; b.thick = 12; b.color = pal[A.design.bodies.size() % 7];
+        if (A.tool == Tool::Rect) {
+            double x0 = std::min(a.x, w.x), x1 = std::max(a.x, w.x), y0 = std::min(a.y, w.y), y1 = std::max(a.y, w.y);
+            if (x1 - x0 >= 1 && y1 - y0 >= 1) b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+        } else {
+            double r = std::hypot(w.x - a.x, w.y - a.y);
+            if (r >= 1) b.pts = circlePts(a, r, &b.bulge);
+        }
+        if (b.pts.size() >= 3) {
+            fixShape(b);
+            A.design.bodies.push_back(b);
+            A.sel = {1, (int)A.design.bodies.size() - 1, -1};
+            commit();
+        }
+        A.tool = Tool::Select;
+        return;
+    }
+    if (A.dragKind == 1 || A.dragKind == 2) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            if (A.dragKind == 2) {
+                V2 d{snapv(w.x - A.dragStart.x, A.snapOn), snapv(w.y - A.dragStart.y, A.snapOn)};
+                double ddx = d.x - A.dragLast.x, ddy = d.y - A.dragLast.y;
+                if (ddx != 0 || ddy != 0) { moveBody(A.sel.idx, ddx, ddy); A.dragLast = d; A.dragMoved = true; }
+            } else {
+                auto& h = A.dragH;
+                auto& br = A.design.breech;
+                V2 p = w;
+                if (h.kind == 0 || h.kind == 7) {  // move every selected vertex by the same snapped amount
+                    auto& d = A.design.bodies[h.i];
+                    float z = bodyFront(h.i);
+                    V2 mm = mouseMM(z);
+                    double dx = snapv(mm.x - A.dragMM.x, A.snapOn), dy = snapv(mm.y - A.dragMM.y, A.snapOn);
+                    if (A.dragOrig.size() == d.pts.size())
+                        for (int v : A.selVs) if (v >= 0 && v < (int)d.pts.size()) d.pts[v] = {A.dragOrig[v].x + dx, A.dragOrig[v].y + dy};
+                    if (dx != 0 || dy != 0) A.dragMoved = true;
+                }
+                else if (h.kind == 1) A.design.joints[h.i].p = p;
+                else if (h.kind == 2) A.design.joints[h.i].path[h.v] = p;
+                else if (h.kind == 3) A.design.joints[h.i].pa = p;
+                else if (h.kind == 4) A.design.joints[h.i].pb = p;
+                else if (h.kind == 5) br.face = p;
+                else if (h.kind == 6) br.muzzle = p;
+                if (h.kind != 0 && h.kind != 7) A.dragMoved = true;
+            }
+        } else {
+            if (A.dragMoved) commit();
+            A.dragKind = 0;
+        }
+    }
+}

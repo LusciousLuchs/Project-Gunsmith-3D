@@ -1,0 +1,15 @@
+# Cross-compile for Windows from Linux with llvm-mingw (https://github.com/mstorsjo/llvm-mingw).
+# Usage: cmake -S . -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake-mingw-toolchain.cmake -DMINGW_ROOT=/path/to/llvm-mingw
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
+if(NOT MINGW_ROOT)
+  set(MINGW_ROOT $ENV{MINGW_ROOT})
+endif()
+set(CMAKE_C_COMPILER ${MINGW_ROOT}/bin/x86_64-w64-mingw32-clang)
+set(CMAKE_CXX_COMPILER ${MINGW_ROOT}/bin/x86_64-w64-mingw32-clang++)
+set(CMAKE_RC_COMPILER ${MINGW_ROOT}/bin/x86_64-w64-mingw32-windres)
+set(CMAKE_FIND_ROOT_PATH ${MINGW_ROOT}/x86_64-w64-mingw32)
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-static")

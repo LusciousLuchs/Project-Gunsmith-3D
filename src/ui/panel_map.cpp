@@ -1,0 +1,350 @@
+// Gunsmith3D - Map editor: the top bar (tools, grid, walk) and the panel (edit, textures, map settings, files).
+#include "app/app.hpp"
+#include "app/audio.hpp"
+#include "app/mapedit.hpp"
+#include "app/mapgfx.hpp"
+#include "app/settings.hpp"
+#include "ui/ui.hpp"
+#include "imgui.h"
+#include "rlImGui.h"
+#include "extras/IconsFontAwesome6.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <filesystem>
+
+using gmap::V3;
+static float S() { return CFG.uiScale; }
+
+static bool iconBtn(const char* icon, const char* tip, bool on = false) {
+    float sz = TOOLBAR_H - 14 * S();
+    if (on) { ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.91f, 0.63f, 0.23f, 0.22f)); ImGui::PushStyleColor(ImGuiCol_Text, colAccent()); }
+    bool r = ImGui::Button(icon, {sz, sz});
+    if (on) ImGui::PopStyleColor(2);
+    if (tipHover()) ImGui::SetTooltip("%s", tip);
+    return r;
+}
+static void gap(float px = 12) { ImGui::SameLine(0, px * S()); }
+
+// grid steps: metric, or imperial in inches and feet
+static const double GRID_M[] = {0.01, 0.05, 0.1, 0.25, 0.5, 1, 2};
+static const double GRID_I[] = {0.0127, 0.0254, 0.0508, 0.1524, 0.3048, 0.6096, 1.2192};
+static const char* GRID_ML[] = {"Grid 1 cm", "Grid 5 cm", "Grid 10 cm", "Grid 25 cm", "Grid 50 cm", "Grid 1 m", "Grid 2 m"};
+static const char* GRID_IL[] = {"Grid 1/2 in", "Grid 1 in", "Grid 2 in", "Grid 6 in", "Grid 1 ft", "Grid 2 ft", "Grid 4 ft"};
+
+// a length typed and shown in the player's units (metres or feet), stored in metres
+static bool lenDrag(const char* id, double& m, double speedM = 0.01) {
+    bool imp = CFG.units == Units::Imperial;
+    double k = imp ? 1 / 0.3048 : 1.0, v = m * k;
+    float sp = (float)(speedM * k);
+    bool r = ImGui::DragScalar(id, ImGuiDataType_Double, &v, sp, nullptr, nullptr, imp ? "%.3f ft" : "%.3f m");
+    if (r) m = v / k;
+    return r;
+}
+
+void mapToolbar() {
+    ImGui::SetNextWindowPos({0, 0});
+    ImGui::SetNextWindowSize({(float)GetScreenWidth(), TOOLBAR_H});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {10 * S(), 7 * S()});
+    ImGui::Begin("##maptoolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::PopStyleVar();
+    float sz = TOOLBAR_H - 14 * S();
+    if (iconBtn(ICON_FA_BARS, "Menu (Esc)")) { uiTick(); A.showPause = true; }
+    gap();
+    ImGui::AlignTextToFramePadding();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
+    ImGui::TextDisabled("Map editor");
+    gap(18);
+    struct TB { const char* icon; const char* tip; MTool t; } tools[] = {
+        {ICON_FA_ARROW_POINTER, "Select, move and resize", MTool::Select}, {ICON_FA_SQUARE, "Box brush", MTool::Box},
+        {ICON_FA_CARET_UP, "Ramp (wedge) brush", MTool::Wedge}, {ICON_FA_CIRCLE, "Cylinder brush", MTool::Cylinder},
+        {ICON_FA_STAIRS, "Stairs", MTool::Stairs}, {ICON_FA_SCISSORS, "Clip: cut brushes along a line", MTool::Clip},
+        {ICON_FA_PERSON, "Player start", MTool::Start}};
+    int i = 0;
+    for (auto& t : tools) {
+        if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
+        gap(i == 0 || i == 4 || i == 5 ? 12 : 3);
+        i++;
+    }
+    if (iconBtn(ICON_FA_ROTATE_LEFT, "Undo (Ctrl+Z)")) meUndo();
+    gap(3);
+    if (iconBtn(ICON_FA_ROTATE_RIGHT, "Redo (Ctrl+Y)")) meRedo();
+    gap(18);
+    bool imp = CFG.units == Units::Imperial;
+    const double* steps = imp ? GRID_I : GRID_M;
+    int gi = 3;
+    for (int k = 0; k < 7; k++) if (std::fabs(ME.grid - steps[k]) < 1e-6) gi = k;
+    ImGui::SetNextItemWidth(118 * S());
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
+    if (ImGui::Combo("##grid", &gi, imp ? GRID_IL : GRID_ML, 7)) ME.grid = steps[gi];
+    gap(8);
+    ImGui::SetNextItemWidth(120 * S());
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
+    lenDrag("##height", ME.height, ME.grid);
+    ME.height = std::max(ME.height, 0.01);
+    if (tipHover()) ImGui::SetTooltip("Height of new brushes");
+    // right side
+    float right = 4 * (sz + 4 * S()) + 110 * S() + 10 * S();
+    ImGui::SameLine(GetScreenWidth() - right);
+    if (iconBtn(ICON_FA_BORDER_ALL, "Ground grid", ME.showGrid)) ME.showGrid = !ME.showGrid;
+    gap(4);
+    if (iconBtn(ICON_FA_MAP, ME.top ? "3D view (V)" : "Top view (V)", ME.top)) { if (!ME.top) ME.topC = {ME.cam.x, 0, ME.cam.z}; ME.top = !ME.top; }
+    gap(4);
+    if (iconBtn(ICON_FA_EXPAND, "Focus on the selection (F)")) meFocus();
+    gap(4);
+    if (iconBtn(ICON_FA_FLOPPY_DISK, "Save (Ctrl+S)")) meSave();
+    gap(8);
+    if (accentButton(ICON_FA_PERSON_WALKING "  Walk", true, {104 * S(), sz})) meWalk(IsKeyDown(KEY_LEFT_SHIFT));
+    if (tipHover()) ImGui::SetTooltip("Walk the map from the player start (F5).\nShift: start where the camera is.");
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------- panel
+static int tab = -1;
+
+static void editTab() {
+    auto& M = ME.map;
+    if (ME.ent >= 0 && ME.ent < (int)M.ents.size()) {
+        auto& e = M.ents[ME.ent];
+        heading("Player start");
+        ImGui::TextDisabled("Where you appear when you walk the map.");
+        static bool editing = false;
+        prop("Facing");
+        float yaw = (float)e.yaw;
+        if (ImGui::SliderFloat("##yaw", &yaw, 0, 360, "%.0f deg")) { if (!editing) { meSnapshot(); editing = true; } e.yaw = yaw; ME.version++; }
+        if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
+        for (int a = 0; a < 3; a++) {
+            static const char* L[] = {"X", "Height", "Z"};
+            prop(L[a]);
+            double* c = a == 0 ? &e.pos.x : a == 1 ? &e.pos.y : &e.pos.z;
+            ImGui::PushID(a);
+            if (lenDrag("##p", *c, ME.grid)) { if (!editing) { meSnapshot(); editing = true; } ME.version++; }
+            if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
+            ImGui::PopID();
+        }
+        ImGui::Dummy({0, 6 * S()});
+        if (dangerButton("Delete", {-1, 0})) meDelete();
+        return;
+    }
+    if (ME.sel.empty()) {
+        heading("Nothing selected");
+        ImGui::TextWrapped("Pick a tool in the top bar and drag in the view to build. Click a brush to select it, or Ctrl+click to pick one of its faces.");
+        ImGui::Dummy({0, 6 * S()});
+        ImGui::TextDisabled("%zu brushes in this map", M.brushes.size());
+        return;
+    }
+    if (ME.sel.size() == 1) heading(ME.face >= 0 ? "Face" : "Brush");
+    else { char b[48]; std::snprintf(b, sizeof b, "%zu brushes", ME.sel.size()); heading(b); }
+
+    // position and size of a single brush (its bounding box)
+    if (ME.sel.size() == 1 && ME.face < 0) {
+        gmap::Brush& b = M.brushes[ME.sel[0]];
+        V3 mn, mx;
+        gmap::brushBounds(b, mn, mx);
+        static bool editing = false;
+        static const char* AX[] = {"X", "Y (up)", "Z"};
+        if (section("Position and size", true)) {
+            for (int a = 0; a < 3; a++) {
+                double lo = a == 0 ? mn.x : a == 1 ? mn.y : mn.z, hi = a == 0 ? mx.x : a == 1 ? mx.y : mx.z;
+                double pos = lo, size = hi - lo;
+                ImGui::PushID(a);
+                prop(AX[a]);
+                float w = (ImGui::GetContentRegionAvail().x - 6 * S()) / 2;
+                ImGui::SetNextItemWidth(w);
+                if (lenDrag("##pos", pos, ME.grid)) {
+                    if (!editing) { meSnapshot(); editing = true; }
+                    V3 d; (a == 0 ? d.x : a == 1 ? d.y : d.z) = pos - lo;
+                    gmap::translate(b, d); ME.version++;
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
+                if (tipHover()) ImGui::SetTooltip("Lowest corner");
+                ImGui::SameLine(0, 6 * S());
+                ImGui::SetNextItemWidth(w);
+                if (lenDrag("##size", size, ME.grid)) {
+                    // grow from the far side: push the face pointing along this axis, if the brush has one
+                    V3 axis; (a == 0 ? axis.x : a == 1 ? axis.y : axis.z) = 1;
+                    for (size_t f = 0; f < b.faces.size(); f++)
+                        if (gmap::dot(b.faces[f].n, axis) > 0.999) {
+                            if (!editing) { meSnapshot(); editing = true; }
+                            if (gmap::pushFace(b, (int)f, std::max(size, 0.005) - (hi - lo))) ME.version++;
+                            break;
+                        }
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
+                if (tipHover()) ImGui::SetTooltip("Size");
+                ImGui::PopID();
+            }
+        }
+    }
+    if (section("Arrange", true)) {
+        float w = (ImGui::GetContentRegionAvail().x - 3 * 4 * S()) / 4;
+        if (ImGui::Button("-90", {w, 0})) meRotate(-90);
+        ImGui::SameLine(0, 4 * S()); if (ImGui::Button("-15", {w, 0})) meRotate(-15);
+        ImGui::SameLine(0, 4 * S()); if (ImGui::Button("+15", {w, 0})) meRotate(15);
+        ImGui::SameLine(0, 4 * S()); if (ImGui::Button("+90", {w, 0})) meRotate(90);
+        if (tipHover()) ImGui::SetTooltip("Turn around the vertical axis (R turns 90)");
+        float w2 = (ImGui::GetContentRegionAvail().x - 4 * S()) / 2;
+        if (ImGui::Button("Mirror X", {w2, 0})) meMirror(0);
+        ImGui::SameLine(0, 4 * S()); if (ImGui::Button("Mirror Z", {w2, 0})) meMirror(2);
+        if (ImGui::Button("Duplicate", {w2, 0})) meDuplicate();
+        ImGui::SameLine(0, 4 * S()); if (dangerButton("Delete", {w2, 0})) meDelete();
+        prop("Wall thickness", "Used by Make hollow.");
+        lenDrag("##wall", ME.wall, 0.01);
+        ME.wall = std::max(ME.wall, 0.01);
+        if (ImGui::Button("Make hollow (H)", {-1, 0})) meHollow();
+        if (tipHover()) ImGui::SetTooltip("Turns each selected brush into walls around its inside: a quick room.");
+    }
+    if (section("Texture", true)) {
+        // the selected face, or every face of the selection
+        std::vector<gmap::Face*> faces;
+        if (ME.face >= 0 && ME.sel.size() == 1) faces.push_back(&M.brushes[ME.sel[0]].faces[ME.face]);
+        else for (int i : ME.sel) for (auto& f : M.brushes[i].faces) faces.push_back(&f);
+        if (!faces.empty()) {
+            int m = faces[0]->mat;
+            ImGui::AlignTextToFramePadding();
+            Texture2D t = mapTexture(m);
+            rlImGuiImageSize(&t, (int)(28 * S()), (int)(28 * S()));
+            ImGui::SameLine();
+            ImGui::TextUnformatted(gmap::materialNames()[m].c_str());
+            static bool editing = false;
+            double sc = faces[0]->scale, su = faces[0]->shiftU, sv = faces[0]->shiftV;
+            auto edit = [&](bool changed, auto apply) {
+                if (changed) { if (!editing) { meSnapshot(); editing = true; } for (auto* f : faces) apply(*f); ME.version++; }
+                if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
+            };
+            prop("Scale", "Bigger numbers stretch the texture.");
+            edit(ImGui::DragScalar("##sc", ImGuiDataType_Double, &sc, 0.01f, nullptr, nullptr, "%.2f"), [&](gmap::Face& f) { f.scale = std::max(0.05, sc); });
+            prop("Shift across");
+            edit(lenDrag("##su", su, 0.01), [&](gmap::Face& f) { f.shiftU = su; });
+            prop("Shift up");
+            edit(lenDrag("##sv", sv, 0.01), [&](gmap::Face& f) { f.shiftV = sv; });
+            ImGui::TextDisabled("Pick a new texture on the Textures tab.");
+        }
+    }
+}
+
+static void toolOptions() {
+    if (ME.tool == MTool::Cylinder) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); }
+    if (ME.tool == MTool::Stairs) { prop("Steps"); ImGui::SliderInt("##steps", &ME.stairSteps, 2, 32); }
+}
+
+static void texturesTab() {
+    ImGui::TextDisabled(ME.sel.empty() ? "Click one to use it for new brushes." : ME.face >= 0 ? "Click one to put it on the selected face." : "Click one to put it on the selection.");
+    ImGui::Dummy({0, 4 * S()});
+    float cell = 62 * S(), pad = ImGui::GetStyle().FramePadding.x * 2;
+    int perRow = std::max(1, (int)((ImGui::GetContentRegionAvail().x + 8 * S()) / (cell + pad + 8 * S())));
+    auto& names = gmap::materialNames();
+    for (int m = 0; m < (int)names.size(); m++) {
+        ImGui::PushID(m);
+        ImGui::BeginGroup();
+        bool cur = m == ME.mat;
+        if (cur) ImGui::PushStyleColor(ImGuiCol_Button, colAccent());
+        Texture2D t = mapTexture(m);
+        if (rlImGuiImageButtonSize("##t", &t, {cell, cell})) { uiTick(); meApplyMaterial(m); }
+        if (cur) ImGui::PopStyleColor();
+        std::string label = names[m];
+        std::replace(label.begin(), label.end(), '_', ' ');
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + cell);
+        ImGui::TextDisabled("%s", label.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::EndGroup();
+        ImGui::PopID();
+        if ((m + 1) % perRow != 0) ImGui::SameLine(0, 8 * S());
+    }
+}
+
+static bool colorRow(const char* label, double* c) {
+    prop(label);
+    float f[3] = {(float)c[0], (float)c[1], (float)c[2]};
+    ImGui::PushID(label);
+    bool r = ImGui::ColorEdit3("##c", f, ImGuiColorEditFlags_NoInputs);
+    ImGui::PopID();
+    if (r) for (int i = 0; i < 3; i++) c[i] = f[i];
+    return r;
+}
+
+static void mapTab() {
+    auto& L = ME.map.look;
+    static bool editing = false;
+    auto track = [&](bool changed) {
+        if (changed) { if (!editing) { meSnapshot(); editing = true; } ME.version++; }
+        if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
+    };
+    heading("Map");
+    prop("Name");
+    std::string name = ME.map.name;
+    if (inputText("##name", name)) { ME.map.name = name; ME.dirty = true; }
+    if (section("Sun and sky", true)) {
+        float yw = (float)L.sunYaw, pt = (float)L.sunPitch;
+        prop("Sun direction");
+        track(ImGui::SliderFloat("##sy", &yw, 0, 360, "%.0f deg")); L.sunYaw = yw;
+        prop("Sun height");
+        track(ImGui::SliderFloat("##sp", &pt, 5, 90, "%.0f deg")); L.sunPitch = pt;
+        track(colorRow("Sunlight", L.sun));
+        track(colorRow("Shade", L.ambient));
+        track(colorRow("Sky above", L.skyTop));
+        track(colorRow("Horizon and fog", L.skyHorizon));
+        prop("Fog starts");
+        track(lenDrag("##fs", L.fogStart, 1));
+        prop("Fully fogged");
+        track(lenDrag("##fe", L.fogEnd, 1));
+        L.fogEnd = std::max(L.fogEnd, L.fogStart + 1);
+    }
+    if (section("Statistics", false)) {
+        size_t faces = 0;
+        for (auto& b : ME.map.brushes) faces += b.faces.size();
+        ImGui::TextDisabled("%zu brushes, %zu faces", ME.map.brushes.size(), faces);
+    }
+}
+
+static void fileTab() {
+    heading("Save");
+    ImGui::TextDisabled("Saved as maps/<name>.gsmap. Maps are plain text, so they're easy to share and edit.");
+    if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {-1, 30 * S()})) meSave();
+    if (ME.dirty) ImGui::TextColored(colWarn(), "Unsaved changes (an autosave is kept).");
+    ImGui::Dummy({0, 6 * S()});
+    heading("Start from");
+    if (ImGui::Button("Practice range (built in)", {-1, 0})) meLoadBuiltin();
+    if (ImGui::Button("Empty map", {-1, 0})) meNew();
+    ImGui::Dummy({0, 6 * S()});
+    heading("Your maps");
+    auto files = meMapFiles();
+    if (files.empty()) ImGui::TextDisabled("None saved yet.");
+    for (auto& f : files) {
+        std::string stem = std::filesystem::path(f).stem().string();
+        if (ImGui::Selectable(stem.c_str())) { uiTick(); meOpen(f); }
+        if (tipHover()) ImGui::SetTooltip("%s", f.c_str());
+    }
+}
+
+void mapPanel() {
+    ImGui::SetNextWindowPos({GetScreenWidth() - PANEL_W, TOOLBAR_H});
+    ImGui::SetNextWindowSize({PANEL_W, GetScreenHeight() - TOOLBAR_H});
+    ImGui::Begin("##mappanel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::PushFont(gFontBold, 0.0f);
+    ImGui::TextUnformatted(ME.map.name.c_str());
+    ImGui::PopFont();
+    if (ImGui::BeginTabBar("##maptabs")) {
+        const char* names[] = {"Edit", "Textures", "Map", "File"};
+        static int forced = -2;
+        if (forced == -2) { const char* e = std::getenv("GUNSMITH_MAPTAB"); forced = e ? std::atoi(e) : -1; }
+        for (int i = 0; i < 4; i++) {
+            ImGuiTabItemFlags fl = (forced == i) ? ImGuiTabItemFlags_SetSelected : 0;
+            if (ImGui::BeginTabItem(names[i], nullptr, fl)) { tab = i; ImGui::EndTabItem(); }
+        }
+        forced = -1;
+        ImGui::EndTabBar();
+    }
+    ImGui::BeginChild("##mapbody");
+    switch (tab) {
+    case 0: editTab(); toolOptions(); break;
+    case 1: texturesTab(); break;
+    case 2: mapTab(); break;
+    case 3: fileTab(); break;
+    }
+    if (!ME.status.empty()) { ImGui::Dummy({0, 8 * S()}); ImGui::TextDisabled("%s", ME.status.c_str()); }
+    ImGui::EndChild();
+    ImGui::End();
+}

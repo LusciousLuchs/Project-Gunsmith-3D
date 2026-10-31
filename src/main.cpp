@@ -1,0 +1,264 @@
+// Gunsmith3D - Gunsmith3D entry point: command line, window, main loop.
+#include "app/app.hpp"
+#include "app/gfx.hpp"
+#include "app/audio.hpp"
+#include "app/view.hpp"
+#include "app/render.hpp"
+#include "app/overlay.hpp"
+#include "app/bench.hpp"
+#include "app/input.hpp"
+#include "app/reltest.hpp"
+#include "app/settings.hpp"
+#include "app/fonts.hpp"
+#include "app/scene.hpp"
+#include "app/mapedit.hpp"
+#include "ui/ui.hpp"
+#include "version.hpp"
+#include "imgui.h"
+#include "rlImGui.h"
+#include "rlgl.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <string>
+#include <fstream>
+#include <sstream>
+
+int main(int argc, char** argv) {
+    // command-line options for automated screenshots
+    std::string presetArg, shotPath, selectArg, demo;
+    int frames = 0;
+    bool fireArg = false, sideArg = false, testArg = false, designerArg = false;
+    int relArg = 0;
+    bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
+    int settingsPage = 0;
+    bool useSettings = false;
+    std::string mapArg; bool walkArg = false;
+    int magCapArg = 0; double magCurveArg = -999; std::string cartArg;
+    for (int i = 1; i < argc; i++) {
+        std::string a = argv[i];
+        if (a == "--version" || a == "-v") { std::printf("Gunsmith3D %s\n", version::full()); return 0; }
+        if (a == "--help" || a == "-h") {
+            std::printf("Gunsmith3D %s\n\nUsage: gunsmith3d [options]\n"
+                        "  --preset NAME   go straight to the designer with an example (blowback, tilting, boltaction, single, longrecoil, blank)\n"
+                        "  --test          go straight to the test bench\n"
+                        "  --side          start in side view\n"
+                        "  --version       print the version and exit\n", version::full());
+            return 0;
+        }
+        auto next = [&]() { return i + 1 < argc ? std::string(argv[++i]) : std::string(); };
+        if (a == "--preset") presetArg = next();
+        else if (a == "--shot") shotPath = next();
+        else if (a == "--frames") frames = std::atoi(next().c_str());
+        else if (a == "--fire") fireArg = true;
+        else if (a == "--test") testArg = true;
+        else if (a == "--side") sideArg = true;
+        else if (a == "--select") selectArg = next();
+        else if (a == "--demo") demo = next();
+        else if (a == "--designer") designerArg = true;
+        else if (a == "--magcap") magCapArg = std::atoi(next().c_str());
+        else if (a == "--magcurve") magCurveArg = std::atof(next().c_str());
+        else if (a == "--cart") cartArg = next();
+        else if (a == "--reltest") relArg = std::atoi(next().c_str());
+        else if (a == "--menu") menuArg = true;
+        else if (a == "--usesettings") useSettings = true;  // (screenshots) honour the settings file            // (screenshots) stay on the main menu
+        else if (a == "--settings") settingsArg = true;    // (screenshots) open the settings
+        else if (a == "--settingspage") { settingsArg = true; settingsPage = std::atoi(next().c_str()); }
+        else if (a == "--pause") pauseArg = true;          // (screenshots) open the pause menu
+        else if (a == "--benchpick") benchArg = true;      // (screenshots) open the test-bench picker
+        else if (a == "--mapedit") mapArg = next();         // (screenshots) open the map editor: builtin, new, or a file
+        else if (a == "--walk") walkArg = true;            // (screenshots) walk the map
+    }
+
+#if defined(__linux__)
+    if (!std::getenv("WAYLAND_DISPLAY") && !std::getenv("DISPLAY")) {  // raylib would crash opening a window with no display
+        std::fprintf(stderr, "Gunsmith3D needs a desktop session to run (no Wayland or X11 display found).\n");
+        return 1;
+    }
+#endif
+    loadSettings();
+    if (frames && !useSettings) CFG = Settings();  // automated screenshots use the defaults unless told otherwise
+    unsigned flags = FLAG_WINDOW_RESIZABLE | (CFG.msaa ? FLAG_MSAA_4X_HINT : 0) | (CFG.vsync ? FLAG_VSYNC_HINT : 0);
+    SetConfigFlags(flags);
+    InitWindow(CFG.resW, CFG.resH, (std::string("Gunsmith3D ") + version::text()).c_str());
+    if (!IsWindowReady()) {  // no display (e.g. started over SSH): say so instead of crashing
+        std::fprintf(stderr, "Gunsmith3D could not open a window. Start it from a desktop session (Wayland or X11).\n");
+        return 1;
+    }
+    SetWindowMinSize(960, 600);
+    SetExitKey(KEY_NULL);
+    if (!frames && (CFG.windowMode != WindowMode::Windowed || CFG.monitor != 0)) applyDisplay();
+    SetTargetFPS(CFG.fpsCap);
+    initGfx();
+    initScene();
+    initViewFont();
+    initSfx();
+    setupImGui();
+    gSnap = CFG.snap; A.snapOn = CFG.snap > 0;
+
+    A.userCarts = loadUserCartridges();
+    std::ifstream in(AUTOSAVE);
+    if (!in) in.open(OLD_AUTOSAVE);  // carry work over from Action Lab 3D
+    bool loaded = false;
+    if (in && presetArg.empty()) { std::stringstream ss; ss << in.rdbuf(); loaded = designFromJson(ss.str(), A.design); }
+    if (!loaded) A.design = loadPreset(presetArg.empty() ? "tilting" : presetArg);
+    A.lastSnap = designToJson(A.design);
+    A.vw = GetScreenWidth() - (int)PANEL_W;
+    A.vh = GetScreenHeight() - (int)TOOLBAR_H;
+    fitView();
+    if (sideArg) A.ortho = true;
+    if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
+    if (!cartArg.empty()) for (auto& c : cartridgePresets()) if (c.name == cartArg) { A.design.breech.cart = c; A.design.breech.cartImpulse = true; applyCartridge(A.design.breech); }
+    if (magCapArg > 0 || magCurveArg > -999 || !cartArg.empty()) {
+        for (size_t i = 0; i < A.design.bodies.size(); i++) if (A.design.bodies[i].magazine && A.design.bodies[i].gen.on) {
+            if (magCapArg > 0) A.design.bodies[i].magCap = magCapArg;
+            if (magCurveArg > -999) A.design.bodies[i].gen.curve = magCurveArg;
+            generateMagazine(A.design, (int)i);
+        }
+        fitView();
+    }
+    // the game opens on the main menu; the screenshot options go straight to the workshop
+    bool direct = !menuArg && (!presetArg.empty() || testArg || sideArg || fireArg || !demo.empty() || designerArg || !selectArg.empty() || relArg > 0 || pauseArg);
+    if (direct) enterWorkshop(false);
+    if (sideArg) A.ortho = true;
+    if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
+    if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
+    if (testArg || !demo.empty()) setMode(Mode::Test);
+    A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
+    settingsPageIndex(settingsPage);
+    if (fireArg) fireDown();
+    if (!mapArg.empty()) {
+        enterMapEditor();
+        if (mapArg == "builtin") meLoadBuiltin(); else if (mapArg == "new") meNew(); else meOpen(mapArg);
+        ME.undo.clear();
+        if (const char* e = std::getenv("GUNSMITH_MAPSEL")) { int i = std::atoi(e); if (i >= 0 && i < (int)ME.map.brushes.size()) ME.sel = {i}; }
+        if (const char* e = std::getenv("GUNSMITH_MAPFACE")) ME.face = std::atoi(e);
+        if (std::getenv("GUNSMITH_MAPTOP")) { ME.top = true; ME.topC = {40, 0, 0}; ME.topH = 70; }
+        if (const char* e = std::getenv("GUNSMITH_MAPTOOL")) ME.tool = (MTool)std::atoi(e);
+        if (const char* e = std::getenv("GUNSMITH_MAPCAM")) std::sscanf(e, "%lf,%lf,%lf,%lf,%lf", &ME.cam.x, &ME.cam.y, &ME.cam.z, &ME.yaw, &ME.pitch);
+        if (walkArg) meWalk(false);
+    }
+
+    int frame = 0;
+    while (!WindowShouldClose() && !A.quit) {
+        relPoll();
+        applyAudio();
+        autosaveTick();
+        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker;
+        bool menu = A.screen == Screen::Menu;
+        TOOLBAR_H = menu ? 0.f : TOOLBAR_H_BASE * CFG.uiScale;
+        if (relArg > 0 && frame == 2) { REL.rounds = relArg; relStart(); }
+        float dt = std::min(GetFrameTime(), 0.05f);
+        if (frames) dt = 1.f / 60;
+        A.showcase = menu;
+        A.viewX = menu ? GetScreenWidth() * 0.28f : 0.f;
+        A.vw = menu ? GetScreenWidth() - (int)A.viewX : GetScreenWidth() - (int)PANEL_W;
+        A.vh = GetScreenHeight() - (int)TOOLBAR_H;
+        if (menu) { A.ortho = false; A.yaw += dt * 0.10f; A.pitch = 0.28f; }  // the last design turns slowly behind the menu
+        float keepDist = A.dist;
+        if (menu) A.dist *= 1.3f;
+        updateCamera();
+        A.dist = keepDist;
+
+        if (A.screen == Screen::MapEditor) {
+            bool modal = A.showPause || A.showSettings;
+            mapEditorUpdate(dt, modal);
+            BeginDrawing();
+            ClearBackground(Color{30, 34, 41, 255});
+            mapEditorRender();
+            rlImGuiBegin();
+            if (!ME.walking) { mapToolbar(); mapPanel(); }
+            if (modal) pauseMenu();
+            toastOverlay();
+            rlImGuiEnd();
+            EndDrawing();
+            frame++;
+            if (frames && frame >= frames) { if (!shotPath.empty()) TakeScreenshot(shotPath.c_str()); break; }
+            continue;
+        }
+        if (menu) {
+            BeginDrawing();
+            ClearBackground(Color{14, 16, 19, 255});
+            DrawRectangleGradientV(0, 0, GetScreenWidth(), A.vh, Color{40, 46, 56, 255}, Color{16, 18, 22, 255});
+            beginViewport3D();
+            drawScene();
+            endViewport3D();
+            // darken the left, where the menu sits, more than the right
+            DrawRectangleGradientH(0, 0, GetScreenWidth(), A.vh, Color{10, 11, 13, 240}, Color{10, 11, 13, 40});
+            rlImGuiBegin();
+            mainMenu();
+            toastOverlay();
+            rlImGuiEnd();
+            EndDrawing();
+            frame++;
+            if (frames && frame >= frames) { if (!shotPath.empty()) TakeScreenshot(shotPath.c_str()); break; }
+            continue;
+        }
+
+        if (!demo.empty() && A.S) {  // scripted demos for automated screenshots
+            auto& S = *A.S;
+            if (demo == "reload") {
+                if (frame == 5) { S.magRelease = true; }
+                if (frame == 40) { S.magRelease = false; spawnSpareMag(); }
+                if (frame == 70) {  // grab the new magazine and lift it towards the well
+                    for (auto& b : S.bodies) if (b.isMag && !b.tmpl.empty()) {
+                        A.grabTmpl = A.design.bodyIndex(b.tmpl);
+                        S.hand.on = true; S.hand.b = &b; S.hand.l = {0, -0.02};
+                        auto* J = sim::magwell(S);
+                        V2 ex = sim::wpt(*J->B, J->path.back());
+                        S.hand.t = {ex.x + 0.03, ex.y + 0.01};
+                    }
+                }
+            }
+            if (demo == "rack") {
+                auto* sl = S.find("slide");
+                if (sl && frame == 10) { A.grabTmpl = A.design.bodyIndex("slide"); S.hand.on = true; S.hand.b = sl; S.hand.l = {-0.06, -0.006}; S.hand.t = {sl->x0 - 0.06 - 0.03, sl->y0 - 0.006}; }
+            }
+        }
+        if (!demo.empty() && A.S && demo == "reload") A.S->magRelease = frame >= 5 && frame < 40;
+        bool modal = A.showPause || A.showSettings;
+        if (!modal) stepSim(dt);  // the bench stands still while a menu is open
+        stepEffects(dt);
+
+        BeginDrawing();
+        ClearBackground(Color{30, 34, 41, 255});
+        drawBackdrop(0, TOOLBAR_H, (float)A.vw, (float)A.vh);
+        beginViewport3D();
+        drawScene();
+        endViewport3D();
+        drawOverlay();
+        if (A.mode == Mode::Test) DrawRectangleLinesEx({0, TOOLBAR_H, (float)A.vw, (float)A.vh}, 2, Color{232, 161, 58, 90});
+
+        rlImGuiBegin();
+        editedAny = false;
+        A.releaseBtnHeld = false;
+        if (demo.empty() && !modal && !A.modalAtFrameStart) handleViewportInput();
+        toolbar();
+        if (A.mode == Mode::Test) testPanel(); else { buildPanel(); cartridgeDesigner(); }
+        if (A.showPause || A.showSettings) pauseMenu();
+        if (fireArg && frame < 30) A.fireBtnHeld = true;
+        handleKeys();
+        if (!demo.empty() && A.S && demo == "reload") A.S->magRelease = frame >= 5 && frame < 40;
+        hintOverlay();
+        if (A.mode == Mode::Test) traceWindow();
+        if (editedAny) A.uiDirty = true;
+        if (A.uiDirty && !ImGui::IsAnyItemActive()) { commit(); A.uiDirty = false; }
+        rlImGuiEnd();
+        EndDrawing();
+
+        frame++;
+        if (frames && frame >= frames) {
+            if (!shotPath.empty()) TakeScreenshot(shotPath.c_str());
+            break;
+        }
+    }
+    relShutdown();
+    if (A.screen == Screen::MapEditor) leaveMapEditor();
+    if (A.saveDue && CFG.autosave != AutosaveEvery::Off) save();
+    saveSettings();
+    rlImGuiShutdown();
+    if (SFX.ok) { UnloadSound(SFX.bang); UnloadSound(SFX.clack); UnloadSound(SFX.click); CloseAudioDevice(); }
+    CloseWindow();
+    return 0;
+}
