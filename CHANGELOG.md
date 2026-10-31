@@ -38,6 +38,15 @@ The version is set in one place, at the top of `CMakeLists.txt`.
   - **Built in:** no hammer or striker parts, but the action must open a set distance to cock it again. It has semi, full-auto and burst modes, optional double action and a lock time. The bench shows whether it's cocked.
   - **Drawn parts:** the round fires when your striker or firing pin hits the primer fast enough.
   - The reliability test reports a *failure to cock*, and now also works for built-in designs that have a drawn trigger.
+- Magazines and cleanup on the bench:
+  - Load a magazine one round at a time by dragging a loose round onto it.
+  - T (or *Top up magazines*) fills them all.
+  - Spent cases are cleared after 10 seconds on the bench, and empty dropped magazines after 30 seconds untouched.
+- Long sessions no longer run out of room. Every fired round used to take a new slot until the bench stopped feeding: after about 95 shots, a false failure to feed. Removed rounds, cases and magazines now free their slot.
+
+### Tutorials
+- Thirteen guided lessons, from the main menu or the graduation-cap button. They cover the camera, drawing and shaping parts, depth and collisions, joints, springs, breech and cartridge, feeding, extraction and ejection, fire control, locking and operating systems, the bench, reliability testing, and the map editor.
+- Each lesson opens an example and walks through it in steps. Steps tick themselves off when you do what they ask, and you can always skip ahead. Finished lessons are remembered.
 
 ### Map editor and first person
 - **Map editor** on the main menu: build ranges out of brushes, early-2000s Radiant style.

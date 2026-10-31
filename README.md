@@ -41,6 +41,25 @@ Saved to `gunsmith3d_settings.json` next to the game. None of them change how a 
 - **Test bench:** normal speed, slow motion on each shot (how slow, how long), default rounds for the reliability test.
 - **Controls:** every key can be rebound.
 
+## Tutorials
+
+**Tutorials** on the main menu (or the graduation-cap button next to the menu button) has thirteen short guided lessons, one mechanic each:
+- getting around
+- drawing and shaping parts
+- thickness, depth and collisions
+- joints
+- springs
+- breech, barrel and cartridge
+- feeding and magazines
+- extraction and ejection
+- fire control
+- locking and operating systems
+- the test bench
+- reliability testing
+- building a range in the map editor
+
+Each lesson opens an example to work on (Undo brings your own design back) and walks through it step by step. Steps that ask you to do something tick themselves off when you do it, and you can always skip ahead. Finished lessons are remembered.
+
 ## Two modes
 
 - **Build** is the workshop: draw and shape parts, join them, set up springs, controls and the firing system. Nothing moves.
@@ -63,6 +82,7 @@ Press **Tab** (or the Designer / Test bench buttons at the top) to switch.
 | M | Press the magazine release |
 | R / N | Quick reload / put a fresh magazine on the bench |
 | L | Put a loose round on the bench |
+| T | Top up every magazine |
 | 1-4 | Press your own controls |
 | P / Backspace | Pause / restart |
 | **Build mode** | |
@@ -142,6 +162,8 @@ Clear a jam the way you would on a real gun: rack the slide or work the bolt, or
 - a clean or dirty action (more friction)
 - a firm or loose grip, where the frame recoils with the slide and robs it of travel
 It clears every jam the way a shooter would and reports the jam rate, one jam every how many rounds, and which kinds. It runs in the background, so the bench stays live. The same seed gives the same run, so you can change one thing and compare.
+
+**Magazines on the bench.** Press T (or *Top up magazines* in the Bench section) to fill every magazine, in the gun and on the bench. To load one round at a time, drag a loose round onto the top of a magazine that's out of the gun. Spent cases are cleared after they've lain on the bench for 10 seconds, and a dropped magazine is cleared once it's empty and nobody has touched it for 30 seconds. Removed rounds, cases and magazines free their room, so a long session never runs out.
 
 **Loose rounds.** Rounds are physical objects. Press L to put one on the bench, or let a hand-loaded design start with five there. Drag one into the open action, in line with the bore and in front of the breech face, and it drops into place. Close the action and the breech face pushes it into the chamber, or push it home with the mouse. Opening a loaded action pulls the round out and throws it onto the bench, so racking a loaded pistol ejects a live round just like the real thing. This works for any design with a breech face and muzzle set: bolt actions, falling blocks, break actions, or loading a single round into an open pistol.
 

@@ -52,6 +52,8 @@ void mapToolbar() {
     ImGui::PopStyleVar();
     float sz = TOOLBAR_H - 14 * S();
     if (iconBtn(ICON_FA_BARS, "Menu (Esc)")) { uiTick(); A.showPause = true; }
+    ImGui::SameLine(0, 4 * S());
+    if (iconBtn(ICON_FA_GRADUATION_CAP, "Tutorials: short guided lessons on every mechanic")) { uiTick(); A.showTutorials = true; }
     gap();
     ImGui::AlignTextToFramePadding();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);

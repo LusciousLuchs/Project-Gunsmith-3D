@@ -27,6 +27,7 @@ std::vector<RB> renderList() {
         return out;
     }
     for (auto& b : A.S->bodies) {
+        if (b.gone) continue;   // tidied away, or a round that went into the chamber
         int t = A.design.bodyIndex(b.tmpl.empty() ? b.id : b.tmpl);
         if (t < 0) continue;
         Matrix M = poseMatrix(t, b.x * 1000, b.y * 1000, b.a, b.roll);

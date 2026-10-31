@@ -56,6 +56,7 @@ void loadSettings() {
         CFG.fov = std::clamp(g("fov", d.fov), 50.f, 110.f);
         if (j.contains("keys") && j["keys"].is_object())
             for (auto& [k, v] : j["keys"].items()) if (v.is_number_integer()) CFG.keys[k] = v.get<int>();
+        if (j.contains("tutorialsDone") && j["tutorialsDone"].is_string()) CFG.tutorialsDone = j["tutorialsDone"].get<std::string>();
     } catch (...) {}
 }
 
@@ -71,7 +72,7 @@ void saveSettings() {
         {"orbitMiddle", CFG.orbitMiddle}, {"zoomSpeed", CFG.zoomSpeed}, {"invertZoom", CFG.invertZoom},
         {"slowOnShot", CFG.slowOnShot}, {"slowSpeed", CFG.slowSpeed}, {"slowWindowMs", CFG.slowWindowMs},
         {"benchSpeed", CFG.benchSpeed}, {"relRounds", CFG.relRounds},
-        {"mouseSens", CFG.mouseSens}, {"invertMouse", CFG.invertMouse}, {"fov", CFG.fov}, {"keys", CFG.keys}};
+        {"mouseSens", CFG.mouseSens}, {"invertMouse", CFG.invertMouse}, {"fov", CFG.fov}, {"keys", CFG.keys}, {"tutorialsDone", CFG.tutorialsDone}};
     std::ofstream(settingsFile()) << j.dump(2);
 }
 

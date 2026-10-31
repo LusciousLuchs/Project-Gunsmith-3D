@@ -48,6 +48,7 @@ static const ActInfo ACTS[(int)Act::Count] = {
     {"mapwalk", "Walk the map", "Map editor", KEY_F5, false},
     {"maptop", "Top view / 3D view", "Map editor", KEY_V, false},
     {"mapfocus", "Focus on the selection", "Map editor", KEY_F, false},
+    {"fillmags", "Top up magazines", "Test bench", KEY_T, false},
 };
 
 const ActInfo& actInfo(Act a) { return ACTS[(int)a]; }

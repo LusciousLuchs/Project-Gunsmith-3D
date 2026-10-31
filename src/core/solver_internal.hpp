@@ -9,6 +9,11 @@ void placePieces(Body& r);
 void bbox(Body& b);
 void contacts(Body& A, Body& B, double mu);  // push B's boundary samples out of A, with friction
 bool makeBody(const BodyDef& d, Body& b);
+// Room for a spawned body (magazine, round or case): a removed one is reused before the reserve is used up.
+// `def` is where its BodyDef goes; returns false if there's no room. Put the body in with placeSpawned.
+bool spawnSlot(Sim& S, Body** slot, BodyDef** def);
+Body* placeSpawned(Sim& S, Body* slot, const Body& b);
+void retireBody(Sim& S, Body& b);            // take a body out of the test (it can be reused later)
 void resample(Body& b);  // contact points along the outline
 
 // cartridges.cpp

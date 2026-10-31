@@ -50,6 +50,7 @@ struct Settings {
     float fov = 80;                      // vertical field of view, degrees
     // controls: action id -> key (raylib KeyboardKey); missing entries use the defaults
     std::map<std::string, int> keys;
+    std::string tutorialsDone;           // ids of finished tutorials, comma separated
 };
 extern Settings CFG;
 

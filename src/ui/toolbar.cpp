@@ -174,6 +174,8 @@ void toolbar() {
     ImGui::Begin("##toolbar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleVar();
     if (iconButton(ICON_FA_BARS, "Menu (Esc)")) { uiTick(); A.showPause = true; }
+    ImGui::SameLine(0, 4 * CFG.uiScale);
+    if (iconButton(ICON_FA_GRADUATION_CAP, "Tutorials: short guided lessons on every mechanic", A.tutLesson >= 0)) { uiTick(); A.showTutorials = true; }
     gap();
     // designer / bench
     bool b = A.mode == Mode::Build;

@@ -36,6 +36,9 @@ static void muted(const char* fmt, ...) {
     va_end(ap);
 }
 static void warn(const char* t) { ImGui::PushTextWrapPos(0); ImGui::TextColored(colBad(), "%s", t); ImGui::PopTextWrapPos(); }
+int gPanelTab = -1;
+static void loadDesign(const Design& nd, const std::string& msg);
+void openExample(const char* key, const char* msg) { loadDesign(loadPreset(key), msg); }
 static void loadDesign(const Design& nd, const std::string& msg) {
     A.hist.push_back(designToJson(A.design));
     A.future.clear();
@@ -545,8 +548,9 @@ void buildPanel() {
     bool newSel = A.sel.kind != 0 && (A.sel.kind != lastKind || A.sel.idx != lastIdx);
     lastKind = A.sel.kind; lastIdx = A.sel.idx;
     ImGui::Dummy({0, 2 * S()});
-    static int forceTab = std::getenv("GUNSMITH_TAB") ? std::atoi(std::getenv("GUNSMITH_TAB")) : -1;  // (automated screenshots)
-    auto tabFlag = [&](int i) { if (forceTab == i) { forceTab = -2; return (int)ImGuiTabItemFlags_SetSelected; } return 0; };
+    static bool envTab = false;
+    if (!envTab) { envTab = true; if (std::getenv("GUNSMITH_TAB")) gPanelTab = std::atoi(std::getenv("GUNSMITH_TAB")); }  // (automated screenshots)
+    auto tabFlag = [&](int i) { if (gPanelTab == i) { gPanelTab = -1; return (int)ImGuiTabItemFlags_SetSelected; } return 0; };
     if (ImGui::BeginTabBar("##designtabs", ImGuiTabBarFlags_FittingPolicyResizeDown)) {
         if (ImGui::BeginTabItem("Inspect", nullptr, (newSel ? ImGuiTabItemFlags_SetSelected : 0) | tabFlag(0))) {
             ImGui::BeginChild("##inspect", {0, 0});

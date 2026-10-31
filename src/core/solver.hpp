@@ -61,6 +61,7 @@ struct Body {
     V2 lipsL, feedL;                     // presented: where its head starts and the feed direction, in the magazine's frame
     V2 clawB, clawR;                     // clawed: the extractor's grip, on the breech and on the cartridge (local, m)
     Body* top = nullptr;                 // magazines: the round held up under the lips (physical feeding)
+    double idle = 0;                     // seconds (real time) lying untouched: spent cases and empty magazines are tidied away
 };
 
 enum class JT { Pin, Weld, Track, Spring, Cam, Lug, Latch, Magwell };
@@ -98,7 +99,7 @@ struct Pusher {
     double ext = 0;         // how far the finger has pressed along the push direction (m)
 };
 
-enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction };  // EjectLive: an unfired round thrown out
+enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction, MagLoaded };  // MagLoaded: a round pushed into a magazine  // EjectLive: an unfired round thrown out
 
 // What can go wrong when a gun cycles. Physical feeding lets these happen for real.
 enum class Malf { None, FailureToFeed, DoubleFeed, Stovepipe, FailureToEject, FailureToReturn, LightStrike, FailureToCock, Count };
@@ -185,6 +186,11 @@ Body* seatedMag(Sim& S);                                   // attached and latch
 Body* spawnMagazine(Sim& S, V2 centreMM, bool seat);      // full magazine; seat=true puts it straight in the well
 void dropMagazine(Sim& S);                                 // unlatch and pull the seated magazine out
 void quickReload(Sim& S);                                  // drop the old magazine, seat a full one
+bool magLoadPoint(const Sim& S, const Body& M, V2& w);     // where to hold a round to push it into this magazine (m)
+int fillMagazines(Sim& S);                                 // top up every magazine (seated and on the bench); rounds added
+// Remove spent cases that have lain on the bench `caseLife` seconds, and dropped empty magazines nobody has touched
+// for `magLife` seconds. Real time, so slow motion doesn't keep them about. Returns how many were removed.
+int tidy(Sim& S, double dt, double caseLife = 10, double magLife = 30);
 bool handLoad(Sim& S);                                     // drop a round straight into an open chamber (shortcut)
 // loose rounds: physical cartridges. Hold one in the open action, in line with the bore and in front of the
 // breech face, and it drops into place; closing the breech (or pushing it by hand) seats it in the chamber.

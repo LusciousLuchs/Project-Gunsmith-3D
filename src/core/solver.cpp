@@ -504,18 +504,65 @@ static void solveMagwell(Sim& S, Joint& J) {
     if (dseat > 0.002) J.engaged = false;  // release cooldown over once it has moved off the seat
     if (!J.latched && !release && !J.engaged && dseat < 0.0008) J.latched = true;
 }
+// ---------- spawned bodies: removed ones are reused, so a long session never runs out of room
+bool spawnSlot(Sim& S, Body** slot, BodyDef** def) {
+    for (auto& o : S.bodies)
+        if (o.gone && !o.tmpl.empty() && o.d) { *slot = &o; *def = const_cast<BodyDef*>(o.d); return true; }  // spawned defs live in extraDefs
+    if (S.bodies.size() >= S.bodies.capacity()) return false;
+    S.extraDefs.emplace_back();
+    *slot = nullptr; *def = &S.extraDefs.back();
+    return true;
+}
+Body* placeSpawned(Sim& S, Body* slot, const Body& b) {
+    if (slot) { *slot = b; return slot; }
+    S.bodies.push_back(b);
+    return &S.bodies.back();
+}
+void retireBody(Sim& S, Body& b) {
+    if (S.hand.on && S.hand.b == &b) S.hand.on = false;
+    if (b.mag && b.mag->top == &b) b.mag->top = nullptr;
+    if (Joint* J = magwell(S); J && J->A == &b) { J->A = nullptr; J->attached = false; J->latched = false; }
+    b.gone = true; b.fixed = true; b.loose = false; b.staged = false; b.rs = RS::None; b.mag = nullptr; b.top = nullptr;
+    b.vx = b.vy = b.w = 0; b.idle = 0;
+}
+int fillMagazines(Sim& S) {
+    int added = 0;
+    for (auto& b : S.bodies) {
+        if (!b.isMag || b.gone || !b.d) continue;
+        int cap = b.d->magCap;
+        if (b.rounds < cap) { added += cap - b.rounds; b.rounds = cap; b.idle = 0; }
+    }
+    return added;
+}
+int tidy(Sim& S, double dt, double caseLife, double magLife) {
+    int n = 0;
+    Joint* J = magwell(S);
+    for (auto& b : S.bodies) {
+        if (b.gone) continue;
+        bool held = S.hand.on && S.hand.b == &b;
+        if (b.isCase && b.rs == RS::Loose) {  // a fired case lying clear of the gun
+            b.idle = held ? 0 : b.idle + dt;
+            if (b.idle > caseLife) { retireBody(S, b); n++; }
+        } else if (b.isMag && b.loose && !(J && J->A == &b)) {  // a magazine out of the gun: only once it's empty and left alone
+            b.idle = (held || b.rounds > 0 || b.top) ? 0 : b.idle + dt;
+            if (b.idle > magLife) { retireBody(S, b); n++; }
+        } else b.idle = 0;
+    }
+    return n;
+}
 Body* spawnMagazine(Sim& S, V2 c, bool seat) {
-    if (!S.magTmpl || S.bodies.size() >= S.bodies.capacity()) return nullptr;
-    S.extraDefs.push_back(*S.magTmpl);
-    BodyDef& d = S.extraDefs.back();
+    if (!S.magTmpl) return nullptr;
+    Body* slot; BodyDef* dp;
+    if (!spawnSlot(S, &slot, &dp)) return nullptr;
+    *dp = *S.magTmpl;
+    BodyDef& d = *dp;
     d.id = S.magTmpl->id + "#" + std::to_string(++S.spawned);
     Body b;
-    if (!makeBody(d, b)) return nullptr;
+    if (!makeBody(d, b)) { if (!slot) S.extraDefs.pop_back(); return nullptr; }
     b.tmpl = S.magTmpl->id;
     b.loose = true;
     b.x = c.x / 1000; b.y = c.y / 1000; b.px = b.x; b.py = b.y; b.pa = b.a;
-    S.bodies.push_back(b);
-    Body* nb = &S.bodies.back();
+    Body* nb = placeSpawned(S, slot, b);
     Joint* J = magwell(S);
     if (seat && J && !J->A) {
         Body& B = *J->B;

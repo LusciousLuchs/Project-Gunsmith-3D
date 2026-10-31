@@ -96,6 +96,7 @@ void handleKeys() {
         if (actPressed(Act::Reload) && A.S) { sim::quickReload(*A.S); toast("Reloaded."); }
         if (actPressed(Act::NewMag)) spawnSpareMag();
         if (actPressed(Act::LooseRound)) spawnBenchRound();
+        if (actPressed(Act::FillMags)) topUpMagazines();
         if (actPressed(Act::Pause)) A.running = !A.running;
         if (actPressed(Act::Restart)) restartTest();
         if (IsKeyPressed(KEY_ESCAPE)) A.showPause = true;

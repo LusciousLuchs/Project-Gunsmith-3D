@@ -1,5 +1,6 @@
 // Headless checks that each example action actually cycles. Run: ./gunsmith3d_tests
 #include "solver.hpp"
+#include "reliability.hpp"
 #include "version.hpp"
 #include <algorithm>
 #include <cmath>
@@ -624,6 +625,65 @@ static void builtInFireControl() {
     }
 }
 
+// Magazines on the bench: loading one round at a time, topping up, and tidying away what's been left lying about.
+static void benchHousekeeping() {
+    std::printf("Bench housekeeping\n");
+    {   // a long session: rounds and cases are reused, so the gun keeps feeding however many shots are fired
+        sim::ReliabilityOptions o; o.rounds = 160;
+        auto R = sim::runReliability(loadPreset("blowback"), o);
+        CHECK(R.fired == 160, "fires 160 physical rounds without running out of room");
+    }
+    auto S = sim::build(loadPreset("blowback"));
+    sim::run(*S, 0.01);
+    sim::dropMagazine(*S);
+    sim::run(*S, 1.0);
+    sim::Body* M = nullptr;
+    for (auto& b : S->bodies) if (b.isMag && b.loose && !b.gone) M = &b;
+    CHECK(M != nullptr, "the dropped magazine lies on the bench");
+    if (!M) return;
+    int cap = M->d->magCap;
+    M->rounds = cap - 2;
+    CHECK(sim::fillMagazines(*S) == 2 && M->rounds == cap, "topping up fills it");
+    M->rounds = 0;
+    V2 lips;
+    CHECK(sim::magLoadPoint(*S, *M, lips), "knows where its feed lips are");
+    for (int k = 0; k < 3; k++) {  // pick a round up and push it in at the lips
+        sim::Body* r = sim::spawnRound(*S, {lips.x * 1000 - 60, lips.y * 1000 - 40});
+        if (!r) break;
+        S->hand.on = true; S->hand.b = r; S->hand.l = {0, 0}; S->hand.t = {r->x, r->y};
+        for (int i = 1; i <= 40; i++) { S->hand.t = {r->x + (lips.x - r->x) * i / 40.0, r->y + (lips.y - r->y) * i / 40.0}; sim::run(*S, 0.002); if (r->gone) break; }
+        S->hand.on = false;
+    }
+    CHECK(M->rounds == 3, "three rounds pushed in one at a time");
+    sim::tidy(*S, 31);
+    CHECK(!M->gone, "a magazine with rounds in it is never tidied away");
+    M->rounds = 0;
+    sim::tidy(*S, 20);
+    CHECK(!M->gone, "an empty magazine stays for 30 seconds");
+    S->hand.on = true; S->hand.b = M; S->hand.l = {0, 0}; S->hand.t = {M->x, M->y};
+    sim::tidy(*S, 20);
+    CHECK(!M->gone, "picking it up starts the 30 seconds again");
+    S->hand.on = false;
+    sim::tidy(*S, 31);
+    CHECK(M->gone, "an empty magazine left alone for 30 seconds is removed");
+    // spent cases
+    auto P = sim::build(loadPreset("blowback"));
+    sim::run(*P, 0.003);
+    for (int shot = 0; shot < 3; shot++) {
+        P->pressed = true; P->trigger = true; sim::setKey(*P, "fire", true);
+        sim::run(*P, 0.06);
+        P->pressed = false; P->trigger = false; sim::setKey(*P, "fire", false);
+        sim::run(*P, 0.25);
+    }
+    sim::run(*P, 1.5);
+    auto cases = [&] { int n = 0; for (auto& b : P->bodies) if (b.isCase && !b.gone) n++; return n; };
+    int before = cases();
+    sim::tidy(*P, 5);
+    int mid = cases();
+    sim::tidy(*P, 6);
+    CHECK(before >= 2 && mid == before && cases() == 0, "spent cases are cleared after 10 seconds on the bench");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -639,6 +699,7 @@ int main() {
     roundTrip();
     builtInFireControl();
     edgeSplitting();
+    benchHousekeeping();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

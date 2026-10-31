@@ -79,6 +79,7 @@ void stepSim(float dt) {
     bool slow = CFG.slowOnShot && S.shots > 0 && (S.t - S.fireT) * 1000 < CFG.slowWindowMs;
     double speed = slow ? CFG.slowSpeed : CFG.benchSpeed;
     sim::run(S, dt * speed, 1200);
+    sim::tidy(S, dt);   // real seconds: spent cases go after 10 s on the bench, empty dropped magazines after 30 s alone
     for (auto& e : S.events) {
         auto& br = A.design.breech;
         if (e.kind == sim::Ev::Bang) {
@@ -106,6 +107,7 @@ void stepSim(float dt) {
         }
         if (e.kind == sim::Ev::Click) { A.clickT = 1.0f; if (SFX.ok && A.sound) PlaySound(SFX.click); }
         if ((e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) && SFX.ok && A.sound) PlaySound(SFX.clack);
+        if (e.kind == sim::Ev::MagLoaded && SFX.ok && A.sound) PlaySound(SFX.click);
     }
     S.events.clear();
     std::vector<float> row;

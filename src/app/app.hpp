@@ -31,7 +31,8 @@ struct Puff { Vector3 p, v; float r, life, max; };
 struct App {
     Screen screen = Screen::Menu;
     bool benchOnly = false;              // came in through Test Bench on the menu: no designer
-    bool showSettings = false, showPause = false, showBenchPicker = false;
+    bool showSettings = false, showPause = false, showBenchPicker = false, showTutorials = false;
+    int tutLesson = -1, tutStep = 0;     // the tutorial in progress (-1: none) and its step
     std::unique_ptr<Design> stash;       // the sandbox design, kept aside while another gun is on the bench
     bool saveDue = false; double lastSave = 0;
     bool quit = false;
@@ -124,5 +125,6 @@ void setMode(Mode m);
 void restartTest();
 void fireDown();
 void spawnSpareMag();
+void topUpMagazines();   // fill every magazine (T on the bench)
 void spawnBenchRound(bool quiet = false);  // put a loose round on the baseplate under the action
 void setTool(Tool t);

@@ -181,6 +181,8 @@ void testPanel() {
             ImGui::Button("Hold to release magazine");
             A.releaseBtnHeld = A.releaseBtnHeld || ImGui::IsItemActive();
             ImGui::SameLine(); if (ImGui::Button("New magazine")) spawnSpareMag();
+            if (ImGui::Button("Top up magazines")) topUpMagazines();
+            if (tipHover()) ImGui::SetTooltip("Fills every magazine, in the gun and on the bench.\nTo load one round at a time, drag a loose round onto the top of a magazine that's out of the gun.");
         }
         if (S.hasFace) { if (ImGui::Button("Put a round on the bench")) spawnBenchRound(); }
     }
@@ -192,6 +194,8 @@ void testPanel() {
         ImGui::Text("%s  quick reload", k(Act::Reload)); ImGui::SameLine(160 * CFG.uiScale); ImGui::Text("%s  new magazine", k(Act::NewMag));
         ImGui::Text("%s  loose round", k(Act::LooseRound)); ImGui::SameLine(160 * CFG.uiScale); ImGui::Text("%s  pause", k(Act::Pause));
         ImGui::Text("%s  restart", k(Act::Restart)); ImGui::SameLine(160 * CFG.uiScale); ImGui::Text("1-4  your controls");
+        ImGui::Text("%s  top up magazines", k(Act::FillMags));
+        ImGui::TextDisabled("Drag a loose round onto the top of a magazine that's out of the gun to load it.\nSpent cases are cleared after 10 seconds, and empty magazines left alone after 30.");
         ImGui::TextDisabled("Rebind keys in Settings > Controls.");
     }
     ImGui::PopItemWidth();

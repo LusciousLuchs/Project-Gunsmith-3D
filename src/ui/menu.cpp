@@ -59,6 +59,7 @@ static constexpr ImGuiWindowFlags PLAIN = ImGuiWindowFlags_NoDecoration | ImGuiW
 void mainMenu() {
     if (A.showSettings) { settingsWindow(); return; }
     if (A.showBenchPicker) { benchPicker(); return; }
+    if (A.showTutorials) { tutorialsWindow(); return; }
     ImGui::SetNextWindowPos({0, 0});
     ImGui::SetNextWindowSize({(float)GetScreenWidth(), (float)GetScreenHeight()});
     ImGui::SetNextWindowBgAlpha(0);
@@ -73,6 +74,7 @@ void mainMenu() {
     ImGui::Dummy({0, 30 * S()});
     ImGui::SetCursorPosX(x - 16 * S());
     ImGui::BeginGroup();
+    if (menuItem("Tutorials", true, tutorialsDoneCount() == 0 ? "start here" : nullptr)) A.showTutorials = true;
     menuItem("Career", false, "coming later");
     if (menuItem("Sandbox")) enterWorkshop(false);
     menuItem("Firing range", false, "coming soon");
@@ -98,6 +100,7 @@ void pauseMenu() {
     ImGui::Dummy({0, 6 * S()});
     ImVec2 bw{-1, 34 * S()};
     if (ImGui::Button("Resume", bw) || IsKeyPressed(KEY_ESCAPE)) { uiTick(); A.showPause = false; }
+    if (ImGui::Button("Tutorials", bw)) { uiTick(); A.showPause = false; A.showTutorials = true; }
     if (ImGui::Button("Settings", bw)) { uiTick(); A.showSettings = true; }
     if (ImGui::Button(A.benchOnly ? "Leave the bench" : "Main menu", bw)) { uiTick(); backToMenu(); }
     if (A.screen == Screen::MapEditor) ImGui::TextDisabled("Your map is autosaved.");

@@ -111,10 +111,11 @@ static void setState(Body& b, RS s) {
     b.staged = s == RS::Staged;
 }
 static Body* newCartridge(Sim& S, V2 head, bool isCase) {
-    if (S.bodies.size() >= S.bodies.capacity()) return nullptr;
+    Body* slot; BodyDef* dp;
+    if (!spawnSlot(S, &slot, &dp)) return nullptr;
     const Cartridge& c = S.design.breech.cart;
-    S.extraDefs.emplace_back();
-    BodyDef& d = S.extraDefs.back();
+    BodyDef& d = *dp;
+    d = BodyDef();
     d.id = (isCase ? "case#" : "round#") + std::to_string(++S.spawned);
     d.name = c.name + (isCase ? " case" : " round");
     d.mass = isCase ? cartridgeMass(c) - c.bulletMass : cartridgeMass(c);
@@ -123,7 +124,7 @@ static Body* newCartridge(Sim& S, V2 head, bool isCase) {
     for (auto& p : cartridgeOutline(c, isCase)) d.pts.push_back({head.x + p.x, head.y + p.y});
     fixShape(d);
     Body b;
-    if (!makeBody(d, b)) { S.extraDefs.pop_back(); return nullptr; }
+    if (!makeBody(d, b)) { if (!slot) S.extraDefs.pop_back(); return nullptr; }
     b.tmpl = "round";
     b.isRound = true;
     b.isCase = isCase;
@@ -136,8 +137,7 @@ static Body* newCartridge(Sim& S, V2 head, bool isCase) {
         b.y = head.y / 1000 - std::sin(b.a) * b.headLx;
     }
     b.px = b.x; b.py = b.y; b.pa = b.a;
-    S.bodies.push_back(b);
-    return &S.bodies.back();
+    return placeSpawned(S, slot, b);
 }
 static void placeHead(Body& b, V2 head, double a) {
     b.a = a; b.x = head.x - std::cos(a) * b.headLx; b.y = head.y - std::sin(a) * b.headLx;
@@ -155,13 +155,38 @@ int looseRounds(const Sim& S) {
     for (auto& b : S.bodies) if (b.isRound && !b.isCase && !b.gone && (b.rs == RS::Loose || b.rs == RS::Staged)) n++;
     return n;
 }
-static void retire(Sim& S, Body& b) {
-    if (S.hand.on && S.hand.b == &b) S.hand.on = false;
-    if (b.mag && b.mag->top == &b) b.mag->top = nullptr;
-    b.gone = true; b.fixed = true; b.loose = false; b.staged = false; b.rs = RS::None; b.mag = nullptr;
+static void retire(Sim& S, Body& b) { retireBody(S, b); }
+
+static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL);
+
+bool magLoadPoint(const Sim& S, const Body& M, V2& w) {  // the middle of a round sitting at the feed lips
+    V2 hl, fl;
+    if (!M.isMag || !M.d || !magLips(S, M, hl, fl)) return false;
+    const Cartridge& c = S.design.breech.cart;
+    V2 f = {fl.x * std::cos(M.a) - fl.y * std::sin(M.a), fl.x * std::sin(M.a) + fl.y * std::cos(M.a)};
+    V2 head = wpt(M, hl);
+    w = {head.x + f.x * c.oal / 2000, head.y + f.y * c.oal / 2000};
+    return true;
 }
 
 // ---------- rounds guided in by hand ----------
+// A round held over the feed lips of a magazine that isn't in the gun is pushed in, if there's room.
+static bool loadIntoMagazine(Sim& S, Body& r) {
+    const Cartridge& c = S.design.breech.cart;
+    Joint* J = magwell(S);
+    for (auto& M : S.bodies) {
+        if (!M.isMag || M.gone || !M.d || (J && J->A == &M) || M.rounds >= M.d->magCap) continue;
+        V2 mid;
+        if (!magLoadPoint(S, M, mid)) continue;
+        if (std::hypot(r.x - mid.x, r.y - mid.y) > std::max(0.010, c.oal / 2000)) continue;
+        M.rounds++;
+        M.idle = 0;
+        retire(S, r);
+        S.events.push_back({Ev::MagLoaded, S.t});
+        return true;
+    }
+    return false;
+}
 static void poseStaged(Body& b, const BoreLine& L) {
     double a = std::atan2(L.dir.y, L.dir.x);
     V2 head{L.face.x - L.dir.x * b.stageS, L.face.y - L.dir.y * b.stageS};
@@ -179,6 +204,7 @@ static void handRounds(Sim& S, const BoreLine& L) {
     for (auto& b : S.bodies) {
         if (!b.isRound || b.gone || b.isCase) continue;
         bool held = S.hand.on && S.hand.b == &b;
+        if (held && b.rs == RS::Loose && loadIntoMagazine(S, b)) continue;
         if (b.rs == RS::Staged) {
             if (!canTake) { setState(b, RS::Loose); continue; }
             double s = b.stageS;

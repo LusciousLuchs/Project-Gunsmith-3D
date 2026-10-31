@@ -35,6 +35,7 @@ int main(int argc, char** argv) {
     int settingsPage = 0;
     bool useSettings = false;
     std::string mapArg; bool walkArg = false;
+    bool tutListArg = false; int tutArg = 0;
     int magCapArg = 0; double magCurveArg = -999; std::string cartArg;
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
@@ -69,6 +70,8 @@ int main(int argc, char** argv) {
         else if (a == "--benchpick") benchArg = true;      // (screenshots) open the test-bench picker
         else if (a == "--mapedit") mapArg = next();         // (screenshots) open the map editor: builtin, new, or a file
         else if (a == "--walk") walkArg = true;            // (screenshots) walk the map
+        else if (a == "--tutorials") tutListArg = true;    // (screenshots) open the list of tutorials
+        else if (a == "--tutorial") tutArg = std::atoi(next().c_str());  // (screenshots) start tutorial N (1 = the first)
     }
 
 #if defined(__linux__)
@@ -139,13 +142,15 @@ int main(int argc, char** argv) {
         if (const char* e = std::getenv("GUNSMITH_MAPCAM")) std::sscanf(e, "%lf,%lf,%lf,%lf,%lf", &ME.cam.x, &ME.cam.y, &ME.cam.z, &ME.yaw, &ME.pitch);
         if (walkArg) meWalk(false);
     }
+    if (tutListArg) A.showTutorials = true;
+    if (tutArg > 0) startTutorial(tutArg - 1);
 
     int frame = 0;
     while (!WindowShouldClose() && !A.quit) {
         relPoll();
         applyAudio();
         autosaveTick();
-        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker;
+        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker || A.showTutorials;
         bool menu = A.screen == Screen::Menu;
         TOOLBAR_H = menu ? 0.f : TOOLBAR_H_BASE * CFG.uiScale;
         if (relArg > 0 && frame == 2) { REL.rounds = relArg; relStart(); }
@@ -162,14 +167,16 @@ int main(int argc, char** argv) {
         A.dist = keepDist;
 
         if (A.screen == Screen::MapEditor) {
-            bool modal = A.showPause || A.showSettings;
+            bool modal = A.showPause || A.showSettings || A.showTutorials;
             mapEditorUpdate(dt, modal);
             BeginDrawing();
             ClearBackground(Color{30, 34, 41, 255});
             mapEditorRender();
             rlImGuiBegin();
             if (!ME.walking) { mapToolbar(); mapPanel(); }
-            if (modal) pauseMenu();
+            tutorialPanel();
+            if (A.showTutorials) tutorialsWindow();
+            else if (modal) pauseMenu();
             toastOverlay();
             rlImGuiEnd();
             EndDrawing();
@@ -217,7 +224,7 @@ int main(int argc, char** argv) {
             }
         }
         if (!demo.empty() && A.S && demo == "reload") A.S->magRelease = frame >= 5 && frame < 40;
-        bool modal = A.showPause || A.showSettings;
+        bool modal = A.showPause || A.showSettings || A.showTutorials;
         if (!modal) stepSim(dt);  // the bench stands still while a menu is open
         stepEffects(dt);
 
@@ -237,7 +244,9 @@ int main(int argc, char** argv) {
         toolbar();
         toolRail();
         if (A.mode == Mode::Test) testPanel(); else { buildPanel(); cartridgeDesigner(); }
-        if (A.showPause || A.showSettings) pauseMenu();
+        tutorialPanel();
+        if (A.showTutorials) tutorialsWindow();
+        else if (A.showPause || A.showSettings) pauseMenu();
         if (fireArg && frame < 30) A.fireBtnHeld = true;
         handleKeys();
         if (!demo.empty() && A.S && demo == "reload") A.S->magRelease = frame >= 5 && frame < 40;

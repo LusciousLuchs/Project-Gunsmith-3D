@@ -165,6 +165,11 @@ void spawnBenchRound(bool quiet) {
     }
     toast("No room left on the bench. Pick some rounds up or restart.");
 }
+void topUpMagazines() {
+    if (!A.S || !A.S->magTmpl) { toast("This design has no detachable magazine."); return; }
+    int n = sim::fillMagazines(*A.S);
+    toast(n ? TextFormat("Topped up the magazines (%d round%s).", n, n == 1 ? "" : "s") : "The magazines are already full.");
+}
 void spawnSpareMag() {
     if (!A.S || !A.S->magTmpl) { toast("This design has no detachable magazine."); return; }
     auto* J = sim::magwell(*A.S);

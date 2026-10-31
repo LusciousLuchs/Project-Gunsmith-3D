@@ -13,6 +13,8 @@ enum class Act {
     MoveFwd, MoveBack, MoveLeft, MoveRight, Jump, Sprint, Crouch, Prone, LeanLeft, LeanRight,
     // map editor
     Redo, FlyDown, FlyUp, MapRotate, MapHollow, MapWalk, MapTopView, MapFocus,
+    // test bench (added later, so kept at the end: settings files store keys by name)
+    FillMags,
     Count
 };
 
