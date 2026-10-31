@@ -51,14 +51,25 @@ void autosaveTick() {
 void commit() {
     A.hist.push_back(A.lastSnap);
     if (A.hist.size() > 120) A.hist.erase(A.hist.begin());
+    A.future.clear();
     A.lastSnap = designToJson(A.design);
     A.saveDue = true;
     autosaveTick();
 }
 void undo() {
     if (A.hist.empty()) return;
+    A.future.push_back(A.lastSnap);
     designFromJson(A.hist.back(), A.design);
     A.hist.pop_back();
+    A.lastSnap = designToJson(A.design);
+    A.sel = {};
+    save();
+}
+void redo() {
+    if (A.future.empty()) return;
+    A.hist.push_back(A.lastSnap);
+    designFromJson(A.future.back(), A.design);
+    A.future.pop_back();
     A.lastSnap = designToJson(A.design);
     A.sel = {};
     save();
@@ -168,7 +179,7 @@ void spawnSpareMag() {
 }
 
 const char* TOOL_HINT[] = {
-    "Click a part to select it and drag to move it. Squares are corners; diamonds move an edge (Shift-drag extrudes it).",
+    "Click a part to select it and drag it to move. Squares are corners (right-click removes one). Diamonds move an edge, Shift-drag extrudes it, right-click splits it in half.",
     "Click to place corners. Click the first one again, or press Enter, to close the part.",
     "Click where two parts overlap to pin them so they pivot. Over one part, it pins it to the ground.",
     "Click where two parts overlap to weld them together.",

@@ -45,6 +45,7 @@ struct BodyDef {
     double damp = 0;                     // friction-like damping, 1/s
     std::string color = "#8e9ab4";
     bool ghost = false;                  // drawn see-through in X-ray mode
+    double smooth = 0;                   // 0..1: rounds the front and back edges (grips, dehorned slides). Looks only.
     bool rollOn = false;                 // rotates about the bore (rotating bolt)
     double rollMin = 0, rollMax = 90;    // degrees
     double handle = 0;                   // bolt handle length, mm
@@ -100,6 +101,15 @@ struct BreechDef {
     std::string striker;                 // part that hits the primer
     V2 strikerTip;
     double igniteSpeed = 1.5;            // m/s needed at impact
+    // The built-in hammer or striker (ignition "button"): nothing to draw, but it still has to be cocked by the action.
+    // Feeding, the bolt and extraction are always real parts; the fire control can be these settings or drawn parts.
+    std::string hammer = "striker";      // what to call it: "hammer" or "striker" (wording only)
+    double cockAt = 8;                   // mm the breech must open to cock it again; 0 = always cocked (older blueprints load as 0)
+    std::string fireMode = "semi";       // semi, auto, burst. Drawn parts (ignition "striker") decide this for themselves.
+    int burst = 3;                       // shots per pull in burst
+    bool doubleAction = false;           // pulling the trigger cocks and drops it, so it fires even when not cocked
+    double lockTime = 0;                 // ms from the trigger breaking to the shot
+    bool fullAuto() const { return fireMode == "auto" || (autoFire && fireMode != "burst"); }
 };
 void applyCartridge(BreechDef& b);      // copy round size and impulse from the cartridge
 
@@ -131,6 +141,7 @@ std::vector<BodyDef> splitBody(const BodyDef& b, V2 a, V2 c);   // knife cut alo
 void mirrorBody(BodyDef& b, V2 a, V2 c);                         // reflect across the line through a and c
 void flipBody(BodyDef& b, bool horizontal);                      // flip about its own centre
 void subdivideBody(BodyDef& b);                                  // add a vertex in the middle of every edge
+int splitEdge(BodyDef& b, int edge);                             // add a vertex in the middle of one edge (on its curve); returns its index
 
 // Magazine maker.
 void generateMagazine(Design& d, int bodyIndex);               // rebuild the magazine shape and its well

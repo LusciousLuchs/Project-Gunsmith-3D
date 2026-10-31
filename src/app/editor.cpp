@@ -171,6 +171,10 @@ void buildInput(bool overUI) {
         }
         if (dbl && A.sel.kind == 1) {  // insert vertex on an edge of the selected part
             auto& d = A.design.bodies[A.sel.idx];
+            if (auto* h = handleAt(m); h && h->kind == 7 && h->i == A.sel.idx) {  // on an edge's diamond: exactly halfway
+                int nv = splitEdge(d, h->v);
+                A.sel.v = nv; A.selVs = {nv}; commit(); return;
+            }
             float z = bodyFront(A.sel.idx);
             int best = -1; float bd = 10;
             for (size_t k = 0; k < d.pts.size(); k++) {

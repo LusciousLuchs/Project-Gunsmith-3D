@@ -37,6 +37,7 @@ void toastOverlay();
 void styleUI();
 // toolbar.cpp
 void toolbar();
+void toolRail();   // the designer tools down the left of the view
 bool backdropList();             // workspace background: the choices with swatches
 bool backdropCombo();            // ... the same as a dropdown
 bool backdropColour();           // ... the colour for "Solid colour" (nothing otherwise)

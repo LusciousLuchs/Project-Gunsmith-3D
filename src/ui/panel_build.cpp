@@ -38,6 +38,7 @@ static void muted(const char* fmt, ...) {
 static void warn(const char* t) { ImGui::PushTextWrapPos(0); ImGui::TextColored(colBad(), "%s", t); ImGui::PopTextWrapPos(); }
 static void loadDesign(const Design& nd, const std::string& msg) {
     A.hist.push_back(designToJson(A.design));
+    A.future.clear();
     A.design = nd; A.lastSnap = designToJson(A.design); A.sel = {}; A.selVs.clear();
     save(); fitView();
     toast(msg);
@@ -87,11 +88,32 @@ static void inspectPart(BodyDef& b) {
             pNumU("Edge curve", b.bulge[v], 0.5, Q::Length, -1, "Bows the edge to the next corner. Positive bows outward.");
             b.rad[v] = std::max(0.0, b.rad[v]);
         } else muted("Click a corner (a square) to edit it. Shift-click or drag a box for several.");
-        float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
-        if (ImGui::Button("Flip H", {w3, 0})) { flipBody(b, true); editedAny = true; }
-        ImGui::SameLine(); if (ImGui::Button("Flip V", {w3, 0})) { flipBody(b, false); editedAny = true; }
-        ImGui::SameLine(); if (ImGui::Button("Subdivide", {w3, 0})) { subdivideBody(b); A.selVs.clear(); A.sel.v = -1; editedAny = true; }
+        // edges whose two corners are both selected (clicking an edge's diamond selects it)
+        std::vector<int> edges;
+        {
+            int n = (int)b.pts.size();
+            auto picked = [&](int v) { return std::find(A.selVs.begin(), A.selVs.end(), v) != A.selVs.end(); };
+            for (int e = 0; e < n; e++) if (picked(e) && picked((e + 1) % n) && (n > 2 || e == 0)) edges.push_back(e);
+        }
+        float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        ImGui::BeginDisabled(edges.empty());
+        if (ImGui::Button(edges.size() > 1 ? "Split edges" : "Split edge", {w2, 0})) {
+            std::vector<int> made;
+            for (int k = (int)edges.size() - 1; k >= 0; k--) {
+                int nv = splitEdge(b, edges[k]);
+                for (int& m : made) if (m >= nv) m++;
+                made.push_back(nv);
+            }
+            A.selVs = made; A.sel.v = made.size() == 1 ? made[0] : -1; editedAny = true;
+        }
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && CFG.tooltips)
+            ImGui::SetTooltip("%s", edges.empty() ? "Click an edge's diamond to select it, then split it in half.\nOr right-click or double-click the diamond."
+                                            : "Adds a corner halfway along the selected edge (right-click or double-click a diamond does the same).");
+        ImGui::SameLine(); if (ImGui::Button("Split all edges", {w2, 0})) { subdivideBody(b); A.selVs.clear(); A.sel.v = -1; editedAny = true; }
         if (tipHover()) ImGui::SetTooltip("Adds a corner halfway along every edge, for finer shaping.");
+        if (ImGui::Button("Flip H", {w2, 0})) { flipBody(b, true); editedAny = true; }
+        ImGui::SameLine(); if (ImGui::Button("Flip V", {w2, 0})) { flipBody(b, false); editedAny = true; }
         static double allR = 2;
         prop("Round corners");
         float bw = 64 * S();
@@ -104,6 +126,13 @@ static void inspectPart(BodyDef& b) {
         }
         ImGui::SameLine(); if (ImGui::Button("All", {bw, 0})) { for (auto& r : b.rad) r = allR; editedAny = true; }
         ImGui::SameLine(); if (ImGui::Button("Sharp", {bw, 0})) { for (auto& r : b.rad) r = 0; for (auto& q : b.bulge) q = 0; editedAny = true; }
+        prop("Smoothness", "Rounds the edges where the sides meet the front and back faces, like a grip, a stock\n"
+                           "or a dehorned slide. 100% makes the part round across its thickness.\n"
+                           "It only changes how the part looks: the physics uses the outline.");
+        float sm = (float)(b.smooth * 100);
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##smooth", &sm, 0, 100, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)) { b.smooth = sm / 100.0; editedAny = true; }
+        if (tipHover()) ImGui::SetTooltip("Drag, or Ctrl+click to type a value.");
     }
 
     if (section("Motion", b.rollOn || b.damp > 0)) {
@@ -424,20 +453,48 @@ static void firingTab() {
         if (!br.physicalFeed) pNumU("Feeds when open", br.feed, 1, Q::Length);
         pCheck("Starts loaded", br.loaded, "Begin each test with a round in the chamber.");
     }
-    if (section("Firing", true)) {
+    if (section("Fire control", true)) {
+        // Feeding, the bolt and extraction are always real parts. The hammer or striker can be built in or drawn.
         int ig = br.ignition == "striker" ? 1 : 0;
-        prop("Fires when");
-        if (ImGui::Combo("##ign", &ig, "The fire key is pressed\0The striker hits the primer\0")) { br.ignition = ig ? "striker" : "button"; editedAny = true; }
-        if (ig) {
-            prop("Striker");
+        prop("Hammer / striker", "Built in: no parts to draw. It still has to be cocked by the action, so the bolt or slide\n"
+                                 "must open far enough between shots.\nDrawn parts: you design the hammer or striker, sear and disconnector\n"
+                                 "yourself, and it fires when your part hits the primer hard enough.");
+        if (ImGui::Combo("##ign", &ig, "Built in\0Drawn parts (advanced)\0")) {
+            br.ignition = ig ? "striker" : "button";
+            if (!ig && br.cockAt <= 0) br.cockAt = std::min(10.0, std::max(2.0, br.feed * 0.5));
+            editedAny = true;
+        }
+        if (!ig) {
+            int hk = br.hammer == "hammer" ? 1 : 0;
+            prop("Type", "Only changes the wording on the bench.");
+            if (ImGui::Combo("##hk", &hk, "Striker\0Hammer\0")) { br.hammer = hk ? "hammer" : "striker"; editedAny = true; }
+            pNumU("Cocks after", br.cockAt, 0.5, Q::Length, 1,
+                  "How far the bolt or slide must open to cock it again. The shot is only ready once the action\n"
+                  "has cycled at least this far. 0 means it is always cocked.");
+            br.cockAt = std::max(0.0, br.cockAt);
+            const char* modes[] = {"semi", "auto", "burst"};
+            int fm = br.fireMode == "auto" ? 1 : br.fireMode == "burst" ? 2 : 0;
+            prop("Fire mode");
+            if (ImGui::Combo("##fm", &fm, "Semi-automatic\0Full-auto\0Burst\0")) { br.fireMode = modes[fm]; br.autoFire = fm == 1; editedAny = true; }
+            if (fm == 2) {
+                double b = br.burst;
+                if (pNum("Shots per burst", b, 1, "%.0f")) br.burst = std::clamp((int)std::lround(b), 2, 10);
+            }
+            pCheck("Double action", br.doubleAction, "Pulling the trigger cocks and drops it, so it also fires when it wasn't cocked\n"
+                                                     "(revolvers, double-action pistols).");
+            pNum("Lock time", br.lockTime, 0.1, "%.1f ms", "Time from the trigger breaking to the shot, while the hammer or striker falls.");
+            br.lockTime = std::max(0.0, br.lockTime);
+        } else {
+            prop("Hits the primer");
             if (ImGui::BeginCombo("##str", br.striker.empty() ? "Choose..." : bname(br.striker).c_str())) {
                 for (auto& o : D.bodies) if (ImGui::Selectable((o.name + "##s" + o.id).c_str(), br.striker == o.id)) { br.striker = o.id; editedAny = true; }
                 ImGui::EndCombo();
             }
-            pNumU("Needs speed", br.igniteSpeed, 0.1, Q::Velocity, 1, "The striker's tip must reach the primer at least this fast.");
-            if (ImGui::Button("Place the striker tip", {-1, 0})) A.tool = Tool::StrikerTip;
+            if (br.striker.empty()) warn("Choose the striker or firing pin part.");
+            pNumU("Needs speed", br.igniteSpeed, 0.1, Q::Velocity, 1, "The tip must reach the primer at least this fast.");
+            if (ImGui::Button("Place the tip", {-1, 0})) A.tool = Tool::StrikerTip;
+            muted("Semi or full-auto is up to your parts: the sear, disconnector and trigger you draw.");
         }
-        pCheck("Full-auto", br.autoFire);
     }
     ImGui::Dummy({0, 6 * S()});
     if (dangerButton("Remove firing system", {-1, 0})) { br.on = false; commit(); }

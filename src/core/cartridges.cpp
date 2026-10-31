@@ -22,6 +22,7 @@ const char* malfName(Malf m) {
     case Malf::FailureToEject: return "Failure to eject";
     case Malf::FailureToReturn: return "Failure to return to battery";
     case Malf::LightStrike: return "Light strike";
+    case Malf::FailureToCock: return "Failure to cock";
     default: return "";
     }
 }
@@ -33,6 +34,7 @@ const char* malfAdvice(Malf m) {
     case Malf::FailureToEject: return "The empty case stayed on the breech face. Nothing kicked it off: add or move an ejector so the case hits it as the breech opens.";
     case Malf::FailureToReturn: return "The breech stopped short of closing. The spring is too weak for the friction, or something is in the way.";
     case Malf::LightStrike: return "The striker or hammer reached the primer too slowly to fire it. Use a stronger spring or a longer run.";
+    case Malf::FailureToCock: return "The trigger was pulled but the hammer or striker was already down. The breech didn't open far enough to cock it: lower Firing > Cocks after, or let the breech travel further.";
     default: return "";
     }
 }

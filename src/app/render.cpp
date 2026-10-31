@@ -54,7 +54,7 @@ static void ensureMeshes() {
     for (size_t i = 0; i < D.bodies.size(); i++) {
         auto& d = D.bodies[i];
         std::ostringstream k;
-        k << d.thick;
+        k << d.thick << 's' << d.smooth;
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
@@ -64,7 +64,7 @@ static void ensureMeshes() {
         V2 c = centroidOf(d);
         std::vector<V2> local;
         for (auto& p : outlineOf(d)) local.push_back({p.x - c.x, p.y - c.y});
-        A.meshes[i].mesh = extrude(local, bodyDepth(d));
+        A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
         A.meshes[i].key = key;
         A.meshes[i].ok = true;
     }

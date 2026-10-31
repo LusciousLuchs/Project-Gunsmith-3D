@@ -533,6 +533,97 @@ static void roundTrip() {
 
 void mapTests(int& failures);
 
+static double outlineArea(const BodyDef& b) {
+    auto p = outlineOf(b);
+    double a = 0;
+    for (size_t i = 0, j = p.size() - 1; i < p.size(); j = i++) a += p[j].x * p[i].y - p[i].x * p[j].y;
+    return std::fabs(a) / 2;
+}
+static void edgeSplitting() {
+    std::printf("Splitting edges\n");
+    BodyDef b; b.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; fixShape(b);
+    int v = splitEdge(b, 0);
+    CHECK(v == 1 && b.pts.size() == 5 && std::fabs(b.pts[1].x - 20) < 1e-9 && std::fabs(b.pts[1].y) < 1e-9, "a straight edge splits exactly halfway");
+    CHECK(std::fabs(outlineArea(b) - 800) < 1e-6, "the shape doesn't change");
+    BodyDef c; c.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; fixShape(c);
+    c.bulge[2] = 6;  // the bottom edge bows outward (y down)
+    double before = outlineArea(c);
+    splitEdge(c, 2);
+    CHECK(c.pts.size() == 5 && std::fabs(c.pts[3].x - 20) < 0.01 && std::fabs(c.pts[3].y - 26) < 0.01, "a curved edge splits on the curve");
+    CHECK(std::fabs(outlineArea(c) - before) < before * 0.005, "and the curve keeps its shape");
+    BodyDef d; d.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; fixShape(d);
+    subdivideBody(d);
+    CHECK(d.pts.size() == 8 && std::fabs(d.pts[1].x - 20) < 1e-9 && std::fabs(d.pts[3].y - 10) < 1e-9, "splitting all edges halves each one");
+}
+
+// The built-in hammer or striker: no parts, but the action has to cock it, and the fire mode decides follow-up shots.
+static int pullAndHold(sim::Sim& S, double holdS, double releaseS = 0.1) {
+    int before = S.shots;
+    S.pressed = true; S.trigger = true;
+    sim::run(S, holdS);
+    S.trigger = false;
+    sim::run(S, releaseS);
+    return S.shots - before;
+}
+static void builtInFireControl() {
+    std::printf("Built-in fire control\n");
+    Design base = loadPreset("longrecoil");
+    base.breech.ignition = "button";
+    {
+        Design d = base; d.breech.fireMode = "semi"; d.breech.autoFire = false; d.breech.cockAt = 20;
+        auto S = sim::build(d); sim::run(*S, 0.003);
+        CHECK(pullAndHold(*S, 0.3) == 1, "semi: holding the trigger fires once");
+        CHECK(S->cocked, "semi: the action cocked it again");
+        CHECK(pullAndHold(*S, 0.3) == 1, "semi: a fresh pull fires again");
+    }
+    {
+        Design d = base; d.breech.fireMode = "semi"; d.breech.autoFire = false; d.breech.cockAt = 500;  // the bolt never opens that far
+        auto S = sim::build(d); sim::run(*S, 0.003);
+        CHECK(pullAndHold(*S, 0.3) == 1, "fires the first shot from a cocked start");
+        CHECK(!S->cocked, "stays down when the action doesn't open far enough");
+        CHECK(pullAndHold(*S, 0.3) == 0 && S->deadPull, "single action: a pull with it down does nothing");
+        S->design.breech.doubleAction = true;
+        CHECK(pullAndHold(*S, 0.3) == 1, "double action: the pull cocks and fires it");
+    }
+    {
+        Design d = base; d.breech.fireMode = "burst"; d.breech.autoFire = false; d.breech.burst = 2; d.breech.cockAt = 20;
+        auto S = sim::build(d); sim::run(*S, 0.003);
+        CHECK(pullAndHold(*S, 0.6) == 2, "burst of two: holding fires exactly two");
+        CHECK(pullAndHold(*S, 0.6) == 2, "burst of two: the next pull fires two more");
+    }
+    {
+        Design d = base; d.breech.fireMode = "auto"; d.breech.cockAt = 20;
+        auto S = sim::build(d); sim::run(*S, 0.003);
+        CHECK(pullAndHold(*S, 0.3) >= 3, "full-auto: keeps firing while held");
+    }
+    {
+        Design d = base; d.breech.fireMode = "semi"; d.breech.autoFire = false; d.breech.lockTime = 5;
+        auto S = sim::build(d); sim::run(*S, 0.003);
+        double t0 = S->t;
+        S->pressed = true; S->trigger = true;
+        sim::run(*S, 0.004);
+        bool notYet = S->shots == 0;
+        sim::run(*S, 0.003);
+        CHECK(notYet && S->shots == 1 && S->fireT - t0 >= 0.0049, "lock time delays the shot");
+    }
+    {
+        Design d = base; d.breech.fireMode = "burst"; d.breech.burst = 4; d.breech.cockAt = 12.5; d.breech.doubleAction = true;
+        d.breech.lockTime = 2.5; d.breech.hammer = "hammer";
+        Design r;
+        bool ok = designFromJson(designToJson(d), r);
+        auto& b = r.breech;
+        CHECK(ok && b.fireMode == "burst" && b.burst == 4 && b.cockAt == 12.5 && b.doubleAction && b.lockTime == 2.5 && b.hammer == "hammer",
+              "fire control settings survive saving");
+        std::string old = designToJson(base);
+        for (const char* k : {"\"cockAt\"", "\"fireMode\""}) {  // as written by older versions
+            size_t at = old.find(k);
+            if (at != std::string::npos) old.erase(at, old.find(',', at) - at + 1);
+        }
+        Design o;
+        CHECK(designFromJson(old, o) && o.breech.cockAt == 0 && o.breech.fireMode == "auto", "older blueprints stay always-cocked and keep full-auto");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -546,6 +637,8 @@ int main() {
     physicalPistol("tilting");
     boltRifle();
     roundTrip();
+    builtInFireControl();
+    edgeSplitting();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

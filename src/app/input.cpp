@@ -35,9 +35,10 @@ static void cameraInput(bool overUI) {
         }
     }
     if (A.dragKind == 4 && IsMouseButtonReleased(ORBIT)) {
-        if (!A.dragMoved && A.mode == Mode::Build && ORBIT == MOUSE_BUTTON_RIGHT) {  // right click: delete vertex or track point
+        if (!A.dragMoved && A.mode == Mode::Build && ORBIT == MOUSE_BUTTON_RIGHT) {  // right click: delete vertex or track point, split an edge
             if (auto* h = handleAt(m)) {
                 if (h->kind == 0) { auto& d = A.design.bodies[h->i]; if (d.pts.size() > 3) { fixShape(d); d.pts.erase(d.pts.begin() + h->v); d.rad.erase(d.rad.begin() + h->v); d.bulge.erase(d.bulge.begin() + h->v); A.sel.v = -1; commit(); } }
+                else if (h->kind == 7) { auto& d = A.design.bodies[h->i]; int nv = splitEdge(d, h->v); A.sel.v = nv; A.selVs = {nv}; commit(); }  // edge diamond: split it in half
                 else if (h->kind == 2) { auto& j = A.design.joints[h->i]; if (j.type == "track" && j.path.size() > 2) { j.path.erase(j.path.begin() + h->v); commit(); } }
             }
         }
@@ -101,7 +102,9 @@ void handleKeys() {
         return;
     }
     bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
-    if (actPressed(Act::Undo)) undo();
+    bool shiftK = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    if (actPressed(Act::Redo) || (actPressed(Act::Undo) && shiftK)) redo();
+    else if (actPressed(Act::Undo)) undo();
     if (actPressed(Act::Delete) || (!ctrl && IsKeyPressed(KEY_BACKSPACE))) deleteSel();
     if (actPressed(Act::Duplicate) && A.sel.kind == 1) duplicateSel();
     if (actPressed(Act::Knife)) setTool(Tool::Knife);

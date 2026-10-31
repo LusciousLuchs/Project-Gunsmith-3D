@@ -101,7 +101,7 @@ struct Pusher {
 enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction };  // EjectLive: an unfired round thrown out
 
 // What can go wrong when a gun cycles. Physical feeding lets these happen for real.
-enum class Malf { None, FailureToFeed, DoubleFeed, Stovepipe, FailureToEject, FailureToReturn, LightStrike, Count };
+enum class Malf { None, FailureToFeed, DoubleFeed, Stovepipe, FailureToEject, FailureToReturn, LightStrike, FailureToCock, Count };
 const char* malfName(Malf m);
 const char* malfAdvice(Malf m);
 struct Event { Ev kind; double t; };
@@ -144,6 +144,11 @@ struct Sim {
     Body* STR = nullptr;                 // striker / firing pin
     V2 strTip;                           // its tip, local (m)
     bool primed = true;                  // striker must back off before it can fire again
+    // the built-in hammer or striker (no drawn parts)
+    bool cocked = true;                  // ready to fall
+    int burstLeft = 0;                   // shots left in this burst
+    double igniteAt = -1;                // when the falling hammer reaches the primer (s); -1 = not falling
+    bool deadPull = false;               // the last pull found it down (single action): the trigger did nothing
     bool gripped = false;                // the extractor has the chambered round (the breech closed on it)
     // physical feeding: rounds come up under the magazine lips, are stripped, ride the feed ramp, enter the chamber
     // only if they arrive straight, and are pulled out by the extractor and kicked clear by an ejector you draw

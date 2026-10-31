@@ -159,18 +159,19 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         S.limp = o.limpMax * uni(rng);
         int before = S.shots;
         bool wasChambered = S.chambered && inBattery(S);
-        bool button = !hasControl(S, "fire");  // a design without a drawn trigger fires on the FIRE button
+        // pull the drawn trigger if there is one, and press FIRE as the bench does (the built-in hammer listens for it;
+        // with a drawn trigger it still waits until that part has actually moved)
         setKey(S, "fire", true);
-        if (button) { S.pressed = true; S.trigger = true; }
+        S.pressed = true; S.trigger = true;
         run(S, 0.06);
         setKey(S, "fire", false);
-        if (button) { S.pressed = false; S.trigger = false; }
+        S.pressed = false; S.trigger = false;
         run(S, R.manual ? 0.05 : 0.25);
         if (!R.manual && !inBattery(S) && S.malf == Malf::None) run(S, 0.2);  // give a slow action time to settle or jam
         R.attempts++;
         if (S.shots == before) {
             if (wasChambered) {  // the trigger fell on a chambered round and nothing happened
-                record(Malf::LightStrike);
+                record(S.deadPull ? Malf::FailureToCock : Malf::LightStrike);
                 run_.cycle();     // work the action to get rid of the dud
             } else if (S.malf == Malf::None) {
                 chamberNext();

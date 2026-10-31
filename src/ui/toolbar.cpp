@@ -1,6 +1,7 @@
 // Gunsmith3D - Top bar: menu, designer / bench switch, tools as icons, view toggles.
 #include "app/app.hpp"
 #include "app/audio.hpp"
+#include "app/keys.hpp"
 #include "app/scene.hpp"
 #include "app/settings.hpp"
 #include "app/view.hpp"
@@ -8,8 +9,10 @@
 #include "imgui.h"
 #include "extras/IconsFontAwesome6.h"
 
+#include <cfloat>
 #include <cmath>
 #include <cstring>
+#include <string>
 
 // A square icon button; `on` draws it lit. The tooltip names it (and its key, if any).
 static bool iconButton(const char* icon, const char* tip, bool on = false) {
@@ -70,6 +73,100 @@ bool backdropGrid(const char* label) {
     return r;
 }
 
+// ---------------------------------------------------------------- tool rail
+// The designer's tools down the left of the view: each with its icon and name, in three groups —
+// Draw (make a part), Shape (change parts) and Join (connect them). Short windows fall back to icons only.
+struct RailTool { const char* icon; const char* label; const char* tip; Tool t; int act; };
+static const RailTool RAIL_SELECT = {ICON_FA_ARROW_POINTER, "Select", "Click parts and joints to select them, drag to move.\nSquares are corners, diamonds are edges.", Tool::Select, -1};
+static const RailTool RAIL_DRAW[] = {
+    {ICON_FA_DRAW_POLYGON, "Polygon", "Click corners to draw any outline. Click the first corner again, or press Enter, to close it.", Tool::Body, -1},
+    {ICON_FA_SQUARE, "Rectangle", "Drag out a rectangle.", Tool::Rect, -1},
+    {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius.", Tool::Circle, -1}};
+static const RailTool RAIL_SHAPE[] = {
+    {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
+    {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.", Tool::Mirror, -1}};
+static const RailTool RAIL_JOIN[] = {
+    {ICON_FA_THUMBTACK, "Pin", "A pivot: two parts share a point and can turn (triggers, hammers, levers).", Tool::Pin, -1},
+    {ICON_FA_LINK, "Weld", "Join two parts rigidly so they move as one.", Tool::Weld, -1},
+    {ICON_FA_ROUTE, "Track", "A point on one part rides a slot or rail in another (cam slots, guide rails).", Tool::Track, -1},
+    {ICON_FA_WAVE_SQUARE, "Spring", "A coil or leaf spring between two parts (recoil, striker and sear springs).", Tool::Spring, -1}};
+
+static void railTip(const RailTool& t) {
+    if (!tipHover()) return;
+    ImGui::BeginTooltip();
+    ImGui::PushFont(gFontBold, 0);
+    ImGui::TextUnformatted(t.label);
+    ImGui::PopFont();
+    if (t.act >= 0) { ImGui::SameLine(); ImGui::TextDisabled("(%s)", keyName(keyOf((Act)t.act))); }
+    ImGui::PushTextWrapPos(ImGui::GetFontSize() * 22);
+    ImGui::TextDisabled("%s", t.tip);
+    ImGui::PopTextWrapPos();
+    ImGui::EndTooltip();
+}
+static void railButton(const RailTool& t, float w, float h, bool labels) {
+    bool on = A.tool == t.t;
+    ImGui::PushID(t.label);
+    bool click = ImGui::InvisibleButton("##t", {w, h});
+    bool hov = ImGui::IsItemHovered(), held = ImGui::IsItemActive();
+    ImVec2 a = ImGui::GetItemRectMin(), c = ImGui::GetItemRectMax();
+    auto* dl = ImGui::GetWindowDrawList();
+    float rr = 5 * CFG.uiScale;
+    if (on) dl->AddRectFilled(a, c, IM_COL32(233, 161, 59, 56), rr);
+    else if (held) dl->AddRectFilled(a, c, IM_COL32(255, 255, 255, 34), rr);
+    else if (hov) dl->AddRectFilled(a, c, IM_COL32(255, 255, 255, 20), rr);
+    ImU32 col = on ? ImGui::GetColorU32(colAccent()) : ImGui::GetColorU32(ImGuiCol_Text);
+    ImVec2 is = ImGui::CalcTextSize(t.icon);
+    if (labels) {
+        float fs = ImGui::GetFontSize() * 0.82f;
+        ImVec2 ls = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0, t.label);
+        float top = a.y + (h - is.y - ls.y - 3 * CFG.uiScale) / 2;
+        dl->AddText({(a.x + c.x - is.x) / 2, top}, col, t.icon);
+        dl->AddText(ImGui::GetFont(), fs, {(a.x + c.x - ls.x) / 2, top + is.y + 3 * CFG.uiScale},
+                    on ? col : ImGui::GetColorU32(ImGuiCol_TextDisabled), t.label);
+    } else dl->AddText({(a.x + c.x - is.x) / 2, (a.y + c.y - is.y) / 2}, col, t.icon);
+    ImGui::PopID();
+    railTip(t);
+    if (click) setTool(t.t);
+}
+void toolRail() {
+    if (A.mode != Mode::Build || A.benchOnly) return;
+    float s = CFG.uiScale, m = 10 * s;
+    float availH = GetScreenHeight() - TOOLBAR_H - 2 * m - 40 * s;   // keep clear of the hint strip at the bottom
+    float capH = ImGui::GetFontSize() * 0.8f + 6 * s;
+    bool labels = 10 * 50 * s + 3 * capH + 26 * s <= availH;
+    float w = labels ? 64 * s : 40 * s, h = labels ? 50 * s : 36 * s;
+    ImGui::SetNextWindowPos({m, TOOLBAR_H + m});
+    ImGui::SetNextWindowBgAlpha(0.88f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {5 * s, 5 * s});
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, 2 * s});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8 * s);
+    ImGui::Begin("##toolrail", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing);
+    auto caption = [&](const char* t) {
+        ImGui::Dummy({0, 3 * s});
+        if (labels) {
+            float fs = ImGui::GetFontSize() * 0.72f;
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0, t);
+            ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), fs, {p.x + (w - ts.x) / 2, p.y}, ImGui::GetColorU32(ImGuiCol_TextDisabled), t);
+            ImGui::Dummy({w, ts.y + 2 * s});
+        } else {
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImGui::GetWindowDrawList()->AddLine({p.x + 6 * s, p.y}, {p.x + w - 6 * s, p.y}, IM_COL32(255, 255, 255, 40));
+            ImGui::Dummy({w, 3 * s});
+        }
+    };
+    railButton(RAIL_SELECT, w, h, labels);
+    caption("DRAW");
+    for (auto& t : RAIL_DRAW) railButton(t, w, h, labels);
+    caption("SHAPE");
+    for (auto& t : RAIL_SHAPE) railButton(t, w, h, labels);
+    caption("JOIN");
+    for (auto& t : RAIL_JOIN) railButton(t, w, h, labels);
+    ImGui::End();
+    ImGui::PopStyleVar(3);
+}
+
 void toolbar() {
     ImGui::SetNextWindowPos({0, 0});
     ImGui::SetNextWindowSize({(float)GetScreenWidth(), TOOLBAR_H});
@@ -92,20 +189,14 @@ void toolbar() {
         gap(18);
     }
     if (b) {
-        struct TB { const char* icon; const char* tip; Tool t; } tools[] = {
-            {ICON_FA_ARROW_POINTER, "Select and move", Tool::Select}, {ICON_FA_DRAW_POLYGON, "Polygon part", Tool::Body},
-            {ICON_FA_SQUARE, "Rectangle part", Tool::Rect}, {ICON_FA_CIRCLE, "Circle part", Tool::Circle},
-            {ICON_FA_SCISSORS, "Knife: cut parts apart (K)", Tool::Knife}, {ICON_FA_LEFT_RIGHT, "Mirror copy", Tool::Mirror},
-            {ICON_FA_THUMBTACK, "Pin: a pivot between two parts", Tool::Pin}, {ICON_FA_LINK, "Weld: join two parts rigidly", Tool::Weld},
-            {ICON_FA_ROUTE, "Track: a point riding a slot or rail", Tool::Track}, {ICON_FA_WAVE_SQUARE, "Spring", Tool::Spring}};
-        int i = 0;
-        for (auto& t : tools) {
-            if (iconButton(t.icon, t.tip, A.tool == t.t)) setTool(t.t);
-            gap(i == 0 || i == 3 || i == 5 ? 12 : 3);
-            i++;
-        }
+        ImGui::BeginDisabled(A.hist.empty());
         if (iconButton(ICON_FA_ROTATE_LEFT, "Undo (Ctrl+Z)")) undo();
-        gap(18);
+        ImGui::EndDisabled();
+        ImGui::SameLine(0, 2);
+        ImGui::BeginDisabled(A.future.empty());
+        if (iconButton(ICON_FA_ROTATE_RIGHT, "Redo (Ctrl+Y)")) redo();
+        ImGui::EndDisabled();
+        gap(16);
         static const double steps[] = {0, 0.1, 0.5, 1, 2, 5};
         static const char* metric[] = {"Snap off", "Snap 0.1 mm", "Snap 0.5 mm", "Snap 1 mm", "Snap 2 mm", "Snap 5 mm"};
         static const char* imp[] = {"Snap off", "Snap 0.004 in", "Snap 0.02 in", "Snap 0.04 in", "Snap 0.08 in", "Snap 0.2 in"};
@@ -115,6 +206,7 @@ void toolbar() {
         ImGui::SetNextItemWidth(118 * CFG.uiScale);
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
         if (ImGui::Combo("##snap", &si, CFG.units == Units::Imperial ? imp : metric, 6)) { gSnap = steps[si]; A.snapOn = si > 0; CFG.snap = gSnap; saveSettings(); }
+        if (tipHover()) ImGui::SetTooltip("Corners and parts jump to this step when you draw or drag them.");
     } else {
         if (iconButton(A.running ? ICON_FA_PAUSE : ICON_FA_PLAY, A.running ? "Pause" : "Resume")) A.running = !A.running;
         gap(3);

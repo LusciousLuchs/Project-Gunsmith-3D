@@ -128,6 +128,9 @@ void testPanel() {
     if (S.magTmpl) line += mag ? "   \xC2\xB7   magazine " + std::to_string(mag->rounds) + "/" + std::to_string(S.magTmpl->magCap) : "   \xC2\xB7   no magazine";
     else if (S.feedMode == "internal") line += "   \xC2\xB7   " + std::to_string(S.rounds) + " left";
     if (S.hasFace && !S.magTmpl) line += "   \xC2\xB7   " + std::to_string(sim::looseRounds(S)) + " on the bench";
+    const auto& br = S.design.breech;
+    if (!S.strikerIgnition && br.cockAt > 0)  // the built-in hammer or striker
+        line += std::string("   \xC2\xB7   ") + (br.hammer == "hammer" ? "hammer " : "striker ") + (S.cocked ? "cocked" : "down");
     ImGui::TextDisabled("%s", line.c_str());
 
     // ---- more numbers for those who want them (Settings > Interface > Statistics)

@@ -88,11 +88,14 @@ Drag a number sideways to scrub it, or double-click it to type. Joints that belo
 
 **Parts** are drawn in side elevation and extruded to their thickness. The editor works like Sprocket's: start from a Rect, Circle or Polygon and shape it.
 - *Vertices* (squares): drag to move. Shift-click or box-drag to pick several and move them together, or type an exact X/Y. Double-click an edge to add one.
-- *Edges* (diamonds): drag to move the whole edge, or Shift-drag to extrude it into a new step, like pulling out a rail or a lug.
+- *Edges* (diamonds): drag to move the whole edge, or Shift-drag to extrude it into a new step, like pulling out a rail or a lug. Right-click or double-click a diamond to split that edge in half (on its curve, if it's bowed); *Split edge* in the Shape section does the same for the selected edge.
 - *Knife*: drag a line across a part to cut it into separate parts. Delete the offcut to carve a notch, or keep both halves: cut a frame block into a frame and a slide, for example. With nothing selected, it cuts every part the line crosses. Curves and rounded corners survive the cut.
-- *Mirror*: drag an axis to make a reflected copy of the selected part. *Flip H / Flip V* flip a part in place, *Duplicate* copies it, *Subdivide edges* adds a vertex mid-way along every edge for finer shaping.
+- *Mirror*: drag an axis to make a reflected copy of the selected part. *Flip H / Flip V* flip a part in place, *Duplicate* copies it, *Split all edges* adds a vertex mid-way along every edge for finer shaping.
 - *Curves*: select a vertex to round that corner or bow the next edge outward or inward, or round every corner at once.
-- *Snap*: off, 0.1, 0.5, 1, 2 or 5 mm, from the toolbar.
+- *Smoothness*: rounds the edges where a part's sides meet its front and back faces, from 0% (sharp) to 100% (round across its thickness). Use it for grips, stocks and dehorned slides. It only changes the look: the physics uses the outline.
+- *Snap*: off, 0.1, 0.5, 1, 2 or 5 mm, from the top bar. Undo and redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z) are next to it.
+
+The tools sit in a rail down the left of the view, grouped as *Draw* (polygon, rectangle, circle), *Shape* (knife, mirror) and *Join* (pin, weld, track, spring). Hover one for what it does.
 
 The physics uses the curved outline too, so the shape you see is the shape that collides.
 
@@ -106,7 +109,11 @@ The physics uses the curved outline too, so the shape you see is the shape that 
 
 **Controls.** Mark a part as a button, lever or trigger, bind it to a key (Space, M, 1-4), and set where the finger pushes and how hard. Join it with a pin or track and give it a spring so it returns. A trigger bound to FIRE must actually be pulled 2 mm before the gun fires. The magazine catch can be released by a button part instead of by magic.
 
-**Firing.** Pick *Fires when FIRE is pressed* for simplicity, or *Striker hits the primer*: then the round only goes off when your striker or firing pin reaches the breech face fast enough, so your own hammer, sear and trigger decide when it fires.
+**Fire control.** Feeding, the bolt and extraction are always parts you design. The hammer or striker can be either:
+- *Built in:* nothing to draw. It still has to be cocked: the bolt or slide must open at least *Cocks after* mm between shots, or the next pull does nothing (the reliability test calls that a *failure to cock*). Choose semi-automatic, full-auto or burst, double action (the pull cocks and fires it), and a lock time.
+- *Drawn parts (advanced):* the round only goes off when your striker or firing pin reaches the breech face fast enough, so your own hammer, sear, disconnector and trigger decide when it fires, and whether it's semi or full-auto.
+
+A trigger part bound to FIRE works with either: the shot waits until it has been pulled 2 mm.
 
 **Feeding**
 - *Detachable magazine:* tick it on a part. It rides a well (the green line), latches when pushed home, and drops free under gravity when released.
@@ -127,6 +134,7 @@ Nothing about this is scripted. The same rules run every gun, so a design you dr
 - *Double feed:* two rounds in the action at once.
 - *Failure to return to battery.*
 - *Light strike:* the striker or hammer falls but the round doesn't fire.
+- *Failure to cock:* the built-in hammer or striker was still down when the trigger was pulled, because the action didn't open far enough.
 Clear a jam the way you would on a real gun: rack the slide or work the bolt, or grab the stuck case and pull it out. Hover the jam in the Test panel for what usually causes it.
 
 **Reliability test.** In the Test panel, pick 25 to 200 rounds and run it. It fires your design over and over with the variation real shooting has:

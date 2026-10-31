@@ -40,6 +40,7 @@ struct App {
     bool modalAtFrameStart = false;      // a menu was open when this frame began (its Escape shouldn't reach the bench)
     Design design;
     std::vector<std::string> hist;
+    std::vector<std::string> future;     // undone designs, for redo
     std::string lastSnap;
     Mode mode = Mode::Build;
     std::unique_ptr<sim::Sim> S;
@@ -109,6 +110,7 @@ void enterBenchWith(const Design& d);  // put another gun on the bench, keeping 
 void backToMenu();
 void commit();
 void undo();
+void redo();
 void toast(const std::string& t);
 float bodyDepth(const BodyDef& b);
 float bodyBias(int i);

@@ -330,15 +330,32 @@ void flipBody(BodyDef& b, bool horizontal) {
     if (horizontal) mirrorBody(b, c, {c.x, c.y + 1});
     else mirrorBody(b, c, {c.x + 1, c.y});
 }
+int splitEdge(BodyDef& b, int e) {
+    fixShape(b);
+    int n = (int)b.pts.size();
+    if (n < 2 || e < 0 || e >= n) return -1;
+    V2 p = b.pts[e], q = b.pts[(e + 1) % n];
+    double ex = q.x - p.x, ey = q.y - p.y, len = std::hypot(ex, ey);
+    V2 mid{(p.x + q.x) / 2, (p.y + q.y) / 2};
+    double s = b.bulge[e], s2 = 0;
+    if (std::fabs(s) > 0.01 && len > 1e-6) {  // a bowed edge: the new corner goes on the curve, and each half keeps the same arc
+        V2 nn{ey / len, -ex / len};
+        if (inside(mid.x + nn.x * 0.01 * len, mid.y + nn.y * 0.01 * len, b.pts)) nn = {-nn.x, -nn.y};  // outward, as outlineOf does
+        double as = std::min(std::fabs(s), len * 0.5), c = len / 2;
+        double R = (c * c + as * as) / (2 * as), c2 = std::sqrt(c * c + as * as) / 2;
+        s2 = (R - std::sqrt(std::max(0.0, R * R - c2 * c2))) * (s > 0 ? 1 : -1);
+        mid = {mid.x + nn.x * as * (s > 0 ? 1 : -1), mid.y + nn.y * as * (s > 0 ? 1 : -1)};
+    }
+    mid = {std::round(mid.x * 100) / 100, std::round(mid.y * 100) / 100};
+    b.pts.insert(b.pts.begin() + e + 1, mid);
+    b.rad.insert(b.rad.begin() + e + 1, 0.0);
+    b.bulge[e] = s2;
+    b.bulge.insert(b.bulge.begin() + e + 1, s2);
+    return e + 1;
+}
 void subdivideBody(BodyDef& b) {
     fixShape(b);
-    std::vector<V2> pts; std::vector<double> rad, bulge;
-    for (size_t i = 0; i < b.pts.size(); i++) {
-        V2 p = b.pts[i], q = b.pts[(i + 1) % b.pts.size()];
-        pts.push_back(p); rad.push_back(b.rad[i]); bulge.push_back(b.bulge[i] / 2);
-        pts.push_back({std::round((p.x + q.x) * 50) / 100, std::round((p.y + q.y) * 50) / 100}); rad.push_back(0); bulge.push_back(b.bulge[i] / 2);
-    }
-    b.pts = pts; b.rad = rad; b.bulge = bulge;
+    for (int i = (int)b.pts.size() - 1; i >= 0; i--) splitEdge(b, i);
 }
 
 // ---------------------------------------------------------------- magazine maker
@@ -430,6 +447,7 @@ std::string designToJson(const Design& d, bool pretty) {
     for (auto& b : d.bodies) {
         json jb = {{"id", b.id}, {"name", b.name}, {"fixed", b.fixed}, {"layer", b.layer},
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
+        if (b.smooth > 0) jb["smooth"] = b.smooth;
         if (b.mass > 0) jb["mass"] = b.mass;
         if (b.magazine) {
             jb["magazine"] = {{"cap", b.magCap}};
@@ -475,7 +493,10 @@ std::string designToJson(const Design& d, bool pretty) {
         json jb = {{"breech", r.breech}, {"chamber", r.chamber}, {"impulse", r.impulse}, {"dur", r.dur}, {"feed", r.feed},
                    {"rounds", r.rounds}, {"auto", r.autoFire}, {"loaded", r.loaded}, {"round", {r.roundLen, r.roundDia}},
                    {"cartridge", cartToJson(r.cart)}, {"cartImpulse", r.cartImpulse}, {"feedMode", r.feedMode}, {"physicalFeed", r.physicalFeed},
-                   {"ignition", r.ignition}, {"striker", r.striker}, {"strikerTip", v2j(r.strikerTip)}, {"igniteSpeed", r.igniteSpeed}};
+                   {"ignition", r.ignition}, {"striker", r.striker}, {"strikerTip", v2j(r.strikerTip)}, {"igniteSpeed", r.igniteSpeed},
+                   {"hammer", r.hammer}, {"cockAt", r.cockAt}, {"fireMode", r.fireMode}, {"burst", r.burst},
+                   {"doubleAction", r.doubleAction}, {"lockTime", r.lockTime}};
+        jb["auto"] = r.fullAuto();
         jb["face"] = r.hasFace ? v2j(r.face) : json(nullptr);
         jb["muzzle"] = r.hasMuzzle ? v2j(r.muzzle) : json(nullptr);
         o["breech"] = jb;
@@ -515,6 +536,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.damp = opt<double>(jb, "damp", 0);
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
+        b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
         if (jb.contains("roll") && jb["roll"].is_object()) {
             auto& r = jb["roll"];
             b.rollOn = opt<bool>(r, "on", false);
@@ -614,6 +636,14 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         r.striker = opt<std::string>(jb, "striker", "");
         if (jb.contains("strikerTip")) r.strikerTip = j2v(jb["strikerTip"]);
         r.igniteSpeed = opt<double>(jb, "igniteSpeed", 1.5);
+        r.hammer = opt<std::string>(jb, "hammer", "striker");
+        r.cockAt = opt<double>(jb, "cockAt", 0);   // older blueprints: always cocked, as before
+        r.fireMode = opt<std::string>(jb, "fireMode", r.autoFire ? "auto" : "semi");
+        if (r.fireMode != "semi" && r.fireMode != "auto" && r.fireMode != "burst") r.fireMode = "semi";
+        r.autoFire = r.fireMode == "auto";
+        r.burst = std::max(2, opt<int>(jb, "burst", 3));
+        r.doubleAction = opt<bool>(jb, "doubleAction", false);
+        r.lockTime = std::max(0.0, opt<double>(jb, "lockTime", 0));
         if (r.cartImpulse) applyCartridge(r);
     }
     out = d;

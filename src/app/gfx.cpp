@@ -110,13 +110,39 @@ static std::vector<int> triangulate(const std::vector<V2>& p) {  // p must be CC
     return out;
 }
 // Extrude a polygon given in local mm (y down) into a flat-shaded prism centred on z=0.
-Mesh extrude(const std::vector<V2>& localMM, float depth) {
+// `round` (mm) rounds the edges where the sides meet the front and back faces: a quarter circle in a few steps.
+Mesh extrude(const std::vector<V2>& localMM, float depth, float roundMM) {
     std::vector<V2> q;
     for (auto& p : localMM) q.push_back({p.x * U, -p.y * U});
     if (sim::polyArea(q) < 0) std::reverse(q.begin(), q.end());
     auto tri = triangulate(q);
     int n = (int)q.size();
-    int vc = (int)tri.size() * 2 + n * 6;
+    float h = depth / 2;
+    // outward normal of each edge
+    std::vector<V2> en(n);
+    double perim = 0;
+    for (int i = 0; i < n; i++) {
+        V2 a = q[i], b = q[(i + 1) % n];
+        double dx = b.x - a.x, dy = b.y - a.y, l = std::sqrt(dx * dx + dy * dy);
+        en[i] = l > 0 ? V2{dy / l, -dx / l} : V2{0, 0};
+        perim += l;
+    }
+    // how far the faces can be pulled in before the shape folds over: about half the part's narrowest width
+    double r = std::max(0.0, (double)roundMM * U);
+    if (r > 0) r = std::min({r, h * 0.95, 0.4 * 2 * std::fabs(sim::polyArea(q)) / std::max(perim, 1e-9)});
+    int steps = r > 1e-4 ? 5 : 0;
+    // inward offset direction at each corner (mitred, limited at sharp points)
+    std::vector<V2> mit(n);
+    for (int i = 0; i < n; i++) {
+        V2 a = en[(i + n - 1) % n], b = en[i];
+        double d = 1 + a.x * b.x + a.y * b.y;
+        V2 m = d > 1e-6 ? V2{(a.x + b.x) / d, (a.y + b.y) / d} : b;
+        double l = std::sqrt(m.x * m.x + m.y * m.y);
+        if (l > 2.5) m = {m.x / l * 2.5, m.y / l * 2.5};
+        mit[i] = m;
+    }
+    int bandTris = n * 2 * steps * 2;
+    int vc = (int)tri.size() * 2 + n * 6 + bandTris * 3;
     Mesh m{};
     m.vertexCount = vc;
     m.triangleCount = vc / 3;
@@ -124,23 +150,40 @@ Mesh extrude(const std::vector<V2>& localMM, float depth) {
     m.normals = (float*)MemAlloc(vc * 3 * sizeof(float));
     m.texcoords = (float*)MemAlloc(vc * 2 * sizeof(float));
     int k = 0;
-    float h = depth / 2;
     auto put = [&](float x, float y, float z, float nx, float ny, float nz) {
         m.vertices[k * 3] = x; m.vertices[k * 3 + 1] = y; m.vertices[k * 3 + 2] = z;
         m.normals[k * 3] = nx; m.normals[k * 3 + 1] = ny; m.normals[k * 3 + 2] = nz;
         m.texcoords[k * 2] = 0; m.texcoords[k * 2 + 1] = 0; k++;
     };
+    // the outline pulled in by d: where tight corners would fold over, the points meet instead (as a true offset does)
+    auto insetRing = [&](double d) {
+        std::vector<V2> o(n);
+        for (int i = 0; i < n; i++) o[i] = {q[i].x - mit[i].x * d, q[i].y - mit[i].y * d};
+        if (d <= 0) return o;
+        for (int pass = 0; pass < 8; pass++) {
+            bool any = false;
+            for (int i = 0; i < n; i++) {
+                int j = (i + 1) % n;
+                double ox = q[j].x - q[i].x, oy = q[j].y - q[i].y, nx = o[j].x - o[i].x, ny = o[j].y - o[i].y;
+                if (ox * nx + oy * ny < 0) {  // this edge turned back on itself: collapse it
+                    V2 c{(o[i].x + o[j].x) / 2, (o[i].y + o[j].y) / 2};
+                    o[i] = o[j] = c; any = true;
+                }
+            }
+            if (!any) break;
+        }
+        return o;
+    };
+    std::vector<std::vector<V2>> rings;
+    if (steps == 0) rings.push_back(q);
+    else for (int st = 0; st <= steps; st++) rings.push_back(insetRing(r * (1 - std::cos((PI / 2) * st / steps))));
+    auto inset = [&](int i, double) { return rings.back()[i]; };
+    // front and back faces (pulled in by the rounding; the original triangulation still fits the inset outline)
     for (size_t t = 0; t < tri.size(); t += 3) {
-        for (int s = 0; s < 3; s++) put((float)q[tri[t + s]].x, (float)q[tri[t + s]].y, h, 0, 0, 1);
-        for (int s = 2; s >= 0; s--) put((float)q[tri[t + s]].x, (float)q[tri[t + s]].y, -h, 0, 0, -1);
+        for (int s = 0; s < 3; s++) { V2 p = inset(tri[t + s], r); put((float)p.x, (float)p.y, h, 0, 0, 1); }
+        for (int s = 2; s >= 0; s--) { V2 p = inset(tri[t + s], r); put((float)p.x, (float)p.y, -h, 0, 0, -1); }
     }
     // side walls: flat across sharp corners, smooth along curves (where the outline turns only a little per point)
-    std::vector<V2> en(n);
-    for (int i = 0; i < n; i++) {
-        V2 a = q[i], b = q[(i + 1) % n];
-        double dx = b.x - a.x, dy = b.y - a.y, l = std::sqrt(dx * dx + dy * dy);
-        en[i] = l > 0 ? V2{dy / l, -dx / l} : V2{0, 0};
-    }
     auto vn = [&](int edge, int vert) {  // normal at outline point `vert` for the wall of `edge`
         int other = vert == edge ? (edge + n - 1) % n : (edge + 1) % n;
         V2 e = en[edge], o = en[other];
@@ -148,12 +191,33 @@ Mesh extrude(const std::vector<V2>& localMM, float depth) {
         double sx = e.x + o.x, sy = e.y + o.y, l = std::sqrt(sx * sx + sy * sy);
         return l > 0 ? V2{sx / l, sy / l} : e;
     };
+    float hw = (float)(h - r);
     for (int i = 0; i < n; i++) {
         int j = (i + 1) % n;
         V2 a = q[i], b = q[j], na = vn(i, i), nb = vn(i, j);
-        put((float)a.x, (float)a.y, -h, (float)na.x, (float)na.y, 0); put((float)b.x, (float)b.y, -h, (float)nb.x, (float)nb.y, 0); put((float)b.x, (float)b.y, h, (float)nb.x, (float)nb.y, 0);
-        put((float)a.x, (float)a.y, -h, (float)na.x, (float)na.y, 0); put((float)b.x, (float)b.y, h, (float)nb.x, (float)nb.y, 0); put((float)a.x, (float)a.y, h, (float)na.x, (float)na.y, 0);
+        put((float)a.x, (float)a.y, -hw, (float)na.x, (float)na.y, 0); put((float)b.x, (float)b.y, -hw, (float)nb.x, (float)nb.y, 0); put((float)b.x, (float)b.y, hw, (float)nb.x, (float)nb.y, 0);
+        put((float)a.x, (float)a.y, -hw, (float)na.x, (float)na.y, 0); put((float)b.x, (float)b.y, hw, (float)nb.x, (float)nb.y, 0); put((float)a.x, (float)a.y, hw, (float)na.x, (float)na.y, 0);
     }
+    // the rounded bands between the walls and the faces
+    for (int side = -1; side <= 1; side += 2) {
+        for (int st = 0; st < steps; st++) {
+            double t0 = (PI / 2) * st / steps, t1 = (PI / 2) * (st + 1) / steps;
+            for (int i = 0; i < n; i++) {
+                int j = (i + 1) % n;
+                V2 na = vn(i, i), nb = vn(i, j);
+                V2 a0 = rings[st][i], b0 = rings[st][j], a1 = rings[st + 1][i], b1 = rings[st + 1][j];
+                float z0 = side * (float)(hw + r * std::sin(t0)), z1 = side * (float)(hw + r * std::sin(t1));
+                float c0 = (float)std::cos(t0), s0 = side * (float)std::sin(t0), c1 = (float)std::cos(t1), s1 = side * (float)std::sin(t1);
+                struct P { V2 p; float z, nx, ny, nz; };
+                P A0{a0, z0, (float)na.x * c0, (float)na.y * c0, s0}, B0{b0, z0, (float)nb.x * c0, (float)nb.y * c0, s0};
+                P A1{a1, z1, (float)na.x * c1, (float)na.y * c1, s1}, B1{b1, z1, (float)nb.x * c1, (float)nb.y * c1, s1};
+                auto emit = [&](const P& p) { put((float)p.p.x, (float)p.p.y, p.z, p.nx, p.ny, p.nz); };
+                if (side > 0) { emit(A0); emit(B0); emit(B1); emit(A0); emit(B1); emit(A1); }
+                else { emit(A0); emit(B1); emit(B0); emit(A0); emit(A1); emit(B1); }
+            }
+        }
+    }
+    m.vertexCount = k; m.triangleCount = k / 3;
     UploadMesh(&m, false);
     return m;
 }

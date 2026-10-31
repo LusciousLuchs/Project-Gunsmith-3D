@@ -235,6 +235,7 @@ int main(int argc, char** argv) {
         A.releaseBtnHeld = false;
         if (demo.empty() && !modal && !A.modalAtFrameStart) handleViewportInput();
         toolbar();
+        toolRail();
         if (A.mode == Mode::Test) testPanel(); else { buildPanel(); cartridgeDesigner(); }
         if (A.showPause || A.showSettings) pauseMenu();
         if (fireArg && frame < 30) A.fireBtnHeld = true;

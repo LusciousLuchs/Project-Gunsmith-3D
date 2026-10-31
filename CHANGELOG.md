@@ -17,7 +17,10 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Sprocket-style shaping:
   - Drag vertices, Shift-click or box-select several and move them together, or type exact coordinates.
   - Drag an edge's diamond to move it, Shift-drag to extrude it.
-  - The knife cuts parts into separate pieces. Mirror makes a reflected copy. Flip, duplicate (Ctrl+D) and subdivide are on the part.
+  - The knife cuts parts into separate pieces. Mirror makes a reflected copy. Flip, duplicate (Ctrl+D) and split all edges are on the part.
+  - Split one edge in half: right-click or double-click its diamond, or use *Split edge*. A bowed edge splits on its curve and keeps its shape.
+  - *Smoothness* (0-100%) rounds a part's front and back edges for grips, stocks and dehorned slides. It's for looks only.
+  - The tools moved to a labelled rail down the left of the view, grouped as Draw, Shape and Join, with icons only in short windows. Undo and redo sit in the top bar, and redo is new (Ctrl+Y or Ctrl+Shift+Z).
   - Arrow keys nudge (Shift for ten times the step). The snap step can be set from off to 5 mm.
 - Joints: pin, weld, track (cam slots, rails, bushings), helical cam, locking lugs, catch, and magazine well.
 - Springs: coil springs need a guide rod past four diameters or they buckle, and go solid at their solid height. Leaf springs suit tight spaces.
@@ -30,7 +33,10 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Loose rounds are physical objects. Drag them into an open action and close it to chamber them. Opening a loaded action ejects the live round onto the bench, where you can pick it up again. Hand-loaded designs start with rounds on the bench, and L adds more.
 - Bolt handles are dragged directly: one drag lifts and draws the bolt, limited by hand strength. The end-view dial is gone.
 - Magazines drop free, latch when pushed home, and spare magazines can be put on the bench. Single shots load by hand.
-- Firing either on the trigger key or when a striker or firing pin hits the primer fast enough.
+- Fire control is either built in or drawn. Feeding, the bolt and extraction are always real parts.
+  - **Built in:** no hammer or striker parts, but the action must open a set distance to cock it again. It has semi, full-auto and burst modes, optional double action and a lock time. The bench shows whether it's cocked.
+  - **Drawn parts:** the round fires when your striker or firing pin hits the primer fast enough.
+  - The reliability test reports a *failure to cock*, and now also works for built-in designs that have a drawn trigger.
 
 ### Map editor and first person
 - **Map editor** on the main menu: build ranges out of brushes, early-2000s Radiant style.

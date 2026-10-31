@@ -846,20 +846,44 @@ void substep(Sim& S) {
                 if (S.chambered && inBattery(S)) { S.fireT = S.t; S.chambered = false; S.spent = true; S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0; S.events.push_back({Ev::Bang, S.t}); }
                 else if (inBattery(S)) S.events.push_back({Ev::Click, S.t});
             }
-        } else if ((S.trigger || S.pressed) && S.t > S.fireT + dur * 2) {
-            bool ok = inBattery(S);
-            for (auto& p : S.pushers) {  // with a trigger part bound to FIRE, the shot waits until it has been pulled 2 mm
-                if (p.key != "fire") continue;
-                V2 w = wpt(*p.b, p.l), w0{p.b->x0 + p.l.x, p.b->y0 + p.l.y};
-                if ((w.x - w0.x) * p.dx + (w.y - w0.y) * p.dy < 0.002) ok = false;
-                break;
-            }
-            if (ok && S.chambered && ((br.autoFire && S.trigger) || S.pressed)) {
-                S.fireT = S.t; S.chambered = false; S.spent = true; S.pressed = false; S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0;
-                S.events.push_back({Ev::Bang, S.t});
-            } else if (ok && !S.chambered && S.pressed) {
-                S.pressed = false;
-                S.events.push_back({Ev::Click, S.t});
+        } else {
+            // The built-in hammer or striker: no parts, but the action must open far enough to cock it again.
+            if (br.cockAt <= 0 || gap >= br.cockAt) S.cocked = true;
+            auto ignite = [&]() {  // the hammer reaches the primer
+                S.igniteAt = -1;
+                if (!inBattery(S)) return;
+                if (S.chambered) {
+                    S.fireT = S.t; S.chambered = false; S.spent = true; S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0;
+                    S.events.push_back({Ev::Bang, S.t});
+                } else S.events.push_back({Ev::Click, S.t});
+            };
+            if (S.igniteAt >= 0 && S.t >= S.igniteAt) ignite();
+            bool burst = br.fireMode == "burst", full = br.fullAuto();
+            // a held trigger keeps firing in full-auto, and until the burst is spent; a fresh pull is needed otherwise
+            bool want = S.pressed || (S.trigger && S.chambered && (full || (burst && S.burstLeft > 0)));
+            if (want && S.igniteAt < 0 && S.t > S.fireT + dur * 2) {
+                bool ok = inBattery(S);
+                for (auto& p : S.pushers) {  // with a trigger part bound to FIRE, the shot waits until it has been pulled 2 mm
+                    if (p.key != "fire") continue;
+                    V2 w = wpt(*p.b, p.l), w0{p.b->x0 + p.l.x, p.b->y0 + p.l.y};
+                    if ((w.x - w0.x) * p.dx + (w.y - w0.y) * p.dy < 0.002) ok = false;
+                    break;
+                }
+                if (ok) {
+                    bool fresh = S.pressed;
+                    S.pressed = false;
+                    if (fresh && burst) S.burstLeft = std::max(1, br.burst);
+                    if (S.cocked || br.doubleAction) {
+                        S.cocked = br.cockAt <= 0;  // it falls; older designs are cocked again at once
+                        S.deadPull = false;
+                        if (burst) S.burstLeft--;
+                        S.igniteAt = S.t + br.lockTime / 1000;
+                        if (br.lockTime <= 0) ignite();
+                    } else if (fresh) {
+                        S.deadPull = true;  // single action with the hammer down: the trigger moves and nothing happens
+                        S.burstLeft = 0;
+                    }
+                }
             }
         }
     }

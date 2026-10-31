@@ -27,5 +27,5 @@ void drawMesh(const Mesh& m, Matrix M, Color c, float alpha = 1.f);
 void drawBox(Vector3 center, Vector3 size, Color c, Matrix rot = MatrixIdentity(), float alpha = 1.f);
 void drawCyl(Vector3 a, Vector3 b, float r, Color c, float alpha = 1.f, const Mesh* mesh = nullptr);
 void drawSphereLit(Vector3 p, float r, Color c, float alpha = 1.f);
-Mesh extrude(const std::vector<V2>& localMM, float depth);
+Mesh extrude(const std::vector<V2>& localMM, float depth, float roundMM = 0);
 void initGfx();
