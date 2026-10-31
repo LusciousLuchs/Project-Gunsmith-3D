@@ -223,22 +223,132 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
         drawCartridgeAt(o, dir);
     }
 }
-static void drawSpring(Vector3 a, Vector3 b, float coilR, float wireR, Color c) {
+// ---------------------------------------------------------------- springs
+// Each spring is one mesh: a coil is a single smooth tube along its helix, a leaf a single strip. The shape is
+// recomputed only when the spring moves and written into the mesh's existing GPU buffers, so a spring costs one
+// draw call instead of a hundred little cylinders.
+struct DynMesh { Mesh m{}; int verts = 0, tris = 0; bool ok = false; std::vector<float> key; };
+static std::vector<DynMesh> gSpringMeshes;   // by slot: three per joint (whole, and the two halves of a buckled coil)
+static DynMesh& springSlot(size_t i) { if (gSpringMeshes.size() <= i) gSpringMeshes.resize(i + 1); return gSpringMeshes[i]; }
+static bool prepare(DynMesh& d, int verts, int tris) {  // make room for this many vertices and triangles; true if new
+    if (d.ok && d.verts == verts && d.tris == tris) return false;
+    if (d.ok) UnloadMesh(d.m);
+    d.m = Mesh{};
+    d.m.vertexCount = verts; d.m.triangleCount = tris;
+    d.m.vertices = (float*)MemAlloc(verts * 3 * sizeof(float));
+    d.m.normals = (float*)MemAlloc(verts * 3 * sizeof(float));
+    d.m.texcoords = (float*)MemAlloc(verts * 2 * sizeof(float));
+    d.m.indices = (unsigned short*)MemAlloc(tris * 3 * sizeof(unsigned short));
+    d.verts = verts; d.tris = tris; d.ok = true; d.key.clear();
+    return true;
+}
+static void finish(DynMesh& d, bool fresh) {
+    if (fresh) { UploadMesh(&d.m, true); return; }
+    UpdateMeshBuffer(d.m, RL_DEFAULT_SHADER_ATTRIB_LOCATION_POSITION, d.m.vertices, d.verts * 3 * sizeof(float), 0);
+    UpdateMeshBuffer(d.m, RL_DEFAULT_SHADER_ATTRIB_LOCATION_NORMAL, d.m.normals, d.verts * 3 * sizeof(float), 0);
+}
+static void drawDyn(const DynMesh& d, Color c) {
+    rlDisableBackfaceCulling();   // thin wire and strips: never let a wrong winding hide a face
+    drawMesh(d.m, MatrixIdentity(), c);
+    rlEnableBackfaceCulling();
+}
+// A coil spring from a to b: `turns` active coils plus a closed coil at each end, the way real springs are wound,
+// so it looks solid at its solid height. The wire stays round however far it's compressed.
+static void drawCoil(size_t slot, Vector3 a, Vector3 b, float coilR, float wireR, double activeTurns, Color c) {
     Vector3 d = Vector3Subtract(b, a);
     float L = Vector3Length(d);
     if (L < 1e-4f) return;
-    Vector3 ax = Vector3Scale(d, 1 / L);
-    Vector3 up = std::fabs(ax.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
-    Vector3 u = Vector3Normalize(Vector3CrossProduct(ax, up)), v = Vector3CrossProduct(ax, u);
-    int turns = 11, seg = 10, N = turns * seg;
-    Vector3 prev{};
-    for (int i = 0; i <= N; i++) {
-        float t = (float)i / N, ang = t * turns * 2 * PI;
-        Vector3 p = Vector3Add(Vector3Add(a, Vector3Scale(d, t)), Vector3Add(Vector3Scale(u, std::cos(ang) * coilR), Vector3Scale(v, std::sin(ang) * coilR)));
-        if (i) drawCyl(prev, p, wireR, c);
-        prev = p;
+    int turns = std::clamp((int)std::lround(activeTurns), 1, 60), total = turns + 2;
+    const int SEG = 14, SIDES = 8;
+    int rings = total * SEG + 1;
+    if (rings * SIDES > 65000) return;
+    DynMesh& D = springSlot(slot);
+    bool fresh = prepare(D, rings * SIDES, (rings - 1) * SIDES * 2);
+    std::vector<float> key = {a.x, a.y, a.z, b.x, b.y, b.z, coilR, wireR};
+    if (fresh || key != D.key) {
+        D.key = key;
+        Vector3 ax = Vector3Scale(d, 1 / L);
+        Vector3 up = std::fabs(ax.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+        Vector3 u = Vector3Normalize(Vector3CrossProduct(ax, up)), v = Vector3CrossProduct(ax, u);
+        float wd = 2 * wireR, span = std::max(L - wd, 1e-4f);
+        float e = std::min(wd, span / total), act = (span - 2 * e) / turns;   // pitch of the closed end coils and the active ones
+        float* P = D.m.vertices; float* N = D.m.normals;
+        for (int r = 0; r < rings; r++) {
+            float s = (float)r / SEG;   // coils from the a end
+            float z = wireR + e * std::min(s, 1.f) + act * std::clamp(s - 1, 0.f, (float)turns) + e * std::max(0.f, s - 1 - turns);
+            float pitch = (s < 1 || s > 1 + turns) ? e : act;
+            float ang = s * 2 * PI, ca = std::cos(ang), sa = std::sin(ang);
+            Vector3 rad = Vector3Add(Vector3Scale(u, ca), Vector3Scale(v, sa));
+            Vector3 ctr = Vector3Add(Vector3Add(a, Vector3Scale(ax, z)), Vector3Scale(rad, coilR));
+            Vector3 T = Vector3Normalize(Vector3Add(Vector3Scale(ax, pitch), Vector3Scale(Vector3Add(Vector3Scale(u, -sa), Vector3Scale(v, ca)), coilR * 2 * PI)));
+            Vector3 B = Vector3Normalize(Vector3CrossProduct(T, rad)), Nn = Vector3CrossProduct(B, T);
+            for (int k = 0; k < SIDES; k++) {
+                float ph = 2 * PI * k / SIDES;
+                Vector3 n = Vector3Add(Vector3Scale(Nn, std::cos(ph)), Vector3Scale(B, std::sin(ph)));
+                int i = (r * SIDES + k) * 3;
+                P[i] = ctr.x + n.x * wireR; P[i + 1] = ctr.y + n.y * wireR; P[i + 2] = ctr.z + n.z * wireR;
+                N[i] = n.x; N[i + 1] = n.y; N[i + 2] = n.z;
+            }
+        }
+        if (fresh) {
+            unsigned short* I = D.m.indices;
+            int t = 0;
+            for (int r = 0; r + 1 < rings; r++)
+                for (int k = 0; k < SIDES; k++) {
+                    unsigned short i0 = r * SIDES + k, i1 = r * SIDES + (k + 1) % SIDES, i2 = (r + 1) * SIDES + k, i3 = (r + 1) * SIDES + (k + 1) % SIDES;
+                    I[t++] = i0; I[t++] = i1; I[t++] = i2;
+                    I[t++] = i1; I[t++] = i3; I[t++] = i2;
+                }
+        }
+        finish(D, fresh);
     }
+    drawDyn(D, c);
 }
+// A leaf spring: a flat strip bent along a quadratic curve from its root, through mid, to its tip.
+static void drawLeaf(size_t slot, Vector3 a, Vector3 mid, Vector3 b, float thick, float width, Color c) {
+    const int K = 12;   // points along the leaf
+    DynMesh& D = springSlot(slot);
+    bool fresh = prepare(D, (K + 1) * 8, K * 8);
+    std::vector<float> key = {a.x, a.y, a.z, mid.x, mid.y, mid.z, b.x, b.y, b.z, thick, width};
+    if (fresh || key != D.key) {
+        D.key = key;
+        float* P = D.m.vertices; float* N = D.m.normals;
+        auto at = [&](float t) {
+            return Vector3Add(Vector3Add(Vector3Scale(a, (1 - t) * (1 - t)), Vector3Scale(mid, 2 * (1 - t) * t)), Vector3Scale(b, t * t));
+        };
+        Vector3 Z{0, 0, 1};
+        for (int k = 0; k <= K; k++) {
+            float t = (float)k / K;
+            Vector3 q = at(t), tg = Vector3Subtract(at(std::min(1.f, t + 0.01f)), at(std::max(0.f, t - 0.01f)));
+            Vector3 m = Vector3Normalize(Vector3CrossProduct(Z, tg));   // across the strip, in the side-view plane
+            Vector3 c0 = Vector3Add(q, Vector3Add(Vector3Scale(m, thick / 2), Vector3Scale(Z, width / 2)));
+            Vector3 c1 = Vector3Add(q, Vector3Add(Vector3Scale(m, thick / 2), Vector3Scale(Z, -width / 2)));
+            Vector3 c2 = Vector3Add(q, Vector3Add(Vector3Scale(m, -thick / 2), Vector3Scale(Z, -width / 2)));
+            Vector3 c3 = Vector3Add(q, Vector3Add(Vector3Scale(m, -thick / 2), Vector3Scale(Z, width / 2)));
+            Vector3 face[4][3] = {{c0, c1, m}, {c2, c3, Vector3Negate(m)}, {c3, c0, Z}, {c1, c2, Vector3Negate(Z)}};
+            for (int f = 0; f < 4; f++)
+                for (int e = 0; e < 2; e++) {
+                    int i = (k * 8 + f * 2 + e) * 3;
+                    Vector3 p = face[f][e], n = face[f][2];
+                    P[i] = p.x; P[i + 1] = p.y; P[i + 2] = p.z;
+                    N[i] = n.x; N[i + 1] = n.y; N[i + 2] = n.z;
+                }
+        }
+        if (fresh) {
+            unsigned short* I = D.m.indices;
+            int t = 0;
+            for (int k = 0; k < K; k++)
+                for (int f = 0; f < 4; f++) {
+                    unsigned short p0 = k * 8 + f * 2, q0 = p0 + 1, p1 = p0 + 8, q1 = q0 + 8;
+                    I[t++] = p0; I[t++] = q0; I[t++] = p1;
+                    I[t++] = q0; I[t++] = q1; I[t++] = p1;
+                }
+        }
+        finish(D, fresh);
+    }
+    drawDyn(D, c);
+}
+static float partZ(const std::string& id) { int i = A.design.bodyIndex(id); return i >= 0 ? bodyZ(i) : 0.f; }
 static void drawStands(float py) {  // one slim post behind the main fixed part, holding it above the floor
     auto& D = A.design;
     int best = -1; double bestA = 0;
@@ -352,26 +462,24 @@ void drawScene() {
         } else if (j.type == "spring" && j.kind == "leaf") {
             V2 root = curMM(j.a, j.pa), tipDesign = curMM(j.a, j.pb), contact = curMM(j.b, j.pb);
             // the leaf bends from its clamped root to where it touches the other part
-            Vector3 a = W3(root, 0.3f), b = W3(contact, 0.3f), mid0 = W3({(root.x + tipDesign.x) / 2, (root.y + tipDesign.y) / 2}, 0.3f);
+            bool ba = A.design.bodyIndex(j.a) >= 0, bb = A.design.bodyIndex(j.b) >= 0;   // between the two parts' depths
+            float z = (ba && bb ? (partZ(j.a) + partZ(j.b)) / 2 : ba ? partZ(j.a) : partZ(j.b)) + 0.3f;
+            Vector3 a = W3(root, z), b = W3(contact, z), mid0 = W3({(root.x + tipDesign.x) / 2, (root.y + tipDesign.y) / 2}, z);
             Vector3 mid = Vector3Lerp(mid0, Vector3Scale(Vector3Add(a, b), 0.5f), 0.6f);
             Color lc = selJ ? Color{255, 200, 60, 255} : Color{176, 190, 208, 255};
-            Vector3 prev = a;
-            for (int k = 1; k <= 10; k++) {
-                float t = k / 10.f;
-                Vector3 q = Vector3Add(Vector3Add(Vector3Scale(a, (1 - t) * (1 - t)), Vector3Scale(mid, 2 * (1 - t) * t)), Vector3Scale(b, t * t));
-                drawBox(Vector3Scale(Vector3Add(prev, q), 0.5f), {Vector3Distance(prev, q) + 0.02f, 0.06f, 0.5f}, lc, MatrixRotateZ(std::atan2(q.y - prev.y, q.x - prev.x)));
-                prev = q;
-            }
+            drawLeaf(ji * 3, a, mid, b, 0.06f, 0.5f, lc);
         } else if (j.type == "spring") {
-            Vector3 a = W3(curMM(j.a, j.pa), 0), b = W3(curMM(j.b, j.pb), 0);
+            // at the depth of the part it pushes (the first one, or the second if the first is the ground)
+            float z = A.design.bodyIndex(j.a) >= 0 ? partZ(j.a) : partZ(j.b);
+            Vector3 a = W3(curMM(j.a, j.pa), z), b = W3(curMM(j.b, j.pb), z);
             bool buckled = false;
             if (A.S) for (auto& J : A.S->joints) if (J.defIndex == (int)ji) buckled = J.buckled;
             Color sc = selJ ? Color{255, 200, 60, 255} : buckled ? Color{235, 120, 90, 255} : Color{176, 190, 208, 255};
             float cr = (float)j.coilDia / 2 * U, wr = std::max(0.02f, (float)j.wire / 2 * U);
             if (buckled) {  // draw it bowed out sideways
                 Vector3 mid = Vector3Add(Vector3Scale(Vector3Add(a, b), 0.5f), {0, -cr * 2.5f, 0});
-                drawSpring(a, mid, cr, wr, sc); drawSpring(mid, b, cr, wr, sc);
-            } else drawSpring(a, b, cr, wr, sc);
+                drawCoil(ji * 3 + 1, a, mid, cr, wr, j.turns / 2, sc); drawCoil(ji * 3 + 2, mid, b, cr, wr, j.turns / 2, sc);
+            } else drawCoil(ji * 3, a, b, cr, wr, j.turns, sc);
         } else if (j.type == "magwell" && building && j.path.size() >= 2) {
             float z = frontZ(j.a) + 0.15f;
             Vector3 a = W3(j.path.front(), z), b = W3(j.path.back(), z);

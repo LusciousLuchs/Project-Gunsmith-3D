@@ -23,6 +23,7 @@ The version is set in one place, at the top of `CMakeLists.txt`.
   - The tools moved to a labelled rail down the left of the view, grouped as Draw, Shape and Join, with icons only in short windows. Undo and redo sit in the top bar, and redo is new (Ctrl+Y or Ctrl+Shift+Z).
   - Arrow keys nudge (Shift for ten times the step). The snap step can be set from off to 5 mm.
 - Joints: pin, weld, track (cam slots, rails, bushings), helical cam, locking lugs, catch, and magazine well.
+- Springs draw much faster: each one is a single mesh that is reshaped in place, one draw call instead of about 110. On the example pistols that cuts the scene from about 625 draw calls a frame to about 70. Coils now show their real number of turns with a closed coil at each end, the wire stays round and smooth as it compresses, and springs sit at the depth of the part they push instead of on the centre line.
 - Springs: coil springs need a guide rod past four diameters or they buckle, and go solid at their solid height. Leaf springs suit tight spaces.
 - Controls: buttons, levers and triggers bound to keys. A trigger must actually travel before the gun fires, and a magazine catch can be released by a drawn button.
 - Collision layers (A, B, C, and combinations) decide which parts touch.
