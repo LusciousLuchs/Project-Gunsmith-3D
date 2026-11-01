@@ -28,7 +28,7 @@ const char* malfName(Malf m) {
 }
 const char* malfAdvice(Malf m) {
     switch (m) {
-    case Malf::FailureToFeed: return "The round stuck on its way to the chamber. Check the feed ramp angle, the height of the magazine lips, and that the breech is moving fast enough to push it home.";
+    case Malf::FailureToFeed: return "The round didn't make it into the chamber. If the breech rode over it, the next round wasn't up in time: use a stronger magazine spring, or raise the lips. Also check the feed ramp angle, and that the breech moves fast enough to push the round home.";
     case Malf::DoubleFeed: return "Two rounds in the action at once. The magazine let the next round up before the first was out of the way.";
     case Malf::Stovepipe: return "The empty case didn't get clear before the breech came back. Move the ejector, enlarge the ejection port, or let the breech travel further or faster.";
     case Malf::FailureToEject: return "The empty case stayed on the breech face. Nothing kicked it off: add or move an ejector so the case hits it as the breech opens.";
@@ -259,11 +259,12 @@ static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL) {  // wher
         V2 f{std::cos(phi * D2R), -std::sin(phi * D2R)};
         headL = {(m.x - f.x * c.oal / 2 - cen.x) / 1000, (m.y - f.y * c.oal / 2 - cen.y) / 1000};
         fwdL = f;
+        headL = {headL.x + f.y * d.lipHeight / 1000, headL.y - f.x * d.lipHeight / 1000};   // up is across the feed direction
         return true;
     }
     double x0 = 1e9, x1 = -1e9, y0 = 1e9;
     for (auto& p : d.pts) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); }
-    headL = {((x0 + x1) / 2 - c.oal / 2 - cen.x) / 1000, (y0 + 1.5 + c.headDia() / 2 - cen.y) / 1000};
+    headL = {((x0 + x1) / 2 - c.oal / 2 - cen.x) / 1000, (y0 + 1.5 + c.headDia() / 2 - d.lipHeight - cen.y) / 1000};
     fwdL = {1, 0};
     return true;
 }
@@ -273,7 +274,7 @@ void cartridgeForces(Sim& S) {
     for (auto& b : S.bodies) {  // the follower spring pushes the top round up against the lips
         if (b.rs != RS::Presented || !b.mag || b.gone) continue;
         V2 f = rot(b.feedL, b.mag->a), n{f.y, -f.x};
-        double F = 10 + 0.5 * b.mag->rounds;
+        double F = (10 + 0.5 * b.mag->rounds) * (b.mag->d ? b.mag->d->magSpring : 1);
         b.fx += n.x * F; b.fy += n.y * F;
         b.mag->fx -= n.x * F; b.mag->fy -= n.y * F;
     }
@@ -453,7 +454,11 @@ void cartridgeStep(Sim& S) {
         if (clear)
             if (Body* r = newCartridge(S, {LH.x * 1000, LH.y * 1000}, false)) {
                 setState(*r, RS::Presented);
-                placeHead(*r, LH, std::atan2(f.y, f.x));
+                // it starts one round down in the stack and the follower spring has to lift it to the lips
+                // (a double stack rises about half a round at a time); a weak spring may not get it there in time
+                double step = c.headDia() / 1000 * ((M->d && M->d->gen.on && M->d->gen.stack == 2) ? 0.55 : 1.0);
+                V2 up{f.y, -f.x};
+                placeHead(*r, {LH.x - up.x * step, LH.y - up.y * step}, std::atan2(f.y, f.x));
                 r->mag = M; r->lipsL = hl; r->feedL = fl;
                 M->top = r;
             }
@@ -473,7 +478,8 @@ void cartridgeStep(Sim& S) {
                 if (s < 0) solve(b, Mg, h, {h.x - f.x * s, h.y - f.y * s}, f.x, f.y, -s);
                 h = wpt(b, {b.headLx, 0}); d = vsub(h, LH); e = vdot(d, n);
                 if (e > 0) solve(b, Mg, h, {h.x - n.x * e, h.y - n.y * e}, -n.x, -n.y, e);
-                else if (e < -0.008) solve(b, Mg, h, {h.x - n.x * (e + 0.008), h.y - n.y * (e + 0.008)}, n.x, n.y, -(e + 0.008));
+                double low = std::max(0.008, c.headDia() / 1000 + 0.002);  // as far down as the stack can be pushed
+                if (e < -low) solve(b, Mg, h, {h.x - n.x * (e + low), h.y - n.y * (e + low)}, n.x, n.y, -(e + low));
                 bool lifted = presentedContacts(S, b, f, n, s);
                 b.wasOut = true;
                 {   // held by the lips; the follower can lift it briskly but contacts can't fling it about
@@ -481,7 +487,7 @@ void cartridgeStep(Sim& S) {
                     (void)lifted;
                     V2 mv{Mg.vx, Mg.vy};
                     double dx = b.x - b.px - mv.x * H, dy = b.y - b.py - mv.y * H, dn = dx * n.x + dy * n.y;
-                    double lim = 2.5 * H;  // 2.5 m/s, about what a magazine spring manages
+                    double lim = 2.5 * H * std::sqrt(Mg.d ? Mg.d->magSpring : 1);  // 2.5 m/s, about what a standard magazine spring manages
                     double cl = std::clamp(dn, -lim, lim);
                     b.px += n.x * (dn - cl); b.py += n.y * (dn - cl);
                     double df = dx * f.x + dy * f.y;  // the lips grip it: it only moves forward while something pushes it
@@ -492,7 +498,8 @@ void cartridgeStep(Sim& S) {
                 double fwd = vdot(vsub(h, LH), f);
                 // stripped off the lips, or pushed forward into the chamber (a barrel that recoils back to sit just in
                 // front of the round doesn't count: something has to push it)
-                if (fwd > c.oal / 1000 * 0.45 || (b.inChamber && fwd > 0.002)) {
+                double release = Mg.d ? Mg.d->lipRelease : 0.45;   // the lips' grip: early release for short rounds, late for long
+                if (fwd > c.oal / 1000 * release || (b.inChamber && fwd > 0.002)) {
                     Mg.rounds--; Mg.top = nullptr; b.mag = nullptr;
                     setState(b, RS::Free);
                 }

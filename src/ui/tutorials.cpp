@@ -156,6 +156,7 @@ static const std::vector<Lesson>& lessons() {
         {"Three ways to feed", "In Firing > Feeding: a detachable magazine, a built-in supply (a simple counter), or loading by hand (a single shot).", nullptr, nullptr, 2},
         {"Magazines", "A magazine is a part with Magazine > Detachable ticked. It slides along its well (the green line), latches when pushed home, and drops free when released. Shape it around the cartridge builds the body and the well for you: capacity, single or double stack, curve."},
         {"Physical rounds", "With Physical rounds ticked, every round is a real part. The magazine holds the top round under its lips. The breech face strips it forward over the feed ramp, and it only goes in if its nose meets the chamber mouth roughly straight. Nothing is scripted: your shapes decide whether it feeds."},
+        {"Lips and spring", "Select the magazine and look under Magazine > Feed lips and spring. The spring lifts each new round from the stack up to the lips. A weak one can't get it there before the slide comes back, and the breech closes on nothing. Lips set too low let the breech face ride over the rim. The defaults feed cleanly; these are for tuning.", nullptr, nullptr, 0},
         {"Feed a round", "On the bench, drag the slide back and let it go: it strips a round from the magazine and chambers it.",
          [](const TutState& w, const TutState& n) { return n.mode == Mode::Test && n.magRounds < w.magRounds; }, "Rack the slide on the bench.", -1, 1},
     }},

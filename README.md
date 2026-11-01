@@ -169,6 +169,12 @@ It clears every jam the way a shooter would and reports the jam rate, one jam ev
 
 **Bolt handles.** A part that rotates about the bore can have a handle. In Test mode, drag the handle's knob: moving it up and down turns the bolt, and moving it along the bore pulls or pushes it, so lifting and drawing a bolt is one motion. Your hand's strength limits how hard you can turn it, so locked lugs or a stiff cam really resist.
 
+**Feed lips and magazine spring.** Under *Feed lips and spring* in a magazine's settings:
+- *Lip height* raises or lowers where the top round is held. Set it too low and the breech face rides over the rim.
+- *Spring strength* is the follower spring against a standard one. Each new top round starts one round down in the stack (half a round for a double stack) and the spring lifts it to the lips. A weak spring can't get it there before the slide comes back, so fast-cycling pistols and full-auto guns fail to feed, while a bolt action worked by hand barely notices.
+
+The defaults fit the cartridge and feed cleanly.
+
 **Magazine maker.** On a magazine part, tick *Shape it around the cartridge* and choose capacity, single or double stack, curve and wall thickness. The magazine is rebuilt to fit the cartridge, and its well follows. Set 100 rounds and 60° of curve if you like.
 
 **Cartridges.** Built in: 9x19mm, .380 ACP, .45 ACP, 5.56x45mm, 7.62x39mm and 7.62x54mmR. Open the designer from the firing system to change any dimension, bullet mass or velocity, preview the profile to scale, and save your own to `cartridges.json`. Recoil impulse is worked out from the bullet's momentum plus a share for the powder gas, and rounds are drawn as proper turned brass and copper.

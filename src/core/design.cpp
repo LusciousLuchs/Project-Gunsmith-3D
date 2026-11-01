@@ -451,6 +451,9 @@ std::string designToJson(const Design& d, bool pretty) {
         if (b.mass > 0) jb["mass"] = b.mass;
         if (b.magazine) {
             jb["magazine"] = {{"cap", b.magCap}};
+            if (b.lipHeight != 0) jb["magazine"]["lipHeight"] = b.lipHeight;
+            if (b.lipRelease != 0.45) jb["magazine"]["lipRelease"] = b.lipRelease;
+            if (b.magSpring != 1) jb["magazine"]["spring"] = b.magSpring;
             if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
         }
         if (b.rollOn) jb["roll"] = {{"on", true}, {"min", b.rollMin}, {"max", b.rollMax}, {"handle", b.handle}};
@@ -547,6 +550,9 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         if (jb.contains("magazine") && jb["magazine"].is_object()) {
             auto& m = jb["magazine"];
             b.magazine = true; b.magCap = opt<int>(m, "cap", 10);
+            b.lipHeight = std::clamp(opt<double>(m, "lipHeight", 0.0), -5.0, 5.0);
+            b.lipRelease = std::clamp(opt<double>(m, "lipRelease", 0.45), 0.1, 0.95);
+            b.magSpring = std::clamp(opt<double>(m, "spring", 1.0), 0.1, 3.0);
             if (m.contains("gen") && m["gen"].is_object()) {
                 auto& g = m["gen"];
                 b.gen.on = true; b.gen.stack = opt<int>(g, "stack", 2); b.gen.curve = opt<double>(g, "curve", 0);

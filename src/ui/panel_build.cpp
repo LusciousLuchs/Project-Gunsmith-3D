@@ -228,6 +228,24 @@ static void inspectPart(BodyDef& b) {
                 if (regen) { generateMagazine(D, A.sel.idx); editedAny = true; }
                 muted("%s, %d rounds: %s long.", D.breech.cart.name.c_str(), b.magCap, fmtQ(Q::Length, b.gen.H, 0).c_str());
             }
+            // feed lips and spring: fitted to the cartridge to start with; these nudge them (physical feeding only)
+            ImGui::Dummy({0, 4 * S()});
+            ImGui::TextDisabled("Feed lips and spring");
+            if (!D.breech.physicalFeed) muted("These only matter with Firing > Physical rounds ticked.");
+            pNumU("Lip height", b.lipHeight, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3,
+                  "Raises (+) or lowers (-) the top round from where the lips normally hold it.\n"
+                  "Too low and the breech face rides over its rim instead of pushing it (failure to feed).");
+            b.lipHeight = std::clamp(b.lipHeight, -5.0, 5.0);
+            {
+                double sp = b.magSpring * 100;
+                if (pNum("Spring strength", sp, 1, "%.0f%%", "The follower spring, against a standard one (100%).\n"
+                         "A weak spring brings the next round up slowly: a fast action or a long magazine outruns it\n"
+                         "and the breech closes on nothing (failure to feed). Pistols that cycle fast feel it first; a bolt action you work by hand barely does."))
+                    b.magSpring = std::clamp(sp / 100, 0.1, 3.0);
+            }
+            if (b.lipHeight != 0 || b.magSpring != 1) {
+                if (ImGui::Button("Reset lips and spring", {-1, 0})) { b.lipHeight = 0; b.lipRelease = 0.45; b.magSpring = 1; editedAny = true; }
+            }
         }
     }
 

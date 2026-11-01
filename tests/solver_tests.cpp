@@ -684,6 +684,30 @@ static void benchHousekeeping() {
     CHECK(before >= 2 && mid == before && cases() == 0, "spent cases are cleared after 10 seconds on the bench");
 }
 
+// Magazine springs and lips: a weak spring can't get the next round up in time; the defaults feed cleanly.
+static void magazineSprings() {
+    std::printf("Magazine springs and lips\n");
+    auto burst = [](double spring, double lips) {
+        Design d = loadPreset("tilting");
+        d.breech.ignition = "button"; d.breech.fireMode = "auto"; d.breech.autoFire = true; d.breech.cockAt = 8;
+        for (auto& b : d.bodies) if (b.magazine) { b.magSpring = spring; b.lipHeight = lips; }
+        auto S = sim::build(d); sim::run(*S, 0.003);
+        S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true);
+        sim::run(*S, 1.0);
+        return S;
+    };
+    auto good = burst(1, 0), weak = burst(0.3, 0);
+    CHECK(good->shots == 9 && good->malf == sim::Malf::None, "full-auto with a standard spring empties the magazine");
+    CHECK(weak->shots < 4 && weak->malf == sim::Malf::FailureToFeed, "a weak spring can't keep up: failure to feed");
+    Design d = loadPreset("tilting");
+    for (auto& b : d.bodies) if (b.magazine) { b.magSpring = 0.6; b.lipHeight = -0.5; }
+    Design r;
+    bool ok = designFromJson(designToJson(d), r);
+    bool same = false;
+    for (auto& b : r.bodies) if (b.magazine) same = std::fabs(b.magSpring - 0.6) < 1e-9 && std::fabs(b.lipHeight + 0.5) < 1e-9;
+    CHECK(ok && same, "spring strength and lip height survive saving");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -700,6 +724,7 @@ int main() {
     builtInFireControl();
     edgeSplitting();
     benchHousekeeping();
+    magazineSprings();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

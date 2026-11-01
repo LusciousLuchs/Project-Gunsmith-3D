@@ -51,6 +51,11 @@ struct BodyDef {
     double handle = 0;                   // bolt handle length, mm
     bool magazine = false;               // detachable magazine (rides in a magwell joint)
     int magCap = 10;                     // rounds when full
+    // feed lips and spring (physical feeding). The defaults are fitted to the cartridge; these nudge them.
+    double lipHeight = 0;                // mm the top round sits above (+) or below (-) where the lips would normally hold it
+    double lipRelease = 0.45;            // the lips let the round go once it has been pushed this far forward (fraction of its length;
+                                         // not in the panel yet: the round is also let go as soon as its nose enters the chamber)
+    double magSpring = 1;                // follower spring strength against a standard spring (1): how hard and fast rounds come up
     MagGen gen;
     // controls: parts you work with a key in Test mode (trigger, buttons, levers)
     std::string ctrl = "none";           // none, button, lever, trigger
