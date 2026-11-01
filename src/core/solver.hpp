@@ -61,6 +61,10 @@ struct Body {
     V2 lipsL, feedL;                     // presented: where its head starts and the feed direction, in the magazine's frame
     V2 clawB, clawR;                     // clawed: the extractor's grip, on the breech and on the cartridge (local, m)
     Body* top = nullptr;                 // magazines: the round held up under the lips (physical feeding)
+    double zFeed = 0;                    // presented by a double-position magazine: how far off the centre line it started (m);
+                                         // it comes into the chamber at an angle sideways
+    double zVis = 0;                     // ...and where it's drawn, easing to the centre. It collides as if centred: the example
+                                         // actions are built only as wide as a single stack (a wider action would make this real)
     double idle = 0;                     // seconds (real time) lying untouched: spent cases and empty magazines are tidied away
 };
 

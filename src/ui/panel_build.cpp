@@ -219,6 +219,15 @@ static void inspectPart(BodyDef& b) {
                 int st = b.gen.stack - 1;
                 prop("Stack");
                 if (ImGui::Combo("##stack", &st, "Single\0Double\0")) { b.gen.stack = st + 1; regen = true; }
+                if (b.gen.stack == 2) {
+                    int fp = b.doubleFeed ? 1 : 0;
+                    prop("Feeds from", "Single position: the two columns taper into one, and every round feeds from the centre.\n"
+                                       "Straight in, so short pistol rounds like it; the taper's friction costs some spring (about a fifth).\n"
+                                       "Double position: rounds feed alternately from the left and right lips.\n"
+                                       "Easy on the spring, but each round comes in at an angle sideways: fine for long rifle rounds,\n"
+                                       "marginal for 9 mm, and fat short rounds like .45 ACP may not make it into the chamber.");
+                    if (ImGui::Combo("##feedpos", &fp, "Single position (centre)\0Double position (alternating)\0")) { b.doubleFeed = fp == 1; editedAny = true; }
+                }
                 float curve = (float)b.gen.curve;
                 prop("Curve");
                 if (ImGui::SliderFloat("##curve", &curve, -15, 80, "%.0f\xc2\xb0")) { b.gen.curve = curve; regen = true; }

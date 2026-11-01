@@ -173,6 +173,8 @@ It clears every jam the way a shooter would and reports the jam rate, one jam ev
 - *Lip height* raises or lowers where the top round is held. Set it too low and the breech face rides over the rim.
 - *Spring strength* is the follower spring against a standard one. Each new top round starts one round down in the stack (half a round for a double stack) and the spring lifts it to the lips. A weak spring can't get it there before the slide comes back, so fast-cycling pistols and full-auto guns fail to feed, while a bolt action worked by hand barely notices.
 
+- *Feeds from* (double-stack magazines): *single position* tapers the two columns into one, so every round feeds from the centre, straight in. The taper's friction costs about a fifth of the spring. *Double position* feeds alternately from the left and right lips. It's easy on the spring, but each round comes in at an angle sideways: fine for long rifle rounds, marginal for 9 mm, and too steep for fat short rounds like .45 ACP. (For now the side offset is drawn but doesn't collide. The examples are only built as wide as a single stack, and a properly wide action would make it count.)
+
 The defaults fit the cartridge and feed cleanly.
 
 **Magazine maker.** On a magazine part, tick *Shape it around the cartridge* and choose capacity, single or double stack, curve and wall thickness. The magazine is rebuilt to fit the cartridge, and its well follows. Set 100 rounds and 60° of curve if you like.

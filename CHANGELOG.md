@@ -45,6 +45,9 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Feed lips and magazine spring settings on magazines:
   - Lip height: too low and the breech rides over the rim.
   - Spring strength: new top rounds rise from the stack under the spring, so a weak spring causes failures to feed in fast actions. With a 30% spring, the blowback example jams 23 times in 40 rounds and the bolt action never does.
+  - Single- or double-position feed for double-stack magazines:
+    - Single position feeds every round from the centre, but the taper costs about 20% of the spring.
+    - Double position alternates sides. Each round enters the chamber at a sideways angle, which only becomes a problem for short, fat rounds.
   - The defaults are unchanged and feed cleanly.
 - Long sessions no longer run out of room. Every fired round used to take a new slot until the bench stopped feeding: after about 95 shots, a false failure to feed. Removed rounds, cases and magazines now free their slot.
 

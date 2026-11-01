@@ -706,6 +706,31 @@ static void magazineSprings() {
     bool same = false;
     for (auto& b : r.bodies) if (b.magazine) same = std::fabs(b.magSpring - 0.6) < 1e-9 && std::fabs(b.lipHeight + 0.5) < 1e-9;
     CHECK(ok && same, "spring strength and lip height survive saving");
+    // double stack: single position feeds from the centre, double position alternately from each side
+    auto doubleStack = [](bool dbl) {
+        Design d = loadPreset("tilting");
+        for (size_t i = 0; i < d.bodies.size(); i++) if (d.bodies[i].magazine) { d.bodies[i].gen.stack = 2; d.bodies[i].magCap = 15; d.bodies[i].doubleFeed = dbl; generateMagazine(d, (int)i); }
+        return d;
+    };
+    for (int dbl = 0; dbl < 2; dbl++) {
+        auto S = sim::build(doubleStack(dbl)); sim::run(*S, 0.003);
+        bool left = false, right = false, centre = false;
+        int shots = 0;
+        for (int k = 0; k < 4; k++) {
+            for (auto& b : S->bodies) if (b.isRound && !b.gone && b.rs == sim::RS::Presented) { if (b.zFeed > 0) right = true; else if (b.zFeed < 0) left = true; else centre = true; }
+            S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true);
+            sim::run(*S, 0.06);
+            S->pressed = false; S->trigger = false; sim::setKey(*S, "fire", false);
+            sim::run(*S, 0.25);
+            shots = S->shots;
+        }
+        if (dbl) CHECK(left && right && !centre && shots == 4, "double position: rounds come from both sides, and it feeds");
+        else CHECK(centre && !left && !right && shots == 4, "single position: every round comes from the centre, and it feeds");
+    }
+    Design dd = doubleStack(true), rr;
+    bool fb = false;
+    if (designFromJson(designToJson(dd), rr)) for (auto& b : rr.bodies) if (b.magazine) fb = b.doubleFeed;
+    CHECK(fb, "double-position feed survives saving");
 }
 
 int main() {

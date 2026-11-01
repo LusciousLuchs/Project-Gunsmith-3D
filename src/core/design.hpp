@@ -56,6 +56,8 @@ struct BodyDef {
     double lipRelease = 0.45;            // the lips let the round go once it has been pushed this far forward (fraction of its length;
                                          // not in the panel yet: the round is also let go as soon as its nose enters the chamber)
     double magSpring = 1;                // follower spring strength against a standard spring (1): how hard and fast rounds come up
+    bool doubleFeed = false;             // double stack: feed alternately from each side (double position) instead of
+                                         // tapering to one central round (single position)
     MagGen gen;
     // controls: parts you work with a key in Test mode (trigger, buttons, levers)
     std::string ctrl = "none";           // none, button, lever, trigger

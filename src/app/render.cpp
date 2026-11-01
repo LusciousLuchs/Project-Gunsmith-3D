@@ -516,7 +516,7 @@ void drawScene() {
     if (A.S) for (auto& b : A.S->bodies) {
         if (!b.isRound || b.gone) continue;
         V2 h = sim::wpt(b, {b.headLx, 0}), t = sim::wpt(b, {b.headLx + 0.001, 0});
-        float z = (float)(b.z * 1000) * U;  // cases fly out sideways through the port
+        float z = (float)((b.z + b.zVis) * 1000) * U;  // cases fly out sideways through the port; double-position feed comes in from the side
         Vector3 o = W3({h.x * 1000, h.y * 1000}, z), o2 = W3({t.x * 1000, t.y * 1000}, z);
         drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)), b.isCase, &b == A.hover ? 1.3f : 1.f);
     }

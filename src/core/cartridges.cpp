@@ -107,6 +107,7 @@ void cartridgeSetup(Sim& S) {
 
 static void setState(Body& b, RS s) {
     b.rs = s;
+    if (s == RS::Loose || s == RS::Staged) { b.zFeed = 0; b.zVis = 0; }  // out of the feed path: no longer coming in from the side
     b.loose = s == RS::Loose;
     b.staged = s == RS::Staged;
 }
@@ -158,6 +159,9 @@ int looseRounds(const Sim& S) {
 static void retire(Sim& S, Body& b) { retireBody(S, b); }
 
 static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL);
+static bool doubleStack(const Body& M) { return M.d && M.d->gen.on && M.d->gen.stack == 2; }
+// The spring's effective strength: a double stack tapering to one central round (single position) loses some to friction.
+static double springOf(const Body& M) { return M.d ? M.d->magSpring * (doubleStack(M) && !M.d->doubleFeed ? 0.8 : 1.0) : 1.0; }
 
 bool magLoadPoint(const Sim& S, const Body& M, V2& w) {  // the middle of a round sitting at the feed lips
     V2 hl, fl;
@@ -274,7 +278,7 @@ void cartridgeForces(Sim& S) {
     for (auto& b : S.bodies) {  // the follower spring pushes the top round up against the lips
         if (b.rs != RS::Presented || !b.mag || b.gone) continue;
         V2 f = rot(b.feedL, b.mag->a), n{f.y, -f.x};
-        double F = (10 + 0.5 * b.mag->rounds) * (b.mag->d ? b.mag->d->magSpring : 1);
+        double F = (10 + 0.5 * b.mag->rounds) * springOf(*b.mag);
         b.fx += n.x * F; b.fy += n.y * F;
         b.mag->fx -= n.x * F; b.mag->fy -= n.y * F;
     }
@@ -289,7 +293,13 @@ static void chamberContacts(Sim& S, Body& r, const BoreLine& L) {
     double ta = vdot(vsub(tip, L.face), u), tl = vdot(vsub(tip, L.face), p);
     double ra = std::fabs(std::remainder(r.a - std::atan2(u.y, u.x), 2 * 3.14159265358979323846));
     if (!r.inChamber) {  // the nose has to arrive at the mouth, roughly straight, to go in
-        if (ta > -0.001 && ta < 0.004 && std::fabs(tl) < chamberRadius(S, std::max(0.0, ta)) + 0.0008 && ra < 12 * D2R) r.inChamber = true;  // at the mouth
+        // a round fed from one side of a double-position magazine also comes in at an angle sideways: steep for a short
+        // pistol round, gentle for a long rifle round
+        double side = r.zFeed != 0 ? std::atan2(std::fabs(r.zFeed), (r.isCase ? c.caseLen : c.oal) / 1000 * 0.75) : 0;
+        if (ta > -0.001 && ta < 0.004 && std::fabs(tl) < chamberRadius(S, std::max(0.0, ta)) + 0.0008 && std::hypot(ra, side) < 12 * D2R) {
+            r.inChamber = true;  // at the mouth
+            r.zFeed = 0; r.zVis = 0;
+        }
     } else if (vdot(vsub(tip, L.face), u) < -0.0005) r.inChamber = false;  // pulled back out
     (void)head;
     for (auto& s : r.samples) {
@@ -456,9 +466,13 @@ void cartridgeStep(Sim& S) {
                 setState(*r, RS::Presented);
                 // it starts one round down in the stack and the follower spring has to lift it to the lips
                 // (a double stack rises about half a round at a time); a weak spring may not get it there in time
-                double step = c.headDia() / 1000 * ((M->d && M->d->gen.on && M->d->gen.stack == 2) ? 0.55 : 1.0);
+                double step = c.headDia() / 1000 * (doubleStack(*M) ? 0.55 : 1.0);
                 V2 up{f.y, -f.x};
                 placeHead(*r, {LH.x - up.x * step, LH.y - up.y * step}, std::atan2(f.y, f.x));
+                if (doubleStack(*M) && M->d->doubleFeed) {  // double position: the top round sits to one side, alternating
+                    r->zFeed = c.headDia() / 1000 * 0.43 * ((M->rounds % 2) ? 1 : -1);
+                    r->zVis = r->zFeed;   // drawn off to the side; it still collides as if centred (see zVis)
+                }
                 r->mag = M; r->lipsL = hl; r->feedL = fl;
                 M->top = r;
             }
@@ -487,15 +501,16 @@ void cartridgeStep(Sim& S) {
                     (void)lifted;
                     V2 mv{Mg.vx, Mg.vy};
                     double dx = b.x - b.px - mv.x * H, dy = b.y - b.py - mv.y * H, dn = dx * n.x + dy * n.y;
-                    double lim = 2.5 * H * std::sqrt(Mg.d ? Mg.d->magSpring : 1);  // 2.5 m/s, about what a standard magazine spring manages
+                    double lim = 2.5 * H * std::sqrt(springOf(Mg));  // 2.5 m/s, about what a standard magazine spring manages
                     double cl = std::clamp(dn, -lim, lim);
                     b.px += n.x * (dn - cl); b.py += n.y * (dn - cl);
                     double df = dx * f.x + dy * f.y;  // the lips grip it: it only moves forward while something pushes it
                     b.px += f.x * df * 0.2; b.py += f.y * df * 0.2;
                 }
                 h = wpt(b, {b.headLx, 0});
-                if (pass == 0) chamberContacts(S, b, L);  // only to notice the nose entering the chamber mouth
                 double fwd = vdot(vsub(h, LH), f);
+                if (b.zFeed != 0) b.zVis = b.zFeed * std::clamp(1 - fwd / (c.oal / 1000 * 0.75), 0.0, 1.0);  // the lips steer it in
+                if (pass == 0) chamberContacts(S, b, L);  // only to notice the nose entering the chamber mouth
                 // stripped off the lips, or pushed forward into the chamber (a barrel that recoils back to sit just in
                 // front of the round doesn't count: something has to push it)
                 double release = Mg.d ? Mg.d->lipRelease : 0.45;   // the lips' grip: early release for short rounds, late for long
@@ -552,6 +567,7 @@ void cartridgeStep(Sim& S) {
                 }
                 bool inGun = b.z - b.zh < S.gunZmax && b.z + b.zh > S.gunZmin && b.x > S.gunBox[0] - 0.02 && b.x < S.gunBox[2] + 0.02 &&
                              b.y > S.gunBox[1] - 0.02 && b.y < S.gunBox[3] + 0.02;  // fell or flew clear of the gun
+                if (b.zVis != 0) b.zVis *= std::max(0.0, 1 - 40 * H);  // still being steered in
                 if (inGun) { chamberContacts(S, b, L); partContacts(S, b); }
                 else setState(b, RS::Loose);  // out through the port: it keeps flying sideways onto the bench
                 b.grounded = false;
