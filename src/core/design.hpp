@@ -14,12 +14,28 @@ struct Cartridge {
     double bulletMass = 7.45;   // g
     double velocity = 360;      // m/s, nominal
     bool rimmed = false;
+    // the bullet's shape. "auto" is the original generic ogive, kept so older blueprints behave as they always did.
+    std::string nose = "auto";          // auto, spitzer, round, flat, hollow, wadcutter, semiwad, ball, custom
+    double meplat = 0;                  // flat tip, as a fraction of the bullet's diameter (0 = sharp)
+    double tailLen = 0, tailDia = 0.8;  // boat tail: length (mm) and base diameter as a fraction of the bullet's
+    double seat = 0;                    // how deep the bullet sits in the case (mm); 0 = a usual depth for the case
+    std::vector<V2> custom;             // nose "custom": the outline drawn by hand, (mm from the bullet's base, radius mm)
+    bool massFromShape = false;         // work the weight out from the shape (jacketed lead) instead of typing it
     double headDia() const { return rimDia > baseDia ? rimDia : baseDia; }
     double impulse() const { return bulletMass / 1000.0 * velocity * 1.35; }  // N*s, bullet plus a share for the gas
     double energy() const { return 0.5 * bulletMass / 1000.0 * velocity * velocity; }  // J
 };
 const std::vector<Cartridge>& cartridgePresets();
 std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly = false);  // side view, head at x = 0, axis along +x at y = 0 (mm)
+// The bullet's half outline, (mm from the cartridge head, radius mm), from its base to its tip; it may turn back in
+// at the tip (a hollow point). Empty for "auto", which keeps the original shape.
+std::vector<V2> bulletShape(const Cartridge& c);
+double bulletBase(const Cartridge& c);                     // where the bullet's base sits, mm from the head
+double bulletShapeMass(const Cartridge& c);                // grams of jacketed lead in that shape
+double ballisticCoefficient(const Cartridge& c);           // G1, estimated from the shape and weight
+const char* noseStyles();                                  // "\0"-separated names for the shapes, in nose-id order
+const char* noseId(int i);
+int noseIndex(const std::string& id);
 double cartridgeMass(const Cartridge& c);                   // loaded round, grams (bullet + brass estimate)
 std::vector<Cartridge> loadUserCartridges();                 // cartridges.json next to the program
 bool saveUserCartridges(const std::vector<Cartridge>& list);

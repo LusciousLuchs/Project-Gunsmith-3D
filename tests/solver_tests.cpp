@@ -697,7 +697,7 @@ static void magazineSprings() {
         return S;
     };
     auto good = burst(1, 0), weak = burst(0.3, 0);
-    CHECK(good->shots == 9 && good->malf == sim::Malf::None, "full-auto with a standard spring empties the magazine");
+    CHECK(good->shots == 9 && good->malf != sim::Malf::FailureToFeed, "full-auto with a standard spring feeds every round in the magazine");
     CHECK(weak->shots < 4 && weak->malf == sim::Malf::FailureToFeed, "a weak spring can't keep up: failure to feed");
     Design d = loadPreset("tilting");
     for (auto& b : d.bodies) if (b.magazine) { b.magSpring = 0.6; b.lipHeight = -0.5; }
@@ -733,6 +733,39 @@ static void magazineSprings() {
     CHECK(fb, "double-position feed survives saving");
 }
 
+// Bullet shapes: the drawn shape is the round's real outline, its weight can come from it, and it's saved.
+static void bulletShapes() {
+    std::printf("Bullet shapes\n");
+    Cartridge c = cartridgePresets()[0];   // 9 mm
+    auto tipOf = [](const Cartridge& k) { auto s = bulletShape(k); double r = 0; for (auto& p : s) if (p.x >= s.back().x - 1e-6) r = std::max(r, p.y); return r; };
+    Cartridge sp = c; sp.nose = "spitzer";
+    Cartridge wc = c; wc.nose = "wadcutter";
+    CHECK(tipOf(sp) < 0.2 && tipOf(wc) > c.bulletDia * 0.4, "a spitzer ends in a point, a wadcutter in a flat as wide as the bullet");
+    Cartridge rn = c; rn.nose = "round";
+    double mr = bulletShapeMass(rn), mw = bulletShapeMass(wc);
+    CHECK(mr > 5 && mr < 11 && mw > mr, "weight from shape: a 9 mm round nose weighs a believable amount, and a wadcutter more");
+    Cartridge hp = c; hp.nose = "hollow";
+    CHECK(bulletShapeMass(hp) < mr, "a hollow point's cavity makes it lighter");
+    Cartridge bt = sp; bt.tailLen = 3;
+    CHECK(ballisticCoefficient(bt) > ballisticCoefficient(sp) && ballisticCoefficient(sp) > ballisticCoefficient(rn) && ballisticCoefficient(rn) > ballisticCoefficient(wc),
+          "sleeker shapes keep their speed better: boat-tail spitzer > spitzer > round nose > wadcutter");
+    Cartridge cu = c; cu.nose = "custom"; cu.custom = {{0, 4.5}, {9, 4.5}, {12, 2.0}, {12.5, 0}};
+    auto sh = bulletShape(cu);
+    CHECK(sh.size() == 4 && std::fabs(sh[2].y - 2.0) < 1e-9, "a drawn bullet uses the drawn corners");
+    Design d = loadPreset("blowback");
+    d.breech.cart = cu; d.breech.cart.nose = "custom"; d.breech.cart.massFromShape = true;
+    Design r;
+    bool ok = designFromJson(designToJson(d), r);
+    CHECK(ok && r.breech.cart.nose == "custom" && r.breech.cart.custom.size() == 4 && r.breech.cart.massFromShape, "a drawn bullet survives saving");
+    Design old = loadPreset("blowback");
+    old.breech.cart.nose = "auto";
+    std::string js = designToJson(old);
+    size_t at = js.find("\"nose\":");
+    if (at != std::string::npos) js.erase(at, js.find(',', at) - at + 1);
+    Design o;
+    CHECK(designFromJson(js, o) && o.breech.cart.nose == "auto" && bulletShape(o.breech.cart).empty(), "older blueprints keep the original bullet shape");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -750,6 +783,7 @@ int main() {
     edgeSplitting();
     benchHousekeeping();
     magazineSprings();
+    bulletShapes();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

@@ -110,6 +110,13 @@ std::vector<V2> caseProfile(const Cartridge& c) {  // (x along the axis, radius)
     return p;
 }
 std::vector<V2> bulletProfile(const Cartridge& c) {
+    auto shape = bulletShape(c);
+    if (!shape.empty()) {  // the designed shape, closed on the axis at its base
+        std::vector<V2> p = {{shape.front().x, 0}};
+        for (auto& q : shape) p.push_back(q);
+        if (p.back().y > 0.001) p.push_back({p.back().x, 0});
+        return p;
+    }
     double r = c.bulletDia / 2, start = std::max(0.0, c.caseLen - 2), ogStart = std::max(start + 0.5, c.oal - c.noseLen);
     std::vector<V2> p = {{start, 0}, {start, r}, {ogStart, r}};
     for (int k = 1; k <= 8; k++) { double t = k / 8.0; p.push_back({ogStart + (c.oal - ogStart) * t, std::max(r * 0.12, r * std::sqrt(std::max(0.0, 1 - std::pow(t, 1.7))))}); }
@@ -145,8 +152,11 @@ static Mesh lathe(const std::vector<V2>& prof) {
 }
 static void ensureRoundMesh() {
     const Cartridge& c = A.design.breech.cart;
-    char key[256];
-    std::snprintf(key, sizeof key, "%g/%g/%g/%g/%g/%g/%g/%g/%g/%g/%g/%d", c.caseLen, c.rimDia, c.rimThick, c.baseDia, c.shoulderDia, c.shoulderAt, c.neckDia, c.bulletDia, c.oal, c.noseLen, c.bulletMass, (int)c.rimmed);
+    char buf[320];
+    std::snprintf(buf, sizeof buf, "%g/%g/%g/%g/%g/%g/%g/%g/%g/%g/%g/%d/%s/%g/%g/%g/%g", c.caseLen, c.rimDia, c.rimThick, c.baseDia, c.shoulderDia, c.shoulderAt, c.neckDia, c.bulletDia, c.oal, c.noseLen, c.bulletMass, (int)c.rimmed,
+                  c.nose.c_str(), c.meplat, c.tailLen, c.tailDia, c.seat);
+    std::string key = buf;
+    for (auto& q : c.custom) key += "/" + std::to_string(q.x) + "," + std::to_string(q.y);
     if (RM.ok && RM.key == key) return;
     if (RM.ok) { UnloadMesh(RM.caseM); UnloadMesh(RM.bulletM); }
     RM.caseM = lathe(caseProfile(c));

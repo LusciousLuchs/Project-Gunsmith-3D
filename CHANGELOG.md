@@ -55,6 +55,15 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Thirteen guided lessons, from the main menu or the graduation-cap button. They cover the camera, drawing and shaping parts, depth and collisions, joints, springs, breech and cartridge, feeding, extraction and ejection, fire control, locking and operating systems, the bench, reliability testing, and the map editor.
 - Each lesson opens an example and walks through it in steps. Steps tick themselves off when you do what they ask, and you can always skip ahead. Finished lessons are remembered.
 
+### Ammo designer
+- Bullet shapes:
+  - spitzer, round nose, flat nose, hollow point, wadcutter, semi-wadcutter, round ball
+  - **custom**: drag the outline's corners in the preview
+- Shape options: a flat tip, a boat tail, and how deep the bullet is seated.
+- The shape is the round's physical outline, so it can change how a gun feeds.
+- *Weight from shape* (as jacketed lead), and an estimated ballistic coefficient.
+- Older blueprints and the built-in cartridges keep the classic shape.
+
 ### Map editor and first person
 - **Map editor** on the main menu: build ranges out of brushes, early-2000s Radiant style.
   - Tools: box, ramp, cylinder and stairs, plus move, resize by dragging faces, clip, make hollow, turn, mirror, duplicate, and undo/redo.

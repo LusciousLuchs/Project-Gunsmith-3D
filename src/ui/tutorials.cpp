@@ -151,6 +151,7 @@ static const std::vector<Lesson>& lessons() {
         {"Breech face and muzzle", "The breech face (red marker) is where the cartridge head sits against the breech. The muzzle is the end of the bore. The bore runs between them, and rounds feed and fire along it. Use Place breech face / Place muzzle to move them.", nullptr, nullptr, 2},
         {"In battery", "The gun only fires in battery: with the breech and barrel back where you drew them, closed on a chambered round. Anything else, and pulling the trigger does nothing."},
         {"Cartridges", "Pick a cartridge, or click ... to open the cartridge designer and make your own: case, rim, shoulder, bullet weight and velocity. Recoil is worked out from the bullet's momentum plus a share for the powder gas, so a hotter round kicks the slide harder.", nullptr, nullptr, 2},
+        {"Bullet shapes", "In the cartridge designer, Shape picks the bullet: spitzer, round nose, flat nose, hollow point, wadcutter, round ball, or Custom, where you drag the outline's corners yourself. The shape is the round's real outline, so it's what meets the feed ramp. A sharp point can fail to feed where a round nose slides in."},
     }},
     {"feeding", "Feeding and magazines", "How rounds get from the magazine into the chamber.", "blowback", {
         {"Three ways to feed", "In Firing > Feeding: a detachable magazine, a built-in supply (a simple counter), or loading by hand (a single shot).", nullptr, nullptr, 2},

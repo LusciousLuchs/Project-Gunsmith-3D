@@ -25,7 +25,10 @@ template <class T> static T opt(const json& j, const char* k, T def) {
 static json cartToJson(const Cartridge& c) {
     return {{"name", c.name}, {"caseLen", c.caseLen}, {"rimDia", c.rimDia}, {"rimThick", c.rimThick}, {"baseDia", c.baseDia},
             {"shoulderDia", c.shoulderDia}, {"shoulderAt", c.shoulderAt}, {"neckDia", c.neckDia}, {"bulletDia", c.bulletDia},
-            {"oal", c.oal}, {"noseLen", c.noseLen}, {"bulletMass", c.bulletMass}, {"velocity", c.velocity}, {"rimmed", c.rimmed}};
+            {"oal", c.oal}, {"noseLen", c.noseLen}, {"bulletMass", c.bulletMass}, {"velocity", c.velocity}, {"rimmed", c.rimmed},
+            {"nose", c.nose}, {"meplat", c.meplat}, {"tailLen", c.tailLen}, {"tailDia", c.tailDia}, {"seat", c.seat},
+            {"custom", [&] { json a = json::array(); for (auto& q : c.custom) a.push_back({q.x, q.y}); return a; }()},
+            {"massFromShape", c.massFromShape}};
 }
 static Cartridge cartFromJson(const json& j) {
     Cartridge c;
@@ -37,6 +40,15 @@ static Cartridge cartFromJson(const json& j) {
     c.oal = opt<double>(j, "oal", c.oal); c.noseLen = opt<double>(j, "noseLen", c.noseLen);
     c.bulletMass = opt<double>(j, "bulletMass", c.bulletMass); c.velocity = opt<double>(j, "velocity", c.velocity);
     c.rimmed = opt<bool>(j, "rimmed", c.rimmed);
+    c.nose = opt<std::string>(j, "nose", "auto");   // older cartridges keep the original shape
+    if (noseIndex(c.nose) == 0) c.nose = "auto";
+    c.meplat = std::clamp(opt<double>(j, "meplat", 0.0), 0.0, 0.95);
+    c.tailLen = std::max(0.0, opt<double>(j, "tailLen", 0.0)); c.tailDia = std::clamp(opt<double>(j, "tailDia", 0.8), 0.3, 1.0);
+    c.seat = std::max(0.0, opt<double>(j, "seat", 0.0));
+    if (j.contains("custom") && j["custom"].is_array())
+        for (auto& q : j["custom"]) if (q.is_array() && q.size() >= 2) c.custom.push_back({q[0].get<double>(), q[1].get<double>()});
+    c.massFromShape = opt<bool>(j, "massFromShape", false);
+    if (c.massFromShape) c.bulletMass = bulletShapeMass(c);
     return c;
 }
 static Cartridge mk(const char* n, double caseLen, double rim, double rimT, double base, double shDia, double shAt, double neck,
@@ -47,6 +59,106 @@ static Cartridge mk(const char* n, double caseLen, double rim, double rimT, doub
     return c;
 }
 // Nominal published dimensions; bullet weights and velocities are typical loads, not a reloading reference.
+// ---------------------------------------------------------------- bullet shapes
+static const char* NOSE_IDS[] = {"auto", "spitzer", "round", "flat", "hollow", "wadcutter", "semiwad", "ball", "custom"};
+const char* noseStyles() { return "Classic\0Spitzer\0Round nose\0Flat nose\0Hollow point\0Wadcutter\0Semi-wadcutter\0Round ball\0Custom (drawn)\0"; }
+const char* noseId(int i) { return NOSE_IDS[std::clamp(i, 0, 8)]; }
+int noseIndex(const std::string& id) { for (int i = 0; i < 9; i++) if (id == NOSE_IDS[i]) return i; return 0; }
+double bulletBase(const Cartridge& c) {
+    if (c.nose == "ball") return std::max(0.0, c.oal - c.bulletDia);
+    double seat = c.seat > 0 ? c.seat : c.bulletDia * (c.shoulderAt < c.caseLen - 0.5 ? 1.1 : 0.55);  // bottleneck cases seat deeper
+    return std::clamp(c.caseLen - seat, 0.5, c.oal - 1.0);
+}
+std::vector<V2> bulletShape(const Cartridge& c) {
+    std::vector<V2> p;
+    if (c.nose == "auto") return p;
+    // the nose starts no further back than the case mouth: inside the case the bullet is full width
+    double R = c.bulletDia / 2, xb = bulletBase(c), tip = c.oal, L = std::clamp(c.noseLen, 0.3, std::max(0.3, tip - std::max(xb, c.caseLen) - 0.2));
+    double m = std::clamp(c.meplat, 0.0, 0.95) * R;
+    if (c.nose == "custom" && c.custom.size() >= 2) {
+        for (auto& q : c.custom) p.push_back({xb + q.x, std::max(0.0, q.y)});
+        return p;
+    }
+    if (c.nose == "ball") {  // a sphere: the whole bullet is the "nose"
+        for (int k = 0; k <= 16; k++) { double a = PI_ * k / 16; p.push_back({xb + R - R * std::cos(a), R * std::sin(a)}); }
+        return p;
+    }
+    // base, with an optional boat tail
+    double tl = std::clamp(c.tailLen, 0.0, (tip - xb) * 0.4);
+    if (tl > 0.05) { p.push_back({xb, R * std::clamp(c.tailDia, 0.3, 1.0)}); p.push_back({xb + tl, R}); }
+    else p.push_back({xb, R});
+    double xn = tip - L;   // where the nose begins
+    const int N = 10;
+    if (c.nose == "spitzer") {  // a tangent ogive, cut off at the flat tip
+        double rho = (L * L + R * R) / (2 * R);
+        p.push_back({xn, R});
+        for (int k = 1; k <= N; k++) {
+            double x = L * k / N, r = std::sqrt(std::max(0.0, rho * rho - x * x)) + R - rho;  // x from the nose's start: R there, 0 at the tip
+            if (r <= m) { p.push_back({xn + x, m}); break; }
+            p.push_back({xn + x, r});
+        }
+        if (p.back().y > 0.01) p.push_back({p.back().x, 0});
+    } else if (c.nose == "round" || c.nose == "hollow") {  // an elliptical round nose (a hollow point is blunter, with a cavity)
+        double mm = c.nose == "hollow" ? std::max(m, 0.45 * R) : m;
+        p.push_back({xn, R});
+        for (int k = 1; k <= N; k++) {
+            double x = L * k / N, r = R * std::sqrt(std::max(0.0, 1 - (x / L) * (x / L)));
+            if (r <= mm) { p.push_back({xn + x, mm}); break; }
+            p.push_back({xn + x, r});
+        }
+        if (c.nose == "hollow") {  // the cavity
+            double depth = std::min(L * 0.6, mm * 1.6), xt = p.back().x;
+            p.push_back({xt, mm * 0.7}); p.push_back({xt - depth, mm * 0.35}); p.push_back({xt - depth, 0});
+        } else if (p.back().y > 0.01) p.push_back({p.back().x, 0});
+    } else if (c.nose == "flat") {  // a truncated cone
+        double mm = std::max(m, 0.55 * R);
+        p.push_back({xn, R}); p.push_back({tip, mm}); p.push_back({tip, 0});
+    } else if (c.nose == "wadcutter") {  // full diameter to a sharp-edged flat front
+        p.push_back({tip - 0.3, R}); p.push_back({tip, R * 0.92}); p.push_back({tip, 0});
+    } else if (c.nose == "semiwad") {  // a full-width shoulder, then a cone to a wide flat
+        double sh = std::min(L * 0.25, 1.5), mm = std::max(m, 0.6 * R);
+        p.push_back({xn, R}); p.push_back({xn + sh * 0.3, R * 0.86}); p.push_back({tip, mm}); p.push_back({tip, 0});
+    } else {
+        p.push_back({tip, R}); p.push_back({tip, 0});
+    }
+    return p;
+}
+double bulletShapeMass(const Cartridge& c) {
+    auto p = bulletShape(c);
+    if (p.size() < 2) return c.bulletMass;
+    double v = 0;   // volume of revolution (mm^3); a cavity runs backwards along the axis and subtracts itself
+    for (size_t i = 0; i + 1 < p.size(); i++) {
+        double h = p[i + 1].x - p[i].x, r1 = p[i].y, r2 = p[i + 1].y;
+        v += PI_ * h / 3 * (r1 * r1 + r1 * r2 + r2 * r2);
+    }
+    return std::max(0.05, v * 0.0109);   // jacketed lead, about 10.9 g/cm^3
+}
+double ballisticCoefficient(const Cartridge& c) {
+    double d = c.bulletDia / 25.4, lb = c.bulletMass / 453.592;
+    if (d <= 0) return 0;
+    double sd = lb / (d * d);   // sectional density
+    double i;                   // form factor against the G1 standard bullet: lower is sleeker
+    double cal = c.noseLen / std::max(0.1, c.bulletDia);   // nose length in calibres
+    const std::string& n = c.nose;
+    if (n == "spitzer") i = std::clamp(1.15 - 0.22 * cal, 0.45, 1.0) * (1 + 0.6 * c.meplat);
+    else if (n == "round" || n == "auto") i = 1.0;
+    else if (n == "hollow") i = 1.1;
+    else if (n == "flat") i = 1.2 + 0.4 * std::max(c.meplat, 0.55);
+    else if (n == "wadcutter") i = 2.0;
+    else if (n == "semiwad") i = 1.45;
+    else if (n == "ball") i = 1.5;
+    else {  // drawn: from how long and how pointed its front is
+        auto p = bulletShape(c);
+        double R = c.bulletDia / 2, start = c.oal, tipR = 0;
+        for (auto& q : p) if (q.y < R * 0.98 && q.x > bulletBase(c) + 0.3) { start = std::min(start, q.x); }
+        if (!p.empty()) tipR = p.back().y > 0 ? p.back().y : (p.size() >= 2 ? p[p.size() - 2].y : 0);
+        double fin = (c.oal - start) / std::max(0.1, c.bulletDia);
+        i = std::clamp(1.2 - 0.22 * fin + 0.8 * tipR / std::max(R, 0.01), 0.45, 2.2);
+    }
+    if (c.tailLen > 0.05 && n != "ball" && n != "custom") i *= 0.92;   // a boat tail
+    return sd / i;
+}
+
 std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
     // (x along the axis, radius) from the head to the bullet tip, then mirrored for the underside
     double rim = c.rimDia / 2, base = c.baseDia / 2, sh = c.shoulderDia / 2, neck = c.neckDia / 2, bul = c.bulletDia / 2;
@@ -58,16 +170,50 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
     if (sAt < c.caseLen - 0.5) top.push_back({std::min(c.caseLen - 0.3, sAt + (sh - neck) * 1.6 + 0.3), neck});
     top.push_back({c.caseLen, caseOnly ? neck : std::max(neck, bul)});
     if (caseOnly) top.push_back({c.caseLen, neck * 0.82});  // the empty mouth
-    double bodyEnd = std::max(c.caseLen, c.oal - ogive);
-    if (!caseOnly) top.push_back({bodyEnd, bul});
-    for (int k = 1; k <= 4 && !caseOnly; k++) {  // ogive
-        double t = k / 4.0;
-        top.push_back({bodyEnd + ogive * t, bul * std::sqrt(std::max(0.0, 1 - t * t * 0.92))});
+    auto shape = caseOnly ? std::vector<V2>{} : bulletShape(c);
+    if (!shape.empty()) {  // the drawn shape, from where it leaves the case mouth (a ball can stand proud of a short case)
+        double mouth = c.caseLen;
+        bool started = false;
+        for (size_t i = 0; i < shape.size(); i++) {
+            if (shape[i].x <= mouth + 1e-6 && !started) continue;
+            if (!started && i > 0) {  // where the outline crosses the mouth
+                V2 a = shape[i - 1], b = shape[i];
+                double t = b.x > a.x ? (mouth - a.x) / (b.x - a.x) : 0;
+                top.push_back({mouth, a.y + (b.y - a.y) * std::clamp(t, 0.0, 1.0)});
+            }
+            started = true;
+            top.push_back(shape[i]);
+        }
+        if (!started) top.push_back({c.oal, 0});
+        // Real tips are never needle sharp, and a needle point would slide under a feed ramp instead of riding up it:
+        // the outline that collides stops where the nose is down to about a quarter of the bullet's width.
+        double minTip = bul * 0.28;
+        for (size_t i = 1; i < top.size(); i++)
+            if (top[i].x >= mouth && top[i].y < minTip && top[i - 1].y >= minTip) {
+                V2 a = top[i - 1], b = top[i];
+                double t = (a.y - minTip) / std::max(1e-9, a.y - b.y);
+                double xc = a.x + (b.x - a.x) * t;
+                bool cavity = false;   // a hollow point's mouth is a real flat front: keep it
+                for (size_t k = i; k < top.size(); k++) if (top[k].x < top[k - 1].x - 1e-6) cavity = true;
+                if (!cavity) { top.resize(i); top.push_back({xc, minTip}); top.push_back({std::max(xc, c.oal - 0.05), minTip * 0.6}); }
+                break;
+            }
+    } else {
+        double bodyEnd = std::max(c.caseLen, c.oal - ogive);
+        if (!caseOnly) top.push_back({bodyEnd, bul});
+        for (int k = 1; k <= 4 && !caseOnly; k++) {  // ogive
+            double t = k / 4.0;
+            top.push_back({bodyEnd + ogive * t, bul * std::sqrt(std::max(0.0, 1 - t * t * 0.92))});
+        }
     }
     std::vector<V2> out;
     for (auto& p : top) out.push_back({p.x, -p.y});
-    for (int k = (int)top.size() - 1; k >= 0; k--) out.push_back({top[k].x, top[k].y});
-    return out;
+    for (int k = (int)top.size() - 1; k >= 0; k--)
+        if (top[k].y > 1e-6) out.push_back({top[k].x, top[k].y});   // a point on the axis (a sharp tip) only once
+    // and no zero-length edges anywhere
+    std::vector<V2> clean;
+    for (auto& p : out) if (clean.empty() || std::hypot(p.x - clean.back().x, p.y - clean.back().y) > 1e-4) clean.push_back(p);
+    return clean;
 }
 double cartridgeMass(const Cartridge& c) {
     const double brass = 0.0085;  // g per mm^3
@@ -76,6 +222,9 @@ double cartridgeMass(const Cartridge& c) {
 }
 
 const std::vector<Cartridge>& cartridgePresets() {
+    // The built-in rounds keep the classic bullet shape for now. The example guns' feed geometry is marginal
+    // (rounds reach the chamber too steeply), and sharper real shapes tip some scripted hand-cycling into jams.
+    // Polish the examples, then give these their real shapes (round nose for the pistol rounds, spitzers for rifles).
     static std::vector<Cartridge> v = {
         mk("9x19mm", 19.15, 9.96, 1.27, 9.93, 9.65, 19.15, 9.65, 9.01, 29.69, 7.5, 7.45, 360, false),
         mk(".380 ACP", 17.30, 9.50, 1.10, 9.50, 9.50, 17.30, 9.50, 9.02, 25.00, 6.0, 6.15, 290, false),

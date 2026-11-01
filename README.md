@@ -179,6 +179,20 @@ The defaults fit the cartridge and feed cleanly.
 
 **Magazine maker.** On a magazine part, tick *Shape it around the cartridge* and choose capacity, single or double stack, curve and wall thickness. The magazine is rebuilt to fit the cartridge, and its well follows. Set 100 rounds and 60° of curve if you like.
 
+**Bullet shapes.** In the cartridge designer, pick a shape:
+- spitzer
+- round nose
+- flat nose
+- hollow point
+- wadcutter
+- semi-wadcutter
+- round ball
+- **custom**, which turns the current shape into corners you drag around the preview (double-click an edge to add a corner, right-click to remove one)
+
+Spitzers and other pointed shapes can have a flat tip. Most shapes can have a boat tail, and you can set how deep the bullet is seated.
+
+The shape is the round's real outline, so it's what meets the feed ramp and chamber mouth. In a gun with tight feed geometry, a sharp spitzer can fail where a blunt nose feeds. *Weight from shape* works the weight out as jacketed lead, and the designer estimates a G1 ballistic coefficient for the firing range to come. The built-in cartridges keep the classic shape for now, until the example guns' feeding is polished to suit real shapes.
+
 **Cartridges.** Built in: 9x19mm, .380 ACP, .45 ACP, 5.56x45mm, 7.62x39mm and 7.62x54mmR. Open the designer from the firing system to change any dimension, bullet mass or velocity, preview the profile to scale, and save your own to `cartridges.json`. Recoil impulse is worked out from the bullet's momentum plus a share for the powder gas, and rounds are drawn as proper turned brass and copper.
 
 ## Examples
