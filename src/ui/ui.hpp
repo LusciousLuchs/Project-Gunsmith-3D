@@ -40,6 +40,7 @@ void toolbar();
 void toolRail();
 void tutorialsWindow();   // the list of lessons
 void tutorialPanel();     // the lesson in progress, over the view
+void tutAnchor(const char* id);   // marks the last widget drawn, so a tutorial step can point at it
 int tutorialsDoneCount();
 void startTutorial(int lesson);   // (also used by automated screenshots)
 void openExample(const char* key, const char* msg);   // open an example design (undo brings back the old one)

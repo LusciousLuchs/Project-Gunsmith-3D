@@ -60,11 +60,16 @@ static void inspectPart(BodyDef& b) {
 
     if (section("Part", true)) {
         pCheck("Fixed", b.fixed, "Fixed parts are the frame: they don't move.");
+        tutAnchor("part:fixed");
         bool solid = b.layer != "none";
-        if (pCheck("Solid", solid, "Solid parts push on each other wherever they overlap, in the side view and in depth.\nParts that aren't solid (grip panels, covers) pass through everything."))
+        bool solidHit = pCheck("Solid", solid, "Solid parts push on each other wherever they overlap, in the side view and in depth.\nParts that aren't solid (grip panels, covers) pass through everything.");
+        tutAnchor("part:solid");
+        if (solidHit)
             b.layer = solid ? "ABC" : "none";
         pNumU("Thickness", b.thick, 1, Q::Length);
+        tutAnchor("part:thickness");
         pNumU("Depth", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, positive is the near side.\nParts only touch where their depths overlap.");
+        tutAnchor("part:depth");
         if (!b.fixed) {
             double area = std::fabs(sim::polyArea(b.pts)), autoMass = area * b.thick * 7.85e-3;
             pNumU("Mass", b.mass, 10, Q::PartMass, -1, "0 works it out from the shape, as steel.");
@@ -100,7 +105,9 @@ static void inspectPart(BodyDef& b) {
         }
         float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
         ImGui::BeginDisabled(edges.empty());
-        if (ImGui::Button(edges.size() > 1 ? "Split edges" : "Split edge", {w2, 0})) {
+        bool splitHit = ImGui::Button(edges.size() > 1 ? "Split edges" : "Split edge", {w2, 0});
+        tutAnchor("shape:split");
+        if (splitHit) {
             std::vector<int> made;
             for (int k = (int)edges.size() - 1; k >= 0; k--) {
                 int nv = splitEdge(b, edges[k]);
@@ -128,6 +135,7 @@ static void inspectPart(BodyDef& b) {
             if (ImGui::InputDouble("##allr", &d, 0, 0, fmt)) allR = std::max(0.0, fromDisp(Q::Length, d));
         }
         ImGui::SameLine(); if (ImGui::Button("All", {bw, 0})) { for (auto& r : b.rad) r = allR; editedAny = true; }
+        tutAnchor("shape:round");
         ImGui::SameLine(); if (ImGui::Button("Sharp", {bw, 0})) { for (auto& r : b.rad) r = 0; for (auto& q : b.bulge) q = 0; editedAny = true; }
         prop("Smoothness", "Rounds the edges where the sides meet the front and back faces, like a grip, a stock\n"
                            "or a dehorned slide. 100% makes the part round across its thickness.\n"
@@ -135,6 +143,7 @@ static void inspectPart(BodyDef& b) {
         float sm = (float)(b.smooth * 100);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::SliderFloat("##smooth", &sm, 0, 100, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)) { b.smooth = sm / 100.0; editedAny = true; }
+        tutAnchor("shape:smooth");
         if (tipHover()) ImGui::SetTooltip("Drag, or Ctrl+click to type a value.");
     }
 
@@ -244,6 +253,7 @@ static void inspectPart(BodyDef& b) {
             pNumU("Lip height", b.lipHeight, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3,
                   "Raises (+) or lowers (-) the top round from where the lips normally hold it.\n"
                   "Too low and the breech face rides over its rim instead of pushing it (failure to feed).");
+            tutAnchor("mag:lips");
             b.lipHeight = std::clamp(b.lipHeight, -5.0, 5.0);
             {
                 double sp = b.magSpring * 100;
@@ -251,6 +261,7 @@ static void inspectPart(BodyDef& b) {
                          "A weak spring brings the next round up slowly: a fast action or a long magazine outruns it\n"
                          "and the breech closes on nothing (failure to feed). Pistols that cycle fast feel it first; a bolt action you work by hand barely does."))
                     b.magSpring = std::clamp(sp / 100, 0.1, 3.0);
+                tutAnchor("mag:spring");
             }
             if (b.lipHeight != 0 || b.magSpring != 1) {
                 if (ImGui::Button("Reset lips and spring", {-1, 0})) { b.lipHeight = 0; b.lipRelease = 0.45; b.magSpring = 1; editedAny = true; }
@@ -445,6 +456,7 @@ static void firingTab() {
         if (tipHover()) ImGui::SetTooltip("The barrel, or whatever holds the chamber.");
         float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
         if (ImGui::Button("Place breech face", {w2, 0})) setTool(Tool::Face);
+        tutAnchor("firing:breechface");
         ImGui::SameLine(); if (ImGui::Button("Place muzzle", {w2, 0})) setTool(Tool::Muzzle);
     }
     if (section("Cartridge", true)) {
@@ -464,6 +476,7 @@ static void firingTab() {
         }
         ImGui::SameLine();
         if (ImGui::Button("...", {bw, 0})) { A.editCart = br.cart; A.showCartDesigner = true; }
+        tutAnchor("firing:cartridge");
         if (tipHover()) ImGui::SetTooltip("Open the cartridge designer");
         muted("%s at %s, %s", fmtQ(Q::BulletMass, br.cart.bulletMass).c_str(), fmtQ(Q::Velocity, br.cart.velocity).c_str(), fmtQ(Q::Energy, br.cart.energy()).c_str());
         pCheck("Recoil from it", br.cartImpulse, "Works the recoil impulse out from the bullet and powder gas.");
@@ -477,6 +490,7 @@ static void firingTab() {
         for (int i = 0; i < 3; i++) if (br.feedMode == modes[i]) fm = i;
         prop("Feeds from");
         if (ImGui::Combo("##feed", &fm, "Detachable magazine\0Built-in supply\0Loaded by hand\0")) { br.feedMode = modes[fm]; editedAny = true; }
+        tutAnchor("firing:feeding");
         if (fm == 0 && !hasWell) warn("No magazine yet: select a part and tick Magazine > Detachable.");
         if (fm == 1) { prop("Rounds"); ImGui::DragInt("##rounds", &br.rounds, 0.2f, 0, 1000); markEdit(); }
         pCheck("Physical rounds", br.physicalFeed, "Every round and case is a real part: the magazine lips, feed ramp, chamber,\nextractor, ejector and port you draw decide whether it feeds and ejects.");
@@ -489,7 +503,9 @@ static void firingTab() {
         prop("Hammer / striker", "Built in: no parts to draw. It still has to be cocked by the action, so the bolt or slide\n"
                                  "must open far enough between shots.\nDrawn parts: you design the hammer or striker, sear and disconnector\n"
                                  "yourself, and it fires when your part hits the primer hard enough.");
-        if (ImGui::Combo("##ign", &ig, "Built in\0Drawn parts (advanced)\0")) {
+        bool igHit = ImGui::Combo("##ign", &ig, "Built in\0Drawn parts (advanced)\0");
+        tutAnchor("firing:control");
+        if (igHit) {
             br.ignition = ig ? "striker" : "button";
             if (!ig && br.cockAt <= 0) br.cockAt = std::min(10.0, std::max(2.0, br.feed * 0.5));
             editedAny = true;
@@ -579,7 +595,9 @@ void buildPanel() {
     if (!envTab) { envTab = true; if (std::getenv("GUNSMITH_TAB")) gPanelTab = std::atoi(std::getenv("GUNSMITH_TAB")); }  // (automated screenshots)
     auto tabFlag = [&](int i) { if (gPanelTab == i) { gPanelTab = -1; return (int)ImGuiTabItemFlags_SetSelected; } return 0; };
     if (ImGui::BeginTabBar("##designtabs", ImGuiTabBarFlags_FittingPolicyResizeDown)) {
-        if (ImGui::BeginTabItem("Inspect", nullptr, (newSel ? ImGuiTabItemFlags_SetSelected : 0) | tabFlag(0))) {
+        bool inspOpen = ImGui::BeginTabItem("Inspect", nullptr, (newSel ? ImGuiTabItemFlags_SetSelected : 0) | tabFlag(0));
+        tutAnchor("tab:Inspect");
+        if (inspOpen) {
             ImGui::BeginChild("##inspect", {0, 0});
             if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) inspectPart(D.bodies[A.sel.idx]);
             else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) inspectJoint(D.joints[A.sel.idx]);
@@ -591,9 +609,12 @@ void buildPanel() {
             ImGui::EndChild();
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Outline", nullptr, tabFlag(1))) { outlineTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Firing", nullptr, tabFlag(2))) { ImGui::BeginChild("##firing", {0, 0}); firingTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("File", nullptr, tabFlag(3))) { ImGui::BeginChild("##file", {0, 0}); fileTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        bool outOpen = ImGui::BeginTabItem("Outline", nullptr, tabFlag(1)); tutAnchor("tab:Outline");
+        if (outOpen) { outlineTab(); ImGui::EndTabItem(); }
+        bool fireOpen = ImGui::BeginTabItem("Firing", nullptr, tabFlag(2)); tutAnchor("tab:Firing");
+        if (fireOpen) { ImGui::BeginChild("##firing", {0, 0}); firingTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        bool fileOpen = ImGui::BeginTabItem("File", nullptr, tabFlag(3)); tutAnchor("tab:File");
+        if (fileOpen) { ImGui::BeginChild("##file", {0, 0}); fileTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::PopItemWidth();

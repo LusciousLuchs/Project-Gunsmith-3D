@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -99,6 +100,7 @@ void mapToolbar() {
     if (iconBtn(ICON_FA_FLOPPY_DISK, "Save (Ctrl+S)")) meSave();
     gap(8);
     if (accentButton(ICON_FA_PERSON_WALKING "  Walk", true, {104 * S(), sz})) meWalk(IsKeyDown(KEY_LEFT_SHIFT));
+    tutAnchor("map:walk");
     if (tipHover()) ImGui::SetTooltip("Walk the map from the player start (F5).\nShift: start where the camera is.");
     ImGui::End();
 }
@@ -334,7 +336,9 @@ void mapPanel() {
         if (forced == -2) { const char* e = std::getenv("GUNSMITH_MAPTAB"); forced = e ? std::atoi(e) : -1; }
         for (int i = 0; i < 4; i++) {
             ImGuiTabItemFlags fl = (forced == i) ? ImGuiTabItemFlags_SetSelected : 0;
-            if (ImGui::BeginTabItem(names[i], nullptr, fl)) { tab = i; ImGui::EndTabItem(); }
+            bool tabOpen = ImGui::BeginTabItem(names[i], nullptr, fl);
+            tutAnchor((std::string("map:") + names[i]).c_str());
+            if (tabOpen) { tab = i; ImGui::EndTabItem(); }
         }
         forced = -1;
         ImGui::EndTabBar();

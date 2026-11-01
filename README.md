@@ -58,7 +58,11 @@ Saved to `gunsmith3d_settings.json` next to the game. None of them change how a 
 - reliability testing
 - building a range in the map editor
 
-Each lesson opens an example to work on (Undo brings your own design back) and walks through it step by step. Steps that ask you to do something tick themselves off when you do it, and you can always skip ahead. Finished lessons are remembered.
+Each lesson opens an example to work on (Undo brings your own design back) and walks through it one small step at a time:
+- A glowing outline points at the button or setting each step is about.
+- Steps about a part select it, so you can see it.
+- When a step asks you to do something, it moves on by itself once you've done it.
+- You can always go back or skip. Finished lessons are remembered.
 
 ## Two modes
 

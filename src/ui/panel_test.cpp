@@ -73,6 +73,7 @@ static void reliabilitySection() {
     if (ImGui::Combo("##relcount", &ci, "25 rounds\0" "50 rounds\0" "100 rounds\0" "200 rounds\0")) REL.rounds = counts[ci];
     ImGui::SameLine();
     if (ImGui::Button("Run reliability test")) relStart();
+    tutAnchor("bench:reliability");
     if (tipHover())
         ImGui::SetTooltip("Fires the design over and over with the differences real shooting has: ammunition a little hot\n"
                           "or weak, a clean or dirty action, a firm or loose grip. Every jam is cleared the way you would\n"
@@ -170,7 +171,9 @@ void testPanel() {
     reliabilitySection();
 
     // ---- bench conditions and the controls, folded away
-    if (section("Bench", false)) {
+    bool benchOpen = section("Bench", false);
+    tutAnchor("bench:section");
+    if (benchOpen) {
         {
             float hd = (float)toDisp(Q::Force, A.handN), lo = (float)toDisp(Q::Force, 20), hi = (float)toDisp(Q::Force, 600);
             char fmt[24]; std::snprintf(fmt, sizeof fmt, "%%.0f %s", unitOf(Q::Force));
@@ -181,6 +184,7 @@ void testPanel() {
             ImGui::Button("Hold to release magazine");
             A.releaseBtnHeld = A.releaseBtnHeld || ImGui::IsItemActive();
             ImGui::SameLine(); if (ImGui::Button("New magazine")) spawnSpareMag();
+            tutAnchor("bench:newmag");
             if (ImGui::Button("Top up magazines")) topUpMagazines();
             if (tipHover()) ImGui::SetTooltip("Fills every magazine, in the gun and on the bench.\nTo load one round at a time, drag a loose round onto the top of a magazine that's out of the gun.");
         }

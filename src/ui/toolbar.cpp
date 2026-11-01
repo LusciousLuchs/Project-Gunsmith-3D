@@ -107,6 +107,7 @@ static void railButton(const RailTool& t, float w, float h, bool labels) {
     bool on = A.tool == t.t;
     ImGui::PushID(t.label);
     bool click = ImGui::InvisibleButton("##t", {w, h});
+    tutAnchor((std::string("tool:") + t.label).c_str());
     bool hov = ImGui::IsItemHovered(), held = ImGui::IsItemActive();
     ImVec2 a = ImGui::GetItemRectMin(), c = ImGui::GetItemRectMax();
     auto* dl = ImGui::GetWindowDrawList();
@@ -182,8 +183,10 @@ void toolbar() {
     float sz = TOOLBAR_H - 14 * CFG.uiScale;
     if (!A.benchOnly) {
         if (accentButton("Designer", b, {0, sz})) setMode(Mode::Build);
+        tutAnchor("mode:designer");
         ImGui::SameLine(0, 2);
         if (accentButton("Test bench", !b, {0, sz})) setMode(Mode::Test);
+        tutAnchor("mode:test");
         gap(18);
     } else {
         ImGui::AlignTextToFramePadding();
@@ -193,6 +196,7 @@ void toolbar() {
     if (b) {
         ImGui::BeginDisabled(A.hist.empty());
         if (iconButton(ICON_FA_ROTATE_LEFT, "Undo (Ctrl+Z)")) undo();
+        tutAnchor("undo");
         ImGui::EndDisabled();
         ImGui::SameLine(0, 2);
         ImGui::BeginDisabled(A.future.empty());
@@ -218,6 +222,7 @@ void toolbar() {
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.66f, 0.19f, 0.13f, 1));
         ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.85f, 0.32f, 0.2f, 1));
         ImGui::Button("FIRE", {72 * CFG.uiScale, sz});
+        tutAnchor("fire");
         if (ImGui::IsItemActivated()) fireDown();
         A.fireBtnHeld = ImGui::IsItemActive();
         ImGui::PopStyleColor(3);
@@ -238,11 +243,15 @@ void toolbar() {
     }
     gap(4);
     if (iconButton(ICON_FA_CUBE, A.ortho ? "3D view (V)" : "Side view (V)", A.ortho)) A.ortho = !A.ortho;
+    tutAnchor("view:side");
     gap(4);
     if (iconButton(ICON_FA_EXPAND, "Fit the view (F)")) fitView();
+    tutAnchor("view:fit");
     gap(4);
     if (iconButton(ICON_FA_EYE, "X-ray: see-through parts drawn as ghosts (X)", A.xray)) A.xray = !A.xray;
+    tutAnchor("view:xray");
     gap(4);
     if (iconButton(ICON_FA_LAYER_GROUP, "Cutaway: near-side parts drawn as ghosts (C)", A.cutaway)) A.cutaway = !A.cutaway;
+    tutAnchor("view:cutaway");
     ImGui::End();
 }

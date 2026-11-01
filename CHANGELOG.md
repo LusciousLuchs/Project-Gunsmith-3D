@@ -53,7 +53,11 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 
 ### Tutorials
 - Thirteen guided lessons, from the main menu or the graduation-cap button. They cover the camera, drawing and shaping parts, depth and collisions, joints, springs, breech and cartridge, feeding, extraction and ejection, fire control, locking and operating systems, the bench, reliability testing, and the map editor.
-- Each lesson opens an example and walks through it in steps. Steps tick themselves off when you do what they ask, and you can always skip ahead. Finished lessons are remembered.
+- Each lesson opens an example and walks through it in short steps:
+  - A glowing outline points at the button or setting each step is about.
+  - Steps about a part select it in the view.
+  - A step moves on by itself once you've done what it asks.
+  - Progress dots show where you are. You can go back or skip, and finished lessons are remembered.
 
 ### Ammo designer
 - Bullet shapes:
