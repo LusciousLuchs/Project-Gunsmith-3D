@@ -126,7 +126,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         if (S.magTmpl) {
             Body* M = seatedMag(S);
             if (!M || M->rounds == 0) { quickReload(S); R.reloads++; run(S, 0.1); }
-        }
+        } else if (Body* M = seatedMag(S); M && M->rounds == 0) { fillMagazines(S); R.reloads++; }   // a built-in magazine: fill it in place
         run_.cycle();
     };
     auto clear = [&]() -> bool {  // open, pick out what's stuck, let it close on a fresh round
@@ -135,6 +135,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
             run_.pickOut(tries > 0);
             if (R.singleLoad) run_.loadByHand();
             else if (S.magTmpl) { Body* M = seatedMag(S); if (!M || M->rounds == 0) { quickReload(S); R.reloads++; } }
+            else if (Body* M = seatedMag(S); M && M->rounds == 0) { fillMagazines(S); R.reloads++; }
             run_.close();
             if (std::getenv("GUNSMITH_RELDEBUG")) {
                 Body* M = seatedMag(S);

@@ -49,6 +49,11 @@ The version is set in one place, at the top of `CMakeLists.txt`.
     - Single position feeds every round from the centre, but the taper costs about 20% of the spring.
     - Double position alternates sides. Each round enters the chamber at a sideways angle, which only becomes a problem for short, fat rounds.
   - The defaults are unchanged and feed cleanly.
+- Magazines of any shape:
+  - Any part can be a **removable** or a **built-in** magazine. Built-in ones (internal boxes, tubes) are loaded in place, by hand or topped up, and the reliability test refills them in place.
+  - **Round path:** draw the path rounds follow inside the magazine. They sit side by side (a box) or nose to tail (a tube), and the top round is fed from its first point.
+  - **Insertion path:** a removable magazine's well can have bends and a tilt at each point, for magazines that rock in, and the magazine follows it in and out.
+  - A selected magazine stays see-through, so you can see its rounds.
 - Long sessions no longer run out of room. Every fired round used to take a new slot until the bench stopped feeding: after about 95 shots, a false failure to feed. Removed rounds, cases and magazines now free their slot.
 
 ### Tutorials

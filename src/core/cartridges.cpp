@@ -160,12 +160,13 @@ static void retire(Sim& S, Body& b) { retireBody(S, b); }
 
 static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL);
 static bool doubleStack(const Body& M) { return M.d && M.d->gen.on && M.d->gen.stack == 2; }
+static bool tubeMag(const Body& M) { return M.d && M.d->roundStyle == "line" && M.d->roundPath.size() >= 2; }   // rounds nose to tail
 // The spring's effective strength: a double stack tapering to one central round (single position) loses some to friction.
 static double springOf(const Body& M) { return M.d ? M.d->magSpring * (doubleStack(M) && !M.d->doubleFeed ? 0.8 : 1.0) : 1.0; }
 
 bool magLoadPoint(const Sim& S, const Body& M, V2& w) {  // the middle of a round sitting at the feed lips
     V2 hl, fl;
-    if (!M.isMag || !M.d || !magLips(S, M, hl, fl)) return false;
+    if (!(M.isMag || M.builtInMag) || !M.d || !magLips(S, M, hl, fl)) return false;
     const Cartridge& c = S.design.breech.cart;
     V2 f = {fl.x * std::cos(M.a) - fl.y * std::sin(M.a), fl.x * std::sin(M.a) + fl.y * std::cos(M.a)};
     V2 head = wpt(M, hl);
@@ -179,7 +180,8 @@ static bool loadIntoMagazine(Sim& S, Body& r) {
     const Cartridge& c = S.design.breech.cart;
     Joint* J = magwell(S);
     for (auto& M : S.bodies) {
-        if (!M.isMag || M.gone || !M.d || (J && J->A == &M) || M.rounds >= M.d->magCap) continue;
+        if (!(M.isMag || M.builtInMag) || M.gone || !M.d || M.rounds >= M.d->magCap) continue;
+        if (M.isMag && J && J->A == &M) continue;   // a removable magazine is loaded out of the gun; a built-in one in place
         V2 mid;
         if (!magLoadPoint(S, M, mid)) continue;
         if (std::hypot(r.x - mid.x, r.y - mid.y) > std::max(0.010, c.oal / 2000)) continue;
@@ -257,6 +259,24 @@ static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL) {  // wher
     const BodyDef& d = *M.d;
     const Cartridge& c = S.design.breech.cart;
     V2 cen = centroidOf(d);
+    if (d.roundPath.size() >= 2) {  // the round path you drew: the top round sits at its first point
+        V2 p0 = d.roundPath[0], p1 = d.roundPath[1];
+        double dx = p1.x - p0.x, dy = p1.y - p0.y, l = std::hypot(dx, dy);
+        V2 u = l > 0 ? V2{dx / l, dy / l} : V2{0, 1};
+        V2 up{-u.x * d.lipHeight, -u.y * d.lipHeight};   // raising the lips moves it back towards the feed end
+        if (d.roundStyle == "line") {   // nose to tail: its head at the mouth, its nose pointing into the tube
+            headL = {(p0.x + up.x - cen.x) / 1000, (p0.y + up.y - cen.y) / 1000};
+            fwdL = u;
+        } else {                        // side by side: across the path, pointing at the muzzle
+            V2 f{-u.y, u.x};
+            const BreechDef& br = S.design.breech;
+            double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0;
+            if (f.x * mx + f.y * my < 0) f = {-f.x, -f.y};
+            headL = {(p0.x + up.x - f.x * c.oal / 2 - cen.x) / 1000, (p0.y + up.y - f.y * c.oal / 2 - cen.y) / 1000};
+            fwdL = f;
+        }
+        return true;
+    }
     if (d.gen.on) {
         double dia = c.headDia() * 1.02, phi;
         V2 m = magCentre(d.gen, 3 + dia / 2, &phi);
@@ -451,7 +471,7 @@ void cartridgeStep(Sim& S) {
     Body* M = seatedMag(S);
     for (auto& b : S.bodies)  // a magazine leaving the gun takes its top round with it
         if (b.rs == RS::Presented && b.mag && (b.mag != M)) { b.mag->top = nullptr; b.mag = nullptr; retire(S, b); }
-    if (M && M->rounds > 0 && !M->top) {
+    if (M && M->rounds > 0 && !M->top && !tubeMag(*M)) {
         V2 hl, fl;
         magLips(S, *M, hl, fl);
         V2 LH = wpt(*M, hl), f = rot(fl, M->a);
@@ -605,7 +625,7 @@ void cartridgeStep(Sim& S) {
         bool caseBack = S.spent;
         for (auto& b : S.bodies)  // an empty case still in the action, on the extractor or lying loose in it: it never got out
             if (b.isCase && !b.gone && (b.rs == RS::Clawed || b.rs == RS::Free)) caseBack = true;
-        Malf m = caseBack ? Malf::FailureToEject : (!S.chambered && Mg && Mg->rounds > 0) ? Malf::FailureToFeed : Malf::None;
+        Malf m = caseBack ? Malf::FailureToEject : (!S.chambered && !S.inTransit && Mg && Mg->rounds > 0) ? Malf::FailureToFeed : Malf::None;
         if (m != Malf::None && S.malf == Malf::None && S.breechSprung) {
             S.malf = m; S.malfCount[(int)m]++;
             S.events.push_back({Ev::Malfunction, S.t});

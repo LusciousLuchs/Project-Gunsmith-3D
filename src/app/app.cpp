@@ -166,12 +166,12 @@ void spawnBenchRound(bool quiet) {
     toast("No room left on the bench. Pick some rounds up or restart.");
 }
 void topUpMagazines() {
-    if (!A.S || !A.S->magTmpl) { toast("This design has no detachable magazine."); return; }
+    if (!A.S || !sim::seatedMag(*A.S)) { toast("This design has no magazine."); return; }
     int n = sim::fillMagazines(*A.S);
     toast(n ? TextFormat("Topped up the magazines (%d round%s).", n, n == 1 ? "" : "s") : "The magazines are already full.");
 }
 void spawnSpareMag() {
-    if (!A.S || !A.S->magTmpl) { toast("This design has no detachable magazine."); return; }
+    if (!A.S || !A.S->magTmpl) { toast("This design has no removable magazine to swap."); return; }
     auto* J = sim::magwell(*A.S);
     V2 ex = J ? V2{sim::wpt(*J->B, J->path.back()).x * 1000, sim::wpt(*J->B, J->path.back()).y * 1000} : V2{0, 0};
     V2 c = centroidOf(*A.S->magTmpl);
@@ -197,7 +197,8 @@ const char* TOOL_HINT[] = {
     "Click where the finger presses this control.",
     "Click the tip of the striker or firing pin.",
     "Drag a line across a part to cut it into pieces.",
-    "Drag the mirror axis. A mirrored copy of the selected part appears across it."};
+    "Drag the mirror axis. A mirrored copy of the selected part appears across it.",
+    "Click along the inside of the magazine, starting where rounds are fed from. Enter (or a double-click) finishes."};
 void setTool(Tool t) {
     if (A.mode == Mode::Test) setMode(Mode::Build);
     A.tool = t; A.drafting = false; A.draft.clear(); A.draftHasF = false;

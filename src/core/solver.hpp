@@ -41,7 +41,8 @@ struct Body {
     std::vector<V2> lp0;                 // outline at roll 0 (local, m)
     double z0 = 0, zh0 = 0, axisDy = 0, axisDz = 0;  // depth at roll 0; this part's centre relative to the bolt's axis (m)
     double rollShaped = 0;               // roll the current outline was built for
-    bool isMag = false;                  // detachable magazine
+    bool isMag = false;                  // removable magazine
+    bool builtInMag = false;             // a built-in magazine (internal box, tube): feeds the gun, loaded in place
     bool loose = false;                  // free body under gravity (dropped magazine)
     bool grounded = false;
     int rounds = 0;                      // magazines: rounds inside
@@ -72,6 +73,7 @@ enum class JT { Pin, Weld, Track, Spring, Cam, Lug, Latch, Magwell };
 enum class LatchState { Armed, Hold, Released };
 
 struct Joint {
+    std::vector<double> pathAng;         // magwell: the magazine's tilt at each path point (rad)
     const JointDef* j = nullptr;
     int defIndex = -1;
     JT type = JT::Pin;

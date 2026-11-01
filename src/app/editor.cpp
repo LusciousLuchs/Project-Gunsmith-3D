@@ -13,6 +13,7 @@
 void moveBody(int i, double dx, double dy) {
     BodyDef& d = A.design.bodies[i];
     for (auto& p : d.pts) { p.x += dx; p.y += dy; }
+    for (auto& p : d.roundPath) { p.x += dx; p.y += dy; }
     auto mv = [&](V2& p) { p.x += dx; p.y += dy; };
     for (auto& j : A.design.joints) {
         if ((j.type == "pin" || j.type == "weld") && j.a == d.id) mv(j.p);
@@ -69,6 +70,15 @@ void finishBody() {
         commit();
     }
     A.drafting = false; A.draft.clear(); A.tool = Tool::Select;
+}
+void finishRoundPath() {
+    auto& D = A.design;
+    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && D.bodies[A.sel.idx].magazine && A.draft.size() >= 2) {
+        D.bodies[A.sel.idx].roundPath = A.draft;
+        commit();
+        toast("Round path set. Drag its points to adjust it.");
+    } else if (A.draft.size() < 2) toast("A round path needs at least two points.");
+    A.draft.clear(); A.drafting = false; A.tool = Tool::Select;
 }
 void finishTrack() {
     if (A.draftHasF && A.draft.size() >= 2) {
@@ -135,6 +145,11 @@ void buildInput(bool overUI) {
             j.kind = "coil"; j.coilDia = 6; j.wire = 0.8; j.turns = std::max(4.0, std::round(j.rest / 5));
             A.design.joints.push_back(j); A.sel = {2, (int)A.design.joints.size() - 1, -1};
             A.draftHasF = false; commit(); A.tool = Tool::Select;
+            return;
+        }
+        case Tool::RoundPath: {
+            if (dbl && A.draft.size() >= 2) { finishRoundPath(); return; }
+            A.draft.push_back(w); A.drafting = true;
             return;
         }
         case Tool::Track: {
@@ -330,11 +345,12 @@ void buildInput(bool overUI) {
                 }
                 else if (h.kind == 1) A.design.joints[h.i].p = p;
                 else if (h.kind == 2) A.design.joints[h.i].path[h.v] = p;
+                else if (h.kind == 8 && h.i < (int)A.design.bodies.size() && h.v < (int)A.design.bodies[h.i].roundPath.size()) A.design.bodies[h.i].roundPath[h.v] = p;
                 else if (h.kind == 3) A.design.joints[h.i].pa = p;
                 else if (h.kind == 4) A.design.joints[h.i].pb = p;
                 else if (h.kind == 5) br.face = p;
                 else if (h.kind == 6) br.muzzle = p;
-                if (h.kind != 0 && h.kind != 7) A.dragMoved = true;
+                if (h.kind != 0 && h.kind != 7) A.dragMoved = true;   // (kind 8: a magazine's round path point)
             }
         } else {
             if (A.dragMoved) commit();

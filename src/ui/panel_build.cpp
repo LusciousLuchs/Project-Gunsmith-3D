@@ -188,27 +188,77 @@ static void inspectPart(BodyDef& b) {
     }
 
     if (section("Magazine", b.magazine)) {
-        bool wasMag = b.magazine;
-        pCheck("Detachable", b.magazine, "A magazine you can drop out and swap. It slides along its well (the green line).");
-        if (b.magazine && !wasMag) { if (b.fixed) b.fixed = false; if (magwellIndex(b.id) < 0) makeMagwell(b); b.ghost = true; }
-        if (!b.magazine && wasMag) {
+        int kind = !b.magazine ? 0 : b.magFixed ? 2 : 1, wasKind = kind;
+        prop("Magazine", "Removable: you swap it. It slides in and out along its insertion path (the green line).\n"
+                         "Built in: part of the gun, like an internal box or a tube. You load it in place,\n"
+                         "a round at a time (drag rounds to its feed end) or topped up (T on the bench).");
+        if (ImGui::Combo("##magkind", &kind, "Not a magazine\0Removable\0Built in\0")) editedAny = true;
+        tutAnchor("mag:kind");
+        if (kind != wasKind) {
             std::string id = b.id;
-            D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.type == "magwell" && j.a == id; }), D.joints.end());
+            auto dropWell = [&] { D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.type == "magwell" && j.a == id; }), D.joints.end()); };
+            if (kind == 0) { b.magazine = false; b.magFixed = false; dropWell(); }
+            else if (kind == 1) { b.magazine = true; b.magFixed = false; if (b.fixed) b.fixed = false; if (magwellIndex(b.id) < 0) makeMagwell(b); b.ghost = true; }
+            else { b.magazine = true; b.magFixed = true; b.fixed = true; dropWell(); }
         }
         if (b.magazine) {
             prop("Capacity");
             ImGui::DragInt("##cap", &b.magCap, 0.2f, 1, 200, "%d rounds"); markEdit();
             b.magCap = std::clamp(b.magCap, 1, 200);
+            {   // how the rounds sit inside: along a path you draw, side by side or nose to tail
+                int st = b.roundStyle == "line" ? 1 : 0;
+                prop("Rounds sit", "Side by side: stacked across the path, like a box magazine.\n"
+                                   "Nose to tail: one behind another along the path, like a tube under a barrel.");
+                if (ImGui::Combo("##rstyle", &st, "Side by side\0Nose to tail\0")) { b.roundStyle = st ? "line" : "side"; editedAny = true; }
+                if (b.roundPath.size() >= 2)
+                    muted("Round path: %d points. Drag them in the view. The first is where rounds are fed from.", (int)b.roundPath.size());
+                else
+                    muted(st ? "Draw the path the rounds follow, starting at the mouth." : "Laid out automatically. Draw a path to arrange them yourself, starting where the top round sits.");
+                float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+                if (ImGui::Button("Draw the round path", {b.roundPath.empty() ? -1.f : w2, 0})) {
+                    A.tool = Tool::RoundPath; A.draft.clear(); A.drafting = true; A.draftHasF = false;
+                    toast("Click along the inside of the magazine, starting at the feed end. Enter to finish.");
+                }
+                tutAnchor("mag:roundpath");
+                if (!b.roundPath.empty()) { ImGui::SameLine(); if (ImGui::Button("Automatic", {w2, 0})) { b.roundPath.clear(); editedAny = true; } }
+                if (st == 1 && D.breech.physicalFeed)
+                    muted("For now a tube feeds the simple way: the round reaches the chamber once the action opens far enough. Feeding through a carrier you draw comes next.");
+            }
             int mi = magwellIndex(b.id);
             if (mi >= 0 && D.joints[mi].path.size() >= 2) {
                 auto& j = D.joints[mi];
                 double dx = j.path.back().x - j.path.front().x, dy = j.path.back().y - j.path.front().y;
                 double travel = std::hypot(dx, dy), ang = std::atan2(dx, dy) / DEG2RAD, t0 = travel, a0 = ang;
-                pNumU("Drop-out travel", travel, 1, Q::Length);
-                pNum("Well angle", ang, 1, "%.1f\xc2\xb0", "0 is straight down.");
-                if (travel != t0 || ang != a0) {
-                    travel = std::max(5.0, travel);
-                    j.path = {j.path.front(), {j.path.front().x + travel * std::sin(ang * DEG2RAD), j.path.front().y + travel * std::cos(ang * DEG2RAD)}};
+                if (j.pathAng.size() != j.path.size()) j.pathAng.resize(j.path.size(), 0.0);
+                if (j.path.size() == 2) {   // a straight path: its length and angle
+                    pNumU("Drop-out travel", travel, 1, Q::Length);
+                    pNum("Well angle", ang, 1, "%.1f\xc2\xb0", "0 is straight down.");
+                    if (travel != t0 || ang != a0) {
+                        travel = std::max(5.0, travel);
+                        j.path = {j.path.front(), {j.path.front().x + travel * std::sin(ang * DEG2RAD), j.path.front().y + travel * std::cos(ang * DEG2RAD)}};
+                    }
+                }
+                // the insertion path: bends, and how far the magazine has rocked at each point (rock-in magazines)
+                for (size_t k = 1; k < j.path.size(); k++) {
+                    char lb[40];
+                    if (k + 1 == j.path.size()) std::snprintf(lb, sizeof lb, "Tilt at the mouth"); else std::snprintf(lb, sizeof lb, "Tilt at bend %d", (int)k);
+                    pNum(lb, j.pathAng[k], 0.5, "%.1f\xc2\xb0", "How far the magazine has rocked by the time it reaches this point.\n"
+                                                          "Rock-in magazines go in at an angle and rock back as they seat.");
+                }
+                {
+                    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+                    if (ImGui::Button("Add a bend", {w2, 0})) {   // halfway along the last stretch
+                        size_t n = j.path.size();
+                        V2 a = j.path[n - 2], c = j.path[n - 1];
+                        j.path.insert(j.path.end() - 1, {(a.x + c.x) / 2, (a.y + c.y) / 2});
+                        j.pathAng.insert(j.pathAng.end() - 1, (j.pathAng[n - 2] + j.pathAng[n - 1]) / 2);
+                        editedAny = true;
+                    }
+                    if (tipHover()) ImGui::SetTooltip("Adds a point to the insertion path. Drag the green points in the view to shape it.");
+                    ImGui::SameLine();
+                    ImGui::BeginDisabled(j.path.size() <= 2);
+                    if (ImGui::Button("Straighten", {w2, 0})) { j.path = {j.path.front(), j.path.back()}; j.pathAng = {j.pathAng.front(), j.pathAng.back()}; editedAny = true; }
+                    ImGui::EndDisabled();
                 }
                 pBody("Well is in", j.b, true);
                 prop("Released by");
@@ -494,9 +544,10 @@ static void firingTab() {
         int fm = 0;
         for (int i = 0; i < 3; i++) if (br.feedMode == modes[i]) fm = i;
         prop("Feeds from");
-        if (ImGui::Combo("##feed", &fm, "Detachable magazine\0Built-in supply\0Loaded by hand\0")) { br.feedMode = modes[fm]; editedAny = true; }
+        if (ImGui::Combo("##feed", &fm, "Magazine\0Built-in counter (simple)\0Loaded by hand\0")) { br.feedMode = modes[fm]; editedAny = true; }
         tutAnchor("firing:feeding");
-        if (fm == 0 && !hasWell) warn("No magazine yet: select a part and tick Magazine > Detachable.");
+        if (fm == 0 && !hasWell && !std::any_of(D.bodies.begin(), D.bodies.end(), [](const BodyDef& q) { return q.magazine && q.magFixed; }))
+            warn("No magazine yet: select a part and set Magazine to Removable or Built in.");
         if (fm == 1) { prop("Rounds"); ImGui::DragInt("##rounds", &br.rounds, 0.2f, 0, 1000); markEdit(); }
         pCheck("Physical rounds", br.physicalFeed, "Every round and case is a real part: the magazine lips, feed ramp, chamber,\nextractor, ejector and port you draw decide whether it feeds and ejects.");
         tutAnchor("firing:physical");

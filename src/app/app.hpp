@@ -21,7 +21,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor };  // the main menu, the designer / test bench, or the map editor
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; };
@@ -111,6 +111,7 @@ void enterBenchWith(const Design& d);  // put another gun on the bench, keeping 
 void backToMenu();
 void commit();
 void undo();
+void finishRoundPath();   // the magazine's round path being drawn
 void redo();
 void toast(const std::string& t);
 float bodyDepth(const BodyDef& b);

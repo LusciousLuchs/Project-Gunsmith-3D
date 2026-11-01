@@ -205,6 +205,33 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
     if (!br.on || rounds <= 0) return;
     const BodyDef& d = A.design.bodies[r.tmpl];
     V2 c = centroidOf(d);
+    if (d.roundPath.size() >= 2) {  // along the path you drew: side by side across it, or nose to tail along it
+        bool line = d.roundStyle == "line";
+        double dia = br.cart.headDia() * 1.02, oal = br.cart.oal;
+        bool dbl = d.gen.on && d.gen.stack == 2;
+        double pitch = line ? oal * 1.01 : (dbl ? dia * 0.56 : dia * 0.98);
+        double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0;
+        std::vector<double> cum{0};
+        for (size_t i = 0; i + 1 < d.roundPath.size(); i++) cum.push_back(cum.back() + std::hypot(d.roundPath[i + 1].x - d.roundPath[i].x, d.roundPath[i + 1].y - d.roundPath[i].y));
+        int n = std::min(rounds, d.magCap);
+        for (int k = skip; k < n; k++) {
+            double s = (line ? 0 : dia / 2) + k * pitch;
+            if (s > cum.back() + 1e-6) break;   // no room left on the path
+            size_t i = 0;
+            while (i + 2 < d.roundPath.size() && s > cum[i + 1]) i++;
+            V2 a = d.roundPath[i], b = d.roundPath[i + 1];
+            double l = std::max(1e-9, cum[i + 1] - cum[i]);
+            V2 u{(b.x - a.x) / l, (b.y - a.y) / l}, m{a.x + u.x * (s - cum[i]), a.y + u.y * (s - cum[i])};
+            V2 fwd, head;
+            if (line) { fwd = u; head = m; }   // its head towards the mouth, nose pointing in
+            else { fwd = {-u.y, u.x}; if (fwd.x * mx + fwd.y * my < 0) fwd = {-fwd.x, -fwd.y}; head = {m.x - fwd.x * oal / 2, m.y - fwd.y * oal / 2}; }
+            float z = (!line && dbl) ? (k % 2 ? 1.f : -1.f) * (float)(dia * 0.25) * U : 0;
+            Vector3 o = Vector3Transform({(float)(head.x - c.x) * U, -(float)(head.y - c.y) * U, z}, r.M);
+            Vector3 o2 = Vector3Transform({(float)(head.x + fwd.x - c.x) * U, -(float)(head.y + fwd.y - c.y) * U, z}, r.M);
+            drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)));
+        }
+        return;
+    }
     if (d.gen.on) {  // generated magazine: rounds follow its centreline, staggered for double stack
         double dia = br.cart.headDia() * 1.02, pitch = d.gen.stack == 2 ? dia * 0.56 : dia * 0.98;
         int n = std::min(rounds, d.magCap);
@@ -408,8 +435,8 @@ void drawScene() {
     auto list = renderList();
     auto isGhost = [&](const RB& r) {
         if (A.showcase) return false;  // on the menu it looks like a finished gun
-        if (building && A.sel.kind == 1 && A.sel.idx == r.tmpl) return false;
         const BodyDef& d = D.bodies[r.tmpl];
+        if (building && A.sel.kind == 1 && A.sel.idx == r.tmpl && !d.magazine) return false;   // a selected magazine stays see-through: its rounds show
         if (A.cutaway && d.z - d.thick / 2 > 0.5) return true;  // wholly on the near side: cut away to show the inside
         return A.xray && d.ghost;
     };

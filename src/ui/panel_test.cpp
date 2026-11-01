@@ -113,7 +113,7 @@ void testPanel() {
     if (!A.S) { ImGui::PopItemWidth(); ImGui::End(); return; }
     auto& S = *A.S;
     bool batt = sim::inBattery(S);
-    sim::Body* mag = S.magTmpl ? sim::seatedMag(S) : nullptr;
+    sim::Body* mag = sim::seatedMag(S);   // removable (latched) or built in
 
     // ---- the state of the gun, in one line, then what to do about it
     ImGui::PushFont(gFontBold, 18.0f);
@@ -127,6 +127,7 @@ void testPanel() {
     if (S.malf != sim::Malf::None) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", sim::malfAdvice(S.malf)); ImGui::PopTextWrapPos(); }
     std::string line = std::to_string(S.shots) + (S.shots == 1 ? " shot" : " shots");
     if (S.magTmpl) line += mag ? "   \xC2\xB7   magazine " + std::to_string(mag->rounds) + "/" + std::to_string(S.magTmpl->magCap) : "   \xC2\xB7   no magazine";
+    else if (mag && mag->d) line += "   \xC2\xB7   magazine " + std::to_string(mag->rounds) + "/" + std::to_string(mag->d->magCap) + " (built in)";
     else if (S.feedMode == "internal") line += "   \xC2\xB7   " + std::to_string(S.rounds) + " left";
     if (S.hasFace && !S.magTmpl) line += "   \xC2\xB7   " + std::to_string(sim::looseRounds(S)) + " on the bench";
     const auto& br = S.design.breech;
@@ -180,6 +181,7 @@ void testPanel() {
             prop("Hand strength", "How hard your hand can push and pull when you work the action. A test condition, like a weak or strong shooter.");
             if (ImGui::SliderFloat("##hand", &hd, lo, hi, fmt)) A.handN = (float)fromDisp(Q::Force, hd);
         }
+        if (!S.magTmpl && mag) { if (ImGui::Button("Top up the magazine")) topUpMagazines(); }
         if (S.magTmpl) {
             ImGui::Button("Hold to release magazine");
             A.releaseBtnHeld = A.releaseBtnHeld || ImGui::IsItemActive();

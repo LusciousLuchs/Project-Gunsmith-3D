@@ -39,7 +39,16 @@ static void cameraInput(bool overUI) {
             if (auto* h = handleAt(m)) {
                 if (h->kind == 0) { auto& d = A.design.bodies[h->i]; if (d.pts.size() > 3) { fixShape(d); d.pts.erase(d.pts.begin() + h->v); d.rad.erase(d.rad.begin() + h->v); d.bulge.erase(d.bulge.begin() + h->v); A.sel.v = -1; commit(); } }
                 else if (h->kind == 7) { auto& d = A.design.bodies[h->i]; int nv = splitEdge(d, h->v); A.sel.v = nv; A.selVs = {nv}; commit(); }  // edge diamond: split it in half
-                else if (h->kind == 2) { auto& j = A.design.joints[h->i]; if (j.type == "track" && j.path.size() > 2) { j.path.erase(j.path.begin() + h->v); commit(); } }
+                else if (h->kind == 8) { auto& d = A.design.bodies[h->i]; if (d.roundPath.size() > 2) { d.roundPath.erase(d.roundPath.begin() + h->v); commit(); } }
+                else if (h->kind == 2) {
+                    auto& j = A.design.joints[h->i];
+                    if (j.type == "track" && j.path.size() > 2) { j.path.erase(j.path.begin() + h->v); commit(); }
+                    else if (j.type == "magwell" && h->v > 0 && h->v + 1 < (int)j.path.size()) {   // a bend in a magazine's insertion path
+                        j.path.erase(j.path.begin() + h->v);
+                        if (h->v < (int)j.pathAng.size()) j.pathAng.erase(j.pathAng.begin() + h->v);
+                        commit();
+                    }
+                }
             }
         }
         A.dragKind = 0;
@@ -130,5 +139,6 @@ void handleKeys() {
     if (actPressed(Act::Finish)) {
         if (A.tool == Tool::Body) finishBody();
         else if (A.tool == Tool::Track) finishTrack();
+        else if (A.tool == Tool::RoundPath) finishRoundPath();
     }
 }

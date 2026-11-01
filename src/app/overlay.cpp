@@ -48,10 +48,12 @@ void drawOverlay() {
         float z = std::max(frontZ(j.a), frontZ(j.b)) + 0.25f;
         if (j.type == "pin" || j.type == "weld" || j.type == "track") A.handles.push_back({toScreen(W3(j.p, z)), 1, (int)ji, -1});
         if (j.type == "track") for (size_t k = 0; k < j.path.size(); k++) A.handles.push_back({toScreen(W3(j.path[k], frontZ(j.b))), 2, (int)ji, (int)k});
-        if (j.type == "magwell" && j.path.size() >= 2) {
-            Vector2 s = toScreen(W3(j.path.back(), frontZ(j.a) + 0.15f));
-            A.handles.push_back({s, 2, (int)ji, (int)j.path.size() - 1});
-            label(s, "Magazine well exit", Color{110, 220, 150, 255});
+        if (j.type == "magwell" && j.path.size() >= 2) {   // every point after the seat: bends, and the mouth
+            for (size_t k = 1; k < j.path.size(); k++) {
+                Vector2 s = toScreen(W3(j.path[k], frontZ(j.a) + 0.15f));
+                A.handles.push_back({s, 2, (int)ji, (int)k});
+                if (k + 1 == j.path.size()) label(s, "Magazine well exit", Color{110, 220, 150, 255});
+            }
         }
         if (j.type == "spring") { A.handles.push_back({toScreen(W3(j.pa, 0)), 3, (int)ji, -1}); A.handles.push_back({toScreen(W3(j.pb, 0)), 4, (int)ji, -1}); }
     }
@@ -125,6 +127,21 @@ void drawOverlay() {
                 prev = q;
             }
             viewText(("R " + fmtQ(Q::Length, r)).c_str(), m.x + 14, m.y + 12, 12, RAYWHITE);
+        }
+    }
+    // the selected magazine's round path: where its rounds sit, fed from the first point
+    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && D.bodies[A.sel.idx].magazine && A.tool == Tool::Select) {
+        auto& d = D.bodies[A.sel.idx];
+        float z = bodyFront(A.sel.idx) + 0.1f;
+        Color pc{120, 200, 255, 255};
+        for (size_t k = 0; k + 1 < d.roundPath.size(); k++) DrawLineEx(toScreen(W3(d.roundPath[k], z)), toScreen(W3(d.roundPath[k + 1], z)), 2, pc);
+        for (size_t k = 0; k < d.roundPath.size(); k++) {
+            Vector2 s = toScreen(W3(d.roundPath[k], z));
+            bool hot = Vector2Distance(s, m) < 8;
+            DrawCircleV(s, hot ? 6.f : (k == 0 ? 5.f : 4.f), Color{20, 24, 32, 230});
+            DrawCircleLinesV(s, hot ? 6.f : (k == 0 ? 5.f : 4.f), pc);
+            A.handles.push_back({s, 8, A.sel.idx, (int)k});
+            if (k == 0) viewText("Feeds from here", s.x + 9, s.y - 17 * CFG.uiScale, 11, pc);
         }
     }
     if (A.drafting || A.draftHasF) {

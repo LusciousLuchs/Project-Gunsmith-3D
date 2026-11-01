@@ -65,7 +65,10 @@ struct BodyDef {
     bool rollOn = false;                 // rotates about the bore (rotating bolt)
     double rollMin = 0, rollMax = 90;    // degrees
     double handle = 0;                   // bolt handle length, mm
-    bool magazine = false;               // detachable magazine (rides in a magwell joint)
+    bool magazine = false;               // a magazine: removable (rides in a magwell joint), or built in (magFixed)
+    bool magFixed = false;               // built in: part of the gun and loaded in place (internal box, tube, anything)
+    std::vector<V2> roundPath;           // how rounds sit inside (design coords, mm), from the feed end inward; empty = automatic
+    std::string roundStyle = "side";     // side: side by side across the path (a box); line: nose to tail along it (a tube)
     int magCap = 10;                     // rounds when full
     // feed lips and spring (physical feeding). The defaults are fitted to the cartridge; these nudge them.
     double lipHeight = 0;                // mm the top round sits above (+) or below (-) where the lips would normally hold it
@@ -92,6 +95,7 @@ struct JointDef {
     std::string a, b = "world";
     V2 p, pa, pb;
     std::vector<V2> path;                // track / magwell path (on body b); magwell: path[0] = seated, last = exit
+    std::vector<double> pathAng;         // magwell: the magazine's tilt at each path point (degrees): rock-in magazines
     bool lockRot = false;
     double k = 1, rest = 0, damp = 0;    // spring: N/mm, mm, N*s/m
     std::string kind = "coil";           // spring: coil or leaf

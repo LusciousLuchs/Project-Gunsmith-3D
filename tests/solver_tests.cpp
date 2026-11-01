@@ -809,6 +809,83 @@ static void tutorialGun() {
     CHECK(R.fired == 15 && R.jams == 0, "the reliability test loads it by hand and pushes the un-sprung bolt shut: 15 of 15");
 }
 
+// Magazines of any shape: built in (loaded in place) or removable (swapped along an insertion path you shape),
+// with the rounds laid out along a path you draw: side by side (a box) or nose to tail (a tube).
+static Design builtInBox(const char* preset) {
+    Design d = loadPreset(preset);
+    for (auto& b : d.bodies) if (b.magazine) { b.magFixed = true; b.fixed = true; }
+    d.joints.erase(std::remove_if(d.joints.begin(), d.joints.end(), [](const JointDef& j) { return j.type == "magwell"; }), d.joints.end());
+    return d;
+}
+static void anyMagazine() {
+    std::printf("Built-in and removable magazines\n");
+    {   // the blowback pistol with its magazine made part of the gun: an internal box
+        Design d = builtInBox("blowback");
+        auto S = sim::build(d); sim::run(*S, 0.05);
+        sim::Body* M = sim::seatedMag(*S);
+        CHECK(M && M->builtInMag && M->rounds == 7 && !S->magTmpl, "a built-in magazine feeds the gun, and there's no spare to swap in");
+        int shots = 0;
+        for (int k = 0; k < 9; k++) { S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true); sim::run(*S, 0.06); S->pressed = false; S->trigger = false; sim::setKey(*S, "fire", false); sim::run(*S, 0.25); }
+        shots = S->shots;
+        CHECK(shots == 8 && M->rounds == 0, "it fires the chambered round and all seven from the internal box");
+        CHECK(sim::fillMagazines(*S) == 7 && M->rounds == 7, "topping up fills the built-in magazine in place");
+        M->rounds = 3;
+        V2 lips; bool lp = sim::magLoadPoint(*S, *M, lips);
+        S->hand = {true, M, {0, 0}, {M->x, M->y}}; S->hand.on = false;
+        sim::Body* r = lp ? sim::spawnRound(*S, {lips.x * 1000 - 40, lips.y * 1000 - 30}) : nullptr;
+        if (r) {
+            S->hand = {true, r, {0, 0}, {r->x, r->y}};
+            for (int i = 1; i <= 40 && !r->gone; i++) { S->hand.t = {r->x + (lips.x - r->x) * i / 40.0, r->y + (lips.y - r->y) * i / 40.0}; sim::run(*S, 0.002); }
+            S->hand.on = false;
+        }
+        CHECK(lp && M->rounds == 4, "a round pushed in at the feed end loads the built-in magazine by hand");
+        sim::ReliabilityOptions o; o.rounds = 20;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 20 && R.jams == 0 && R.reloads >= 2, "the reliability test refills a built-in magazine in place: 20 rounds, no jams");
+    }
+    {   // a drawn round path: the top round is presented at its first point
+        Design d = builtInBox("blowback");
+        V2 lipsAuto;
+        { auto S = sim::build(d); sim::run(*S, 0.01); sim::magLoadPoint(*S, *sim::seatedMag(*S), lipsAuto); }
+        for (auto& b : d.bodies) if (b.magazine) b.roundPath = {{lipsAuto.x * 1000, lipsAuto.y * 1000}, {lipsAuto.x * 1000, lipsAuto.y * 1000 + 60}};
+        auto S = sim::build(d); sim::run(*S, 0.01);
+        V2 lp; sim::magLoadPoint(*S, *sim::seatedMag(*S), lp);
+        CHECK(std::hypot(lp.x - lipsAuto.x, lp.y - lipsAuto.y) < 0.0005, "a round path drawn from the lips presents the top round there");
+        sim::ReliabilityOptions o; o.rounds = 15;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 15 && R.jams == 0, "and the gun feeds from it: 15 rounds, no jams");
+        Design r2;
+        bool ok = designFromJson(designToJson(d), r2);
+        bool same = false;
+        for (auto& b : r2.bodies) if (b.magazine) same = b.magFixed && b.roundPath.size() == 2 && b.roundStyle == "side";
+        CHECK(ok && same, "built-in magazines and their round paths survive saving");
+    }
+    {   // a tube: rounds nose to tail along the path
+        Design d = builtInBox("blowback");
+        for (auto& b : d.bodies) if (b.magazine) { b.roundStyle = "line"; b.roundPath = {{20, 60}, {20, 200}}; }
+        auto S = sim::build(d); sim::run(*S, 0.05);
+        for (int k = 0; k < 9; k++) { S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true); sim::run(*S, 0.06); S->pressed = false; S->trigger = false; sim::setKey(*S, "fire", false); sim::run(*S, 0.25); }
+        CHECK(S->shots == 8 && sim::seatedMag(*S)->rounds == 0, "a tube magazine feeds every round (the simple way, for now)");
+    }
+    {   // a removable magazine that rocks in: tilted 20 degrees at the mouth of its well
+        Design d = loadPreset("blowback");
+        for (auto& j : d.joints) if (j.type == "magwell") {
+            V2 a = j.path.front(), b = j.path.back();
+            j.path = {a, {(a.x + b.x) / 2, (a.y + b.y) / 2}, b};
+            j.pathAng = {0, 8, 20};
+        }
+        auto S = sim::build(d); sim::run(*S, 0.05);
+        sim::Body* M = sim::seatedMag(*S);
+        double seatedA = M->a;
+        S->magRelease = true; sim::run(*S, 0.12);
+        double outA = (M->a - seatedA) / sim::D2R;
+        S->magRelease = false;
+        Design r2; designFromJson(designToJson(d), r2);
+        bool kept = false; for (auto& j : r2.joints) if (j.type == "magwell") kept = j.pathAng.size() == 3 && j.pathAng[2] == 20;
+        CHECK(outA > 5 && kept, "a rock-in magazine tilts as it leaves along its path, and the tilt is saved");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -828,6 +905,7 @@ int main() {
     magazineSprings();
     bulletShapes();
     tutorialGun();
+    anyMagazine();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

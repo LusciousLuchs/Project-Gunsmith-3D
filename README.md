@@ -141,7 +141,10 @@ The physics uses the curved outline too, so the shape you see is the shape that 
 A trigger part bound to FIRE works with either: the shot waits until it has been pulled 2 mm.
 
 **Feeding**
-- *Detachable magazine:* tick it on a part. It rides a well (the green line), latches when pushed home, and drops free under gravity when released.
+- *Magazine:* any part can be one. In its Magazine settings choose:
+  - *Removable:* it rides a well (the green line), latches when pushed home, and drops free under gravity when released. The insertion path can have bends, and a tilt at each point for magazines that rock in.
+  - *Built in:* part of the gun, like an internal box or a tube. You load it in place: drag rounds to its feed end, or top it up (T).
+- *Rounds inside:* draw a round path inside the magazine, starting where rounds are fed from. Rounds sit side by side across it (a box) or nose to tail along it (a tube). Without a path they're laid out automatically. For now a tube feeds the simple way (the round reaches the chamber once the action opens). Feeding through a carrier you draw is next.
 - *Built-in supply:* a simple round counter.
 - *Single shot:* nothing feeds. Load it by hand (below).
 

@@ -192,8 +192,9 @@ bool makeBody(const BodyDef& d, Body& b) {
         resample(b);
         b.x = b.x0 = c.x / 1000; b.y = b.y0 = c.y / 1000;
         b.z = d.z / 1000; b.zh = std::max(0.5, d.thick) / 2000;
-        b.isMag = d.magazine && !d.fixed;
-        b.rounds = b.isMag ? d.magCap : 0;
+        b.isMag = d.magazine && !d.fixed && !d.magFixed;
+        b.builtInMag = d.magazine && d.magFixed;
+        b.rounds = (b.isMag || b.builtInMag) ? d.magCap : 0;
     }
     return true;
 }
@@ -230,6 +231,7 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
             if (j.path.size() < 2 || !A->isMag || s.mwIdx >= 0) continue;
             J.type = JT::Magwell; J.la = anc(*A, j.p);
             for (auto& p : j.path) J.path.push_back(anc(*B, p));
+            for (size_t k = 0; k < j.path.size(); k++) J.pathAng.push_back((k < j.pathAng.size() ? j.pathAng[k] : 0) * D2R);
             J.attached = true; J.latched = true;
             s.mwIdx = (int)s.joints.size();
             s.magTmpl = A->d;
@@ -456,9 +458,11 @@ double breechGap(const Sim& S) {
 
 // ---------- magazines ----------
 Joint* magwell(Sim& S) { return S.mwIdx >= 0 ? &S.joints[S.mwIdx] : nullptr; }
-Body* seatedMag(Sim& S) {
+Body* seatedMag(Sim& S) {   // the magazine feeding the gun: a removable one latched in its well, or a built-in one
     Joint* J = magwell(S);
-    return (J && J->A && J->attached && J->latched) ? J->A : nullptr;
+    if (J && J->A && J->attached && J->latched) return J->A;
+    for (auto& b : S.bodies) if (b.builtInMag && !b.gone) return &b;
+    return nullptr;
 }
 static void solveMagwell(Sim& S, Joint& J) {
     Body& B = *J.B;
@@ -467,7 +471,7 @@ static void solveMagwell(Sim& S, Joint& J) {
         for (auto& b : S.bodies) {
             if (!b.isMag || !b.loose) continue;
             V2 pa = wpt(b, J.la);
-            double da = std::remainder(b.a - B.a, 2 * 3.14159265358979323846);
+            double da = std::remainder(b.a - B.a - J.pathAng.back(), 2 * 3.14159265358979323846);   // it goes in at the mouth's tilt
             V2 a2 = wpt(B, J.path[J.path.size() - 2]);
             double ex = exitp.x - a2.x, ey = exitp.y - a2.y, el = std::hypot(ex, ey);
             double over = el > 0 ? ((pa.x - exitp.x) * ex + (pa.y - exitp.y) * ey) / el : 0;  // how far past the mouth
@@ -489,16 +493,22 @@ static void solveMagwell(Sim& S, Joint& J) {
         double t = l2 > 0 ? ((pa.x - a.x) * dx + (pa.y - a.y) * dy) / l2 : 0;
         if (t > 1.0) { J.attached = false; J.A = nullptr; M.loose = true; return; }
     }
+    double tilt = J.pathAng.empty() ? 0 : J.pathAng.front();   // seated: as drawn (or the first point's tilt)
     if (!J.latched) {
         double best = 1e18;
         for (size_t i = 0; i + 1 < J.path.size(); i++) {
-            double d2; V2 c = closestOnSeg(pa, wpt(B, J.path[i]), wpt(B, J.path[i + 1]), &d2);
-            if (d2 < best) { best = d2; q = c; }
+            V2 a = wpt(B, J.path[i]), b = wpt(B, J.path[i + 1]);
+            double d2; V2 c = closestOnSeg(pa, a, b, &d2);
+            if (d2 < best) {
+                best = d2; q = c;
+                double l = std::hypot(b.x - a.x, b.y - a.y), t = l > 0 ? std::hypot(c.x - a.x, c.y - a.y) / l : 0;
+                if (i + 1 < J.pathAng.size()) tilt = J.pathAng[i] + (J.pathAng[i + 1] - J.pathAng[i]) * t;   // rocks in and out
+            }
         }
     }
     double L = std::hypot(q.x - pa.x, q.y - pa.y);
     if (L > 1e-9) solve(M, B, pa, q, (q.x - pa.x) / L, (q.y - pa.y) / L, L);
-    solveAng(M, B, 0);
+    solveAng(M, B, tilt);
     pa = wpt(M, J.la);
     double dseat = std::hypot(pa.x - seat.x, pa.y - seat.y);
     if (dseat > 0.002) J.engaged = false;  // release cooldown over once it has moved off the seat
@@ -528,7 +538,7 @@ void retireBody(Sim& S, Body& b) {
 int fillMagazines(Sim& S) {
     int added = 0;
     for (auto& b : S.bodies) {
-        if (!b.isMag || b.gone || !b.d) continue;
+        if (!(b.isMag || b.builtInMag) || b.gone || !b.d) continue;
         int cap = b.d->magCap;
         if (b.rounds < cap) { added += cap - b.rounds; b.rounds = cap; b.idle = 0; }
     }
@@ -879,6 +889,11 @@ void substep(Sim& S) {
                 if (S.feedMode == "magazine") { Body* m = seatedMag(S); if (m && m->rounds > 0) { m->rounds--; S.inTransit = true; } }
                 else if (S.feedMode == "internal" && S.rounds > 0) { S.rounds--; S.inTransit = true; }
             }
+        } else if (gap > feed && S.feedMode == "magazine" && !S.chambered && !S.inTransit) {
+            // a tube (rounds nose to tail) feeds the simple way for now, even with physical rounds: the round reaches the
+            // chamber once the action has opened this far. (Feeding it physically needs a carrier you draw: to come.)
+            Body* m = seatedMag(S);
+            if (m && m->rounds > 0 && m->d && m->d->roundStyle == "line" && m->d->roundPath.size() >= 2) { m->rounds--; S.inTransit = true; }
         }
         if (gap < 1 && S.inTransit) { S.inTransit = false; S.chambered = true; }
         if (S.strikerIgnition) {  // fires when the striker's tip hits the primer hard enough

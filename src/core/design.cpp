@@ -566,6 +566,10 @@ void generateMagazine(Design& D, int bi) {
     b.thick = std::round(std::max(12.0, c.headDia() * (g.stack == 2 ? 1.75 : 1.15) + 2));
     b.magazine = true;
     b.ghost = true;
+    if (b.magFixed) {   // built in: no well to slide along
+        if (wi >= 0) D.joints.erase(D.joints.begin() + wi);
+        return;
+    }
     // the well: straight, along the top of the magazine, long enough for it to drop clear
     double a = g.angle * PI_ / 180;
     V2 d0{std::sin(a), std::cos(a)};
@@ -580,8 +584,15 @@ void generateMagazine(Design& D, int bi) {
         wi = (int)D.joints.size() - 1;
     }
     auto& j = D.joints[wi];
+    if (j.path.size() > 2) {   // a shaped insertion path (bends, rock-in): keep its shape, moved to the new seat
+        double dx = p.x - j.path.front().x, dy = p.y - j.path.front().y;
+        for (auto& q : j.path) { q.x += dx; q.y += dy; }
+        j.p = p;
+        return;
+    }
     j.p = p;
     j.path = {p, {p.x + d0.x * travel, p.y + d0.y * travel}};
+    if (j.pathAng.size() != 2) j.pathAng.resize(2, 0.0);   // (a tilt at the mouth is kept)
 }
 
 // ---------------------------------------------------------------- JSON
@@ -604,6 +615,9 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.lipRelease != 0.45) jb["magazine"]["lipRelease"] = b.lipRelease;
             if (b.magSpring != 1) jb["magazine"]["spring"] = b.magSpring;
             if (b.doubleFeed) jb["magazine"]["feed"] = "double";
+            if (b.magFixed) jb["magazine"]["builtIn"] = true;
+            if (b.roundStyle != "side") jb["magazine"]["style"] = b.roundStyle;
+            if (!b.roundPath.empty()) { json a = json::array(); for (auto& q : b.roundPath) a.push_back(v2j(q)); jb["magazine"]["roundPath"] = a; }
             if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
         }
         if (b.rollOn) jb["roll"] = {{"on", true}, {"min", b.rollMin}, {"max", b.rollMax}, {"handle", b.handle}};
@@ -638,6 +652,7 @@ std::string designToJson(const Design& d, bool pretty) {
         }
         if (j.type == "cam") { json t = json::array(); for (auto& q : j.table) t.push_back(v2j(q)); jj["table"] = t; }
         if (j.type == "lug") { jj["unlock"] = j.unlock; jj["blockOpen"] = j.blockOpen; }
+        if (j.type == "magwell") { bool any = false; for (double a : j.pathAng) if (a != 0) any = true; if (any) jj["pathAng"] = j.pathAng; }
         if (j.type == "latch") { jj["catchAt"] = j.catchAt; jj["rel"] = j.rel; jj["releaseAt"] = j.releaseAt; }
         o["joints"].push_back(jj);
     }
@@ -704,6 +719,9 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.lipRelease = std::clamp(opt<double>(m, "lipRelease", 0.45), 0.1, 0.95);
             b.magSpring = std::clamp(opt<double>(m, "spring", 1.0), 0.1, 3.0);
             b.doubleFeed = opt<std::string>(m, "feed", "single") == "double";
+            b.magFixed = opt<bool>(m, "builtIn", false);
+            b.roundStyle = opt<std::string>(m, "style", "side") == "line" ? "line" : "side";
+            if (m.contains("roundPath") && m["roundPath"].is_array()) for (auto& q : m["roundPath"]) b.roundPath.push_back(j2v(q));
             if (m.contains("gen") && m["gen"].is_object()) {
                 auto& g = m["gen"];
                 b.gen.on = true; b.gen.stack = opt<int>(g, "stack", 2); b.gen.curve = opt<double>(g, "curve", 0);
@@ -750,6 +768,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         j.catchAt = opt<double>(jj, "catchAt", -30);
         j.rel = opt<std::string>(jj, "rel", "");
         j.releaseAt = opt<double>(jj, "releaseAt", j.type == "magwell" ? 2.0 : -2.0);
+        if (jj.contains("pathAng") && jj["pathAng"].is_array()) for (auto& a : jj["pathAng"]) if (a.is_number()) j.pathAng.push_back(a.get<double>());
         static const char* ok[] = {"pin", "weld", "track", "spring", "cam", "lug", "latch", "magwell"};
         bool known = false;
         for (auto k : ok) if (j.type == k) known = true;
