@@ -62,7 +62,12 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Shape options: a flat tip, a boat tail, and how deep the bullet is seated.
 - The shape is the round's physical outline, so it can change how a gun feeds.
 - *Weight from shape* (as jacketed lead), and an estimated ballistic coefficient.
-- Older blueprints and the built-in cartridges keep the classic shape.
+- Built-in cartridges now have real shapes: round noses for 9 mm, .380 and .45, spitzers for 5.56, boat-tail spitzers for the 7.62s. Older blueprints keep the classic shape.
+
+### Example polish
+- **Bolt-action rifle:** a longer, gentler feed ramp (13 mm instead of 10). The bolt used to kick rounds into the chamber about 25 degrees nose-up, and working it by hand jammed with most bullet shapes. Now every shape and nose length feeds: 40 of 40 combinations, up from 16.
+- **Tilting-barrel pistol:** the ejector sits 1.25 mm further forward. Racking a loaded pistol now throws the live round out in 26 of 30 shape and nose-length combinations, up from 17. Before, it often tipped too little and rode back into the chamber.
+- All four examples fire 50 rounds of the reliability test without a jam, using the new bullet shapes.
 
 ### Map editor and first person
 - **Map editor** on the main menu: build ranges out of brushes, early-2000s Radiant style.

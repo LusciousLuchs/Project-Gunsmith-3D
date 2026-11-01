@@ -222,17 +222,17 @@ double cartridgeMass(const Cartridge& c) {
 }
 
 const std::vector<Cartridge>& cartridgePresets() {
-    // The built-in rounds keep the classic bullet shape for now. The example guns' feed geometry is marginal
-    // (rounds reach the chamber too steeply), and sharper real shapes tip some scripted hand-cycling into jams.
-    // Polish the examples, then give these their real shapes (round nose for the pistol rounds, spitzers for rifles).
-    static std::vector<Cartridge> v = {
-        mk("9x19mm", 19.15, 9.96, 1.27, 9.93, 9.65, 19.15, 9.65, 9.01, 29.69, 7.5, 7.45, 360, false),
-        mk(".380 ACP", 17.30, 9.50, 1.10, 9.50, 9.50, 17.30, 9.50, 9.02, 25.00, 6.0, 6.15, 290, false),
-        mk(".45 ACP", 22.80, 12.19, 1.24, 12.09, 12.01, 22.80, 12.01, 11.48, 32.40, 8.5, 14.90, 255, false),
-        mk("5.56x45mm", 44.70, 9.60, 1.14, 9.58, 9.00, 36.50, 6.43, 5.70, 57.40, 14.0, 4.00, 940, false),
-        mk("7.62x39mm", 38.70, 11.35, 1.50, 11.35, 10.07, 30.50, 8.60, 7.92, 56.00, 14.0, 7.90, 730, false),
-        mk("7.62x54mmR", 53.72, 14.48, 1.60, 12.37, 11.61, 45.00, 8.53, 7.92, 77.16, 18.0, 9.60, 830, true),
-    };
+    static std::vector<Cartridge> v = [] {
+        auto shaped = [](Cartridge c, const char* nose, double tail = 0) { c.nose = nose; c.tailLen = tail; return c; };
+        return std::vector<Cartridge>{
+            shaped(mk("9x19mm", 19.15, 9.96, 1.27, 9.93, 9.65, 19.15, 9.65, 9.01, 29.69, 7.5, 7.45, 360, false), "round"),
+            shaped(mk(".380 ACP", 17.30, 9.50, 1.10, 9.50, 9.50, 17.30, 9.50, 9.02, 25.00, 6.0, 6.15, 290, false), "round"),
+            shaped(mk(".45 ACP", 22.80, 12.19, 1.24, 12.09, 12.01, 22.80, 12.01, 11.48, 32.40, 8.5, 14.90, 255, false), "round"),
+            shaped(mk("5.56x45mm", 44.70, 9.60, 1.14, 9.58, 9.00, 36.50, 6.43, 5.70, 57.40, 14.0, 4.00, 940, false), "spitzer"),
+            shaped(mk("7.62x39mm", 38.70, 11.35, 1.50, 11.35, 10.07, 30.50, 8.60, 7.92, 56.00, 14.0, 7.90, 730, false), "spitzer", 3.0),
+            shaped(mk("7.62x54mmR", 53.72, 14.48, 1.60, 12.37, 11.61, 45.00, 8.53, 7.92, 77.16, 18.0, 9.60, 830, true), "spitzer", 3.0),
+        };
+    }();
     return v;
 }
 std::vector<Cartridge> loadUserCartridges() {

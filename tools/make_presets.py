@@ -115,7 +115,8 @@ def pistol(kind='blowback'):
         rod0 = 90
     parts.append(part('rod', 'Guide rod', rect(rod0, 29.2, muzzle - 5, 30.8), thick=3, solid=False, fixed=True, color=BRIGHT))
     # the ejector: a fin on the left of the frame that the empty case's head hits as the slide runs back
-    parts.append(part('ejector', 'Ejector', [[lipsHead - 5.5, brkBottom + 0.3], [lipsHead - 1.5, brkBottom + 0.3], [lipsHead - 1.5, 29], [lipsHead - 5.5, 29]],
+    ej = 1.25 if tilting else 0.0   # a little further forward on the tilting gun: a racked live round meets it with the slide still moving
+    parts.append(part('ejector', 'Ejector', [[lipsHead - 5.5 + ej, brkBottom + 0.3], [lipsHead - 1.5 + ej, brkBottom + 0.3], [lipsHead - 1.5 + ej, 29], [lipsHead - 5.5 + ej, 29]],
                       z=-3.0, thick=3, fixed=True, color=STEEL))
 
     # ---- slide: a top with the ejection port cut out, two walls (the right one ported), rail lips, the breech block
@@ -220,8 +221,11 @@ def rifle(kind='bolt'):
     muzzle = 420.0
     rimR = C['head'] / 2
     br = 5.5               # bolt radius
-    lipsY = bore + br + rimR - 2.0   # the top round's rim reaches 2 mm up the bolt face
-    lipsHead = face - C['oal'] - 12.0   # its nose stays behind the feed ramps
+    rampLen = 13.0   # a gentler ramp (about 23 degrees): a 10 mm one kicked the nose up into the chamber too steeply, and
+                     # a longer one (16 mm) lengthens the bolt stroke enough to upset ejection
+    engage = 2.0
+    lipsY = bore + br + rimR - engage   # the top round's rim reaches this far up the bolt face
+    lipsHead = face - C['oal'] - (rampLen + 2.0)   # its nose stays behind the feed ramps
     travel = face - (lipsHead - 3.0)     # bolt face goes back past the rim of the top round
     cock = 10.0
     tip = face + 0.6
@@ -240,7 +244,7 @@ def rifle(kind='bolt'):
                       color=WOOD, rad=[0, 4, 4, 0]))
     barrel = [[face, bore - 7], [muzzle, bore - 6], [muzzle, bore + 6], [face, bore + 7]]
     parts.append(part('barrel', 'Barrel', barrel, thick=14, fixed=True, color=STEEL, rad=[0.6, 1, 1, 0.6]))
-    ramp = [[face - 10, bore + 10.5], [face, bore + rimR + 0.3], [face, bore + 14], [face - 10, bore + 14]]  # ends just under the case's way out
+    ramp = [[face - rampLen, bore + 10.5], [face, bore + rimR + 0.3], [face, bore + 14], [face - rampLen, bore + 14]]  # ends just under the case's way out
     for p in both_sides(part('ramp', 'Feed ramp', ramp, thick=2, fixed=True, color=STEEL, rad=[0, 0.5, 0, 0]), 4.0):  # either side of the lower lug's path
         parts.append(p)
     # locking shoulders in the receiver ring, behind where the lugs sit when the bolt is turned down

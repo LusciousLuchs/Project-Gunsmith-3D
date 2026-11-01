@@ -191,7 +191,7 @@ The defaults fit the cartridge and feed cleanly.
 
 Spitzers and other pointed shapes can have a flat tip. Most shapes can have a boat tail, and you can set how deep the bullet is seated.
 
-The shape is the round's real outline, so it's what meets the feed ramp and chamber mouth. In a gun with tight feed geometry, a sharp spitzer can fail where a blunt nose feeds. *Weight from shape* works the weight out as jacketed lead, and the designer estimates a G1 ballistic coefficient for the firing range to come. The built-in cartridges keep the classic shape for now, until the example guns' feeding is polished to suit real shapes.
+The shape is the round's real outline, so it's what meets the feed ramp and chamber mouth. In a gun with tight feed geometry, a sharp spitzer can fail where a blunt nose feeds. *Weight from shape* works the weight out as jacketed lead, and the designer estimates a G1 ballistic coefficient for the firing range to come. The built-in pistol rounds have round noses, and the rifle rounds spitzers (boat-tailed for the 7.62s). Older blueprints keep the classic shape they were made with.
 
 **Cartridges.** Built in: 9x19mm, .380 ACP, .45 ACP, 5.56x45mm, 7.62x39mm and 7.62x54mmR. Open the designer from the firing system to change any dimension, bullet mass or velocity, preview the profile to scale, and save your own to `cartridges.json`. Recoil impulse is worked out from the bullet's momentum plus a share for the powder gas, and rounds are drawn as proper turned brass and copper.
 
