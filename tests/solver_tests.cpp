@@ -766,6 +766,49 @@ static void bulletShapes() {
     CHECK(designFromJson(js, o) && o.breech.cart.nose == "auto" && bulletShape(o.breech.cart).empty(), "older blueprints keep the original bullet shape");
 }
 
+// The gun the "Build your first gun" tutorial makes: a barrel, a heavy bolt on a track with no spring, an ejector.
+// Firing blows the bolt open and throws the case; a round loaded by hand and the bolt pushed shut fires again.
+static Design firstGun() {
+    Design d = loadPreset("blank");
+    auto box = [](double x0, double y0, double x1, double y1) { return std::vector<V2>{{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}; };
+    BodyDef barrel; barrel.id = "barrel"; barrel.fixed = true; barrel.layer = "ABC"; barrel.thick = 16; barrel.pts = box(120, 22, 300, 38);
+    BodyDef bolt; bolt.id = "bolt"; bolt.layer = "ABC"; bolt.thick = 14; bolt.mass = 400; bolt.pts = box(60, 20, 120, 33);
+    BodyDef ej; ej.id = "ejector"; ej.fixed = true; ej.layer = "ABC"; ej.thick = 4; ej.pts = box(78, 33.6, 82, 38);
+    for (auto* b : {&barrel, &bolt, &ej}) { fixShape(*b); d.bodies.push_back(*b); }
+    JointDef tr; tr.type = "track"; tr.a = "bolt"; tr.b = "frame"; tr.p = {90, 27}; tr.path = {{40, 27}, {90, 27}}; tr.lockRot = true;
+    d.joints.push_back(tr);
+    auto& br = d.breech; br = BreechDef(); br.on = true; br.breech = "bolt"; br.chamber = "barrel";
+    br.hasFace = true; br.face = {120, 30}; br.hasMuzzle = true; br.muzzle = {300, 30};
+    br.feedMode = "single"; br.physicalFeed = true; br.loaded = true;
+    return d;
+}
+static void tutorialGun() {
+    std::printf("The tutorial's first gun\n");
+    auto S = sim::build(firstGun()); sim::run(*S, 0.05);
+    auto* b = S->find("bolt");
+    S->pressed = true; S->trigger = true; sim::run(*S, 0.05); S->pressed = false; S->trigger = false; sim::run(*S, 0.3);
+    bool caseOut = false;
+    for (auto& r : S->bodies) if (r.isCase && !r.gone && r.rs == sim::RS::Loose) caseOut = true;
+    CHECK(S->shots == 1 && (b->x - b->x0) < -0.04 && caseOut, "it fires, the bolt blows open and stays open, and the case is thrown clear");
+    int fired = 0;
+    for (int k = 0; k < 2; k++) {   // load by hand: a round in front of the bolt, then push the bolt shut and fire
+        sim::Body* r = sim::spawnRound(*S, {40, 70}); sim::run(*S, 0.1);
+        V2 grab = sim::wpt(*r, {0, 0});
+        S->hand = {true, r, sim::lpt(*r, grab), grab};
+        sim::BoreLine L = sim::boreLine(*S);
+        for (int i = 1; i <= 40; i++) { V2 t{L.face.x - L.dir.x * 0.015 - std::cos(r->a) * r->headLx, L.face.y}; S->hand.t = {grab.x + (t.x - grab.x) * i / 40, grab.y + (t.y - grab.y) * i / 40}; sim::run(*S, 0.01); }
+        S->hand.on = false; sim::run(*S, 0.2);
+        S->hand = {true, b, {0, 0}, {b->x0 + 0.002, b->y0}}; sim::run(*S, 0.4); S->hand.on = false; sim::run(*S, 0.1);
+        int before = S->shots;
+        S->pressed = true; S->trigger = true; sim::run(*S, 0.06); S->pressed = false; S->trigger = false; sim::run(*S, 0.3);
+        fired += S->shots - before;
+    }
+    CHECK(fired == 2, "loaded by hand and pushed shut, it fires again, twice");
+    sim::ReliabilityOptions o; o.rounds = 15;
+    auto R = sim::runReliability(firstGun(), o);
+    CHECK(R.fired == 15 && R.jams == 0, "the reliability test loads it by hand and pushes the un-sprung bolt shut: 15 of 15");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -784,6 +827,7 @@ int main() {
     benchHousekeeping();
     magazineSprings();
     bulletShapes();
+    tutorialGun();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

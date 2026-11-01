@@ -52,7 +52,9 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Long sessions no longer run out of room. Every fired round used to take a new slot until the bench stopped feeding: after about 95 shots, a false failure to feed. Removed rounds, cases and magazines now free their slot.
 
 ### Tutorials
-- Thirteen guided lessons, from the main menu or the graduation-cap button. They cover the camera, drawing and shaping parts, depth and collisions, joints, springs, breech and cartridge, feeding, extraction and ejection, fire control, locking and operating systems, the bench, reliability testing, and the map editor.
+- **Build your first gun**, a lesson that walks from a blank frame to a working single-shot: barrel, heavy bolt, track, firing system, hand loading and ejector. Firing blows the bolt open and throws the case, and you load the next round by hand and push the bolt shut. Each step recognises your own drawing, and *Do it for me* makes the piece if you're stuck.
+- The reliability test now pushes a breech home by hand when no spring closes it (a straight-pull bolt, a sliding breech). It used to just let go, so such guns never reloaded.
+- Guided lessons, from the main menu or the graduation-cap button. They cover the camera, drawing and shaping parts, depth and collisions, joints, springs, breech and cartridge, feeding, extraction and ejection, fire control, locking and operating systems, the bench, reliability testing, and the map editor.
 - Each lesson opens an example and walks through it in short steps:
   - A glowing outline points at the button or setting each step is about.
   - Steps about a part select it in the view.

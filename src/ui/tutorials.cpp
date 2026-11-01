@@ -7,6 +7,7 @@
 #include "app/audio.hpp"
 #include "app/keys.hpp"
 #include "app/mapedit.hpp"
+#include "app/view.hpp"
 #include "app/settings.hpp"
 #include "ui/ui.hpp"
 #include "imgui.h"
@@ -33,6 +34,9 @@ struct TutState {
     bool seatedMag = false, chambered = false;
     std::string ignition, snap, fireMode;
     double cockAt = 0;
+    // for building a gun: the parts and settings it needs, recognised by what they are rather than by name
+    int movingParts = 0, heavyMoving = 0;
+    bool breechOn = false, hasFace = false, hasMuzzle = false, chamberOk = false, handFeed = false;
 };
 static TutState snapshot() {
     TutState t;
@@ -46,6 +50,14 @@ static TutState snapshot() {
         if (b.fixed) t.fixedParts++;
         if (b.ctrl != "none") t.controls++;
         if (b.layer == "none") t.solidOff++;
+    }
+    for (auto& b : D.bodies) if (!b.fixed && !b.magazine) { t.movingParts++; if (b.mass >= 250) t.heavyMoving++; }
+    {
+        auto& br = D.breech;
+        t.breechOn = br.on; t.hasFace = br.on && br.hasFace; t.hasMuzzle = br.on && br.hasMuzzle;
+        int ci = D.bodyIndex(br.chamber);
+        t.chamberOk = br.on && ci >= 0 && D.bodies[ci].fixed && br.chamber != "frame";
+        t.handFeed = br.on && br.feedMode == "single" && br.physicalFeed;
     }
     for (auto& j : D.joints) {
         if (j.type == "pin") t.pins++;
@@ -83,7 +95,11 @@ struct Step {
     const char* spring = nullptr;  // select the spring attached to this part instead
     int tab = -1;                  // designer panel tab to open: 0 Inspect, 1 Outline, 2 Firing, 3 File
     int mode = -1;                 // switch to 0 the designer or 1 the bench when the step starts
+    void (*helper)() = nullptr;    // "Do it for me": makes the step's part or setting, for anyone stuck
+    bool sideView = false;         // switch to the side view when the step starts
     Step(const char* t, const char* x) : title(t), text(x) {}
+    Step& doIt(void (*h)()) { helper = h; return *this; }
+    Step& side() { sideView = true; return *this; }
     Step& check(Check c, const char* t) { done = c; tryIt = t; return *this; }
     Step& at(const char* w) { target = w; return *this; }
     Step& show(const char* id) { part = id; return *this; }
@@ -123,6 +139,75 @@ static bool builtIn(const TutState&, const TutState& n) { return n.ignition == "
 static bool magOut(const TutState& w, const TutState& n) { return n.seatedMag != w.seatedMag || n.looseMags > w.looseMags; }
 static bool roundsHandled(const TutState& w, const TutState& n) { return n.looseRounds > w.looseRounds || n.magRounds > w.magRounds; }
 
+// building a gun
+static bool newFixed(const TutState& w, const TutState& n) { return n.fixedParts > w.fixedParts; }
+static bool newMoving(const TutState& w, const TutState& n) { return n.movingParts > w.movingParts; }
+static bool heavyBolt(const TutState&, const TutState& n) { return n.heavyMoving > 0; }
+static bool faceSet(const TutState&, const TutState& n) { return n.hasFace; }
+static bool muzzleSet(const TutState&, const TutState& n) { return n.hasMuzzle; }
+static bool chamberSet(const TutState&, const TutState& n) { return n.chamberOk; }
+static bool handFed(const TutState&, const TutState& n) { return n.handFeed; }
+static bool reloaded(const TutState&, const TutState& n) { return n.mode == Mode::Test && n.chambered; }
+
+// "Do it for me": each makes its piece where it fits whatever is already there (the player's own parts, if drawn)
+struct Box { double x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; double cx() const { return (x0 + x1) / 2; } double cy() const { return (y0 + y1) / 2; } };
+static Box boxOf(const BodyDef& b) { Box r; for (auto& p : b.pts) { r.x0 = std::min(r.x0, p.x); r.y0 = std::min(r.y0, p.y); r.x1 = std::max(r.x1, p.x); r.y1 = std::max(r.y1, p.y); } return r; }
+static std::vector<V2> rectPts(double x0, double y0, double x1, double y1) { return {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}; }
+static int framePart() { auto& D = A.design; int i = D.bodyIndex("frame"); if (i >= 0) return i; for (size_t k = 0; k < D.bodies.size(); k++) if (D.bodies[k].fixed) return (int)k; return -1; }
+static int barrelPart() {   // the longest fixed part that isn't the frame
+    auto& D = A.design; int best = -1, f = framePart(); double bw = 0;
+    for (size_t k = 0; k < D.bodies.size(); k++) { if (!D.bodies[k].fixed || (int)k == f) continue; Box b = boxOf(D.bodies[k]); if (b.x1 - b.x0 > bw && b.x1 - b.x0 > 2 * (b.y1 - b.y0)) { bw = b.x1 - b.x0; best = (int)k; } }
+    return best;
+}
+static int boltPart() { auto& D = A.design; for (int k = (int)D.bodies.size() - 1; k >= 0; k--) if (!D.bodies[k].fixed && !D.bodies[k].magazine) return k; return -1; }
+static Box barrelBox() { int i = barrelPart(); if (i >= 0) return boxOf(A.design.bodies[i]); Box b; b.x0 = 120; b.y0 = 22; b.x1 = 300; b.y1 = 38; return b; }
+static BodyDef& addPart(const char* name, std::vector<V2> pts, bool fixed, double thick, const char* color) {
+    BodyDef b; b.id = uid(); b.name = name; b.fixed = fixed; b.layer = "ABC"; b.thick = thick; b.color = color; b.pts = pts;
+    fixShape(b);
+    A.design.bodies.push_back(b);
+    return A.design.bodies.back();
+}
+static void helpBarrel() { if (barrelPart() < 0) addPart("Barrel", rectPts(120, 22, 300, 38), true, 16, "#c9ccd2"); commit(); }
+static void helpBolt() {
+    int i = boltPart();
+    if (i < 0) { Box bb = barrelBox(); double bore = bb.cy(); addPart("Bolt", rectPts(bb.x0 - 60, bore - 10, bb.x0, bore + 3), false, 14, "#3f7fe0").mass = 400; }
+    else A.design.bodies[i].mass = 400;
+    commit();
+}
+static void helpTrack() {
+    int i = boltPart(), f = framePart();
+    if (i < 0) helpBolt(), i = boltPart();
+    Box bo = boxOf(A.design.bodies[i]), bb = barrelBox();
+    double y = std::clamp(bb.cy() - 3, bo.y0 + 1, bo.y1 - 1), cx = bo.cx();
+    JointDef j; j.type = "track"; j.a = A.design.bodies[i].id; j.b = f >= 0 ? A.design.bodies[f].id : "world";
+    j.p = {cx, y}; j.path = {{cx - 50, y}, {cx, y}}; j.lockRot = true;
+    A.design.joints.push_back(j);
+    commit();
+}
+static void helpFace() {
+    auto& br = A.design.breech; int i = boltPart();
+    if (!br.on) { br = BreechDef(); br.on = true; }
+    Box bb = barrelBox();
+    if (i >= 0) { br.breech = A.design.bodies[i].id; br.face = {boxOf(A.design.bodies[i]).x1, bb.cy()}; }
+    else br.face = {bb.x0, bb.cy()};
+    br.hasFace = true;
+    if (A.tool == Tool::Face) A.tool = Tool::Select;
+    commit();
+}
+static void helpMuzzle() { auto& br = A.design.breech; if (!br.on) helpFace(); Box bb = barrelBox(); br.muzzle = {bb.x1, bb.cy()}; br.hasMuzzle = true; if (A.tool == Tool::Muzzle) A.tool = Tool::Select; commit(); }
+static void helpChamber() { auto& br = A.design.breech; if (!br.on) helpFace(); int b = barrelPart(); if (b >= 0) br.chamber = A.design.bodies[b].id; commit(); }
+static void helpFeed() { auto& br = A.design.breech; if (!br.on) helpFace(); br.feedMode = "single"; br.physicalFeed = true; br.loaded = true; commit(); }
+static void helpEjector() {
+    int i = boltPart();
+    if (i < 0) return;
+    Box bo = boxOf(A.design.bodies[i]);
+    double travel = 50;
+    for (auto& j : A.design.joints) if (j.type == "track" && j.a == A.design.bodies[i].id && j.path.size() >= 2) travel = std::fabs(j.path.back().x - j.path.front().x);
+    double front = bo.x1 - travel + 12;   // the bolt's face when it's all the way open, plus a little: the case meets it just before
+    addPart("Ejector", rectPts(front - 4, bo.y1 + 0.6, front, bo.y1 + 5), true, 4, "#3f4654");
+    commit();
+}
+
 // ---------------------------------------------------------------- the lessons
 // One idea per step, in plain words. The outline shows where; the text says why.
 static const std::vector<Lesson>& lessons() {
@@ -135,6 +220,21 @@ static const std::vector<Lesson>& lessons() {
         Step("Side view", "You'll draw most parts from the side. Press V, or click this button. Press it again to go back to 3D.").check(sideToggled, "Press V").at("view:side"),
         Step("See inside", "Guns hide their insides. X-ray turns see-through parts into outlines. Cutaway hides the near side so you can watch the parts inside.").check(lookInside, "Press X or C").at("view:xray|view:cutaway"),
         Step("Build, then test", "The designer is for building: nothing moves. The test bench runs your gun for real. Testing never changes your design.").check(onBench, "Press Tab, or click Test bench").at("mode:test"),
+    }},
+    {"firstgun", "Build your first gun", "From a blank frame to a gun that fires, ejects and reloads.", "blank", {
+        Step("What you'll build", "A simple single-shot: a barrel, a heavy bolt that slides, and an ejector. Firing blows the bolt open and throws out the empty case. You put in the next round by hand and push the bolt shut.\n\nEvery step has a \"Do it for me\" button if you get stuck.").designer().side(),
+        Step("The barrel", "Pick Rectangle and draw a long, thin barrel along the top of the frame's front half. Then tick Fixed: a barrel doesn't move.").check(newFixed, "Draw a barrel and tick Fixed").at("tool:Rectangle|part:fixed").doIt(helpBarrel),
+        Step("The bolt", "Draw a block behind the barrel, touching its back end. Its bottom edge should sit just below the barrel's middle line, so the bottom of the round's rim peeks out underneath (the ejector will catch it there). The bolt holds the round in, and the shot pushes it back.").check(newMoving, "Draw the bolt").at("tool:Rectangle").doIt(helpBolt),
+        Step("Make it heavy", "With the bolt selected, set Mass to 400 g. The gun doesn't lock, so only the bolt's weight holds the round in for the instant the bullet needs. A light bolt slams open and bounces.").check(heavyBolt, "Set the bolt's Mass to 400 g").at("part:mass").onTab(0).doIt(helpBolt),
+        Step("Let it slide", "Pick Track. Click the middle of the bolt, then click that spot again and a point about 50 mm behind it, then press Enter. The bolt can now slide back that far.").check(newTrack, "Add a track for the bolt").at("tool:Track").doIt(helpTrack),
+        Step("Where the round sits", "In the Firing tab, add a firing system, then click the front face of the bolt, level with the middle of the barrel. That's where the back of the round sits.").check(faceSet, "Add a firing system and click the breech face").at("tab:Firing|firing:add").onTab(2).doIt(helpFace),
+        Step("The muzzle", "Click Place muzzle, then click the front end of the barrel.").check(muzzleSet, "Place the muzzle").at("firing:muzzle").onTab(2).doIt(helpMuzzle),
+        Step("The chamber", "Set Chamber to your barrel, so the round goes into the barrel and not the frame.").check(chamberSet, "Choose the barrel as the chamber").at("firing:chamber").onTab(2).doIt(helpChamber),
+        Step("Loaded by hand", "Set Feeds from to Loaded by hand, and tick Physical rounds so the round and its empty case are real objects.").check(handFed, "Loaded by hand, physical rounds").at("firing:feeding|firing:physical").onTab(2).doIt(helpFeed),
+        Step("The ejector", "Draw a small block just under the bolt's bottom edge, near the back end of its travel, and tick Fixed. As the bolt flies back, the bottom of the case's rim hits it and the case flips out.").check(newFixed, "Draw the ejector and tick Fixed").at("tool:Rectangle|part:fixed").onTab(0).doIt(helpEjector),
+        Step("Fire!", "Go to the test bench and press Space. Watch the bolt blow open and the empty case fly out (the shot is slowed down for you).").check(fired, "Press Space on the test bench").at("mode:test|fire"),
+        Step("Load the next round", "Grab one of the rounds lying on the bench (L adds more). Drag it into the open action, just in front of the bolt and in line with the barrel: it snaps into place. Then drag the bolt forward to close it.").check(reloaded, "Load a round and close the bolt").bench(),
+        Step("Fire again", "You built a working gun. Fire it again!\n\nIdeas for next time: a spring to close the bolt by itself (then you'll need a catch to hold it open while you load), a magazine, or a trigger you draw.").check(fired, "Fire").at("fire"),
     }},
     {"drawing", "Drawing and shaping parts", "Draw parts, then shape their corners, edges and curves.", "blank", {
         Step("Parts are outlines", "Every part is a flat outline drawn from the side, then given a thickness. You'll start on a blank frame.").designer(),
@@ -244,7 +344,7 @@ void tutAnchor(const char* id) {
 
 static TutState gWas;
 static bool gStepDone = false;
-static double gDoneAt = 0;
+static double gDoneAt = 0, gEnteredAt = 0;
 static void enterStep(int s) {
     const Lesson& L = lessons()[A.tutLesson];
     A.tutStep = std::clamp(s, 0, (int)L.steps.size() - 1);
@@ -263,9 +363,11 @@ static void enterStep(int s) {
                 if (jd.type == "spring" && (jd.a == st.spring || jd.b == st.spring)) { A.sel = {2, (int)j, -1}; A.selVs.clear(); gPanelTab = 0; break; }
             }
         if (st.tab >= 0) gPanelTab = st.tab;
+        if (st.sideView && !A.ortho) { A.ortho = true; fitView(); }
     }
     gWas = snapshot();
     gStepDone = false;
+    gEnteredAt = GetTime();
 }
 static void startLesson(int i);
 void startTutorial(int i) {
@@ -356,6 +458,11 @@ void tutorialPanel() {
     if (mapLesson && ME.walking) return;
     const Step& st = L.steps[A.tutStep];
     bool last = A.tutStep + 1 >= (int)L.steps.size();
+    if (std::getenv("GUNSMITH_TUTAUTO") && !gStepDone) {   // (automated checks: press "Do it for me", Next, and fire)
+        if (st.helper) st.helper();
+        else if (!st.done && !last && GetTime() - gEnteredAt > 0.3) { enterStep(A.tutStep + 1); return; }
+        else if (st.done == fired && A.screen == Screen::Workshop) { if (A.mode != Mode::Test) setMode(Mode::Test); if (A.S && A.S->shots == gWas.shots) fireDown(); }
+    }
     if (st.done && !gStepDone && st.done(gWas, snapshot())) { gStepDone = true; gDoneAt = GetTime(); uiTick(); }
     if (gStepDone && !last && GetTime() - gDoneAt > 1.2) { enterStep(A.tutStep + 1); return; }   // done: on to the next by itself
     if (!gStepDone) highlight(st.target);
@@ -392,6 +499,11 @@ void tutorialPanel() {
         ImGui::Dummy({0, 4 * s});
         if (gStepDone) ImGui::TextColored(colGood(), ICON_FA_CHECK "  Nice!");
         else ImGui::TextColored(colAccent(), ICON_FA_HAND_POINTER "  %s", st.tryIt);
+    }
+    if (st.helper && !gStepDone) {
+        ImGui::Dummy({0, 2 * s});
+        if (ImGui::SmallButton(ICON_FA_WAND_MAGIC_SPARKLES "  Do it for me")) { uiTick(); st.helper(); }
+        if (tipHover()) ImGui::SetTooltip("Makes this step's part or setting for you, so you can carry on.");
     }
     ImGui::Dummy({0, 6 * s});
     if (A.tutStep > 0) { if (ImGui::Button(ICON_FA_ARROW_LEFT)) { uiTick(); enterStep(A.tutStep - 1); } ImGui::SameLine(); }

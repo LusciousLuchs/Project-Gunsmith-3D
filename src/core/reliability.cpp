@@ -45,6 +45,10 @@ struct Runner {
             S.rollHand = {true, B, B->rmin, 0}; run(S, 0.18);
             S.rollHand.on = false;
         }
+        else if (!S.breechSprung) {  // nothing springs it shut (a straight-pull bolt, a sliding breech): push it home
+            handMove(home(0.005));
+            run(S, 0.1);
+        }
         S.hand.on = false;  // a self-loader's spring closes it; a bolt is already home
         run(S, rolling ? 0.05 : 0.35);
     }

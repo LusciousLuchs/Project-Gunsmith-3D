@@ -73,6 +73,7 @@ static void inspectPart(BodyDef& b) {
         if (!b.fixed) {
             double area = std::fabs(sim::polyArea(b.pts)), autoMass = area * b.thick * 7.85e-3;
             pNumU("Mass", b.mass, 10, Q::PartMass, -1, "0 works it out from the shape, as steel.");
+            tutAnchor("part:mass");
             if (b.mass <= 0) muted("Worked out from the shape: %s.", fmtQ(Q::PartMass, autoMass).c_str());
         }
         if (ImGui::Button("Copy to the other side", {-1, 0})) {
@@ -440,7 +441,9 @@ static void firingTab() {
     auto& br = D.breech;
     if (!br.on) {
         muted("No firing system yet. Add one, then click where the cartridge head sits against the breech.");
-        if (ImGui::Button("Add a firing system", {-1, 0})) {
+        bool addHit = ImGui::Button("Add a firing system", {-1, 0});
+        tutAnchor("firing:add");
+        if (addHit) {
             br = BreechDef(); br.on = true;
             for (auto& b : D.bodies) { if (!b.fixed && br.breech.empty()) br.breech = b.id; if (b.fixed && br.chamber == "world") br.chamber = b.id; }
             commit(); A.tool = Tool::Face;
@@ -453,11 +456,13 @@ static void firingTab() {
         pBody("Breech", br.breech, false);
         if (tipHover()) ImGui::SetTooltip("The bolt or slide: the part whose face holds the cartridge.");
         pBody("Chamber", br.chamber, true);
+        tutAnchor("firing:chamber");
         if (tipHover()) ImGui::SetTooltip("The barrel, or whatever holds the chamber.");
         float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
         if (ImGui::Button("Place breech face", {w2, 0})) setTool(Tool::Face);
         tutAnchor("firing:breechface");
         ImGui::SameLine(); if (ImGui::Button("Place muzzle", {w2, 0})) setTool(Tool::Muzzle);
+        tutAnchor("firing:muzzle");
     }
     if (section("Cartridge", true)) {
         prop("Cartridge");
@@ -494,6 +499,7 @@ static void firingTab() {
         if (fm == 0 && !hasWell) warn("No magazine yet: select a part and tick Magazine > Detachable.");
         if (fm == 1) { prop("Rounds"); ImGui::DragInt("##rounds", &br.rounds, 0.2f, 0, 1000); markEdit(); }
         pCheck("Physical rounds", br.physicalFeed, "Every round and case is a real part: the magazine lips, feed ramp, chamber,\nextractor, ejector and port you draw decide whether it feeds and ejects.");
+        tutAnchor("firing:physical");
         if (!br.physicalFeed) pNumU("Feeds when open", br.feed, 1, Q::Length);
         pCheck("Starts loaded", br.loaded, "Begin each test with a round in the chamber.");
     }
