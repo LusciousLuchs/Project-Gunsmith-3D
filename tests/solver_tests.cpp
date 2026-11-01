@@ -556,6 +556,24 @@ static void edgeSplitting() {
     BodyDef d; d.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; fixShape(d);
     subdivideBody(d);
     CHECK(d.pts.size() == 8 && std::fabs(d.pts[1].x - 20) < 1e-9 && std::fabs(d.pts[3].y - 10) < 1e-9, "splitting all edges halves each one");
+    BodyDef e; e.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; fixShape(e);
+    for (int k = 0; k < 10; k++) subdivideBody(e);
+    CHECK((int)e.pts.size() == MAX_CORNERS && std::fabs(outlineArea(e) - 800) < 1e-6, "splitting over and over stops at the corner limit, with the shape unchanged");
+    CHECK(splitEdge(e, 0) == -1 && subdivideBody(e) == 0 && (int)e.pts.size() == MAX_CORNERS, "a part at the limit takes no more corners");
+    BodyDef f; f.pts = {{0, 0}, {60, 0}, {60, 2}, {0, 2}}; fixShape(f);
+    for (int k = 0; k < 4; k++) subdivideBody(f);
+    double longest = 0;
+    for (size_t i = 0; i < f.pts.size(); i++) { V2 p = f.pts[i], q = f.pts[(i + 1) % f.pts.size()]; longest = std::max(longest, std::hypot(q.x - p.x, q.y - p.y)); }
+    CHECK((int)f.pts.size() == MAX_CORNERS && longest < 8, "when they can't all be split, the longest edges are split first");
+    BodyDef g; g.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; fixShape(g);
+    g.pts.clear();  // an old blueprint's part with far too many corners: a rectangle with a corner every 1 mm
+    for (int x = 0; x < 40; x++) g.pts.push_back({(double)x, 0});
+    for (int y = 0; y < 20; y++) g.pts.push_back({40, (double)y});
+    for (int x = 40; x > 0; x--) g.pts.push_back({(double)x, 20});
+    for (int y = 20; y > 0; y--) g.pts.push_back({0, (double)y});
+    g.rad.clear(); g.bulge.clear(); fixShape(g);
+    simplifyBody(g);
+    CHECK((int)g.pts.size() <= MAX_CORNERS && std::fabs(outlineArea(g) - 800) < 1e-6, "simplifying an over-split part keeps its shape");
 }
 
 // The built-in hammer or striker: no parts, but the action has to cock it, and the fire mode decides follow-up shots.

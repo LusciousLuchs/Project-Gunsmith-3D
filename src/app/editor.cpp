@@ -12,6 +12,15 @@
 #include <vector>
 
 // ---------------------------------------------------------------- editing operations
+bool splitReady() {
+    static double last = -1;
+    double now = GetTime();
+    if (now - last < 0.2) return false;
+    last = now;
+    return true;
+}
+void cornerLimitToast() { toast(TextFormat("A part can have at most %d corners. Remove one (right-click a corner) to add another.", MAX_CORNERS)); }
+
 void moveBody(int i, double dx, double dy) {
     BodyDef& d = A.design.bodies[i];
     for (auto& p : d.pts) { p.x += dx; p.y += dy; }
@@ -160,6 +169,7 @@ void buildInput(bool overUI) {
         switch (A.tool) {
         case Tool::Body: {
             if (A.draft.size() >= 3 && Vector2Distance(toScreen(W3(A.draft[0], 0)), m) < 10) { finishBody(); return; }
+            if ((int)A.draft.size() >= MAX_CORNERS) { toast(TextFormat("%d corners is the most a part can have. Click the first corner or press Enter to close it.", MAX_CORNERS)); return; }
             A.drafting = true; A.draft.push_back(w);
             return;
         }
@@ -229,7 +239,9 @@ void buildInput(bool overUI) {
         if (dbl && A.sel.kind == 1) {  // insert vertex on an edge of the selected part
             auto& d = A.design.bodies[A.sel.idx];
             if (auto* h = handleAt(m); h && h->kind == 7 && h->i == A.sel.idx) {  // on an edge's diamond: exactly halfway
+                if (!splitReady()) return;
                 int nv = splitEdge(d, h->v);
+                if (nv < 0) { cornerLimitToast(); return; }
                 A.sel.v = nv; A.selVs = {nv}; commit(); return;
             }
             float z = bodyFront(A.sel.idx);
@@ -240,6 +252,8 @@ void buildInput(bool overUI) {
                 if (std::sqrt(d2) < bd) { bd = (float)std::sqrt(d2); best = (int)k; }
             }
             if (best >= 0) {
+                if (!splitReady()) return;
+                if ((int)d.pts.size() >= MAX_CORNERS) { cornerLimitToast(); return; }
                 fixShape(d);
                 d.pts.insert(d.pts.begin() + best + 1, snapMM(mouseMM(z)));
                 d.rad.insert(d.rad.begin() + best + 1, 0.0);
@@ -263,6 +277,7 @@ void buildInput(bool overUI) {
                     A.sel.v = hh.v;
                 } else {
                     int n = (int)d.pts.size(), v = hh.v;
+                    if (shift && n + 2 > MAX_CORNERS) { cornerLimitToast(); shift = false; }  // too many corners: just move the edge
                     if (shift) {  // extrude: duplicate the edge's two vertices and drag the copies
                         V2 a = d.pts[v], b = d.pts[(v + 1) % n];
                         int at = v + 1;

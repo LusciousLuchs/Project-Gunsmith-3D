@@ -179,8 +179,12 @@ std::vector<V2> circlePts(V2 c, double r, std::vector<double>* bulge);
 std::vector<BodyDef> splitBody(const BodyDef& b, V2 a, V2 c);   // knife cut along segment a-c; returns the pieces (1 if no cut)
 void mirrorBody(BodyDef& b, V2 a, V2 c);                         // reflect across the line through a and c
 void flipBody(BodyDef& b, bool horizontal);                      // flip about its own centre
-void subdivideBody(BodyDef& b);                                  // add a vertex in the middle of every edge
-int splitEdge(BodyDef& b, int edge);                             // add a vertex in the middle of one edge (on its curve); returns its index
+constexpr int MAX_CORNERS = 32;                                  // corners a part can be given (older blueprints may have more)
+int subdivideBody(BodyDef& b);                                   // add a vertex in the middle of every edge, longest first, up to
+                                                                 // MAX_CORNERS; returns how many were added
+void simplifyBody(BodyDef& b, int maxCorners = MAX_CORNERS);    // drop the corners that change the shape least
+int splitEdge(BodyDef& b, int edge);                             // add a vertex in the middle of one edge (on its curve); returns its index,
+                                                                 // or -1 when the part already has MAX_CORNERS
 
 // Magazine maker.
 void generateMagazine(Design& d, int bodyIndex);               // rebuild the magazine shape and its well

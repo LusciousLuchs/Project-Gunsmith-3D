@@ -484,7 +484,7 @@ void flipBody(BodyDef& b, bool horizontal) {
 int splitEdge(BodyDef& b, int e) {
     fixShape(b);
     int n = (int)b.pts.size();
-    if (n < 2 || e < 0 || e >= n) return -1;
+    if (n < 2 || e < 0 || e >= n || n >= MAX_CORNERS) return -1;
     V2 p = b.pts[e], q = b.pts[(e + 1) % n];
     double ex = q.x - p.x, ey = q.y - p.y, len = std::hypot(ex, ey);
     V2 mid{(p.x + q.x) / 2, (p.y + q.y) / 2};
@@ -504,9 +504,33 @@ int splitEdge(BodyDef& b, int e) {
     b.bulge.insert(b.bulge.begin() + e + 1, s2);
     return e + 1;
 }
-void subdivideBody(BodyDef& b) {
+void simplifyBody(BodyDef& b, int maxCorners) {
     fixShape(b);
-    for (int i = (int)b.pts.size() - 1; i >= 0; i--) splitEdge(b, i);
+    while ((int)b.pts.size() > std::max(3, maxCorners)) {
+        int n = (int)b.pts.size(), best = 0;
+        double ba = 1e300;
+        for (int i = 0; i < n; i++) {  // the corner whose triangle with its neighbours is smallest
+            V2 a = b.pts[(i + n - 1) % n], p = b.pts[i], c = b.pts[(i + 1) % n];
+            double ar = std::fabs((p.x - a.x) * (c.y - a.y) - (p.y - a.y) * (c.x - a.x)) + b.rad[i] * b.rad[i];
+            if (ar < ba) { ba = ar; best = i; }
+        }
+        int prev = (best + n - 1) % n;
+        b.bulge[prev] = (b.bulge[prev] + b.bulge[best]) / 2;
+        b.pts.erase(b.pts.begin() + best); b.rad.erase(b.rad.begin() + best); b.bulge.erase(b.bulge.begin() + best);
+    }
+}
+int subdivideBody(BodyDef& b) {
+    fixShape(b);
+    int n = (int)b.pts.size(), room = std::max(0, MAX_CORNERS - n);
+    std::vector<int> order(n);
+    for (int i = 0; i < n; i++) order[i] = i;
+    auto len = [&](int i) { V2 p = b.pts[i], q = b.pts[(i + 1) % n]; return std::hypot(q.x - p.x, q.y - p.y); };
+    std::stable_sort(order.begin(), order.end(), [&](int x, int y) { return len(x) > len(y); });
+    order.resize(std::min(n, room));                 // the longest edges, if they can't all be split
+    std::sort(order.rbegin(), order.rend());         // from the end, so earlier indices stay put
+    int made = 0;
+    for (int e : order) if (splitEdge(b, e) >= 0) made++;
+    return made;
 }
 
 // ---------------------------------------------------------------- magazine maker

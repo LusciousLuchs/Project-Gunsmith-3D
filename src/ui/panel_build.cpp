@@ -209,10 +209,11 @@ static void inspectPart(BodyDef& b) {
         ImGui::BeginDisabled(edges.empty());
         bool splitHit = ImGui::Button(edges.size() > 1 ? "Split edges" : "Split edge", {w2, 0});
         tutAnchor("shape:split");
-        if (splitHit) {
+        if (splitHit && splitReady()) {
             std::vector<int> made;
             for (int k = (int)edges.size() - 1; k >= 0; k--) {
                 int nv = splitEdge(b, edges[k]);
+                if (nv < 0) { cornerLimitToast(); break; }
                 for (int& m : made) if (m >= nv) m++;
                 made.push_back(nv);
             }
@@ -222,8 +223,22 @@ static void inspectPart(BodyDef& b) {
         if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && CFG.tooltips)
             ImGui::SetTooltip("%s", edges.empty() ? "Click an edge's diamond to select it, then split it in half.\nOr right-click or double-click the diamond."
                                             : "Adds a corner halfway along the selected edge (right-click or double-click a diamond does the same).");
-        ImGui::SameLine(); if (ImGui::Button("Split all edges", {w2, 0})) { subdivideBody(b); A.selVs.clear(); A.sel.v = -1; editedAny = true; }
+        ImGui::SameLine(); if (ImGui::Button("Split all edges", {w2, 0}) && splitReady()) {
+            if (subdivideBody(b) == 0) cornerLimitToast();
+            else { A.selVs.clear(); A.sel.v = -1; editedAny = true; }
+        }
         if (tipHover()) ImGui::SetTooltip("Adds a corner halfway along every edge, for finer shaping.");
+        {
+            int nc = (int)b.pts.size();
+            if (nc > MAX_CORNERS) {
+                ImGui::PushTextWrapPos(0);
+                ImGui::TextColored(colWarn(), "%d corners: more than the %d a part can have. So many slow the game down badly.", nc, MAX_CORNERS);
+                ImGui::PopTextWrapPos();
+                if (ImGui::Button(TextFormat("Simplify to %d corners", MAX_CORNERS), {-1, 0})) { simplifyBody(b); A.selVs.clear(); A.sel.v = -1; editedAny = true; }
+                if (tipHover()) ImGui::SetTooltip("Removes the corners that change the shape least.");
+            } else if (nc == MAX_CORNERS) ImGui::TextColored(colWarn(), "%d of %d corners: the most a part can have.", nc, MAX_CORNERS);
+            else muted("%d of %d corners.", nc, MAX_CORNERS);
+        }
         if (ImGui::Button("Flip H", {w2, 0})) { flipBody(b, true); editedAny = true; }
         ImGui::SameLine(); if (ImGui::Button("Flip V", {w2, 0})) { flipBody(b, false); editedAny = true; }
         static double allR = 2;

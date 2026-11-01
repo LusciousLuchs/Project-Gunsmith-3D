@@ -113,7 +113,7 @@ Drag a number sideways to scrub it, or click it without dragging to type an exac
 
 **Parts** are drawn in side elevation and extruded to their thickness. The editor works like Sprocket's: start from a Rect, Circle or Polygon and shape it.
 - *Vertices* (squares): drag to move. Shift-click or box-drag to pick several and move them together, or type an exact X/Y. Double-click an edge to add one.
-- *Edges* (diamonds): drag to move the whole edge, or Shift-drag to extrude it into a new step, like pulling out a rail or a lug. Right-click or double-click a diamond to split that edge in half (on its curve, if it's bowed); *Split edge* in the Shape section does the same for the selected edge.
+- *Edges* (diamonds), up to 32 corners per part: drag to move the whole edge, or Shift-drag to extrude it into a new step, like pulling out a rail or a lug. Right-click or double-click a diamond to split that edge in half (on its curve, if it's bowed); *Split edge* in the Shape section does the same for the selected edge.
 - *Knife*: drag a line across a part to cut it into separate parts. Delete the offcut to carve a notch, or keep both halves: cut a frame block into a frame and a slide, for example. With nothing selected, it cuts every part the line crosses. Curves and rounded corners survive the cut.
 - *Mirror*: drag an axis to make a reflected copy of the selected part. *Flip H / Flip V* flip a part in place, *Duplicate* copies it, *Split all edges* adds a vertex mid-way along every edge for finer shaping.
 - *Curves*: select a vertex to round that corner or bow the next edge outward or inward, or round every corner at once.
