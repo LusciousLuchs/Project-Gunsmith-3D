@@ -13,6 +13,7 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 0.1 alpha will be declared once the editor and the test bench are worked out.
 
 ### Editor (Build mode)
+- **Carving in 3D:** a new Carve tool cuts circles, half circles, rectangles and triangles into any face of a part, to any depth or right through, at any angle. Cuts change how parts collide (an ejector can run in a groove cut in the bolt) and how much they weigh. Each part lists its cuts, and each can be resized, re-aimed, duplicated or removed.
 - **Tracks in two clicks:** click the part that should slide, then where it slides to. Hold Shift to add bends. While drawing, the view names the part that slides and the part holding the slot, and a selected part is picked first when parts overlap.
 - **Type exact numbers everywhere:** click a number field without dragging to type a value, or double-click (or Ctrl+click) a slider.
 - Parts are drawn as polygons, rectangles or circles in side view and extruded to their thickness. Corners can be rounded and edges bowed, and the physics uses the curved outline.

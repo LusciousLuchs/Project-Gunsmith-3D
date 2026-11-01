@@ -1,4 +1,5 @@
 #include "solver_internal.hpp"
+#include "carve.hpp"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -159,7 +160,48 @@ std::unique_ptr<Sim> build(const Design& design) {
     for (auto& d : s.design.bodies) {
         Body b;
         if (!makeBody(d, b)) continue;
-        s.bodies.push_back(b);
+        if (d.carves.empty() || d.rollOn || d.magazine) { s.bodies.push_back(b); continue; }
+        // carved: one body per depth slice, welded into one part. The thickest-in-material slice keeps the part's id.
+        std::vector<Body> sl;
+        double vol = 0;
+        for (auto& c : carve::slices(d)) {
+            double area, J; V2 cen;
+            if (!carve::material(outlineOf(d), c.cav, area, cen, J) || area < 0.5) continue;
+            // every slice keeps the part's own reference point (the outline's centre), so the part draws and joins
+            // as before; like welded pieces, the small shift of the centre of mass is left out
+            Body x = b;
+            double t = c.z1 - c.z0, cx = b.x0 * 1000, cy = b.y0 * 1000;
+            x.cav.clear();
+            for (auto& q : c.cav) {
+                std::vector<V2> lq;
+                for (auto& p : q) lq.push_back({(p.x - cx) / 1000, (p.y - cy) / 1000});
+                x.cav.push_back(lq);
+            }
+            double off2 = (cen.x - cx) * (cen.x - cx) + (cen.y - cy) * (cen.y - cy);
+            x.m = area * t * DENS;
+            x.I = std::max((J + area * off2) * t * DENS * 1e-6, x.m * 0.004 * 0.004);
+            x.invM = x.fixed ? 0 : 1 / x.m;
+            x.invI = x.fixed ? 0 : 1 / x.I;
+            x.z = (c.z0 + c.z1) / 2000; x.zh = t / 2000;
+            resample(x);
+            vol += area * t;
+            sl.push_back(x);
+        }
+        if (sl.empty()) continue;  // carved away completely
+        if (d.mass > 0) for (auto& x : sl) {  // the player set the weight: share it out by volume
+            double f = (x.m / DENS) / vol;
+            x.m = d.mass / 1000 * f; x.I = std::max(x.I * (d.mass / 1000) / (vol * DENS), x.m * 0.004 * 0.004);
+            x.invM = x.fixed ? 0 : 1 / x.m; x.invI = x.fixed ? 0 : 1 / x.I;
+        }
+        size_t main = 0;
+        for (size_t k = 1; k < sl.size(); k++) if (sl[k].m > sl[main].m) main = k;
+        for (size_t k = 0, n = 0; k < sl.size(); k++) {
+            if (k == main) continue;
+            sl[k].id = d.id + "~" + std::to_string(++n);
+            sl[k].slice = true;
+        }
+        std::swap(sl[0], sl[main]);  // the part itself first
+        for (auto& x : sl) s.bodies.push_back(x);
     }
     return finishBuild(S);
 }
@@ -250,6 +292,11 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         for (size_t i = 0; i < grp.size(); i++) grp[i] = (int)i;
         std::function<int(int)> top = [&](int i) { return grp[i] == i ? i : grp[i] = top(grp[i]); };
         auto idx = [&](Body* b) { return b == &s.world ? -1 : (int)(b - s.bodies.data()); };
+        for (size_t i = 0; i < s.bodies.size(); i++) {  // a carved part's slices are one solid
+            if (!s.bodies[i].slice) continue;
+            Body* m = s.find(s.bodies[i].d->id);
+            if (m) grp[top((int)i)] = top(idx(m));
+        }
         for (auto& J : s.joints) {
             if (J.type != JT::Weld) continue;
             int a = idx(J.A), b = idx(J.B);
@@ -327,7 +374,7 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
     }
     for (auto& b : s.bodies) {  // controls bound to keys
         const BodyDef& d = *b.d;
-        if (d.ctrl == "none" || d.key == "none" || b.fixed) continue;
+        if (d.ctrl == "none" || d.key == "none" || b.fixed || b.slice) continue;
         Pusher p; p.b = &b; p.l = anc(b, d.ctrlPt);
         p.dx = std::cos(d.ctrlDir * D2R); p.dy = std::sin(d.ctrlDir * D2R);
         p.force = d.ctrlForce; p.key = d.key;
@@ -366,6 +413,27 @@ void resample(Body& b) {
         int n = std::max(1, (int)std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step));
         for (int k = 0; k < n; k++) b.samples.push_back({p.x + (q.x - p.x) * k / n, p.y + (q.y - p.y) * k / n});
     }
+    if (b.cav.empty()) return;
+    // carved: the outline only where it wasn't cut away, plus the walls of the cuts where they are in the part
+    std::vector<V2> keep;
+    for (auto& p : b.samples) {
+        bool cut = false;
+        for (auto& c : b.cav) if (carve::inConvex(c, p)) { cut = true; break; }
+        if (!cut) keep.push_back(p);
+    }
+    for (auto& c : b.cav)
+        for (size_t i = 0; i < c.size(); i++) {
+            V2 p = c[i], q = c[(i + 1) % c.size()];
+            int n = std::max(1, (int)std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step));
+            for (int k = 0; k < n; k++) {
+                V2 s{p.x + (q.x - p.x) * k / n, p.y + (q.y - p.y) * k / n};
+                if (!inPoly(s.x, s.y, b.lp)) continue;
+                bool other = false;
+                for (auto& c2 : b.cav) if (&c2 != &c && carve::inConvex(c2, s)) { other = true; break; }
+                if (!other) keep.push_back(s);
+            }
+        }
+    b.samples.swap(keep);
 }
 // Seen from the side, a lug turning about the bore swings up and over and moves across in depth. Each point of the
 // part, at its near and far faces, is turned about the bolt's axis; the side outline is their hull and the depth
@@ -414,9 +482,25 @@ void contacts(Body& A, Body& B, double mu) {  // push B's boundary samples out o
         if (l.x < lx0 || l.x > lx1 || l.y < ly0 || l.y > ly1) continue;
         if (!inPoly(l.x, l.y, A.lp)) continue;
         double best = 1e18; V2 bq;
-        for (size_t i = 0; i < n; i++) {
-            double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < n ? i + 1 : 0], &d2);
-            if (d2 < best) { best = d2; bq = q; }
+        if (A.cav.empty()) {
+            for (size_t i = 0; i < n; i++) {
+                double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < n ? i + 1 : 0], &d2);
+                if (d2 < best) { best = d2; bq = q; }
+            }
+        } else {  // carved: inside the outline but in a cut is empty space; the cut walls are surfaces too
+            bool hollow = false;
+            for (auto& c : A.cav) if (carve::inConvex(c, l)) { hollow = true; break; }
+            if (hollow) continue;
+            auto inCut = [&](V2 q) { for (auto& c : A.cav) if (carve::inConvex(c, q)) return true; return false; };
+            for (size_t i = 0; i < n; i++) {
+                double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < n ? i + 1 : 0], &d2);
+                if (d2 < best && !inCut(q)) { best = d2; bq = q; }
+            }
+            for (auto& c : A.cav)
+                for (size_t i = 0; i < c.size(); i++) {
+                    double d2; V2 q = closestOnSeg(l, c[i], c[(i + 1) % c.size()], &d2);
+                    if (d2 < best && inPoly(q.x, q.y, A.lp)) { best = d2; bq = q; }
+                }
         }
         double d = std::sqrt(best);
         if (d < 1e-7 || d > 0.005) continue;

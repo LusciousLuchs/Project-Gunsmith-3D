@@ -101,7 +101,9 @@ target_link_libraries(gunsmith3d PRIVATE gunsmith_ui gunsmith_app gunsmith_core 
 if(WIN32)
   set_target_properties(gunsmith3d PROPERTIES WIN32_EXECUTABLE ON)
   if(MSVC)
-    target_link_options(gunsmith3d PRIVATE /ENTRY:mainCRTStartup)
+    target_link_options(gunsmith3d PRIVATE /ENTRY:mainCRTStartup /STACK:16777216)
+  else()
+    target_link_options(gunsmith3d PRIVATE -Wl,--stack,16777216)  # 16 MB: carving cuts solids recursively
   endif()
 endif()
 if(NOT MSVC)

@@ -51,6 +51,17 @@ struct MagGen {
     double H = 0, W = 0;        // generated height and width
 };
 
+// A carve: a cutter of some shape pushed into a part from any direction, to some depth. Subtractive only.
+struct CarveDef {
+    std::string shape = "circle";        // circle, half (half circle), rect, tri
+    V2 at;                               // where the cutter enters, side view (design mm)
+    double atZ = 0;                      // ...and at what depth, relative to the part's centre (mm, + = near side)
+    double dx = 0, dy = 0, dz = -1;      // the way the cutter goes in (x forward, y down, z toward the near side)
+    double spin = 0;                     // degrees: turns the shape about that direction
+    double w = 6, h = 6;                 // mm across; circles and half circles stretch to w x h
+    double depth = 4;                    // mm deep; 0 = right through
+};
+
 struct BodyDef {
     std::string id, name;
     bool fixed = false;
@@ -88,6 +99,7 @@ struct BodyDef {
     std::vector<V2> pts;
     std::vector<double> rad;             // corner radius at each vertex (mm)
     std::vector<double> bulge;           // edge i (pts[i] -> pts[i+1]) bows outward by this much (mm, negative = inward)
+    std::vector<CarveDef> carves;        // cut out of the shape in 3D, in order
 };
 
 struct JointDef {

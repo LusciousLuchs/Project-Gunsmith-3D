@@ -118,9 +118,10 @@ Drag a number sideways to scrub it, or click it without dragging to type an exac
 - *Mirror*: drag an axis to make a reflected copy of the selected part. *Flip H / Flip V* flip a part in place, *Duplicate* copies it, *Split all edges* adds a vertex mid-way along every edge for finer shaping.
 - *Curves*: select a vertex to round that corner or bow the next edge outward or inward, or round every corner at once.
 - *Smoothness*: rounds the edges where a part's sides meet its front and back faces, from 0% (sharp) to 100% (round across its thickness). Use it for grips, stocks and dehorned slides. It only changes the look: the physics uses the outline.
+- *Carve*: cut into a part in 3D. Pick the Carve tool, choose a circle, half circle, rectangle or triangle and a depth (or *Right through*), then click a part's surface: the cut goes straight in from that face. Drag instead of clicking to size it. Turn the view to cut from the top, the ends or the far side. Each cut is listed under *Carves* on the part, where you can change its shape, size, depth, aim (*Turn* and *Tilt*, for angled cuts), spin and starting point, duplicate or remove it. Cuts are real for the physics too: a part slides past a block that sits in its groove, and carving takes weight out of the part. On parts that turn on the bore and on magazines, cuts only change the look for now.
 - *Snap*: off, 0.1, 0.5, 1, 2 or 5 mm, from the top bar. Undo and redo (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z) are next to it.
 
-The tools sit in a rail down the left of the view, grouped as *Draw* (polygon, rectangle, circle), *Shape* (knife, mirror) and *Join* (pin, weld, track, spring). Hover one for what it does.
+The tools sit in a rail down the left of the view, grouped as *Draw* (polygon, rectangle, circle), *Shape* (knife, mirror, carve) and *Join* (pin, weld, track, spring). Hover one for what it does.
 
 The physics uses the curved outline too, so the shape you see is the shape that collides.
 

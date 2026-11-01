@@ -1,6 +1,7 @@
 // Gunsmith3D - Designer panel. Four tabs: Inspect (what's selected), Outline (every part and joint),
 // Firing (breech, cartridge, feeding, ignition) and File (save, load, examples). Each shows only what matters
 // for the job at hand; less-used settings fold away.
+#include "carve.hpp"
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
@@ -9,6 +10,7 @@
 #include "app/settings.hpp"
 #include "ui/ui.hpp"
 #include "imgui.h"
+#include "extras/IconsFontAwesome6.h"
 
 #include <algorithm>
 #include <cmath>
@@ -47,6 +49,93 @@ static void loadDesign(const Design& nd, const std::string& msg) {
     toast(msg);
 }
 
+
+// ---------------------------------------------------------------- carves
+static bool shapeButtons(std::string& shape) {
+    static const char* keys[] = {"circle", "half", "rect", "tri"};
+    static const char* names[] = {ICON_FA_CIRCLE " Circle", ICON_FA_CIRCLE_HALF_STROKE " Half", ICON_FA_SQUARE " Rect", ICON_FA_PLAY " Tri"};
+    float w = (ImGui::GetContentRegionAvail().x - 3 * ImGui::GetStyle().ItemSpacing.x) / 4;
+    bool ch = false;
+    for (int i = 0; i < 4; i++) {
+        if (i) ImGui::SameLine();
+        if (accentButton(names[i], shape == keys[i], {w, 0})) { if (shape != keys[i]) ch = true; shape = keys[i]; }
+    }
+    return ch;
+}
+static const char* shapeName(const std::string& s) {
+    return s == "half" ? "Half circle" : s == "rect" ? "Rectangle" : s == "tri" ? "Triangle" : "Circle";
+}
+// The Carve tool's own settings: what the next cut will be.
+static void carveToolPanel() {
+    bool wasEdited = editedAny;
+    ImGui::SeparatorText("Carve tool");
+    muted("Click a part's surface to cut into it, or drag to size the cut. It goes straight in from the face you click: "
+          "turn the view to cut from the top, the ends or the far side.");
+    shapeButtons(A.carveShape);
+    if (A.carveShape == "circle") pNumU("Diameter", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
+    else {
+        pNumU("Width", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
+        pNumU("Height", A.carveH, 0.5, Q::Length);
+    }
+    pCheck("Right through", A.carveThrough, "Cut all the way through whatever is in the way of this part.");
+    if (!A.carveThrough) pNumU("Depth", A.carveDepth, 0.5, Q::Length, -1, "How deep the cut goes, measured straight in from where you click.");
+    A.carveW = std::max(0.2, A.carveW); A.carveH = std::max(0.2, A.carveH); A.carveDepth = std::max(0.1, A.carveDepth);
+    editedAny = wasEdited;  // tool settings aren't part of the design
+    ImGui::Spacing();
+}
+// The part's carves: pick one to change it.
+static void carvesSection(BodyDef& b) {
+    if (!section(b.carves.empty() ? "Carves" : TextFormat("Carves (%d)###carves", (int)b.carves.size()), !b.carves.empty() || A.tool == Tool::Carve)) return;
+    if (b.carves.empty()) { muted("None yet. Pick the Carve tool, then click this part's surface to cut a hole, slot or pocket."); return; }
+    if (A.selCarve >= (int)b.carves.size()) A.selCarve = -1;
+    if (b.rollOn || b.magazine) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextColored(colWarn(), "%s", b.rollOn ? "This part turns on the bore: for now its cuts only change how it looks. The physics uses the plain outline."
+                                                     : "On magazines, cuts only change the look for now. The physics uses the plain outline.");
+        ImGui::PopTextWrapPos();
+    }
+    for (int k = 0; k < (int)b.carves.size(); k++) {
+        auto& c = b.carves[k];
+        std::string t = std::string(shapeName(c.shape)) + " " + fmtQ(Q::Length, c.w);
+        if (c.shape != "circle" || c.h != c.w) t += " x " + fmtQ(Q::Length, c.h);
+        t += c.depth > 0 ? ", " + fmtQ(Q::Length, c.depth) + " deep" : ", right through";
+        if (ImGui::Selectable((t + "##cv" + std::to_string(k)).c_str(), A.selCarve == k)) A.selCarve = A.selCarve == k ? -1 : k;
+    }
+    if (A.selCarve < 0) { muted("Click one to change it. Del removes the selected one."); return; }
+    CarveDef& c = b.carves[A.selCarve];
+    ImGui::Spacing();
+    if (shapeButtons(c.shape)) { if (c.shape == "circle") c.h = c.w; editedAny = true; }
+    if (c.shape == "circle" && c.h == c.w) { if (pNumU("Diameter", c.w, 0.5, Q::Length)) c.h = c.w; }
+    else { pNumU("Width", c.w, 0.5, Q::Length); pNumU("Height", c.h, 0.5, Q::Length); }
+    bool through = c.depth <= 0;
+    if (pCheck("Right through", through, "Cut all the way through the part.")) c.depth = through ? 0 : 4;
+    if (!through) pNumU("Depth", c.depth, 0.5, Q::Length, -1, "How deep it goes, straight in from where it starts.");
+    // aim: which way it goes in. 0, 0 is straight into the near side.
+    double L = std::sqrt(c.dx * c.dx + c.dy * c.dy + c.dz * c.dz);
+    if (L < 1e-9) { c.dz = -1; L = 1; }
+    double tilt = std::asin(std::clamp(c.dy / L, -1.0, 1.0)) * 180 / PI, turn = std::atan2(c.dx / L, -c.dz / L) * 180 / PI;
+    if (std::fabs(std::fabs(tilt) - 90) < 1e-6) turn = 0;
+    bool aim = pNum("Turn", turn, 5, "%.1f\xc2\xb0", "Which way it points, seen from above: 0 cuts into the near side, 180 into the far side,\n"
+                                                   "90 from the back toward the muzzle, -90 from the muzzle end backward.");
+    aim |= pNum("Tilt", tilt, 5, "%.1f\xc2\xb0", "Up or down: 90 cuts straight down from the top, -90 straight up from below.");
+    if (aim) {
+        tilt = std::clamp(tilt, -90.0, 90.0);
+        double tr = turn * PI / 180, pr = tilt * PI / 180;
+        c.dx = std::cos(pr) * std::sin(tr); c.dy = std::sin(pr); c.dz = -std::cos(pr) * std::cos(tr);
+    }
+    pNum("Spin", c.spin, 5, "%.1f\xc2\xb0", "Turns the shape about the way it goes in.");
+    if (section("Where it starts", false)) {
+        pNumU("Forward", c.at.x, 0.5, Q::Length);
+        pNumU("Down", c.at.y, 0.5, Q::Length);
+        pNumU("Across", c.atZ, 0.5, Q::Length, -1, "From the part's middle: + is toward the near side.");
+    }
+    c.w = std::max(0.2, c.w); c.h = std::max(0.2, c.h); c.depth = std::max(0.0, c.depth);
+    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+    if (ImGui::Button("Duplicate", {w2, 0})) { CarveDef d = c; d.at.x += std::max(c.w, c.h) + 2; b.carves.push_back(d); A.selCarve = (int)b.carves.size() - 1; editedAny = true; }
+    ImGui::SameLine();
+    if (ImGui::Button("Remove", {w2, 0})) { b.carves.erase(b.carves.begin() + A.selCarve); A.selCarve = -1; editedAny = true; }
+}
+
 // ---------------------------------------------------------------- inspect: a part
 static void inspectPart(BodyDef& b) {
     auto& D = A.design;
@@ -66,12 +155,23 @@ static void inspectPart(BodyDef& b) {
         tutAnchor("part:solid");
         if (solidHit)
             b.layer = solid ? "ABC" : "none";
-        pNumU("Thickness", b.thick, 1, Q::Length);
+        double oldThick = b.thick;
+        if (pNumU("Thickness", b.thick, 1, Q::Length)) carve::rethick(b, oldThick);
         tutAnchor("part:thickness");
         pNumU("Depth", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, positive is the near side.\nParts only touch where their depths overlap.");
         tutAnchor("part:depth");
         if (!b.fixed) {
-            double area = std::fabs(sim::polyArea(b.pts)), autoMass = area * b.thick * 7.85e-3;
+            double autoMass;
+            {   // (carved volume takes a moment to work out: only when the shape changes)
+                static std::string key; static double vol = 0;
+                std::string k = std::to_string(b.thick) + b.id;
+                for (auto& p : b.pts) k += std::to_string(p.x) + "," + std::to_string(p.y) + ";";
+                for (double r : b.rad) k += std::to_string(r) + "r";
+                for (double q : b.bulge) k += std::to_string(q) + "b";
+                for (auto& c : b.carves) k += c.shape + std::to_string(c.at.x) + std::to_string(c.at.y) + std::to_string(c.atZ) + std::to_string(c.dx) + std::to_string(c.dy) + std::to_string(c.dz) + std::to_string(c.spin) + std::to_string(c.w) + std::to_string(c.h) + std::to_string(c.depth);
+                if (k != key) { key = k; vol = carve::volume(b); }
+                autoMass = vol * 7.85e-3;
+            }
             pNumU("Mass", b.mass, 10, Q::PartMass, -1, "0 works it out from the shape, as steel.");
             tutAnchor("part:mass");
             if (b.mass <= 0) muted("Worked out from the shape: %s.", fmtQ(Q::PartMass, autoMass).c_str());
@@ -79,6 +179,7 @@ static void inspectPart(BodyDef& b) {
         if (ImGui::Button("Copy to the other side", {-1, 0})) {
             BodyDef cpy = b;
             cpy.id = uid(); cpy.name += " (other side)"; cpy.z = -b.z; cpy.magazine = false;
+            carve::flipCarvesZ(cpy);
             D.bodies.push_back(cpy);
             A.sel = {1, (int)D.bodies.size() - 1, -1};
             commit();
@@ -148,6 +249,8 @@ static void inspectPart(BodyDef& b) {
         tutAnchor("shape:smooth");
         if (tipHover()) ImGui::SetTooltip("Drag, or double-click to type a value.");
     }
+
+    carvesSection(b);
 
     if (section("Motion", b.rollOn || b.damp > 0)) {
         pCheck("Turns on the bore", b.rollOn, "For rotating bolts: the part can also turn about the bore axis.");
@@ -657,6 +760,7 @@ void buildPanel() {
         tutAnchor("tab:Inspect");
         if (inspOpen) {
             ImGui::BeginChild("##inspect", {0, 0});
+            if (A.tool == Tool::Carve) carveToolPanel();
             if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) inspectPart(D.bodies[A.sel.idx]);
             else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) inspectJoint(D.joints[A.sel.idx]);
             else {

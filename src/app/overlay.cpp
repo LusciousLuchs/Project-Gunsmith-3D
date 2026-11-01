@@ -7,6 +7,7 @@
 #include "app/fonts.hpp"
 #include "app/units.hpp"
 #include "app/settings.hpp"
+#include "app/carvetool.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -167,4 +168,5 @@ void drawOverlay() {
             }
         }
     }
+    drawCarveOverlay();
 }

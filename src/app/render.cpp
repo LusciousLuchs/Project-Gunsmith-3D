@@ -2,6 +2,7 @@
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/render.hpp"
+#include "carve.hpp"
 #include "app/scene.hpp"
 #include "rlgl.h"
 
@@ -42,7 +43,7 @@ std::vector<RB> renderList() {
 }
 
 bool mainPart(const sim::Body& b) {  // moving parts worth graphing: not magazines, not welded-on pieces, not light controls
-    if (b.fixed || b.isMag || !b.tmpl.empty()) return false;
+    if (b.fixed || b.isMag || b.slice || !b.tmpl.empty()) return false;
     if (b.d->ctrl != "none" || b.m < 0.05) return false;
     for (auto& j : A.design.joints) if (j.type == "weld" && j.a == b.id) return false;
     return true;
@@ -59,6 +60,7 @@ static void ensureMeshes() {
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
+        for (auto& c : d.carves) k << 'c' << c.shape << c.at.x << ' ' << c.at.y << ' ' << c.atZ << ' ' << c.dx << ' ' << c.dy << ' ' << c.dz << ' ' << c.spin << ' ' << c.w << ' ' << c.h << ' ' << c.depth;
         std::string key = k.str();
         if (A.meshes[i].ok && A.meshes[i].key == key) continue;
         if (A.meshes[i].ok) UnloadMesh(A.meshes[i].mesh);
@@ -66,6 +68,22 @@ static void ensureMeshes() {
         std::vector<V2> local;
         for (auto& p : outlineOf(d)) local.push_back({p.x - c.x, p.y - c.y});
         A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
+        if (!d.carves.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
+            std::vector<std::vector<csg::Poly>> cut;
+            for (auto& cv : d.carves) {
+                std::vector<csg::Poly> ps;
+                for (auto& q : carve::prismPolys(carve::prism(cv, d), cv)) {
+                    std::vector<csg::Vert> vs;
+                    for (auto it = q.v.rbegin(); it != q.v.rend(); ++it)  // mirroring y turns the winding round
+                        vs.push_back({{it->p.x - c.x, -(it->p.y - c.y), it->p.z - d.z}, {it->n.x, -it->n.y, it->n.z}});
+                    ps.push_back(csg::makePoly(vs));
+                }
+                cut.push_back(ps);
+            }
+            Mesh carved = carveMesh(A.meshes[i].mesh, cut);
+            UnloadMesh(A.meshes[i].mesh);
+            A.meshes[i].mesh = carved;
+        }
         A.meshes[i].key = key;
         A.meshes[i].ok = true;
     }

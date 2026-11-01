@@ -29,7 +29,8 @@ int main(int argc, char** argv) {
     // command-line options for automated screenshots
     std::string presetArg, shotPath, selectArg, demo;
     int frames = 0;
-    bool trackDraft = false;
+    bool trackDraft = false, carveTool = false;
+    int selCarveArg = -1;
     bool fireArg = false, sideArg = false, testArg = false, designerArg = false;
     int relArg = 0;
     bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
@@ -57,7 +58,9 @@ int main(int argc, char** argv) {
         else if (a == "--test") testArg = true;
         else if (a == "--side") sideArg = true;
         else if (a == "--select") selectArg = next();
-        else if (a == "--trackdraft") trackDraft = true;   // (screenshots) start a track on the selected part
+        else if (a == "--trackdraft") trackDraft = true;
+        else if (a == "--carvetool") carveTool = true;        // (screenshots) pick the Carve tool
+        else if (a == "--selcarve") selCarveArg = std::atoi(next().c_str());  // (screenshots) select carve N of the selected part   // (screenshots) start a track on the selected part
         else if (a == "--demo") demo = next();
         else if (a == "--designer") designerArg = true;
         else if (a == "--magcap") magCapArg = std::atoi(next().c_str());
@@ -128,6 +131,8 @@ int main(int argc, char** argv) {
     if (direct) enterWorkshop(false);
     if (sideArg) A.ortho = true;
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
+    if (carveTool) A.tool = Tool::Carve;
+    if (selCarveArg >= 0) A.selCarve = selCarveArg;
     if (trackDraft && A.sel.kind == 1) {
         auto& b = A.design.bodies[A.sel.idx];
         A.tool = Tool::Track; A.draftHasF = true; A.drafting = true; A.draftA = b.id;

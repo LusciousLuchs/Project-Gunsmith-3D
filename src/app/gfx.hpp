@@ -1,5 +1,6 @@
 // Gunsmith3D - Graphics kit: lit shader, primitive meshes and extrusion.
 #pragma once
+#include "csg.hpp"
 #include "app/app.hpp"
 
 struct Gfx {
@@ -28,4 +29,5 @@ void drawBox(Vector3 center, Vector3 size, Color c, Matrix rot = MatrixIdentity(
 void drawCyl(Vector3 a, Vector3 b, float r, Color c, float alpha = 1.f, const Mesh* mesh = nullptr);
 void drawSphereLit(Vector3 p, float r, Color c, float alpha = 1.f);
 Mesh extrude(const std::vector<V2>& localMM, float depth, float roundMM = 0);
+Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutters);  // base minus the cutters (mm, mesh frame)
 void initGfx();

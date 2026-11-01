@@ -2,6 +2,7 @@
 #include "solver.hpp"
 #include "reliability.hpp"
 #include "version.hpp"
+#include "carve.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -886,6 +887,65 @@ static void anyMagazine() {
     }
 }
 
+static double polysVolume(const std::vector<csg::Poly>& ps) {
+    double v = 0;
+    for (auto& p : ps)
+        for (size_t i = 1; i + 1 < p.v.size(); i++) v += csg::dot(p.v[0].p, csg::cross(p.v[i].p, p.v[i + 1].p)) / 6;
+    return v;
+}
+static void carving() {
+    std::printf("Carving\n");
+    {   // the solid geometry: a box with a 4 mm hole drilled through it
+        std::vector<csg::Poly> box;
+        double X = 10, Y = 5, Z = 4;
+        auto q = [&](csg::P3 a, csg::P3 b, csg::P3 c, csg::P3 d) { box.push_back(csg::makePoly({{a, {}}, {b, {}}, {c, {}}, {d, {}}})); };
+        q({-X, -Y, -Z}, {-X, Y, -Z}, {X, Y, -Z}, {X, -Y, -Z}); q({-X, -Y, Z}, {X, -Y, Z}, {X, Y, Z}, {-X, Y, Z});
+        q({-X, -Y, -Z}, {X, -Y, -Z}, {X, -Y, Z}, {-X, -Y, Z}); q({-X, Y, -Z}, {-X, Y, Z}, {X, Y, Z}, {X, Y, -Z});
+        q({-X, -Y, -Z}, {-X, -Y, Z}, {-X, Y, Z}, {-X, Y, -Z}); q({X, -Y, -Z}, {X, Y, -Z}, {X, Y, Z}, {X, -Y, Z});
+        BodyDef b; b.thick = 8; b.pts = {{-10, -5}, {10, -5}, {10, 5}, {-10, 5}};
+        CarveDef c; c.shape = "circle"; c.at = {0, 0}; c.atZ = 4; c.w = c.h = 4; c.depth = 0;
+        double v0 = polysVolume(box), v1 = polysVolume(csg::subtract(box, carve::prismPolys(carve::prism(c, b), c)));
+        double hole = 32 * 0.5 * 2 * 2 * std::sin(2 * 3.14159265 / 32) * 8;  // a 32-sided 4 mm hole, 8 mm long
+        CHECK(std::fabs(v0 - 1600) < 1e-6 && std::fabs((v0 - v1) - hole) < 0.05, "cutting a hole through a solid takes away exactly the hole's volume");
+        c.depth = 3;
+        double v2 = polysVolume(csg::subtract(box, carve::prismPolys(carve::prism(c, b), c)));
+        CHECK(std::fabs((v0 - v2) - hole * 3 / 8) < 0.05, "a 3 mm deep hole takes away 3 mm of it");
+    }
+    // a slider on a track runs 40 mm forward past a fixed block sitting at its near side
+    auto rig = [](bool groove) {
+        Design d;
+        BodyDef s; s.id = "slider"; s.layer = "A"; s.thick = 10; s.pts = {{0, 0}, {30, 0}, {30, 10}, {0, 10}};
+        s.rad = {0, 0, 0, 0}; s.bulge = {0, 0, 0, 0};
+        if (groove) { CarveDef c; c.shape = "rect"; c.at = {15, 5}; c.atZ = 5; c.w = 34; c.h = 6; c.depth = 4; s.carves = {c}; }
+        BodyDef e; e.id = "ejector"; e.fixed = true; e.layer = "A"; e.thick = 3; e.z = 3; e.pts = {{48, 3}, {52, 3}, {52, 7}, {48, 7}};
+        e.rad = {0, 0, 0, 0}; e.bulge = {0, 0, 0, 0};
+        d.bodies = {s, e};
+        JointDef t; t.type = "track"; t.a = "slider"; t.b = "world"; t.p = {15, 5}; t.path = {{15, 5}, {75, 5}};
+        d.joints = {t};
+        return d;
+    };
+    auto travel = [](const Design& d) {
+        auto S = sim::build(d);
+        sim::Body* b = S->find("slider");
+        S->hand = {true, b, {0, 0}, {0.09, 0.005}};
+        sim::run(*S, 0.4);
+        return (b->x - b->x0) * 1000;
+    };
+    double plain = travel(rig(false)), grooved = travel(rig(true));
+    CHECK(plain < 20, "a solid slider is stopped by a block in its path");
+    CHECK(grooved > 39, "with a groove carved in its side, the block runs in the groove and the slider goes by");
+    {
+        Design g = rig(true);
+        auto S = sim::build(g);
+        double m = S->find("slider")->m;  // the part's body carries its welded slices' weight
+        CHECK(std::fabs(m * 1e6 / 7.85 - (3000 - 30 * 6 * 4)) < 15, "the groove takes its weight out of the part");
+        Design r;
+        bool ok = designFromJson(designToJson(g), r);
+        CHECK(ok && r.bodies[0].carves.size() == 1 && r.bodies[0].carves[0].shape == "rect" && r.bodies[0].carves[0].depth == 4 && r.bodies[0].carves[0].atZ == 5,
+              "carves are saved in the blueprint");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -906,6 +966,7 @@ int main() {
     bulletShapes();
     tutorialGun();
     anyMagazine();
+    carving();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

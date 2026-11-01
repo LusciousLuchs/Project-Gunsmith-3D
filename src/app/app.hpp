@@ -21,7 +21,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor };  // the main menu, the designer / test bench, or the map editor
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; };
@@ -56,6 +56,12 @@ struct App {
     bool hoverHandle = false;            // the cursor is on a bolt handle
     sim::Body* handleBody = nullptr;     // bolt being worked by its handle
     bool releaseBtnHeld = false, fireBtnHeld = false;
+    // carving
+    std::string carveShape = "circle";   // the Carve tool's cutter, size (for a plain click) and depth
+    double carveW = 6, carveH = 6, carveDepth = 4;
+    bool carveThrough = false;
+    int selCarve = -1;                   // with a part selected: one of its carves
+    bool carveDrag = false; int carveBody = -1; Vector3 carveP{}, carveN{};  // pressed on this surface point (world)
     // drafting
     bool drafting = false;
     std::vector<V2> draft;

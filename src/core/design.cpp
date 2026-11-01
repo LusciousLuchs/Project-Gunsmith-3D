@@ -1,3 +1,4 @@
+#include "carve.hpp"
 #include "design.hpp"
 #include "version.hpp"
 #include "json.hpp"
@@ -452,6 +453,7 @@ void mirrorBody(BodyDef& b, V2 a, V2 c) {
     fixShape(b);
     double dx = c.x - a.x, dy = c.y - a.y, l2 = dx * dx + dy * dy;
     if (l2 < 1e-12) return;
+    carve::mirrorCarves(b, a, c);
     auto refl = [&](V2 p) {
         double t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
         V2 f{a.x + dx * t, a.y + dy * t};
@@ -608,6 +610,13 @@ std::string designToJson(const Design& d, bool pretty) {
         json jb = {{"id", b.id}, {"name", b.name}, {"fixed", b.fixed}, {"layer", b.layer},
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
+        if (!b.carves.empty()) {
+            json cs = json::array();
+            for (auto& c : b.carves)
+                cs.push_back({{"shape", c.shape}, {"at", {c.at.x, c.at.y, c.atZ}}, {"dir", {c.dx, c.dy, c.dz}},
+                              {"spin", c.spin}, {"w", c.w}, {"h", c.h}, {"depth", c.depth}});
+            jb["carves"] = cs;
+        }
         if (b.mass > 0) jb["mass"] = b.mass;
         if (b.magazine) {
             jb["magazine"] = {{"cap", b.magCap}};
@@ -705,6 +714,19 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
+        if (jb.contains("carves") && jb["carves"].is_array())
+            for (auto& jc : jb["carves"]) {
+                if (!jc.is_object()) continue;
+                CarveDef c;
+                c.shape = opt<std::string>(jc, "shape", "circle");
+                if (jc.contains("at") && jc["at"].is_array() && jc["at"].size() == 3) { c.at = {jc["at"][0].get<double>(), jc["at"][1].get<double>()}; c.atZ = jc["at"][2].get<double>(); }
+                if (jc.contains("dir") && jc["dir"].is_array() && jc["dir"].size() == 3) { c.dx = jc["dir"][0].get<double>(); c.dy = jc["dir"][1].get<double>(); c.dz = jc["dir"][2].get<double>(); }
+                c.spin = opt<double>(jc, "spin", 0.0);
+                c.w = std::max(0.2, opt<double>(jc, "w", 6.0));
+                c.h = std::max(0.2, opt<double>(jc, "h", 6.0));
+                c.depth = std::max(0.0, opt<double>(jc, "depth", 4.0));
+                b.carves.push_back(c);
+            }
         if (jb.contains("roll") && jb["roll"].is_object()) {
             auto& r = jb["roll"];
             b.rollOn = opt<bool>(r, "on", false);

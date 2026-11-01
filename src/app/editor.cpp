@@ -1,5 +1,7 @@
 // Gunsmith3D - Build mode: editing operations and the drawing tools.
 #include "app/app.hpp"
+#include "carve.hpp"
+#include "app/carvetool.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -14,6 +16,7 @@ void moveBody(int i, double dx, double dy) {
     BodyDef& d = A.design.bodies[i];
     for (auto& p : d.pts) { p.x += dx; p.y += dy; }
     for (auto& p : d.roundPath) { p.x += dx; p.y += dy; }
+    carve::moveCarves(d, dx, dy);
     auto mv = [&](V2& p) { p.x += dx; p.y += dy; };
     for (auto& j : A.design.joints) {
         if ((j.type == "pin" || j.type == "weld") && j.a == d.id) mv(j.p);
@@ -26,6 +29,13 @@ void moveBody(int i, double dx, double dy) {
 }
 void deleteSel() {
     auto& D = A.design;
+    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && A.selCarve >= 0 && A.selCarve < (int)D.bodies[A.sel.idx].carves.size()) {
+        auto& cs = D.bodies[A.sel.idx].carves;  // a selected carve goes, not the part
+        cs.erase(cs.begin() + A.selCarve);
+        A.selCarve = -1;
+        commit();
+        return;
+    }
     if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) {
         BodyDef& d = D.bodies[A.sel.idx];
         if (!A.selVs.empty() && d.pts.size() >= A.selVs.size() + 3) {
@@ -137,9 +147,10 @@ void buildInput(bool overUI) {
     {   // vertex selection belongs to one part: drop it when the selection moves elsewhere
         static std::string selVsPart;
         std::string cur = (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()) ? A.design.bodies[A.sel.idx].id : "";
-        if (cur != selVsPart) { A.selVs.clear(); selVsPart = cur; }
+        if (cur != selVsPart) { A.selVs.clear(); if (!selVsPart.empty()) A.selCarve = -1; selVsPart = cur; }
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
+    if (A.tool == Tool::Carve || A.carveDrag) { carveInput(overUI); return; }
     Vector2 m = GetMousePosition();
     V2 w = snapMM(mouseMM(0));
     if (!overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {

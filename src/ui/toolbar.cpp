@@ -84,7 +84,8 @@ static const RailTool RAIL_DRAW[] = {
     {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius.", Tool::Circle, -1}};
 static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
-    {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.", Tool::Mirror, -1}};
+    {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.", Tool::Mirror, -1},
+    {ICON_FA_CIRCLE_MINUS, "Carve", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1}};
 static const RailTool RAIL_JOIN[] = {
     {ICON_FA_THUMBTACK, "Pin", "A pivot: two parts share a point and can turn (triggers, hammers, levers).", Tool::Pin, -1},
     {ICON_FA_LINK, "Weld", "Join two parts rigidly so they move as one.", Tool::Weld, -1},

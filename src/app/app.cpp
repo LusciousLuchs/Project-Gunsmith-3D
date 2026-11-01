@@ -198,7 +198,8 @@ const char* TOOL_HINT[] = {
     "Click the tip of the striker or firing pin.",
     "Drag a line across a part to cut it into pieces.",
     "Drag the mirror axis. A mirrored copy of the selected part appears across it.",
-    "Click along the inside of the magazine, starting where rounds are fed from. Enter (or a double-click) finishes."};
+    "Click along the inside of the magazine, starting where rounds are fed from. Enter (or a double-click) finishes.",
+    "Click a part's surface to cut into it there, or drag to size the cut. It goes straight in from that face: turn the view to cut from any side. Shape and depth are in the panel."};
 void setTool(Tool t) {
     if (A.mode == Mode::Test) setMode(Mode::Build);
     A.tool = t; A.drafting = false; A.draft.clear(); A.draftHasF = false;
