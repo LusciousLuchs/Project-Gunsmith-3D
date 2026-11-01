@@ -188,7 +188,7 @@ const char* TOOL_HINT[] = {
     "Click to place corners. Click the first one again, or press Enter, to close the part.",
     "Click where two parts overlap to pin them so they pivot. Over one part, it pins it to the ground.",
     "Click where two parts overlap to weld them together.",
-    "Click the point that rides, then click along the path it follows. Enter finishes. The ends are hard stops.",
+    "Click the part that should slide, then where it slides to. Shift adds bends. The ends are hard stops.",
     "Click one end of the spring, then the other.",
     "Click where the cartridge head sits against the bolt or slide.",
     "Click the muzzle.",

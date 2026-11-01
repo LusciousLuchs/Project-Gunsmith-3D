@@ -111,6 +111,8 @@ void enterBenchWith(const Design& d);  // put another gun on the bench, keeping 
 void backToMenu();
 void commit();
 void undo();
+int trackHolderAt(V2 w);     // part a track's slot would be cut in at w (-1 = the ground)
+std::string trackHint();     // step-by-step prompt while a track is drawn
 void finishRoundPath();   // the magazine's round path being drawn
 void redo();
 void toast(const std::string& t);

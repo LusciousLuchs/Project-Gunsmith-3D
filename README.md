@@ -107,7 +107,7 @@ The panel on the right has four tabs:
 - **Firing:** breech and barrel, cartridge, feeding and firing.
 - **File:** save, open, and start from an example.
 
-Drag a number sideways to scrub it, or double-click it to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
+Drag a number sideways to scrub it, or click it without dragging to type an exact value. Sliders take a double-click (or Ctrl+click) to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
 
 ## Building blocks
 
@@ -126,7 +126,7 @@ The physics uses the curved outline too, so the shape you see is the shape that 
 
 **Depth and collision.** Every part has a depth position and a thickness, and parts touch only where they overlap in depth, the way real parts sit side by side. Tick *Solid* off for parts that are just for looks, such as grip panels. Layers (A, B, C) split parts further: two parts touch only if they also share a layer. Pieces at different depths, such as a slide's walls and rail lips, are separate parts welded into one rigid assembly. *Copy to the other side* mirrors a part across the gun, and the cutaway view (C) makes the near-side parts see-through.
 
-**Joints:** pin (pivot), weld (rigid), track (a point riding a slot or rail cut in another part), plus helical cams, locking lugs and catches for rotating bolts and long-recoil actions. You don't need tracks for rails: draw a groove and a tongue on the same layer and the parts ride each other, with friction.
+**Joints:** pin (pivot), weld (rigid), track (a part sliding in a slot or rail cut in another part: click the part, then where it slides to; Shift-click adds bends), plus helical cams, locking lugs and catches for rotating bolts and long-recoil actions. You don't need tracks for rails: draw a groove and a tongue on the same layer and the parts ride each other, with friction.
 
 **Springs**
 - *Coil:* stiffness, free length, coil diameter, wire and turns. Compressed to its solid height it becomes a hard stop. A coil longer than four times its diameter needs a guide rod (draw a rod part and pick it), or it buckles and loses most of its force. Buckled springs show red.

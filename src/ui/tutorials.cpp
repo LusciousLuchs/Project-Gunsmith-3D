@@ -226,7 +226,7 @@ static const std::vector<Lesson>& lessons() {
         Step("The barrel", "Pick Rectangle and draw a long, thin barrel along the top of the frame's front half. Then tick Fixed: a barrel doesn't move.").check(newFixed, "Draw a barrel and tick Fixed").at("tool:Rectangle|part:fixed").doIt(helpBarrel),
         Step("The bolt", "Draw a block behind the barrel, touching its back end. Its bottom edge should sit just below the barrel's middle line, so the bottom of the round's rim peeks out underneath (the ejector will catch it there). The bolt holds the round in, and the shot pushes it back.").check(newMoving, "Draw the bolt").at("tool:Rectangle").doIt(helpBolt),
         Step("Make it heavy", "With the bolt selected, set Mass to 400 g. The gun doesn't lock, so only the bolt's weight holds the round in for the instant the bullet needs. A light bolt slams open and bounces.").check(heavyBolt, "Set the bolt's Mass to 400 g").at("part:mass").onTab(0).doIt(helpBolt),
-        Step("Let it slide", "Pick Track. Click the middle of the bolt, then click that spot again and a point about 50 mm behind it, then press Enter. The bolt can now slide back that far.").check(newTrack, "Add a track for the bolt").at("tool:Track").doIt(helpTrack),
+        Step("Let it slide", "Pick Track, click the middle of the bolt, then click about 50 mm behind it. The bolt can now slide back that far.").check(newTrack, "Add a track for the bolt").at("tool:Track").doIt(helpTrack),
         Step("Where the round sits", "In the Firing tab, add a firing system, then click the front face of the bolt, level with the middle of the barrel. That's where the back of the round sits.").check(faceSet, "Add a firing system and click the breech face").at("tab:Firing|firing:add").onTab(2).doIt(helpFace),
         Step("The muzzle", "Click Place muzzle, then click the front end of the barrel.").check(muzzleSet, "Place the muzzle").at("firing:muzzle").onTab(2).doIt(helpMuzzle),
         Step("The chamber", "Set Chamber to your barrel, so the round goes into the barrel and not the frame.").check(chamberSet, "Choose the barrel as the chamber").at("firing:chamber").onTab(2).doIt(helpChamber),
@@ -257,7 +257,7 @@ static const std::vector<Lesson>& lessons() {
         Step("Two parts", "Joints connect two parts. Draw two small rectangles on the frame.").check(twoParts, "Draw two parts").at("tool:Rectangle").designer(),
         Step("Pin", "A pin lets parts swing, like a trigger. Pick Pin and click where two parts overlap.").check(newPin, "Add a pin").at("tool:Pin"),
         Step("Weld", "A weld glues two parts together so they move as one. Pick Weld and click where two parts overlap.").check(newWeld, "Add a weld").at("tool:Weld"),
-        Step("Track", "A track makes a point slide along a path. Pick Track, click the point that should move, click the ends of its path, then press Enter.").check(newTrack, "Add a track").at("tool:Track"),
+        Step("Track", "A track lets a part slide along a slot. Pick Track, click the part that should slide, then click where it slides to. Hold Shift on the second click to add bends.").check(newTrack, "Add a track").at("tool:Track"),
         Step("Try it", "Go to the test bench and drag your parts around.").check(onBench, "Open the test bench").at("mode:test"),
     }},
     {"springs", "Springs", "Coil and leaf springs, and why long springs buckle.", "blowback", {

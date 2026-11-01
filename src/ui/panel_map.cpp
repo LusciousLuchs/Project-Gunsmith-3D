@@ -117,7 +117,7 @@ static void editTab() {
         static bool editing = false;
         prop("Facing");
         float yaw = (float)e.yaw;
-        if (ImGui::SliderFloat("##yaw", &yaw, 0, 360, "%.0f deg")) { if (!editing) { meSnapshot(); editing = true; } e.yaw = yaw; ME.version++; }
+        if (ImGui::SliderFloat("##yaw", &yaw, 0, 360, "%.0f deg")) { if (!editing) { meSnapshot(); editing = true; } e.yaw = yaw; ME.version++; } typeable();
         if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
         for (int a = 0; a < 3; a++) {
             static const char* L[] = {"X", "Height", "Z"};
@@ -230,8 +230,8 @@ static void editTab() {
 }
 
 static void toolOptions() {
-    if (ME.tool == MTool::Cylinder) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); }
-    if (ME.tool == MTool::Stairs) { prop("Steps"); ImGui::SliderInt("##steps", &ME.stairSteps, 2, 32); }
+    if (ME.tool == MTool::Cylinder) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); typeable(); }
+    if (ME.tool == MTool::Stairs) { prop("Steps"); ImGui::SliderInt("##steps", &ME.stairSteps, 2, 32); typeable(); }
 }
 
 static void texturesTab() {
@@ -283,9 +283,9 @@ static void mapTab() {
     if (section("Sun and sky", true)) {
         float yw = (float)L.sunYaw, pt = (float)L.sunPitch;
         prop("Sun direction");
-        track(ImGui::SliderFloat("##sy", &yw, 0, 360, "%.0f deg")); L.sunYaw = yw;
+        track(ImGui::SliderFloat("##sy", &yw, 0, 360, "%.0f deg")); typeable(); L.sunYaw = yw;
         prop("Sun height");
-        track(ImGui::SliderFloat("##sp", &pt, 5, 90, "%.0f deg")); L.sunPitch = pt;
+        track(ImGui::SliderFloat("##sp", &pt, 5, 90, "%.0f deg")); typeable(); L.sunPitch = pt;
         track(colorRow("Sunlight", L.sun));
         track(colorRow("Shade", L.ambient));
         track(colorRow("Sky above", L.skyTop));

@@ -169,8 +169,10 @@ template <class E> bool enumCombo(const char* id, E& v, const char* items) {
 }
 bool pctSlider(const char* id, float& v) {
     int p = (int)std::lround(v * 100);
-    if (ImGui::SliderInt(id, &p, 0, 100, "%d%%")) { v = p / 100.f; return true; }
-    return false;
+    bool ch = ImGui::SliderInt(id, &p, 0, 100, "%d%%");
+    typeable();
+    if (ch) v = p / 100.f;
+    return ch;
 }
 
 void displayPage() {
@@ -237,7 +239,7 @@ void displayPage() {
     row("Interface scale", "Makes text and controls larger or smaller. Useful on high-resolution screens.");
     static float uiS = -1;
     if (uiS < 0) uiS = CFG.uiScale;
-    ImGui::SliderFloat("##uis", &uiS, 0.75f, 2.0f, "%.2fx");
+    ImGui::SliderFloat("##uis", &uiS, 0.75f, 2.0f, "%.2fx"); typeable();
     if (ImGui::IsItemDeactivatedAfterEdit()) { CFG.uiScale = std::round(uiS * 20) / 20; uiS = CFG.uiScale; applyUiScale(); dirty = true; }
 }
 
@@ -279,7 +281,7 @@ void designerPage() {
     row("Orbit with");
     int ob = CFG.orbitMiddle ? 1 : 0;
     if (ImGui::Combo("##ob", &ob, "Right mouse button (middle pans)\0Middle mouse button (right pans)\0")) { CFG.orbitMiddle = ob == 1; dirty = true; }
-    row("Zoom speed"); dirty |= ImGui::SliderFloat("##zs", &CFG.zoomSpeed, 0.25f, 3.0f, "%.2fx");
+    row("Zoom speed"); dirty |= ImGui::SliderFloat("##zs", &CFG.zoomSpeed, 0.25f, 3.0f, "%.2fx"); typeable();
     row("Invert zoom"); dirty |= ImGui::Checkbox("##iz", &CFG.invertZoom);
 }
 
@@ -298,7 +300,7 @@ void benchPage() {
         row("How slow");
         if (ImGui::Combo("##ss", &si, "1/4\0" "1/10\0" "1/20\0" "1/50\0" "1/100\0")) { CFG.slowSpeed = ss[si]; dirty = true; }
         row("For how long", "Of simulated time after the shot.");
-        dirty |= ImGui::SliderFloat("##sw", &CFG.slowWindowMs, 20, 400, "%.0f ms");
+        dirty |= ImGui::SliderFloat("##sw", &CFG.slowWindowMs, 20, 400, "%.0f ms"); typeable();
     }
     ImGui::SeparatorText("Reliability test");
     row("Default rounds");
@@ -311,10 +313,10 @@ void benchPage() {
 void controlsPage() {
     ImGui::SeparatorText("Mouse (first person)");
     row("Sensitivity");
-    dirty |= ImGui::SliderFloat("##sens", &CFG.mouseSens, 0.1f, 4.0f, "%.2f");
+    dirty |= ImGui::SliderFloat("##sens", &CFG.mouseSens, 0.1f, 4.0f, "%.2f"); typeable();
     row("Invert vertical"); dirty |= ImGui::Checkbox("##inv", &CFG.invertMouse);
     row("Field of view", "Vertical field of view in first person.");
-    dirty |= ImGui::SliderFloat("##fov", &CFG.fov, 55.f, 105.f, "%.0f deg");
+    dirty |= ImGui::SliderFloat("##fov", &CFG.fov, 55.f, 105.f, "%.0f deg"); typeable();
     const char* group = nullptr;
     for (int i = 0; i < (int)Act::Count; i++) {
         const ActInfo& a = actInfo((Act)i);

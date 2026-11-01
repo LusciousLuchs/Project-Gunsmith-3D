@@ -13,6 +13,8 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 0.1 alpha will be declared once the editor and the test bench are worked out.
 
 ### Editor (Build mode)
+- **Tracks in two clicks:** click the part that should slide, then where it slides to. Hold Shift to add bends. While drawing, the view names the part that slides and the part holding the slot, and a selected part is picked first when parts overlap.
+- **Type exact numbers everywhere:** click a number field without dragging to type a value, or double-click (or Ctrl+click) a slider.
 - Parts are drawn as polygons, rectangles or circles in side view and extruded to their thickness. Corners can be rounded and edges bowed, and the physics uses the curved outline.
 - Sprocket-style shaping:
   - Drag vertices, Shift-click or box-select several and move them together, or type exact coordinates.

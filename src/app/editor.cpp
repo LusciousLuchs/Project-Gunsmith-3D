@@ -80,13 +80,39 @@ void finishRoundPath() {
     } else if (A.draft.size() < 2) toast("A round path needs at least two points.");
     A.draft.clear(); A.drafting = false; A.tool = Tool::Select;
 }
+int trackHolderAt(V2 w) {  // the part a new track's slot is cut in: the topmost one under the path's first point
+    std::vector<std::string> group{A.draftA};  // never a part welded to the one that slides: it moves with it
+    for (size_t k = 0; k < group.size(); k++)
+        for (auto& j : A.design.joints) if (j.type == "weld") {
+            std::string o = j.a == group[k] ? j.b : j.b == group[k] ? j.a : "";
+            if (!o.empty() && o != "world" && std::find(group.begin(), group.end(), o) == group.end()) group.push_back(o);
+        }
+    for (int i = (int)A.design.bodies.size() - 1; i >= 0; i--) {
+        auto& d = A.design.bodies[i];
+        if (std::find(group.begin(), group.end(), d.id) == group.end() && sim::inPoly(w.x, w.y, d.pts)) return i;
+    }
+    return -1;  // nothing there: the slot is fixed to the ground
+}
+static std::string partName(int i) {
+    if (i < 0) return "the ground";
+    auto& d = A.design.bodies[i];
+    return "the " + (d.name.empty() ? d.id : d.name);
+}
+std::string trackHint() {  // prompt while a track is being drawn
+    if (!A.draftHasF) return "Track: click the part that should slide, on the spot that rides in the slot (for a bolt, its middle). "
+                             "If it's hidden under another part, select it first.";
+    int ri = -1;
+    for (int i = 0; i < (int)A.design.bodies.size(); i++) if (A.design.bodies[i].id == A.draftA) ri = i;
+    std::string who = partName(ri), where = partName(trackHolderAt(A.draft[0]));
+    who[0] = 'T';
+    if (A.draft.size() < 2) return who + " will slide in a slot in " + where + ". Now click where it slides to. Hold Shift to add a bend. Esc cancels.";
+    return "Click the next point of the slot. Click without Shift (or press Enter) on the last one to finish.";
+}
 void finishTrack() {
     if (A.draftHasF && A.draft.size() >= 2) {
         JointDef j; j.type = "track"; j.a = A.draftA; j.p = A.draftF; j.path = A.draft; j.b = "world";
-        for (int i = (int)A.design.bodies.size() - 1; i >= 0; i--) {
-            auto& d = A.design.bodies[i];
-            if (d.id != A.draftA && sim::inPoly(A.draft[0].x, A.draft[0].y, d.pts)) { j.b = d.id; break; }
-        }
+        int h = trackHolderAt(A.draft[0]);
+        if (h >= 0) j.b = A.design.bodies[h].id;
         A.design.joints.push_back(j);
         A.sel = {2, (int)A.design.joints.size() - 1, -1};
         commit();
@@ -152,15 +178,20 @@ void buildInput(bool overUI) {
             A.draft.push_back(w); A.drafting = true;
             return;
         }
-        case Tool::Track: {
+        case Tool::Track: {  // two clicks: the spot on the part that slides, then where it slides to (Shift adds bends)
             if (!A.draftHasF) {
                 auto hits = bodiesUnderMouse();
-                if (hits.empty()) { toast("Start a track on the part that will ride in it."); return; }
-                A.draftHasF = true; A.draftF = w; A.draftA = A.design.bodies[hits[0].body].id; A.drafting = true;
+                if (hits.empty()) { toast("Click on the part that should slide."); return; }
+                int ri = hits[0].body;  // a selected part wins, so a part hidden under another can still be picked
+                for (auto& h : hits) if (A.sel.kind == 1 && h.body == A.sel.idx) ri = h.body;
+                A.draftHasF = true; A.draftF = w; A.draftA = A.design.bodies[ri].id; A.drafting = true;
+                A.draft = {w};
                 return;
             }
             if (dbl && A.draft.size() >= 2) { finishTrack(); return; }
+            if (std::hypot(w.x - A.draft.back().x, w.y - A.draft.back().y) < 0.5) { toast("Click where it slides to."); return; }
             A.draft.push_back(w);
+            if (!(IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))) finishTrack();
             return;
         }
         case Tool::Face: case Tool::Muzzle: {

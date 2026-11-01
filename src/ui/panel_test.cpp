@@ -179,7 +179,7 @@ void testPanel() {
             float hd = (float)toDisp(Q::Force, A.handN), lo = (float)toDisp(Q::Force, 20), hi = (float)toDisp(Q::Force, 600);
             char fmt[24]; std::snprintf(fmt, sizeof fmt, "%%.0f %s", unitOf(Q::Force));
             prop("Hand strength", "How hard your hand can push and pull when you work the action. A test condition, like a weak or strong shooter.");
-            if (ImGui::SliderFloat("##hand", &hd, lo, hi, fmt)) A.handN = (float)fromDisp(Q::Force, hd);
+            if (ImGui::SliderFloat("##hand", &hd, lo, hi, fmt)) A.handN = (float)fromDisp(Q::Force, hd); typeable();
         }
         if (!S.magTmpl && mag) { if (ImGui::Button("Top up the magazine")) topUpMagazines(); }
         if (S.magTmpl) {

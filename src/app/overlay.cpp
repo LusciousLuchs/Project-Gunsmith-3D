@@ -154,6 +154,17 @@ void drawOverlay() {
             Vector2 f = toScreen(W3(A.draftF, 0));
             DrawCircleV(f, 6, Color{240, 170, 60, 255});
             if (A.tool == Tool::Spring && mouseInViewport()) DrawLineEx(f, m, 2, Color{120, 180, 235, 255});
+            if (A.tool == Tool::Track) {  // name both ends of the job: what slides, and what holds the slot
+                std::string rider = A.draftA;
+                for (auto& b : A.design.bodies) if (b.id == A.draftA && !b.name.empty()) rider = b.name;
+                viewText((rider + " slides").c_str(), f.x + 9, f.y - 17 * CFG.uiScale, 11, Color{240, 170, 60, 255});
+                Vector2 at = pts.empty() ? m : pts[0];
+                if (!pts.empty() || mouseInViewport()) {
+                    int h = trackHolderAt(pts.empty() ? snapMM(mouseMM(0)) : A.draft[0]);
+                    std::string holder = h < 0 ? "slot fixed to the ground" : "slot in " + (A.design.bodies[h].name.empty() ? A.design.bodies[h].id : A.design.bodies[h].name);
+                    viewText(holder.c_str(), at.x + 9, at.y + 6 * CFG.uiScale, 11, Color{255, 205, 60, 230});
+                }
+            }
         }
     }
 }

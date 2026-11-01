@@ -41,10 +41,14 @@ bool numFieldU(const char* label, double& v, double step, Q q, int decimals) {
     double d = toDisp(q, v), st = niceStep(q, step);
     char fmt[32];
     std::snprintf(fmt, sizeof fmt, "%%.%df %s", decimals >= 0 ? decimals : decimalsOf(q), unitOf(q));
-    // drag sideways to scrub the value, or double-click (Ctrl-click) to type it
+    // drag sideways to scrub the value, or click it (without dragging) to type it
     bool ch = ImGui::DragScalar(label, ImGuiDataType_Double, &d, (float)(st * 0.2), nullptr, nullptr, fmt);
     if (ch) { v = fromDisp(q, d); editedAny = true; }
     return ch;
+}
+// Sliders only switch to typing on Ctrl+click; let a double-click do it too. Call right after the slider.
+void typeable() {
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) ImGui::SetKeyboardFocusHere(-1);
 }
 bool tipHover() { return CFG.tooltips && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort); }
 ImVec4 colGood() { return CFG.colorblind ? ImVec4(0.45f, 0.68f, 1.0f, 1) : ImVec4(0.47f, 0.84f, 0.65f, 1); }
@@ -163,6 +167,7 @@ void hintOverlay() {
     std::string h;
     if (CFG.hints) {
         if (A.mode == Mode::Test) h = A.running ? "Drag any moving part, bolt handle or round to work it by hand." : "Paused.";
+        else if (A.tool == Tool::Track) h = trackHint();
         else h = TOOL_HINT[(int)A.tool];
     }
     bool click = A.clickT > 0, msg = A.toastT > 0;
@@ -197,6 +202,7 @@ void setupImGui() {
     rlImGuiSetup(true);
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
+    io.ConfigDragClickToInputText = true;  // click a number without dragging to type it
     ImFontConfig cfg;
     cfg.FontDataOwnedByAtlas = false;
     FontData fb = interSemiBold();

@@ -144,8 +144,9 @@ static void inspectPart(BodyDef& b) {
         float sm = (float)(b.smooth * 100);
         ImGui::SetNextItemWidth(-1);
         if (ImGui::SliderFloat("##smooth", &sm, 0, 100, "%.0f%%", ImGuiSliderFlags_AlwaysClamp)) { b.smooth = sm / 100.0; editedAny = true; }
+        typeable();
         tutAnchor("shape:smooth");
-        if (tipHover()) ImGui::SetTooltip("Drag, or Ctrl+click to type a value.");
+        if (tipHover()) ImGui::SetTooltip("Drag, or double-click to type a value.");
     }
 
     if (section("Motion", b.rollOn || b.damp > 0)) {
@@ -290,7 +291,7 @@ static void inspectPart(BodyDef& b) {
                 }
                 float curve = (float)b.gen.curve;
                 prop("Curve");
-                if (ImGui::SliderFloat("##curve", &curve, -15, 80, "%.0f\xc2\xb0")) { b.gen.curve = curve; regen = true; }
+                if (ImGui::SliderFloat("##curve", &curve, -15, 80, "%.0f\xc2\xb0")) { b.gen.curve = curve; regen = true; } typeable();
                 if (pNumU("Wall", b.gen.wall, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3)) { b.gen.wall = std::clamp(b.gen.wall, 0.6, 4.0); regen = true; }
                 static int lastCap = -1;
                 if (lastCap != b.magCap) { lastCap = b.magCap; regen = true; }
