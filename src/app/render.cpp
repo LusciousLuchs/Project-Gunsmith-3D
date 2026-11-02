@@ -3,6 +3,7 @@
 #include "app/gfx.hpp"
 #include "app/render.hpp"
 #include "carve.hpp"
+#include "app/usertex.hpp"
 #include "app/scene.hpp"
 #include "rlgl.h"
 
@@ -56,7 +57,7 @@ static void ensureMeshes() {
     for (size_t i = 0; i < D.bodies.size(); i++) {
         auto& d = D.bodies[i];
         std::ostringstream k;
-        k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis;
+        k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis << 'T' << d.texture << ' ' << d.texScale;
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
@@ -89,6 +90,18 @@ static void ensureMeshes() {
             Mesh carved = carveMesh(A.meshes[i].mesh, cut);
             UnloadMesh(A.meshes[i].mesh);
             A.meshes[i].mesh = carved;
+        }
+        if (!d.texture.empty()) {  // lay the picture on every face from the side it faces (box mapping), in mm
+            Mesh& m = A.meshes[i].mesh;
+            double sc = std::max(1.0, d.texScale) * U;
+            for (int v = 0; v < m.vertexCount; v++) {
+                float x = m.vertices[v * 3], y = m.vertices[v * 3 + 1], z = m.vertices[v * 3 + 2];
+                float nx = std::fabs(m.normals[v * 3]), ny = std::fabs(m.normals[v * 3 + 1]), nz = std::fabs(m.normals[v * 3 + 2]);
+                float a, c;
+                if (nz >= nx && nz >= ny) { a = x; c = -y; } else if (ny >= nx) { a = x; c = z; } else { a = z; c = -y; }
+                m.texcoords[v * 2] = (float)(a / sc); m.texcoords[v * 2 + 1] = (float)(c / sc);
+            }
+            UpdateMeshBuffer(m, 1, m.texcoords, m.vertexCount * 2 * sizeof(float), 0);
         }
         A.meshes[i].key = key;
         A.meshes[i].ok = true;
@@ -470,7 +483,8 @@ void drawScene() {
         Color c = hexColor(D.bodies[r.tmpl].color);
         if (building && A.sel.kind == 1 && A.sel.idx == r.tmpl) c = shade(c, 1.12f);
         if (!building && r.sb && r.sb == A.hover) c = shade(c, 1.18f);
-        drawMesh(A.meshes[r.tmpl].mesh, r.M, c);
+        if (!D.bodies[r.tmpl].texture.empty()) drawMeshTex(A.meshes[r.tmpl].mesh, r.M, c, userTexture(D.bodies[r.tmpl].texture));
+        else drawMesh(A.meshes[r.tmpl].mesh, r.M, c);
     }
     // rotating-bolt lugs and handles
     for (auto& r : list) {
@@ -596,7 +610,12 @@ void drawScene() {
     for (auto& r : list) {
         if (!isGhost(r)) continue;
         Color c = hexColor(D.bodies[r.tmpl].color);
-        drawMesh(A.meshes[r.tmpl].mesh, r.M, (!building && r.sb && r.sb == A.hover) ? shade(c, 1.4f) : c, r.sb && r.sb == A.hover ? 0.42f : 0.26f);
+        {
+            Color gc = (!building && r.sb && r.sb == A.hover) ? shade(c, 1.4f) : c;
+            float ga = r.sb && r.sb == A.hover ? 0.42f : 0.26f;
+            if (!D.bodies[r.tmpl].texture.empty()) drawMeshTex(A.meshes[r.tmpl].mesh, r.M, gc, userTexture(D.bodies[r.tmpl].texture), ga);
+            else drawMesh(A.meshes[r.tmpl].mesh, r.M, gc, ga);
+        }
     }
     rlEnableDepthMask();
     for (auto& r : list) {

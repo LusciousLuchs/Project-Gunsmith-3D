@@ -32,6 +32,8 @@ add_library(raylib STATIC
   ${RL}/rmodels.c ${RL}/utils.c ${RL}/raudio.c ${RL}/rglfw.c)
 target_include_directories(raylib PUBLIC ${RL} PRIVATE ${RL}/external/glfw/include)
 target_compile_definitions(raylib PUBLIC PLATFORM_DESKTOP GRAPHICS_API_OPENGL_33)
+# pictures players add as textures: JPG, BMP and TGA as well as PNG
+target_compile_definitions(raylib PRIVATE SUPPORT_FILEFORMAT_JPG=1 SUPPORT_FILEFORMAT_BMP=1 SUPPORT_FILEFORMAT_TGA=1)
 if(WIN32)
   target_link_libraries(raylib PUBLIC opengl32 gdi32 winmm)
 else()
@@ -81,6 +83,9 @@ target_compile_definitions(imgui PUBLIC FONT_AWESOME_ICON_SIZE=13)
 add_library(gunsmith_app STATIC ${APP_SRC})
 target_include_directories(gunsmith_app PUBLIC src)
 target_link_libraries(gunsmith_app PUBLIC gunsmith_core raylib imgui)
+if(WIN32)
+  target_link_libraries(gunsmith_app PUBLIC comdlg32 shell32)  # the open-file box and "open folder"
+endif()
 
 add_library(gunsmith_ui STATIC ${UI_SRC})
 target_link_libraries(gunsmith_ui PUBLIC gunsmith_app imgui)

@@ -12,7 +12,9 @@ bool inputText(const char* label, std::string& s);
 bool bodyCombo(const char* label, std::string& id, bool withWorld);
 void numField(const char* label, double& v, double step, const char* fmt = "%.1f");
 bool numFieldU(const char* label, double& v, double step, Q q, int decimals = -1);  // shown in the player's units
-void typeable();                 // after a slider: double-click it to type a value
+void typeable();
+bool texturePicker(std::string& file);  // "Plain" or one of the pictures in user/textures, with add / open folder
+                 // after a slider: double-click it to type a value
 bool tipHover();                 // hovered, and tooltips are on
 ImVec4 colGood(); ImVec4 colBad(); ImVec4 colWarn(); ImVec4 colAccent();
 extern ImFont* gFontBold;

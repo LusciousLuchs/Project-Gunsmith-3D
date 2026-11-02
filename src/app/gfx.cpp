@@ -53,6 +53,12 @@ void drawMesh(const Mesh& m, Matrix M, Color c, float alpha) {
     G.mat.maps[MATERIAL_MAP_DIFFUSE].color = Color{c.r, c.g, c.b, (unsigned char)(255 * alpha)};
     DrawMesh(m, G.mat, M);
 }
+void drawMeshTex(const Mesh& m, Matrix M, Color c, Texture2D tex, float alpha) {
+    Texture2D was = G.mat.maps[MATERIAL_MAP_DIFFUSE].texture;
+    if (tex.id) G.mat.maps[MATERIAL_MAP_DIFFUSE].texture = tex;
+    drawMesh(m, M, c, alpha);
+    G.mat.maps[MATERIAL_MAP_DIFFUSE].texture = was;
+}
 void drawBox(Vector3 center, Vector3 size, Color c, Matrix rot, float alpha) {
     drawMesh(G.cube, MatrixMultiply(MatrixMultiply(MatrixScale(size.x, size.y, size.z), rot), MatrixTranslate(center.x, center.y, center.z)), c, alpha);
 }

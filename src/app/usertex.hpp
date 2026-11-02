@@ -1,0 +1,14 @@
+// Gunsmith3D - the player's own textures: pictures in user/textures, for gun parts and map blocks.
+#pragma once
+#include "raylib.h"
+#include <string>
+#include <vector>
+
+void scanUserTextures();                              // find the pictures in user/textures (and make them map materials)
+const std::vector<std::string>& userTextureFiles();   // file names, sorted
+Texture2D userTexture(const std::string& file);       // loaded once; a checkerboard if the file is missing or unreadable
+bool isImageFile(const std::string& path);
+std::string importTexture(const std::string& path);   // copy a picture into user/textures; returns its file name, "" on failure
+void handleDroppedFiles();                            // pictures dropped on the window are imported
+bool pickImageFile(std::string& out);                 // the system's open-file box (Windows); false if cancelled or not available
+void openTexturesFolder();

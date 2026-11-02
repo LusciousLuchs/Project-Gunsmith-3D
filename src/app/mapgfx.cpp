@@ -2,6 +2,7 @@
 // The textures are generated here rather than loaded, so there are no image files to license or ship:
 // tileable noise plus simple patterns, in the spirit of early-2000s shooters.
 #include "app/mapgfx.hpp"
+#include "app/usertex.hpp"
 #include "app/gfx.hpp"
 #include "rlgl.h"
 
@@ -161,7 +162,7 @@ static std::vector<Material> MATS;
 
 void mapGfxInit() {
     if (!TEX.empty()) return;
-    int count = (int)gmap::materialNames().size();
+    int count = gmap::builtInMaterials();  // (the player's pictures are added as they're needed)
     std::vector<Color> px(N * N);
     for (int m = 0; m < count; m++) {
         for (int j = 0; j < N; j++) for (int i = 0; i < N; i++) px[j * N + i] = texel(m, i, j);
@@ -179,12 +180,31 @@ void mapGfxInit() {
         MATS.push_back(mat);
     }
 }
-Texture2D mapTexture(int m) { return TEX.empty() ? Texture2D{} : TEX[std::clamp(m, 0, (int)TEX.size() - 1)]; }
+// The player's own pictures become materials as they turn up (user/textures, or named in a map that was opened).
+static void ensureUserMaterials() {
+    if (TEX.empty()) mapGfxInit();
+    int count = (int)gmap::materialNames().size();
+    while ((int)TEX.size() < count) {
+        std::string name = gmap::materialNames()[TEX.size()];
+        Texture2D t = userTexture(name.substr(5));  // after "user:"
+        TEX.push_back(t);
+        Material mat = LoadMaterialDefault();
+        mat.shader = G.lit;
+        mat.maps[MATERIAL_MAP_DIFFUSE].texture = t;
+        mat.maps[MATERIAL_MAP_DIFFUSE].color = WHITE;
+        MATS.push_back(mat);
+    }
+}
+Texture2D mapTexture(int m) {
+    ensureUserMaterials();
+    return TEX.empty() ? Texture2D{} : TEX[std::clamp(m, 0, (int)TEX.size() - 1)];
+}
 
 // ---------------------------------------------------------------- meshes
 static std::vector<Mesh> MESH;  // one per material; vertexCount 0 when unused
 
 void mapBuildMeshes(const gmap::Map& m) {
+    ensureUserMaterials();
     for (auto& mesh : MESH) if (mesh.vertexCount > 0) UnloadMesh(mesh);
     int count = (int)gmap::materialNames().size();
     MESH.assign(count, Mesh{});
@@ -228,6 +248,7 @@ void mapBuildMeshes(const gmap::Map& m) {
 }
 
 void mapDrawWorld() {
+    ensureUserMaterials();
     setSpecular(0.1f);
     for (size_t i = 0; i < MESH.size() && i < MATS.size(); i++) if (MESH[i].vertexCount > 0) DrawMesh(MESH[i], MATS[i], MatrixIdentity());
     setSpecular(0.3f);

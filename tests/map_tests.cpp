@@ -14,6 +14,19 @@ using namespace gmap;
 static bool near(double a, double b, double e = 1e-6) { return std::fabs(a - b) < e; }
 
 void mapTests(int& failures) {
+    std::printf("Maps: your own textures\n");
+    {
+        int n0 = (int)materialNames().size();
+        int m = materialIndex("user:rust.png");
+        CHECK(m >= builtInMaterials() && isUserMaterial(m) && materialIndex("user:rust.png") == m && (int)materialNames().size() == n0 + 1,
+              "a picture from user/textures becomes a map material, once");
+        Map mp; mp.brushes.push_back(makeBox({0, 0, 0}, {1, 1, 1}, m));
+        Map back;
+        std::string err;
+        bool ok = mapFromJson(mapToJson(mp), back);
+        CHECK(ok && !back.brushes.empty() && materialNames()[back.brushes[0].faces[0].mat] == "user:rust.png", "maps keep the picture's name when saved");
+        CHECK(materialIndex("no_such_material") == 0, "unknown built-in names still fall back to the dev grid");
+    }
     std::printf("Maps: brushes\n");
     Brush box = makeBox({0, 0, 0}, {2, 1, 3}, 1);
     CHECK(brushValid(box), "a box is a valid brush");

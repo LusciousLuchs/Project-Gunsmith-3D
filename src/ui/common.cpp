@@ -6,6 +6,7 @@
 #include "rlImGui.h"
 #include "app/settings.hpp"
 #include "app/units.hpp"
+#include "app/usertex.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -50,6 +51,33 @@ bool numFieldU(const char* label, double& v, double step, Q q, int decimals) {
 // Sliders only switch to typing on Ctrl+click; let a double-click do it too. Call right after the slider.
 void typeable() {
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) ImGui::SetKeyboardFocusHere(-1);
+}
+bool texturePicker(std::string& file) {
+    bool ch = false;
+    const auto& files = userTextureFiles();
+    if (ImGui::BeginCombo("##tex", file.empty() ? "Plain (just the colour)" : file.c_str())) {
+        if (ImGui::Selectable("Plain (just the colour)", file.empty())) { file.clear(); ch = true; }
+        for (auto& f : files) {
+            Texture2D t = userTexture(f);
+            ImGui::PushID(f.c_str());
+            rlImGuiImageSize(&t, (int)(18 * CFG.uiScale), (int)(18 * CFG.uiScale));
+            ImGui::SameLine();
+            if (ImGui::Selectable(f.c_str(), f == file)) { file = f; ch = true; }
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+#ifdef _WIN32
+    if (ImGui::Button("Add a picture...", {w2, 0})) {
+        std::string p;
+        if (pickImageFile(p)) { std::string n = importTexture(p); if (!n.empty()) { file = n; ch = true; } else toast("That file isn't a picture the game can read."); }
+    }
+    ImGui::SameLine();
+#endif
+    if (ImGui::Button("Open textures folder", {w2, 0})) { scanUserTextures(); openTexturesFolder(); }
+    if (tipHover()) ImGui::SetTooltip("Pictures in user/textures in the game folder show up here (.png, .jpg, .bmp, .tga).\nYou can also drag pictures onto the game window.");
+    return ch;
 }
 bool tipHover() { return CFG.tooltips && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort); }
 ImVec4 colGood() { return CFG.colorblind ? ImVec4(0.45f, 0.68f, 1.0f, 1) : ImVec4(0.47f, 0.84f, 0.65f, 1); }

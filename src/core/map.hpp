@@ -30,7 +30,10 @@ inline V3 norm(V3 a) { double l = len(a); return l > 1e-12 ? a * (1 / l) : V3{0,
 
 // Materials are referred to by name in map files, so maps stay readable and new materials can be added later.
 const std::vector<std::string>& materialNames();
-int materialIndex(const std::string& name);       // unknown names fall back to 0 (the dev grid)
+int materialIndex(const std::string& name);       // unknown names fall back to 0 (the dev grid); "user:<file>" names
+                                                   // (pictures in user/textures) are added to the list
+int builtInMaterials();
+bool isUserMaterial(int m);
 double materialTile(int m);                        // metres per texture repeat at scale 1
 
 struct Face {

@@ -1,4 +1,5 @@
 // Gunsmith3D - Map editor: the top bar (tools, grid, walk) and the panel (edit, textures, map settings, files).
+#include "app/usertex.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "app/mapedit.hpp"
@@ -235,6 +236,21 @@ static void toolOptions() {
 }
 
 static void texturesTab() {
+    {   // the player's own pictures: add one, or open the folder they live in
+        std::string none;
+        float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+#ifdef _WIN32
+        if (ImGui::Button("Add a picture...", {w2, 0})) {
+            std::string p;
+            if (pickImageFile(p)) { std::string n = importTexture(p); if (!n.empty()) toast("Added " + n + "."); else toast("That file isn't a picture the game can read."); }
+        }
+        ImGui::SameLine();
+#endif
+        if (ImGui::Button("Open textures folder", {w2, 0})) { scanUserTextures(); openTexturesFolder(); }
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("Your pictures (user/textures in the game folder) come after the built-in ones. You can drag pictures onto the window too.");
+        ImGui::PopTextWrapPos();
+    }
     ImGui::TextDisabled(ME.sel.empty() ? "Click one to use it for new brushes." : ME.face >= 0 ? "Click one to put it on the selected face." : "Click one to put it on the selection.");
     ImGui::Dummy({0, 4 * S()});
     float cell = 62 * S(), pad = ImGui::GetStyle().FramePadding.x * 2;
@@ -248,8 +264,8 @@ static void texturesTab() {
         Texture2D t = mapTexture(m);
         if (rlImGuiImageButtonSize("##t", &t, {cell, cell})) { uiTick(); meApplyMaterial(m); }
         if (cur) ImGui::PopStyleColor();
-        std::string label = names[m];
-        std::replace(label.begin(), label.end(), '_', ' ');
+        std::string label = gmap::isUserMaterial(m) ? names[m].substr(5) : names[m];
+        if (!gmap::isUserMaterial(m)) std::replace(label.begin(), label.end(), '_', ' ');
         ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + cell);
         ImGui::TextDisabled("%s", label.c_str());
         ImGui::PopTextWrapPos();

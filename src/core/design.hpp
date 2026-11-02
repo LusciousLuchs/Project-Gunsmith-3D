@@ -71,6 +71,8 @@ struct BodyDef {
     double mass = 0;                     // grams; 0 = from area x thickness x steel
     double damp = 0;                     // friction-like damping, 1/s
     std::string color = "#8e9ab4";
+    std::string texture;                 // a picture from user/textures on its surface ("" = plain colour); the colour tints it
+    double texScale = 40;                // mm before the picture repeats
     bool ghost = false;                  // drawn see-through in X-ray mode
     double smooth = 0;                   // 0..1: rounds the front and back edges (grips, dehorned slides). Looks only.
     bool rollOn = false;                 // rotates about the bore (rotating bolt)

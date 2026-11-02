@@ -1022,6 +1022,11 @@ static void roundParts() {
         Design old; std::string js = designToJson(pd); js.replace(js.find("\"dia\""), 5, "\"xxx\"");
         CHECK(designFromJson(js, old) && old.joints[0].pinDia == 3.2, "older pins keep the size they always had");
     }
+    {
+        Design td; BodyDef tb = bar; tb.texture = "walnut.jpg"; tb.texScale = 60; td.bodies = {tb};
+        Design tr;
+        CHECK(designFromJson(designToJson(td), tr) && tr.bodies[0].texture == "walnut.jpg" && tr.bodies[0].texScale == 60, "a part's texture is saved");
+    }
     Design dd; dd.bodies = {bar};
     Design back;
     CHECK(designFromJson(designToJson(dd), back) && back.bodies[0].round, "round parts are saved in the blueprint");

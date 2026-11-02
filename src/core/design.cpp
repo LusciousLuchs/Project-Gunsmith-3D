@@ -634,6 +634,7 @@ std::string designToJson(const Design& d, bool pretty) {
         json jb = {{"id", b.id}, {"name", b.name}, {"fixed", b.fixed}, {"layer", b.layer},
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
+        if (!b.texture.empty()) { jb["texture"] = b.texture; jb["texScale"] = b.texScale; }
         if (b.round) {
             jb["round"] = true;
             if (b.roundSides) jb["roundSides"] = b.roundSides;
@@ -747,6 +748,8 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
         b.round = opt<bool>(jb, "round", false);
+        b.texture = opt<std::string>(jb, "texture", "");
+        b.texScale = std::clamp(opt<double>(jb, "texScale", 40.0), 1.0, 5000.0);
         b.roundSides = std::clamp(opt<int>(jb, "roundSides", 0), 0, 64);
         if (b.roundSides > 0 && b.roundSides < 3) b.roundSides = 3;
         b.roundTurn = opt<double>(jb, "roundTurn", 0.0);

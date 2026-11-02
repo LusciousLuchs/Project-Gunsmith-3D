@@ -315,6 +315,14 @@ static void inspectPart(BodyDef& b) {
 
     carvesSection(b);
 
+    if (section("Surface", !b.texture.empty())) {
+        prop("Texture", "A picture laid over the part. Its colour tints the picture: white shows it as it is.");
+        ImGui::SetNextItemWidth(-1);
+        if (texturePicker(b.texture)) editedAny = true;
+        if (!b.texture.empty()) { pNumU("Picture size", b.texScale, 5, Q::Length, -1, "How big one copy of the picture is before it repeats."); b.texScale = std::clamp(b.texScale, 1.0, 5000.0); }
+        muted("Looks only. Drag pictures onto the game window to add them.");
+    }
+
     if (section("Motion", b.rollOn || b.damp > 0)) {
         pCheck("Turns on the bore", b.rollOn, "For rotating bolts: the part can also turn about the bore axis.");
         if (b.rollOn) {

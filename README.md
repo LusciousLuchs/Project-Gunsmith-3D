@@ -41,6 +41,12 @@ Saved to `gunsmith3d_settings.json` next to the game. None of them change how a 
 - **Test bench:** normal speed, slow motion on each shot (how slow, how long), default rounds for the reliability test.
 - **Controls:** every key can be rebound.
 
+## Your files
+
+Everything you make lives in the game folder, under *user*: blueprints in *user/guns*, maps in *user/maps*, and your own pictures in *user/textures*. Copy the *user* folder into a new version's folder to bring your work along. Ctrl+S saves the gun from anywhere.
+
+Textures: put .png, .jpg, .bmp or .tga pictures in *user/textures*, click *Add a picture...*, or drag pictures onto the game window. A part's *Surface* section puts one on the part (the part's colour tints it); the map editor lists them after its built-in materials.
+
 ## Tutorials
 
 **Tutorials** on the main menu (or the graduation-cap button next to the menu button) has fifteen short guided lessons:

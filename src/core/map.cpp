@@ -13,15 +13,20 @@ static constexpr double BIG = 16384;     // half-size of the square every face p
 static constexpr double PI = 3.14159265358979323846;
 
 // ---------------------------------------------------------------- materials
-const std::vector<std::string>& materialNames() {
-    static const std::vector<std::string> n = {
+// The built-in materials, then the player's own pictures ("user:<file>", from user/textures) as they turn up.
+static std::vector<std::string>& registry() {
+    static std::vector<std::string> n = {
         "dev_grid", "concrete", "concrete_dark", "plywood", "brick", "plaster", "metal_plate", "corrugated",
         "dirt", "grass", "sand", "gravel", "wood_planks", "asphalt", "tile", "steel", "paint_white", "paint_orange"};
     return n;
 }
+const std::vector<std::string>& materialNames() { return registry(); }
+int builtInMaterials() { return 18; }
+bool isUserMaterial(int m) { return m >= builtInMaterials() && m < (int)registry().size(); }
 int materialIndex(const std::string& name) {
-    auto& n = materialNames();
+    auto& n = registry();
     for (size_t i = 0; i < n.size(); i++) if (n[i] == name) return (int)i;
+    if (name.rfind("user:", 0) == 0 && name.size() > 5) { n.push_back(name); return (int)n.size() - 1; }  // a picture of the player's
     return 0;
 }
 double materialTile(int m) {
