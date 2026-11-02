@@ -35,6 +35,7 @@ void moveBody(int i, double dx, double dy) {
     }
     auto& br = A.design.breech;
     if (br.on) { if (br.breech == d.id && br.hasFace) mv(br.face); if (br.chamber == d.id && br.hasMuzzle) mv(br.muzzle); }
+    for (auto& g : A.design.grips) if (g.part == d.id) mv(g.at);
     if (br.on) for (auto& c : br.more) { if ((c.breech.empty() ? br.breech : c.breech) == d.id) mv(c.face); if (c.chamber == d.id && c.hasMuzzle) mv(c.muzzle); }
 }
 void deleteSel() {
@@ -59,6 +60,7 @@ void deleteSel() {
             std::string id = d.id;
             D.bodies.erase(D.bodies.begin() + A.sel.idx);
             D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.a == id || j.b == id || j.rel == id; }), D.joints.end());
+            D.grips.erase(std::remove_if(D.grips.begin(), D.grips.end(), [&](const GripDef& g) { return g.part == id; }), D.grips.end());
             A.sel = {};
         }
     } else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) {
@@ -228,6 +230,17 @@ void buildInput(bool overUI) {
             if (std::hypot(w.x - A.draft.back().x, w.y - A.draft.back().y) < 0.5) { toast("Click where it slides to."); return; }
             A.draft.push_back(w);
             if (!(IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))) finishTrack();
+            return;
+        }
+        case Tool::Grip: {  // a hand (or the shoulder) on the part under the click
+            int hit = -1;
+            for (int i = (int)A.design.bodies.size() - 1; i >= 0 && hit < 0; i--) if (sim::inPoly(w.x, w.y, A.design.bodies[i].pts)) hit = i;
+            if (hit < 0) { toast("Click on the part that's held there."); return; }
+            GripDef g; g.kind = A.gripKind; g.part = A.design.bodies[hit].id; g.at = w; g.angle = defaultGripAngle(g.kind, A.gripStyle);
+            A.design.grips.push_back(g);
+            A.sel = {1, hit, -1};
+            commit(); A.tool = Tool::Select;
+            toast(std::string(gripName(g.kind)) + " on " + (A.design.bodies[hit].name.empty() ? g.part : A.design.bodies[hit].name) + ". Drag the green dot at the end of its line to turn it.");
             return;
         }
         case Tool::Face: case Tool::Muzzle: {
@@ -424,6 +437,12 @@ void buildInput(bool overUI) {
                 else if (h.kind == 8 && h.i < (int)A.design.bodies.size() && h.v < (int)A.design.bodies[h.i].roundPath.size()) A.design.bodies[h.i].roundPath[h.v] = p;
                 else if (h.kind == 3) A.design.joints[h.i].pa = p;
                 else if (h.kind == 4) A.design.joints[h.i].pb = p;
+                else if (h.kind == 9 && h.i < (int)A.design.grips.size()) A.design.grips[h.i].at = p;
+                else if (h.kind == 10 && h.i < (int)A.design.grips.size()) {  // turn it: the line points at the cursor
+                    auto& g = A.design.grips[h.i];
+                    double a = std::atan2(p.y - g.at.y, p.x - g.at.x) * 180 / 3.14159265358979;
+                    g.angle = std::round(a < 0 ? a + 360 : a);
+                }
                 else if (h.kind == 5) { if (h.i >= 0 && h.i < (int)br.more.size()) br.more[h.i].face = p; else br.face = p; }
                 else if (h.kind == 6) { if (h.i >= 0 && h.i < (int)br.more.size()) br.more[h.i].muzzle = p; else br.muzzle = p; }
                 if (h.kind != 0 && h.kind != 7) A.dragMoved = true;   // (kind 8: a magazine's round path point)

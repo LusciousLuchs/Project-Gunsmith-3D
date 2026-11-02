@@ -231,6 +231,20 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
     for (auto& p : out) if (clean.empty() || std::hypot(p.x - clean.back().x, p.y - clean.back().y) > 1e-4) clean.push_back(p);
     return clean;
 }
+// ---------------------------------------------------------------- grips
+double defaultGripAngle(const std::string& kind, const std::string& style) {
+    if (kind == "support") return style == "vertical" ? 95 : 0;     // fore-end: along the barrel, the hand under it
+    if (kind == "shoulder") return 90;                              // the butt pad, upright
+    return style == "wrist" ? 145 : 110;                            // pistol grip, raked back; a rifle's wrist, nearly along the stock
+}
+const char* gripName(const std::string& kind) {
+    return kind == "support" ? "Support hand" : kind == "shoulder" ? "Shoulder" : "Firing hand";
+}
+std::string heldWith(const Design& d) {
+    bool firing = false, two = false;
+    for (auto& g : d.grips) { if (g.kind == "firing") firing = true; else two = true; }
+    return !firing ? "" : two ? "two hands" : "one hand";
+}
 static const char* KIND_IDS[] = {"centerfire", "rimfire", "shotshell", "caseless"};
 const char* cartKinds() { return "Centrefire\0Rimfire\0Shotshell\0Caseless\0"; }
 const char* cartKindId(int i) { return KIND_IDS[std::clamp(i, 0, 3)]; }
@@ -807,6 +821,11 @@ std::string designToJson(const Design& d, bool pretty) {
         }
         o["breech"] = jb;
     } else o["breech"] = nullptr;
+    if (!d.grips.empty()) {
+        json g = json::array();
+        for (auto& q : d.grips) g.push_back({{"kind", q.kind}, {"part", q.part}, {"at", v2j(q.at)}, {"angle", q.angle}});
+        o["grips"] = g;
+    }
     return pretty ? o.dump(2) : o.dump();
 }
 
@@ -1006,6 +1025,17 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         r.fireOrder = opt<std::string>(jb, "fireOrder", "turn") == "together" ? "together" : "turn";
         if (r.cartImpulse) applyCartridge(r);
     }
+    if (o.contains("grips") && o["grips"].is_array())
+        for (auto& jg : o["grips"]) {
+            if (!jg.is_object() || !jg.contains("at")) continue;
+            GripDef g;
+            std::string k = opt<std::string>(jg, "kind", "firing");
+            g.kind = k == "support" || k == "shoulder" ? k : "firing";
+            g.part = opt<std::string>(jg, "part", "");
+            g.at = j2v(jg["at"]);
+            g.angle = opt<double>(jg, "angle", defaultGripAngle(g.kind));
+            d.grips.push_back(g);
+        }
     out = d;
     return true;
 }

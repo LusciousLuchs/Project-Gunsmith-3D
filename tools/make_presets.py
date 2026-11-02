@@ -203,7 +203,9 @@ def pistol(kind='blowback'):
     breech = {'breech': 'slide', 'chamber': 'barrel', 'face': [face, bore], 'muzzle': [muzzle, bore], 'cartridge': cart, 'dur': 0.6,
               'feed': 20, 'rounds': cap, 'auto': False, 'loaded': True, 'feedMode': 'magazine', 'physicalFeed': True,
               'ignition': 'striker', 'striker': 'striker', 'strikerTip': [tip - cock, bore], 'igniteSpeed': 1.5}  # tip as drawn (cocked)
-    return {'name': 'Tilting-barrel pistol' if tilting else 'Blowback pistol', 'speed': 0.02, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
+    grips = [{'kind': 'firing', 'part': 'grip_l', 'at': [40, 72], 'angle': 98}]
+    return {'name': 'Tilting-barrel pistol' if tilting else 'Blowback pistol', 'speed': 0.02, 'friction': 0.12, 'bodies': parts, 'joints': joints,
+            'breech': breech, 'grips': grips}
 
 
 def blowback(): return pistol('blowback')
@@ -341,7 +343,10 @@ def rifle(kind='bolt'):
     breech = {'breech': 'bolt', 'chamber': 'barrel', 'face': [face, bore], 'muzzle': [muzzle, bore], 'cartridge': cart, 'dur': 1.0,
               'feed': 40, 'rounds': 5, 'auto': False, 'loaded': True, 'feedMode': 'single' if single else 'magazine', 'physicalFeed': True,
               'ignition': 'striker', 'striker': 'striker', 'strikerTip': [tip - cock, bore], 'igniteSpeed': 1.5}
-    return {'name': 'Single-shot rifle' if single else 'Bolt-action rifle', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
+    grips = [{'kind': 'firing', 'part': 'stock', 'at': [0, bore + 48], 'angle': 105}, {'kind': 'support', 'part': 'fore', 'at': [240, bore + 16], 'angle': 0},
+             {'kind': 'shoulder', 'part': 'stock', 'at': [-328, bore + 52], 'angle': 90}]
+    return {'name': 'Single-shot rifle' if single else 'Bolt-action rifle', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints,
+            'breech': breech, 'grips': grips}
 
 # ------------------------------------------------------------------ pump-action carbine
 # A tube magazine under the barrel and a lifter you can see. The tube's spring pushes each round out of its mouth,
@@ -441,7 +446,9 @@ def pump(cart='.45 ACP'):
     breech = {'breech': 'bolt', 'chamber': 'barrel', 'face': [face, bore], 'muzzle': [muzzle, bore], 'cartridge': cart, 'dur': 1.0,
               'feed': 40, 'rounds': cap, 'auto': False, 'loaded': True, 'feedMode': 'magazine', 'physicalFeed': True,
               'ignition': 'button', 'hammer': 'hammer', 'cockAt': 40, 'fireMode': 'semi'}
-    return {'name': 'Pump-action shotgun' if shotgun else 'Pump-action carbine', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
+    grips = [{'kind': 'firing', 'part': 'stock', 'at': [-45, bore + 26], 'angle': 145}, {'kind': 'support', 'part': 'forend', 'at': [fx + 50, tubeY], 'angle': 0},
+             {'kind': 'shoulder', 'part': 'stock', 'at': [-248, bore + 50], 'angle': 90}]
+    return {'grips': grips, 'name': 'Pump-action shotgun' if shotgun else 'Pump-action carbine', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
 
 # ------------------------------------------------------------------ over-under derringer
 # Two chambers, one above the other, in a barrel block that tips up on a hinge at the top of the standing breech.
@@ -484,7 +491,7 @@ def derringer():
               'ignition': 'button', 'hammer': 'hammer', 'cockAt': 0, 'fireMode': 'semi',
               'more': [{'breech': 'shield', 'chamber': 'block', 'face': [face, bore + sep], 'muzzle': [muzzle, bore + sep], 'loaded': True}],
               'fireOrder': 'turn'}
-    return {'name': 'Over-under derringer', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
+    return {'grips': [{'kind': 'firing', 'part': 'frame', 'at': [face - 25, bot + 28], 'angle': 108}], 'name': 'Over-under derringer', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
 
 # ------------------------------------------------------------------ output
 NEW = [

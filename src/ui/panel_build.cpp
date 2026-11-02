@@ -144,6 +144,56 @@ static void carvesSection(BodyDef& b) {
 }
 
 // ---------------------------------------------------------------- inspect: a part
+
+// ---------------------------------------------------------------- where it's held
+static void gripButtons(const char* suffix) {
+    float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+    auto place = [&](const char* label, const char* kind, const char* style, const char* hint) {
+        if (ImGui::Button((std::string(label) + suffix).c_str(), {w3, 0})) {
+            setTool(Tool::Grip); A.gripKind = kind; A.gripStyle = style;
+            toast(hint);
+        }
+    };
+    place("Firing hand", "firing", "", "Click the middle of where the trigger hand holds it (a pistol grip, a rifle's wrist).");
+    ImGui::SameLine(); place("Support hand", "support", "", "Click the middle of where the other hand holds it (a handguard, a fore-end, a vertical grip).");
+    ImGui::SameLine(); place("Shoulder", "shoulder", "", "Click the middle of the stock's butt, where it beds into the shoulder.");
+}
+static void heldSummary() {
+    std::string h = heldWith(A.design);
+    if (h.empty()) muted("Held with: nowhere to hold it yet. Place a firing hand grip.");
+    else {
+        bool shoulder = false;
+        for (auto& g : A.design.grips) if (g.kind == "shoulder") shoulder = true;
+        muted("Held with %s%s.", h.c_str(), shoulder ? ", against the shoulder" : "");
+    }
+}
+static void gripsOnPart(BodyDef& b) {
+    auto& G = A.design.grips;
+    int drop = -1;
+    for (size_t i = 0; i < G.size(); i++) {
+        auto& g = G[i];
+        if (g.part != b.id) continue;
+        ImGui::PushID((int)i);
+        ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted(gripName(g.kind)); ImGui::PopFont();
+        if (g.kind != "shoulder") {
+            const bool firing = g.kind == "firing";
+            int st = 2;
+            double a0 = defaultGripAngle(g.kind, ""), a1 = defaultGripAngle(g.kind, firing ? "wrist" : "vertical");
+            if (std::fabs(g.angle - a0) < 0.5) st = 0; else if (std::fabs(g.angle - a1) < 0.5) st = 1;
+            prop("Style", firing ? "Pistol grip: the hand wraps a grip that drops steeply below the action.\nRifle wrist: the hand wraps the stock's narrow neck, nearly in line with it.\nOr drag the green dot at the end of the line to any angle."
+                                 : "Fore-end: the hand under the barrel, wrapped along it.\nVertical grip: a post the hand wraps upright.\nOr drag the green dot at the end of the line to any angle.");
+            if (ImGui::Combo("##gstyle", &st, firing ? "Pistol grip\0Rifle wrist\0Custom\0" : "Fore-end\0Vertical grip\0Custom\0") && st < 2) {
+                g.angle = st == 0 ? a0 : a1; editedAny = true;
+            }
+        }
+        pNum("Angle", g.angle, 1, "%.0f\xc2\xb0", "The way the line runs where the fingers wrap (the butt pad, for the shoulder). 0 points at the muzzle, 90 straight down.");
+        if (ImGui::Button("Remove", {-1, 0})) drop = (int)i;
+        ImGui::PopID();
+    }
+    if (drop >= 0) { G.erase(G.begin() + drop); editedAny = true; }
+    muted("Add where it's held on this part:");
+    gripButtons("##part");
+}
 static void inspectPart(BodyDef& b) {
     auto& D = A.design;
     // colour swatch and name on one line
@@ -345,6 +395,11 @@ static void inspectPart(BodyDef& b) {
         pNum("Damping", b.damp, 0.5, "%.1f /s", "Friction-like slowing of this part on its own: buffers, heavy grease.");
     }
 
+    {
+        bool any = false;
+        for (auto& g : A.design.grips) if (g.part == b.id) any = true;
+        if (section("Held here", any)) gripsOnPart(b);
+    }
     if (section("Control", b.ctrl != "none")) {
         const char* kinds[] = {"none", "button", "lever", "trigger", "handle"};
         int ki = 0;
@@ -965,6 +1020,10 @@ void buildPanel() {
                 ImGui::Dummy({0, 8 * S()});
                 ImGui::TextUnformatted("Nothing selected");
                 muted("Click a part or a joint in the view, or pick one from the Outline.");
+                ImGui::Dummy({0, 8 * S()});
+                ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("Where it's held"); ImGui::PopFont();
+                heldSummary();
+                gripButtons("##none");
             }
             ImGui::EndChild();
             ImGui::EndTabItem();

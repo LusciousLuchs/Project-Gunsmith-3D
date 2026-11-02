@@ -21,9 +21,9 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor };  // the main menu, the designer / test bench, or the map editor
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
-struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle
+struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; };
 struct Shell { Vector3 p, v, dir; float spin, life, len, r; Vector3 axisSpin; };
 struct Puff { Vector3 p, v; float r, life, max; };
@@ -47,6 +47,7 @@ struct App {
     std::unique_ptr<sim::Sim> S;
     bool running = false;
     Tool tool = Tool::Select;
+    std::string gripKind = "firing", gripStyle;  // the Grip tool places this kind (and style) of grip
     int chamberEdit = -1;                // the Face and Muzzle tools place this further chamber's points (-1: the first chamber)
     Sel sel;
     bool snapOn = true, xray = true, sound = true, cutaway = false;  // cutaway: near-side parts drawn see-through

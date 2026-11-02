@@ -203,6 +203,20 @@ struct BreechDef {
 };
 void applyCartridge(BreechDef& b);      // copy round size and impulse from the cartridge
 
+// Where the shooter holds the gun: a hand or the shoulder, on a part. Moves with that part.
+//   firing   the hand that works the trigger (a pistol grip, a rifle's wrist)
+//   support  the other hand (a handguard or fore-end, a vertical grip)
+//   shoulder where the gun beds into the shoulder (a stock's butt)
+// angle: the direction the grip runs, degrees (0 = toward the muzzle, 90 = down): fingers wrap around this line.
+struct GripDef {
+    std::string kind = "firing";
+    std::string part;
+    V2 at;
+    double angle = 105;
+};
+double defaultGripAngle(const std::string& kind, const std::string& style = "");
+const char* gripName(const std::string& kind);
+std::string heldWith(const struct Design& d);  // "one hand", "two hands", or "" with no firing-hand grip
 struct Design {
     std::string name = "Untitled action";
     double speed = 0.02;                 // slow-motion speed for shots
@@ -210,6 +224,7 @@ struct Design {
     std::vector<BodyDef> bodies;
     std::vector<JointDef> joints;
     BreechDef breech;
+    std::vector<GripDef> grips;          // where it's held (none in older blueprints)
     // where the blueprint came from (filled in when loading; saving always writes the current version)
     int format = 1;                      // blueprint format number (GUNSMITH_BLUEPRINT_FORMAT when saved)
     std::string savedWith;               // app version that saved it, "" for blueprints older than versioning

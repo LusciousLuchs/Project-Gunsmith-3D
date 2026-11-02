@@ -115,6 +115,11 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Removed an out-of-date note in the magazine panel that said tubes only feed the simple way.
 - Fix: an action lock now catches before anything else moves, so a heavy shot can't shove the parts linked to the bolt. (The pump carbine's fore-end no longer twitches back when it fires.)
 
+### Where it's held
+- Mark where the gun is held: **firing hand** (pistol grip or rifle wrist), **support hand** (fore-end or vertical grip) and **shoulder** (the stock's butt). Place them from Inspect (with nothing selected) or a part's *Held here* section. Each is a green line where the fingers wrap, with a hand-sized zone in 3D; drag its middle to move it and its end to turn it.
+- The designer says whether the gun is held with one hand or two. These markers are where the first-person hands and shoulder will go.
+- All the examples have them.
+
 ### Example polish
 - **Bolt-action rifle:** a longer, gentler feed ramp (13 mm instead of 10). The bolt used to kick rounds into the chamber about 25 degrees nose-up, and working it by hand jammed with most bullet shapes. Now every shape and nose length feeds: 40 of 40 combinations, up from 16.
 - **Tilting-barrel pistol:** the ejector sits 1.25 mm further forward. Racking a loaded pistol now throws the live round out in 26 of 30 shape and nose-length combinations, up from 17. Before, it often tipped too little and rode back into the chamber.

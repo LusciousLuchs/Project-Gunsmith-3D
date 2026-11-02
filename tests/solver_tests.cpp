@@ -1275,6 +1275,16 @@ static void beltsAndClips() {
     }
 }
 
+static void grips() {
+    std::printf("Where it's held\n");
+    Design p = loadPreset("blowback"), r = loadPreset("boltaction");
+    CHECK(heldWith(p) == "one hand" && heldWith(r) == "two hands", "the pistol is held with one hand, the rifle with two");
+    Design back; designFromJson(designToJson(r), back);
+    CHECK(back.grips.size() == 3 && back.grips[2].kind == "shoulder" && std::fabs(back.grips[0].angle - 105) < 1e-9, "grips save and load");
+    Design none = p; none.grips.clear();
+    CHECK(heldWith(none).empty(), "a design with no firing-hand grip has nowhere to hold it");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1302,6 +1312,7 @@ int main() {
     ammoKinds();
     severalChambers();
     beltsAndClips();
+    grips();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;
