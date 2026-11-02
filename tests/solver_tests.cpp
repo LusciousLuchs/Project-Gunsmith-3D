@@ -3,6 +3,7 @@
 #include "reliability.hpp"
 #include "version.hpp"
 #include "carve.hpp"
+#include "hand.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -1287,6 +1288,23 @@ static void grips() {
     CHECK(back.pose.hold[HOLD_HIP].set && std::fabs(back.pose.hold[HOLD_HIP].yaw - 20) < 1e-9 && !back.pose.hold[HOLD_AIM].set, "a posed hold saves; the others stay worked out from the gun");
     BodyHold aim = holdOf(r, HOLD_AIM), low = holdOf(r, HOLD_LOWERED);
     CHECK(std::fabs(aim.eye.x - (r.pose.butt.at.x + 90)) < 1e-6 && low.tilt > 20, "unposed: the eye sits over the stock when aiming, and the muzzle drops when lowered");
+    {   // the hand skeleton: named bones, and finger poses that save
+        DigitPose dg[DIGIT_COUNT];
+        digitsOf(r.pose.firing, "firing", dg);
+        auto bones = handBones(dg);
+        int named = 0; for (auto& b : bones) if (b.name == "index_03" || b.name == "thumb_01" || b.name == "pinky_02") named++;
+        Design d2 = r;
+        applyHandPreset(d2.pose.support, "support", "fist");
+        d2.pose.support.digits[DIGIT_RING].bend[1] = 33;
+        Design b2; designFromJson(designToJson(d2), b2);
+        auto open = handBones([]{ static DigitPose z[DIGIT_COUNT]; return z; }());
+        double tipOpen = 0, tipFist = 0;
+        for (auto& b : open) if (b.name == "middle_03") tipOpen = b.b.x;
+        DigitPose fist[DIGIT_COUNT]; digitsOf(b2.pose.support, "support", fist);
+        for (auto& b : handBones(fist)) if (b.name == "middle_03") tipFist = b.b.x;
+        CHECK(bones.size() == 19 && named == 3 && b2.pose.support.digitsSet && std::fabs(b2.pose.support.digits[DIGIT_RING].bend[1] - 33) < 1e-9 && tipFist < tipOpen - 60,
+              "a hand has 19 named bones; bent fingers curl toward the palm; finger poses save and load");
+    }
     Design none = p; none.pose = Pose();
     CHECK(heldWith(none).empty(), "a design with no firing hand has nowhere to hold it");
 }

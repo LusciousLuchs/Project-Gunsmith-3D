@@ -30,10 +30,9 @@ static void cameraInput(bool overUI) {
     Vector2 md = GetMouseDelta();
     if (A.dragKind == 4 && IsMouseButtonDown(ORBIT)) {
         if (Vector2Distance(m, A.pressPos) > 3) A.dragMoved = true;
-        if (A.dragMoved) {
-            A.ortho = false;
+        if (A.dragMoved) {  // (orthographic stays orthographic: turn it to any angle)
             A.yaw -= md.x * 0.006f;
-            A.pitch = std::clamp(A.pitch + md.y * 0.006f, -0.2f, 1.45f);
+            A.pitch = std::clamp(A.pitch + md.y * 0.006f, -PI / 2, PI / 2);
         }
     }
     if (A.dragKind == 4 && IsMouseButtonReleased(ORBIT)) {
@@ -107,7 +106,14 @@ void handleKeys() {
     }
     if (actPressed(Act::ToggleMode) && !A.benchOnly) setMode(A.mode == Mode::Build ? Mode::Test : Mode::Build);
     if (actPressed(Act::FitView)) fitView();
-    if (actPressed(Act::SideView)) A.ortho = !A.ortho;
+    if (actPressed(Act::SideView)) { if (A.ortho && std::fabs(A.yaw) < 1e-3f && std::fabs(A.pitch) < 1e-3f) setOrtho(false); else sideView(); }
+    {   // number pad, as in most 3D programs: 5 orthographic on/off; 1 front, 3 side, 7 top (with Ctrl: the opposite side)
+        bool c = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        if (IsKeyPressed(KEY_KP_5)) setOrtho(!A.ortho);
+        if (IsKeyPressed(KEY_KP_1)) snapView(c ? View::Back : View::Front);
+        if (IsKeyPressed(KEY_KP_3)) snapView(c ? View::Left : View::Right);
+        if (IsKeyPressed(KEY_KP_7)) snapView(c ? View::Bottom : View::Top);
+    }
     bool dragging = (A.dragKind == 1 || A.dragKind == 2) && IsMouseButtonDown(MOUSE_BUTTON_LEFT);  // (X, Y, Z lock the drag then)
     if (actPressed(Act::XRay) && !dragging) A.xray = !A.xray;
     if (actPressed(Act::Cutaway)) A.cutaway = !A.cutaway;

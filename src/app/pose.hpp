@@ -20,4 +20,5 @@ void drawPoseBody();             // the mannequin, its arms and hands (call outs
 void drawPoseOverlay();          // handles and labels
 void poseInput(bool overUI);
 PoseReport poseReport();
-void poseDefaultHands();         // put any missing firing hand where a hand would most likely go
+void poseDefaultHands();
+void poseFocusHand(int hand);   // close up on a hand (0 firing, 1 support)         // put any missing firing hand where a hand would most likely go

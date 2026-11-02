@@ -844,7 +844,15 @@ std::string designToJson(const Design& d, bool pretty) {
     } else o["breech"] = nullptr;
     {
         json P = json::object();
-        auto hand = [](const HandHold& h) { return json{{"part", h.part}, {"at", v2j(h.at)}, {"angle", h.angle}}; };
+        auto hand = [](const HandHold& h) {
+            json o{{"part", h.part}, {"at", v2j(h.at)}, {"angle", h.angle}};
+            if (h.digitsSet) {
+                json a = json::array();
+                for (auto& d : h.digits) a.push_back({d.bend[0], d.bend[1], d.bend[2], d.spread});
+                o["digits"] = a;
+            }
+            return o;
+        };
         if (d.pose.firing.on) P["firing"] = hand(d.pose.firing);
         if (d.pose.support.on) P["support"] = hand(d.pose.support);
         if (d.pose.butt.on) P["butt"] = hand(d.pose.butt);
@@ -1057,6 +1065,15 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         if (!jh.is_object() || !jh.contains("at") || !jh["at"].is_array()) return;
         h.on = true; h.part = opt<std::string>(jh, "part", ""); h.at = j2v(jh["at"]);
         h.angle = opt<double>(jh, "angle", defaultHandAngle(which));
+        if (jh.contains("digits") && jh["digits"].is_array() && jh["digits"].size() == DIGIT_COUNT) {
+            h.digitsSet = true;
+            for (int k = 0; k < DIGIT_COUNT; k++) {
+                auto& q = jh["digits"][k];
+                if (!q.is_array() || q.size() < 4) { h.digitsSet = false; break; }
+                for (int s = 0; s < 3; s++) h.digits[k].bend[s] = q[s].get<double>();
+                h.digits[k].spread = q[3].get<double>();
+            }
+        }
     };
     if (o.contains("pose") && o["pose"].is_object()) {
         auto& P = o["pose"];

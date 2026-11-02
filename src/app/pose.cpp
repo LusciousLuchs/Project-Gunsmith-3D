@@ -6,6 +6,7 @@
 #include "app/settings.hpp"
 #include "app/view.hpp"
 #include "raymath.h"
+#include "hand.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -62,17 +63,44 @@ Arm reach(Vector3 s, Vector3 target, Vector3 pole) {
     A_.e = Vector3Add(Vector3Add(s, Vector3Scale(dir, a)), Vector3Scale(p, h));
     return A_;
 }
-struct HandGeo { bool on = false; Vector3 a, b, c, wrist; };
+// The hand's frame on the gun (gun millimetres, 3D): the palm against the side of whatever is held there, the knuckles
+// along the grip line (index finger at its upper / forward end), the fingers reaching across, curling over the far side.
+struct HandFrame { bool on = false; HV o, X, Y, Z; };
+void gunSpan(V2 at, const std::string& part, double& zc, double& half) {  // how wide the gun is where the hand holds it
+    double z0 = 1e9, z1 = -1e9;
+    for (auto& b : A.design.bodies)
+        if (!b.magazine && sim::inPoly(at.x, at.y, b.pts)) { z0 = std::min(z0, b.z - b.thick / 2); z1 = std::max(z1, b.z + b.thick / 2); }
+    if (z0 > z1) { int i = A.design.bodyIndex(part); double t = i >= 0 ? A.design.bodies[i].thick : 20; z0 = partZ(part) - t / 2; z1 = partZ(part) + t / 2; }
+    zc = (z0 + z1) / 2; half = (z1 - z0) / 2;
+}
+HandFrame handFrame(const HandHold& h, int side) {
+    HandFrame f;
+    if (!h.on) return f;
+    double zc, half;
+    gunSpan(h.at, h.part, zc, half);
+    double an = h.angle * DEG2RAD;
+    V2 g{std::cos(an), std::sin(an)}, n = wristOff(h.angle);
+    // the index finger's end of the grip line: the higher one (or the one toward the muzzle)
+    V2 toPinky = (-(-g.y) + 0.3 * (-g.x)) >= (-g.y + 0.3 * g.x) ? g : V2{-g.x, -g.y};
+    f.on = true;
+    f.o = {h.at.x + n.x * 12, h.at.y + n.y * 12, zc + side * (half + 12)};
+    f.X = {-n.x, -n.y, 0}; f.Y = {0, 0, (double)-side}; f.Z = {toPinky.x, toPinky.y, 0};
+    return f;
+}
+Vector3 handPt(const HandFrame& f, HV p) {
+    return gunPt({f.o.x + f.X.x * p.x + f.Y.x * p.y + f.Z.x * p.z, f.o.y + f.X.y * p.x + f.Y.y * p.y + f.Z.y * p.z}, f.o.z + f.X.z * p.x + f.Y.z * p.y + f.Z.z * p.z);
+}
+struct HandGeo { bool on = false; Vector3 c, wrist; HandFrame f; std::vector<HandBone> bones; };
 HandGeo handGeo(const HandHold& h, int side) {
     HandGeo g;
     if (!h.on) return g;
-    double z = partZ(h.part), an = h.angle * DEG2RAD;
-    V2 d{std::cos(an), std::sin(an)}, n = wristOff(h.angle);
+    g.f = handFrame(h, side);
     g.on = true;
-    g.a = gunPt({h.at.x - d.x * 42, h.at.y - d.y * 42}, z);
-    g.b = gunPt({h.at.x + d.x * 42, h.at.y + d.y * 42}, z);
-    g.c = gunPt(h.at, z);
-    g.wrist = gunPt({h.at.x + n.x * 45, h.at.y + n.y * 45}, z + side * 22);
+    DigitPose dg[DIGIT_COUNT];
+    digitsOf(h, side > 0 ? "firing" : "support", dg);
+    g.bones = handBones(dg);
+    g.c = handPt(g.f, {0, 0, 0});
+    g.wrist = handPt(g.f, handWrist());
     return g;
 }
 void capsule(Vector3 a, Vector3 b, float r, Color c) { drawCyl(a, b, r, c); drawSphereLit(a, r, c); drawSphereLit(b, r, c); }
@@ -107,6 +135,17 @@ void poseView() {
     A.yaw = 0.95f; A.pitch = 0.22f;
 }
 
+void poseFocusHand(int hand) {
+    const Pose& P = A.design.pose;
+    HandGeo g = handGeo(hand == 0 ? P.firing : P.support, hand == 0 ? 1 : -1);
+    if (!g.on) return;
+    A.poseHand = hand;
+    A.target = g.c;
+    A.dist = 420 * U;
+    A.ortho = false;
+    A.yaw = hand == 0 ? 0.6f : -2.4f;  // from the side the hand is on
+    A.pitch = 0.25f;
+}
 void enterPose() {
     A.posing = true;
     A.running = false;
@@ -163,8 +202,10 @@ void drawPoseBody() {
         capsule(a.s, a.e, 46 * U, c);
         capsule(a.e, a.w, 38 * U, c);
         if (g.on) {
-            capsule(g.a, g.b, 21 * U, SKIN);
-            drawCyl(a.w, g.c, 26 * U, SKIN);
+            for (auto& b : g.bones) {
+                bool picked = A.poseHand == side && b.digit == A.poseDigit && b.digit >= 0;
+                capsule(handPt(g.f, b.a), handPt(g.f, b.b), (float)b.radius * U, picked ? Color{240, 196, 150, 255} : SKIN);
+            }
         } else drawSphereLit(a.w, 45 * U, SKIN);
     }
 }
@@ -198,6 +239,21 @@ void drawPoseOverlay() {
         dot(toScreen(gunPt(h.at, z)), k * 2, c, names[k]);
         dot(b, k * 2 + 1, c, nullptr);
     }
+    // the picked hand's fingertips: click one to pick it, drag up or down to curl it
+    if (A.poseHand >= 0) {
+        HandGeo g = handGeo(A.poseHand == 0 ? P.firing : P.support, A.poseHand == 0 ? 1 : -1);
+        if (g.on)
+            for (auto& b : g.bones)
+                if (b.digit >= 0 && b.seg == 2) {
+                    Vector2 s = toScreen(handPt(g.f, b.b));
+                    bool picked = b.digit == A.poseDigit;
+                    Color c = picked ? Color{255, 205, 60, 255} : Color{240, 196, 150, 255};
+                    bool hot = Vector2Distance(s, m) < 8 || A.poseDrag == 20 + b.digit;
+                    DrawCircleV(s, hot || picked ? 5.f : 3.5f, c);
+                    if (hot) viewText(digitName(b.digit), s.x + 8, s.y - 16 * CFG.uiScale, 11, c);
+                    handles.push_back({s, 20 + b.digit});
+                }
+    }
     Frame F = bodyFrame();
     dot(toScreen(bp(F, -75, 110, -32)), 6, Color{232, 161, 58, 255}, "Drag to move the body");
 }
@@ -209,9 +265,21 @@ void poseInput(bool overUI) {
         Vector2 m = GetMousePosition();
         float best = 12;
         for (auto& h : handles) { float d = Vector2Distance(h.s, m); if (d < best) { best = d; A.poseDrag = h.id; } }
+        if (A.poseDrag == 0) A.poseHand = 0;
+        if (A.poseDrag == 2) A.poseHand = 1;
+        if (A.poseDrag >= 20) A.poseDigit = A.poseDrag - 20;
         return;
     }
     if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { A.poseDrag = -1; commit(); return; }
+    if (A.poseDrag >= 20) {  // curl the picked digit: up opens it, down closes it
+        HandHold& h = A.poseHand == 0 ? P.firing : P.support;
+        if (!h.digitsSet) { digitsOf(h, A.poseHand == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
+        DigitPose& d = h.digits[A.poseDrag - 20];
+        float dy = GetMouseDelta().y;
+        const double share[3] = {0.35, 0.4, 0.25};
+        for (int s = 0; s < 3; s++) d.bend[s] = std::clamp(d.bend[s] + dy * share[s] * 1.2, -25.0, 110.0);
+        return;
+    }
     Ray r = mouseRay();
     auto onPlane = [&](float z, Vector3& out) {
         if (std::fabs(r.direction.z) < 1e-6f) return false;

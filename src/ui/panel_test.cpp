@@ -1,4 +1,5 @@
 // Gunsmith3D - Test mode panels: bench controls and motion trace.
+#include "hand.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/render.hpp"
@@ -137,6 +138,29 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
         pNum("Angle", h.angle, 1, "%.0f\xc2\xb0", "The line the fingers wrap round (the butt pad's line, for the butt). 0 points at the muzzle, 90 straight down.\nOr drag the dot at the end of its green line.");
         int bi = A.design.bodyIndex(h.part);
         ImGui::TextDisabled("On: %s", bi >= 0 ? (A.design.bodies[bi].name.empty() ? h.part.c_str() : A.design.bodies[bi].name.c_str()) : "nothing");
+        if (std::string(which) != "butt" && ImGui::TreeNode("Fingers")) {
+            int hand = std::string(which) == "firing" ? 0 : 1;
+            A.poseHand = hand;  // (its fingertips show in the view)
+            if (ImGui::Button("Zoom to this hand", {-1, 0})) poseFocusHand(hand);
+            if (!h.digitsSet) { digitsOf(h, which, h.digits); h.digitsSet = true; }
+            prop("Preset", "A starting point for the whole hand. Then pick a digit (here, or its fingertip in the view) and bend it.");
+            if (ImGui::BeginCombo("##preset", "Choose...")) {
+                const char* n = handPresets();
+                for (int i = 0; *n; i++, n += std::strlen(n) + 1) if (ImGui::Selectable(n)) { applyHandPreset(h, which, handPresetId(i)); commit(); }
+                ImGui::EndCombo();
+            }
+            for (int d = 0; d < DIGIT_COUNT; d++) {
+                if (d) ImGui::SameLine(0, 3);
+                if (accentButton(digitName(d), A.poseDigit == d, {0, 0})) A.poseDigit = d;
+            }
+            DigitPose& dp = h.digits[std::clamp(A.poseDigit, 0, DIGIT_COUNT - 1)];
+            const char* jn[3] = {"Base joint", "Middle joint", "Tip joint"};
+            for (int k = 0; k < 3; k++) { pNum(jn[k], dp.bend[k], 1, "%.0f\xc2\xb0", "+ curls it toward the palm."); dp.bend[k] = std::clamp(dp.bend[k], -25.0, 110.0); }
+            pNum("Spread", dp.spread, 1, "%.0f\xc2\xb0", A.poseDigit == DIGIT_THUMB ? "+ swings the thumb away from the palm." : "+ swings it toward the little finger.");
+            dp.spread = std::clamp(dp.spread, -40.0, 60.0);
+            if (ImGui::IsItemDeactivatedAfterEdit()) commit();
+            ImGui::TreePop();
+        }
     }
     ImGui::PopID();
 }
@@ -157,10 +181,10 @@ static void posePanel() {
         if (!b.set) b = holdOf(A.design, A.poseHold);
         BodyHold was = b;
         muted("Drag the orange dot over the head to move the body. These are where the aiming eye sits against the gun.");
-        pNumU("Along the gun", b.eye.x, 2, Q::Length, -1, "Forward (toward the muzzle) or back.", SIGNED);
+        pNumU("Eye X", b.eye.x, 2, Q::Length, -1, "Along the gun: + toward the muzzle.", SIGNED);
         double up = -b.eye.y;
-        if (pNumU("Height", up, 2, Q::Length, -1, "Up from the gun's drawing origin.", SIGNED)) b.eye.y = -up;
-        pNumU("Across", b.eyeZ, 2, Q::Length, -1, "+ puts the eye to the gun's right side.", SIGNED);
+        if (pNumU("Eye Y", up, 2, Q::Length, -1, "Up and down: + is up.", SIGNED)) b.eye.y = -up;
+        pNumU("Eye Z", b.eyeZ, 2, Q::Length, -1, "Across the gun: + is the gun's right side.", SIGNED);
         pNum("Body turned", b.yaw, 1, "%.0f\xc2\xb0", "The body turned against the gun (+ to the right). Rifle shooters stand bladed.");
         pNum("Muzzle down", b.tilt, 1, "%.0f\xc2\xb0", "The gun tipped against the body: about 35 for a lowered gun, 0 when aiming.");
         if (std::memcmp(&was, &b, sizeof b) != 0 || !was.set) { b.set = true; }

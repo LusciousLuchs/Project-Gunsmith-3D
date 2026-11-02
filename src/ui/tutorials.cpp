@@ -329,7 +329,7 @@ static const std::vector<Lesson>& lessons() {
         Step("Real on the bench", "Cuts are real on the test bench too. A part slides past another part that sits in a groove you cut, and every cut makes a part lighter.\n\nOn magazines and on parts that turn on the bore, cuts only change the look for now."),
     }},
     {"depth", "Thickness, depth and collisions", "How flat parts stack into a 3D gun, and which parts touch.", "blowback", {
-        Step("Parts sit side by side", "This is the right wall of the slide. Thickness is how thick it is. Depth is where it sits across the gun: 0 is the middle, + is towards you.").show("wall_r").at("part:thickness|part:depth"),
+        Step("Parts sit side by side", "This is the right wall of the slide. Thickness is how thick it is. Z (offset) is where it sits across the gun: 0 is the middle, + is towards you.").show("wall_r").at("part:thickness|part:depth"),
         Step("What touches what", "Solid parts bump into each other wherever they overlap. This grip panel isn't solid: it's just for looks, so everything passes through it.").show("grip_r").at("part:solid"),
         Step("The frame", "Fixed parts are the frame. They never move, and everything else hangs off them.").show("grip_r").at("part:fixed"),
         Step("Pieces that move together", "The slide is five pieces welded together, so they move as one. Build complicated parts from simple pieces this way.").show("slide"),
@@ -455,7 +455,7 @@ static void enterStep(int s) {
                 if (jd.type == "spring" && (jd.a == st.spring || jd.b == st.spring)) { A.sel = {2, (int)j, -1}; A.selVs.clear(); gPanelTab = 0; break; }
             }
         if (st.tab >= 0) gPanelTab = st.tab;
-        if (st.sideView && !A.ortho) { A.ortho = true; fitView(); }
+        if (st.sideView && !A.ortho) { sideView(); fitView(); }
     }
     gWas = snapshot();
     gStepDone = false;

@@ -98,19 +98,41 @@ void fitView() {
     A.orthoH = (float)std::max((y1 - y0) * 1.5, (x1 - x0) * 1.15 * A.vh / std::max(1, A.vw)) * U + 2;
 }
 void updateCamera() {
-    A.cam.up = {0, 1, 0};
+    // one orbit for both projections: orthographic just drops the perspective, so it works from any angle.
+    // The camera's own up keeps straight-down and straight-up views steady.
+    float sy = std::sin(A.yaw), cy = std::cos(A.yaw), sp = std::sin(A.pitch), cp = std::cos(A.pitch);
+    A.cam.up = {-sp * sy, cp, -sp * cy};
     A.cam.target = A.target;
+    Vector3 dir{sy * cp, sp, cy * cp};
     if (A.ortho) {
         A.cam.projection = CAMERA_ORTHOGRAPHIC;
         A.cam.fovy = A.orthoH;
-        A.cam.position = Vector3Add(A.target, {0, 0, 200});
+        A.cam.position = Vector3Add(A.target, Vector3Scale(dir, 200));
     } else {
         A.cam.projection = CAMERA_PERSPECTIVE;
         A.cam.fovy = 40;
-        Vector3 off{std::sin(A.yaw) * std::cos(A.pitch) * A.dist, std::sin(A.pitch) * A.dist, std::cos(A.yaw) * std::cos(A.pitch) * A.dist};
-        A.cam.position = Vector3Add(A.target, off);
+        A.cam.position = Vector3Add(A.target, Vector3Scale(dir, A.dist));
     }
 }
+void setOrtho(bool on) {  // keep what you see the same size either way
+    float k = 2 * std::tan(20 * DEG2RAD);
+    if (on && !A.ortho) A.orthoH = std::clamp(A.dist * k, 2.f, 400.f);
+    if (!on && A.ortho) A.dist = std::clamp(A.orthoH / k, 3.f, 600.f);
+    A.ortho = on;
+}
+void snapView(View v) {
+    const float H = PI / 2;
+    switch (v) {
+    case View::Right: A.yaw = 0; A.pitch = 0; break;
+    case View::Left: A.yaw = PI; A.pitch = 0; break;
+    case View::Top: A.yaw = 0; A.pitch = H; break;
+    case View::Bottom: A.yaw = 0; A.pitch = -H; break;
+    case View::Front: A.yaw = H; A.pitch = 0; break;
+    case View::Back: A.yaw = -H; A.pitch = 0; break;
+    }
+    setOrtho(true);
+}
+void sideView() { snapView(View::Right); }
 void beginViewport3D() {
     BeginMode3D(A.cam);
     float sx = (float)GetRenderWidth() / GetScreenWidth(), sy = (float)GetRenderHeight() / GetScreenHeight();

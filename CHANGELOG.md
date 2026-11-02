@@ -115,6 +115,19 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Removed an out-of-date note in the magazine panel that said tubes only feed the simple way.
 - Fix: an action lock now catches before anything else moves, so a heavy shot can't shove the parts linked to the bolt. (The pump carbine's fore-end no longer twitches back when it fires.)
 
+### Hands with fingers
+- In Pose mode each hand is now a real **hand skeleton**: a palm, a thumb and four fingers with three joints each. Every joint bends and each digit can spread.
+  - Open a hand's **Fingers** section to pick a preset (wrapped round, finger on the trigger, finger off the trigger, open, fist) and set each joint exactly. **Zoom to this hand** brings the camera in close.
+  - In the view, click a hand to show its fingertips, click a fingertip to pick that digit, and drag up or down to curl it.
+  - The bones have names (thumb_01 ... pinky_03, palm_index ...), each with a start, an end and an up direction: the framework a modelled hand will attach to. Finger poses save with the gun.
+  - The firing hand now starts with its finger curled onto the trigger.
+
+### Views and coordinates
+- **Orthographic from any angle:** the cube button in the top bar opens a View menu. Switch *Orthographic* on and turn the view any way you like (no perspective, for lining things up). Or look straight at the right side, left side, top, bottom, front or back.
+  - Keys: **V** side view (again: back to 3D); number pad **5** orthographic on/off, **1** front, **3** side, **7** top, with **Ctrl** for the opposite side.
+  - Orbiting no longer drops you out of the flat view.
+- **X, Y and Z everywhere:** a part's offset across the gun is now **Z (offset)**. A cut's position is **X, Y, Z** (its section is open by default). The pose's eye is Eye X, Eye Y, Eye Z. **Y is shown with + up** (it used to show + down for corners); only the numbers shown change, not your saved guns.
+
 ### Pose (how it's held)
 - **Pose mode on the Test bench** (the Pose button in the top bar). A plain upper-body mannequin stands with the gun:
   - drag the **firing hand**, the **support hand** and the **stock's butt** onto any part, and drag the dot at the end of each green line to turn it. Hand styles: pistol grip, rifle wrist, fore-end, vertical grip.

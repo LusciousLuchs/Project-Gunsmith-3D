@@ -26,7 +26,7 @@ static const ActInfo ACTS[(int)Act::Count] = {
     {"finish", "Finish part or track", "Designer", KEY_ENTER, false},
     {"mode", "Switch designer / bench", "View", KEY_TAB, false},
     {"fit", "Fit view", "View", KEY_F, false},
-    {"side", "Side view / 3D view", "View", KEY_V, false},
+    {"side", "Side view (flat) / back to 3D", "View", KEY_V, false},
     {"xray", "X-ray", "View", KEY_X, false},
     {"cutaway", "Cutaway", "View", KEY_C, false},
     {"screenshot", "Screenshot", "View", KEY_F12, false},

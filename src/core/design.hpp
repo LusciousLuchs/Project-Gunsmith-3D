@@ -206,7 +206,14 @@ void applyCartridge(BreechDef& b);      // copy round size and impulse from the 
 // How the shooter holds the gun, posed on the bench (Test bench > Pose). The hands and the stock's butt are points on
 // parts (they move with them); each hold (aim, hip, lowered) places the body against the gun. Older blueprints with grip
 // markers load them as the hands and butt.
+enum { DIGIT_THUMB, DIGIT_INDEX, DIGIT_MIDDLE, DIGIT_RING, DIGIT_PINKY, DIGIT_COUNT };
+struct DigitPose {
+    double bend[3] = {0, 0, 0};   // degrees at each joint from the base: + curls toward the palm
+    double spread = 0;            // degrees sideways at the base (+ toward the little finger; the thumb: away from the palm)
+};
 struct HandHold {
+    bool digitsSet = false;        // false: a preset that suits the hand (core/hand.cpp)
+    DigitPose digits[DIGIT_COUNT];
     bool on = false;
     std::string part;
     V2 at;                 // the middle of the hand, or of the butt (design mm)

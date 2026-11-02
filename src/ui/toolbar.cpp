@@ -259,8 +259,20 @@ rightSide:
         ImGui::EndPopup();
     }
     gap(4);
-    if (iconButton(ICON_FA_CUBE, A.ortho ? "3D view (V)" : "Side view (V)", A.ortho)) A.ortho = !A.ortho;
+    if (iconButton(ICON_FA_CUBE, "View: side, top, front... and orthographic (V: side view)", A.ortho)) ImGui::OpenPopup("##view");
     tutAnchor("view:side");
+    if (ImGui::BeginPopup("##view")) {
+        bool o = A.ortho;
+        if (ImGui::Checkbox("Orthographic (no perspective)", &o)) setOrtho(o);
+        if (tipHover()) ImGui::SetTooltip("Parallel lines stay parallel and sizes don't shrink with distance:\nfor lining things up exactly. Turn the view to any angle. (Numpad 5)");
+        ImGui::Separator();
+        ImGui::TextDisabled("Look straight at");
+        struct VS { const char* l; View v; const char* k; };
+        const VS vs[] = {{"Right side", View::Right, "V, Numpad 3"}, {"Left side", View::Left, "Ctrl+Numpad 3"}, {"Top", View::Top, "Numpad 7"},
+                         {"Bottom", View::Bottom, "Ctrl+Numpad 7"}, {"Front (muzzle)", View::Front, "Numpad 1"}, {"Back", View::Back, "Ctrl+Numpad 1"}};
+        for (auto& v : vs) { if (ImGui::Selectable(v.l)) { snapView(v.v); ImGui::CloseCurrentPopup(); } ImGui::SameLine(170 * CFG.uiScale); ImGui::TextDisabled("%s", v.k); }
+        ImGui::EndPopup();
+    }
     gap(4);
     if (iconButton(ICON_FA_EXPAND, "Fit the view (F)")) fitView();
     tutAnchor("view:fit");

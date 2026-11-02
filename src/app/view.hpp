@@ -17,3 +17,8 @@ void fitView();
 void updateCamera();
 void beginViewport3D();
 void endViewport3D();
+
+enum class View { Right, Left, Top, Bottom, Front, Back };
+void setOrtho(bool on);        // orthographic (no perspective) from wherever the camera is
+void snapView(View v);         // straight at one face of the gun, orthographic
+void sideView();               // the right side, flat on: the classic drawing view

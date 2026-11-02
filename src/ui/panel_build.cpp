@@ -134,10 +134,11 @@ static void carvesSection(BodyDef& b) {
         c.dx = std::cos(pr) * std::sin(tr); c.dy = std::sin(pr); c.dz = -std::cos(pr) * std::cos(tr);
     }
     pNum("Spin##cut", c.spin, 5, "%.1f\xc2\xb0", "Turns the shape about the way it goes in.");
-    if (section("Where it starts", false)) {
-        pNumU("Forward##cut", c.at.x, 0.5, Q::Length, -1, nullptr, SIGNED);
-        pNumU("Down##cut", c.at.y, 0.5, Q::Length, -1, nullptr, SIGNED);
-        pNumU("Across##cut", c.atZ, 0.5, Q::Length, -1, "From the part's middle: + is toward the near side.", SIGNED);
+    if (section("Position (X, Y, Z)", true)) {  // where the cut starts, on the face it goes in from
+        pNumU("X##cut", c.at.x, 0.5, Q::Length, -1, "Along the gun: + toward the muzzle.", SIGNED);
+        double y = -c.at.y;   // shown with + up
+        if (pNumU("Y##cut", y, 0.5, Q::Length, -1, "Up and down: + is up.", SIGNED)) c.at.y = -y;
+        pNumU("Z##cut", c.atZ, 0.5, Q::Length, -1, "Across the gun, from the part's middle: + is the gun's right side (toward you in the side view).", SIGNED);
     }
     c.w = std::max(0.2, c.w); c.h = std::max(0.2, c.h); c.depth = std::max(0.0, c.depth);
     float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
@@ -228,7 +229,7 @@ static void inspectPart(BodyDef& b) {
             b.roundSweep = std::clamp(b.roundSweep, 1.0, 360.0);
             if (b.rollOn) muted("This part turns on the bore: on the bench it still collides as a plain flat part for now.");
         }
-        pNumU("Depth", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, positive is the near side.\nParts only touch where their depths overlap.", SIGNED);
+        pNumU("Z (offset)", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, + is the gun's right side (toward you in the side view).\nParts only touch where they overlap across the gun too.\nWhile dragging a part, Z moves it this way.", SIGNED);
         tutAnchor("part:depth");
         if (!b.fixed) {
             double autoMass;
@@ -262,8 +263,9 @@ static void inspectPart(BodyDef& b) {
     if (section("Shape", !b.gen.on)) {
         if (A.sel.v >= 0 && A.sel.v < (int)b.pts.size()) {
             int v = A.sel.v;
-            pNumU("X", b.pts[v].x, 0.5, Q::Length, lenDec(), nullptr, SIGNED);
-            pNumU("Y", b.pts[v].y, 0.5, Q::Length, lenDec(), nullptr, SIGNED);
+            pNumU("X", b.pts[v].x, 0.5, Q::Length, lenDec(), "Along the gun: + toward the muzzle.", SIGNED);
+            {   double y = -b.pts[v].y;   // shown with + up
+                if (pNumU("Y", y, 0.5, Q::Length, lenDec(), "Up and down: + is up.", SIGNED)) b.pts[v].y = -y; }
             pNumU("Corner radius", b.rad[v], 0.5, Q::Length);
             pNumU("Edge curve", b.bulge[v], 0.5, Q::Length, -1, "Bows the edge to the next corner. Positive bows outward.");
             b.rad[v] = std::max(0.0, b.rad[v]);

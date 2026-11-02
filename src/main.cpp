@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
     A.vw = GetScreenWidth() - (int)PANEL_W;
     A.vh = GetScreenHeight() - (int)TOOLBAR_H;
     fitView();
-    if (sideArg) A.ortho = true;
+    if (sideArg) sideView();
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
     if (!cartArg.empty()) for (auto& c : cartridgePresets()) if (c.name == cartArg) { A.design.breech.cart = c; A.design.breech.cartImpulse = true; applyCartridge(A.design.breech); }
     if (magCapArg > 0 || magCurveArg > -999 || !cartArg.empty()) {
@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
     // the game opens on the main menu; the screenshot options go straight to the workshop
     bool direct = !menuArg && (!presetArg.empty() || testArg || sideArg || fireArg || !demo.empty() || designerArg || !selectArg.empty() || relArg > 0 || pauseArg);
     if (direct) enterWorkshop(false);
-    if (sideArg) A.ortho = true;
+    if (sideArg) sideView();
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
     if (carveTool) A.tool = Tool::Carve;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
     }
     if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
     if (testArg || !demo.empty()) setMode(Mode::Test);
-    if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); }
+    if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); if (std::getenv("GUNSMITH_POSEHAND")) poseFocusHand(std::atoi(std::getenv("GUNSMITH_POSEHAND"))); }
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();
