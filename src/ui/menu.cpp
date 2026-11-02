@@ -236,12 +236,6 @@ void displayPage() {
     if (CFG.backdrop == Backdrop::Solid) { row("Colour"); backdropColour(); }
     row("Drafting grid", "Lines every 1, 10 and 50 mm (or 0.1, 0.5 and 1 inch) behind the parts in the designer.");
     backdropGrid("##grid");
-    ImGui::SeparatorText("Interface");
-    row("Interface scale", "Makes text and controls larger or smaller. Useful on high-resolution screens.");
-    static float uiS = -1;
-    if (uiS < 0) uiS = CFG.uiScale;
-    ImGui::SliderFloat("##uis", &uiS, 0.75f, 2.0f, "%.2fx"); typeable();
-    if (ImGui::IsItemDeactivatedAfterEdit()) { CFG.uiScale = std::round(uiS * 20) / 20; uiS = CFG.uiScale; applyUiScale(); dirty = true; }
 }
 
 void audioPage() {
@@ -255,6 +249,23 @@ void audioPage() {
 }
 
 void interfacePage() {
+    ImGui::SeparatorText("Size");
+    row("Interface scale", "Makes text, buttons and panels bigger or smaller. Auto picks a size for your screen.\nCtrl + and Ctrl - change it anywhere.");
+    {
+        static const float sizes[] = {0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
+        char cur[48];
+        if (CFG.uiScaleAuto) std::snprintf(cur, sizeof cur, "Auto (%d%%)", (int)std::lround(CFG.uiScale * 100));
+        else std::snprintf(cur, sizeof cur, "%d%%", (int)std::lround(CFG.uiScale * 100));
+        if (ImGui::BeginCombo("##uis", cur)) {
+            char a[48]; std::snprintf(a, sizeof a, "Auto (%d%% on this screen)", (int)std::lround(autoUiScale() * 100));
+            if (ImGui::Selectable(a, CFG.uiScaleAuto)) { CFG.uiScaleAuto = true; setUiScale(autoUiScale(), false); }
+            for (float z : sizes) {
+                char l[16]; std::snprintf(l, sizeof l, "%d%%", (int)std::lround(z * 100));
+                if (ImGui::Selectable(l, !CFG.uiScaleAuto && std::fabs(CFG.uiScale - z) < 0.01f)) setUiScale(z, true);
+            }
+            ImGui::EndCombo();
+        }
+    }
     ImGui::SeparatorText("Units");
     row("Measurements", "Metric: mm, g, m/s, J, N.\nImperial: inches, grains (bullets and powder), ounces, ft/s, ft-lbf, lbf.\nOnly what you see changes; the simulation always works the same way.");
     dirty |= enumCombo("##un", CFG.units, "Metric\0Imperial\0");

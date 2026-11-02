@@ -132,9 +132,9 @@ static void carvesSection(BodyDef& b) {
     }
     pNum("Spin##cut", c.spin, 5, "%.1f\xc2\xb0", "Turns the shape about the way it goes in.");
     if (section("Where it starts", false)) {
-        pNumU("Forward##cut", c.at.x, 0.5, Q::Length);
-        pNumU("Down##cut", c.at.y, 0.5, Q::Length);
-        pNumU("Across##cut", c.atZ, 0.5, Q::Length, -1, "From the part's middle: + is toward the near side.");
+        pNumU("Forward##cut", c.at.x, 0.5, Q::Length, -1, nullptr, SIGNED);
+        pNumU("Down##cut", c.at.y, 0.5, Q::Length, -1, nullptr, SIGNED);
+        pNumU("Across##cut", c.atZ, 0.5, Q::Length, -1, "From the part's middle: + is toward the near side.", SIGNED);
     }
     c.w = std::max(0.2, c.w); c.h = std::max(0.2, c.h); c.depth = std::max(0.0, c.depth);
     float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
@@ -236,7 +236,7 @@ static void inspectPart(BodyDef& b) {
             ImGui::AlignTextToFramePadding();
             ImGui::TextDisabled("%s across (round)", fmtQ(Q::Length, b.thick).c_str());
             if (oldThick != b.thick) carve::rethick(b, oldThick);
-        } else if (pNumU("Thickness", b.thick, 1, Q::Length)) carve::rethick(b, oldThick);
+        } else if (pNumU("Thickness", b.thick, 1, Q::Length, -1, nullptr, 0.5)) carve::rethick(b, oldThick);
         tutAnchor("part:thickness");
         {
             bool wasRound = b.round;
@@ -268,7 +268,7 @@ static void inspectPart(BodyDef& b) {
             b.roundSweep = std::clamp(b.roundSweep, 1.0, 360.0);
             if (b.rollOn) muted("This part turns on the bore: on the bench it still collides as a plain flat part for now.");
         }
-        pNumU("Depth", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, positive is the near side.\nParts only touch where their depths overlap.");
+        pNumU("Depth", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, positive is the near side.\nParts only touch where their depths overlap.", SIGNED);
         tutAnchor("part:depth");
         if (!b.fixed) {
             double autoMass;
@@ -302,8 +302,8 @@ static void inspectPart(BodyDef& b) {
     if (section("Shape", !b.gen.on)) {
         if (A.sel.v >= 0 && A.sel.v < (int)b.pts.size()) {
             int v = A.sel.v;
-            pNumU("X", b.pts[v].x, 0.5, Q::Length, lenDec());
-            pNumU("Y", b.pts[v].y, 0.5, Q::Length, lenDec());
+            pNumU("X", b.pts[v].x, 0.5, Q::Length, lenDec(), nullptr, SIGNED);
+            pNumU("Y", b.pts[v].y, 0.5, Q::Length, lenDec(), nullptr, SIGNED);
             pNumU("Corner radius", b.rad[v], 0.5, Q::Length);
             pNumU("Edge curve", b.bulge[v], 0.5, Q::Length, -1, "Bows the edge to the next corner. Positive bows outward.");
             b.rad[v] = std::max(0.0, b.rad[v]);
@@ -393,6 +393,7 @@ static void inspectPart(BodyDef& b) {
             pNumU("Handle length", b.handle, 1, Q::Length, -1, "Draws a bolt handle you can grab and drag on the bench. 0 for none.");
         }
         pNum("Damping", b.damp, 0.5, "%.1f /s", "Friction-like slowing of this part on its own: buffers, heavy grease.");
+        b.damp = std::max(0.0, b.damp);
     }
 
     {
@@ -557,7 +558,7 @@ static void inspectPart(BodyDef& b) {
                     for (auto& o : D.bodies) if (o.id != b.id && ImGui::Selectable((o.name + "##rel" + o.id).c_str(), j.rel == o.id)) { j.rel = o.id; editedAny = true; }
                     ImGui::EndCombo();
                 }
-                if (!j.rel.empty()) pNumU("when it moves", j.releaseAt, 0.5, Q::Length);
+                if (!j.rel.empty()) pNumU("when it moves", j.releaseAt, 0.5, Q::Length, -1, nullptr, SIGNED);
             }
             bool gen = b.gen.on;
             if (pCheck("Fit to cartridge", gen, "Shapes the magazine around the cartridge: the body, lips and follower.")) {
@@ -593,7 +594,7 @@ static void inspectPart(BodyDef& b) {
             if (!D.breech.physicalFeed) muted("These only matter with Firing > Physical rounds ticked.");
             pNumU("Lip height", b.lipHeight, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3,
                   "Raises (+) or lowers (-) the top round from where the lips normally hold it.\n"
-                  "Too low and the breech face rides over its rim instead of pushing it (failure to feed).");
+                  "Too low and the breech face rides over its rim instead of pushing it (failure to feed).", SIGNED);
             tutAnchor("mag:lips");
             b.lipHeight = std::clamp(b.lipHeight, -5.0, 5.0);
             {
@@ -661,6 +662,7 @@ static void inspectJoint(JointDef& j) {
                 pNumU("Coil diameter", j.coilDia, 0.5, Q::Length);
                 pNumU("Wire", j.wire, 0.1, Q::Length, lenDec());
                 pNum("Turns", j.turns, 1, "%.0f");
+                j.turns = std::max(1.0, j.turns);
                 pNumU("Damping", j.damp, 1, Q::Damping);
                 prop("Guide rod");
                 if (ImGui::BeginCombo("##guide", j.guide.empty() ? "None" : bname(j.guide).c_str())) {
@@ -705,9 +707,9 @@ static void inspectJoint(JointDef& j) {
     }
     if (j.type == "latch") {
         pBody("Held part", j.a, false); pBody("Measured from", j.b, true);
-        pNumU("Catches at", j.catchAt, 0.5, Q::Length);
+        pNumU("Catches at", j.catchAt, 0.5, Q::Length, -1, nullptr, SIGNED);
         pBody("Released by", j.rel, false);
-        pNumU("at travel", j.releaseAt, 0.5, Q::Length);
+        pNumU("at travel", j.releaseAt, 0.5, Q::Length, -1, nullptr, SIGNED);
         pCheck("Holds it closed", j.holdShut, "An action lock: the held part can't go back past where it catches (a shot can't blow it open)\n"
                                               "until the release part has been drawn back this far against it (a pump's fore-end moving\n"
                                               "in its free play before it takes the bolt along). It catches again when it comes home.");
@@ -893,7 +895,7 @@ static void firingTab() {
         pCheck("Recoil from it", br.cartImpulse, "Works the recoil impulse out from the bullet and powder gas.");
         if (br.cartImpulse) applyCartridge(br);
         else pNumU("Recoil impulse", br.impulse, 0.1, Q::Impulse);
-        if (CFG.stats != StatsDetail::Minimal) pNum("Pressure time", br.dur, 0.1, "%.2f ms", "How long the chamber pressure pushes on the breech.");
+        if (CFG.stats != StatsDetail::Minimal) { pNum("Pressure time", br.dur, 0.1, "%.2f ms", "How long the chamber pressure pushes on the breech."); br.dur = std::max(0.05, br.dur); }
     }
     if (section("Feeding", true)) {
         const char* modes[] = {"magazine", "internal", "single"};
@@ -960,40 +962,53 @@ static void firingTab() {
 }
 
 // ---------------------------------------------------------------- file
-static void fileTab() {
-    auto& D = A.design;
-    if (section("Save", true)) {
-        float bw = 70 * S();
-        ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - bw - ImGui::GetStyle().ItemSpacing.x);
-        ImGui::InputTextWithHint("##fname", safeFileName(D.name).c_str(), A.saveName, sizeof A.saveName);
-        ImGui::SameLine();
-        if (ImGui::Button("Save", {bw, 0})) saveBlueprint();
-        if (tipHover()) ImGui::SetTooltip("Ctrl+S saves too, from anywhere.");
-        muted("Saved in the game folder, under user/guns. Ctrl+S saves without coming here. Your work also saves itself as you go (Settings > Designer).");
-    }
-    if (section("Your blueprints", true)) {
-        std::vector<fs::path> files;
-        if (fs::exists(GUNS_DIR))
-            for (auto& e : fs::directory_iterator(GUNS_DIR)) if (e.path().extension() == ".json") files.push_back(e.path());
-        std::sort(files.begin(), files.end());
-        if (files.empty()) muted("None saved yet.");
-        for (auto& f : files) {
-            std::string n = f.stem().string();
-            if (!ImGui::Selectable(n.c_str())) continue;
-            std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
-            Design nd; std::string err;
-            if (designFromJson(ss.str(), nd, &err)) {
-                std::string vn = blueprintVersionNote(nd);
-                loadDesign(nd, vn.empty() ? "Opened " + n + ". Undo brings back what you had." : vn);
-                std::snprintf(A.saveName, sizeof A.saveName, "%s", n.c_str());  // Ctrl+S saves back to this file
-            }
-            else toast("Couldn't read " + n + ": " + err);
+// ---------------------------------------------------------------- files (in the top bar)
+static void openList() {
+    ImGui::TextDisabled("Your blueprints");
+    std::vector<fs::path> files;
+    if (fs::exists(GUNS_DIR))
+        for (auto& e : fs::directory_iterator(GUNS_DIR)) if (e.path().extension() == ".json") files.push_back(e.path());
+    std::sort(files.begin(), files.end());
+    if (files.empty()) muted("None saved yet.");
+    for (auto& f : files) {
+        std::string n = f.stem().string();
+        if (!ImGui::Selectable(n.c_str())) continue;
+        std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
+        Design nd; std::string err;
+        if (designFromJson(ss.str(), nd, &err)) {
+            std::string vn = blueprintVersionNote(nd);
+            loadDesign(nd, vn.empty() ? "Opened " + n + ". Undo brings back what you had." : vn);
+            std::snprintf(A.saveName, sizeof A.saveName, "%s", n.c_str());  // Ctrl+S saves back to this file
         }
+        else toast("Couldn't read " + n + ": " + err);
     }
-    if (section("Start from", true)) {
-        for (auto& p : presetList())
-            if (ImGui::Selectable(p.label)) loadDesign(loadPreset(p.key), "Opened the example. Undo brings back what you had.");
+    ImGui::Separator();
+    ImGui::TextDisabled("Examples");
+    for (auto& p : presetList())
+        if (ImGui::Selectable(p.label)) { loadDesign(loadPreset(p.key), "Opened the example. Undo brings back what you had."); A.saveName[0] = 0; }
+}
+void fileButtons() {
+    float sz = TOOLBAR_H - 14 * S();
+    if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {0, sz})) saveBlueprint();
+    if (tipHover()) ImGui::SetTooltip("Save to user/guns (Ctrl+S, from anywhere).\nSaving as: %s", A.saveName[0] ? A.saveName : safeFileName(A.design.name).c_str());
+    tutAnchor("file:save");
+    ImGui::SameLine(0, 2);
+    if (ImGui::Button("Save as...", {0, sz})) ImGui::OpenPopup("##saveas");
+    if (ImGui::BeginPopup("##saveas")) {
+        ImGui::TextDisabled("Save as");
+        static char nm[sizeof A.saveName];
+        if (ImGui::IsWindowAppearing()) { std::snprintf(nm, sizeof nm, "%s", A.saveName[0] ? A.saveName : safeFileName(A.design.name).c_str()); ImGui::SetKeyboardFocusHere(); }
+        ImGui::SetNextItemWidth(240 * S());
+        bool go = ImGui::InputText("##fname", nm, sizeof nm, ImGuiInputTextFlags_EnterReturnsTrue);
+        ImGui::SameLine();
+        if (ImGui::Button("Save") || go) { std::snprintf(A.saveName, sizeof A.saveName, "%s", nm); saveBlueprint(); ImGui::CloseCurrentPopup(); }
+        muted("Saved in the game folder, under user/guns.");
+        ImGui::EndPopup();
     }
+    ImGui::SameLine(0, 2);
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Open", {0, sz})) ImGui::OpenPopup("##open");
+    tutAnchor("file:open");
+    if (ImGui::BeginPopup("##open")) { openList(); ImGui::EndPopup(); }
 }
 
 void buildPanel() {
@@ -1032,8 +1047,6 @@ void buildPanel() {
         if (outOpen) { outlineTab(); ImGui::EndTabItem(); }
         bool fireOpen = ImGui::BeginTabItem("Firing", nullptr, tabFlag(2)); tutAnchor("tab:Firing");
         if (fireOpen) { ImGui::BeginChild("##firing", {0, 0}); firingTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
-        bool fileOpen = ImGui::BeginTabItem("File", nullptr, tabFlag(3)); tutAnchor("tab:File");
-        if (fileOpen) { ImGui::BeginChild("##file", {0, 0}); fileTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
     ImGui::PopItemWidth();

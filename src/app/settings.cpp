@@ -27,6 +27,7 @@ void loadSettings() {
         CFG.vsync = g("vsync", d.vsync);
         CFG.fpsCap = std::max(0, g("fpsCap", d.fpsCap));
         CFG.uiScale = std::clamp(g("uiScale", d.uiScale), 0.75f, 2.0f);
+        CFG.uiScaleAuto = g("uiScaleAuto", std::fabs(CFG.uiScale - 1.0f) < 0.01f);  // (older settings: a scale someone set stays set)
         CFG.msaa = g("msaa", d.msaa);
         CFG.backdrop = (Backdrop)std::clamp(g("backdrop", (int)d.backdrop), 0, 4);
         CFG.solidColor = g("solidColor", d.solidColor) & 0xFFFFFFu;
@@ -63,7 +64,7 @@ void loadSettings() {
 void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
-        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"uiScale", CFG.uiScale}, {"msaa", CFG.msaa},
+        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused},

@@ -170,6 +170,13 @@ void toolRail() {
 }
 
 void toolbar() {
+    {   // Ctrl + / Ctrl - : interface scale, anywhere
+        ImGuiIO& io = ImGui::GetIO();
+        if (io.KeyCtrl && !io.WantTextInput) {
+            if (ImGui::IsKeyPressed(ImGuiKey_Equal) || ImGui::IsKeyPressed(ImGuiKey_KeypadAdd)) { setUiScale(CFG.uiScale + 0.25f, true); toast("Interface scale " + std::to_string((int)std::lround(CFG.uiScale * 100)) + "%"); }
+            if (ImGui::IsKeyPressed(ImGuiKey_Minus) || ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract)) { setUiScale(CFG.uiScale - 0.25f, true); toast("Interface scale " + std::to_string((int)std::lround(CFG.uiScale * 100)) + "%"); }
+        }
+    }
     ImGui::SetNextWindowPos({0, 0});
     ImGui::SetNextWindowSize({(float)GetScreenWidth(), TOOLBAR_H});
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {10 * CFG.uiScale, 7 * CFG.uiScale});
@@ -195,6 +202,8 @@ void toolbar() {
         gap(18);
     }
     if (b) {
+        fileButtons();
+        gap(16);
         ImGui::BeginDisabled(A.hist.empty());
         if (iconButton(ICON_FA_ROTATE_LEFT, "Undo (Ctrl+Z)")) undo();
         tutAnchor("undo");

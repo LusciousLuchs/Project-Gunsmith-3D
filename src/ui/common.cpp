@@ -9,6 +9,7 @@
 #include "app/usertex.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -39,13 +40,14 @@ void numField(const char* label, double& v, double step, const char* fmt) {
     ImGui::InputDouble(label, &v, step, step * 10, fmt);
     markEdit();
 }
-bool numFieldU(const char* label, double& v, double step, Q q, int decimals) {
-    double d = toDisp(q, v), st = niceStep(q, step);
+bool numFieldU(const char* label, double& v, double step, Q q, int decimals, double lo) {
+    double d = toDisp(q, v), st = niceStep(q, step), dlo = toDisp(q, lo), dhi = 1e9;
     char fmt[32];
     std::snprintf(fmt, sizeof fmt, "%%.%df %s", decimals >= 0 ? decimals : decimalsOf(q), unitOf(q));
     // drag sideways to scrub the value, or click it (without dragging) to type it
-    bool ch = ImGui::DragScalar(label, ImGuiDataType_Double, &d, (float)(st * 0.2), nullptr, nullptr, fmt);
-    if (ch) { v = fromDisp(q, d); editedAny = true; }
+    // (sizes stop at their smallest sensible value, typed or dragged; offsets pass a large negative lo)
+    bool ch = ImGui::DragScalar(label, ImGuiDataType_Double, &d, (float)(st * 0.2), &dlo, &dhi, fmt, ImGuiSliderFlags_AlwaysClamp);
+    if (ch) { v = std::max(lo, fromDisp(q, d)); editedAny = true; }
     return ch;
 }
 // Sliders only switch to typing on Ctrl+click; let a double-click do it too. Call right after the slider.
@@ -138,9 +140,9 @@ void prop(const char* label, const char* tip) {
     ImGui::SetNextItemWidth(-1);
 }
 static std::string pid(const char* label) { return std::string("##") + label; }
-bool pNumU(const char* label, double& v, double step, Q q, int dec, const char* tip) {
+bool pNumU(const char* label, double& v, double step, Q q, int dec, const char* tip, double lo) {
     prop(label, tip);
-    bool r = numFieldU(pid(label).c_str(), v, step, q, dec);
+    bool r = numFieldU(pid(label).c_str(), v, step, q, dec, lo);
     if (tip && tipHover()) ImGui::SetTooltip("%s", tip);
     return r;
 }
@@ -236,7 +238,19 @@ void setupImGui() {
     cfg.FontDataOwnedByAtlas = false;
     FontData fb = interSemiBold();
     gFontBold = io.Fonts->AddFontFromMemoryTTF((void*)fb.data, fb.size, 15.0f, &cfg);
+    if (CFG.uiScaleAuto) CFG.uiScale = autoUiScale();
     applyUiScale();
+}
+float autoUiScale() {  // about the same physical size on any screen: 1080p 100%, 1440p 125%, 4K 175%
+    int h = GetMonitorHeight(GetCurrentMonitor());
+    if (h <= 0) h = GetScreenHeight();
+    return h >= 2000 ? 1.75f : h >= 1400 ? 1.25f : 1.0f;
+}
+void setUiScale(float s, bool chosen) {
+    CFG.uiScale = std::clamp(std::round(s * 20) / 20, 0.75f, 2.0f);
+    if (chosen) CFG.uiScaleAuto = false;
+    applyUiScale();
+    saveSettings();
 }
 void applyUiScale() {
     float s = CFG.uiScale;

@@ -11,7 +11,7 @@ void markEdit();
 bool inputText(const char* label, std::string& s);
 bool bodyCombo(const char* label, std::string& id, bool withWorld);
 void numField(const char* label, double& v, double step, const char* fmt = "%.1f");
-bool numFieldU(const char* label, double& v, double step, Q q, int decimals = -1);  // shown in the player's units
+bool numFieldU(const char* label, double& v, double step, Q q, int decimals = -1, double lo = 0);  // shown in the player's units
 void typeable();
 bool texturePicker(std::string& file);  // "Plain" or one of the pictures in user/textures, with add / open folder
                  // after a slider: double-click it to type a value
@@ -20,6 +20,9 @@ ImVec4 colGood(); ImVec4 colBad(); ImVec4 colWarn(); ImVec4 colAccent();
 extern ImFont* gFontBold;
 void setupImGui();               // fonts, theme, scale
 void applyUiScale();
+float autoUiScale();                       // a scale that suits this screen
+void setUiScale(float s, bool chosen);     // change it now (and remember it as chosen)
+void fileButtons();                        // Save, Save as and Open, for the top bar
 void check(const char* label, bool& v);
 bool accentButton(const char* label, bool on, ImVec2 size = {0, 0});
 const char* JT_LABEL(const std::string& t);
@@ -27,7 +30,8 @@ std::string jointDesc(const JointDef& j);
 void panelHeader();
 // property rows: a muted label on the left, the control filling the right
 void prop(const char* label, const char* tip = nullptr);
-bool pNumU(const char* label, double& v, double step, Q q, int dec = -1, const char* tip = nullptr);
+bool pNumU(const char* label, double& v, double step, Q q, int dec = -1, const char* tip = nullptr, double lo = 0);  // lo: the smallest it goes (sizes: 0)
+constexpr double SIGNED = -1e9;  // lo for offsets and positions, which can be negative
 bool pNum(const char* label, double& v, double step, const char* fmt, const char* tip = nullptr);
 bool pCheck(const char* label, bool& v, const char* tip = nullptr);
 bool pText(const char* label, std::string& s);

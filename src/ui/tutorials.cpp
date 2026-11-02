@@ -388,7 +388,7 @@ static const std::vector<Lesson>& lessons() {
         Step("A locking barrel", "This barrel locks into the slide, and they recoil together for the first 2 mm.").show("barrel"),
         Step("Unlocking", "Then this fixed pin, riding in a slot in the barrel, pulls the barrel down and unlocks it. No special joint: just shapes.").show("xpin"),
         Step("Watch it", "Fire, and watch the barrel drop in slow motion.").check(fired, "Fire (Space)").at("fire").bench(),
-        Step("Other ways", "Rifles often turn the bolt to lock it. Try the bolt-action example from the File tab: drag its handle up and back.").at("tab:File"),
+        Step("Other ways", "Rifles often turn the bolt to lock it. Try the bolt-action example from Open in the top bar: drag its handle up and back.").at("file:open"),
     }},
     {"bench", "The test bench", "Work the gun by hand, load it, fire it, clear jams.", "blowback", {
         Step("Hands on", "On the bench everything moves for real. Drag any moving part: rack the slide, pull the trigger, pick up rounds.").bench(),

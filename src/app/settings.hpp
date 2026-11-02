@@ -19,6 +19,7 @@ struct Settings {
     bool vsync = true;
     int fpsCap = 60;                     // 0 = no cap
     float uiScale = 1.0f;
+    bool uiScaleAuto = true;             // pick the scale from the screen's height (until you choose one)
     bool msaa = true;                    // applies after a restart
     Backdrop backdrop = Backdrop::Blueprint;  // the workspace behind the gun
     unsigned solidColor = 0x2E3440;      // RGB, for Backdrop::Solid

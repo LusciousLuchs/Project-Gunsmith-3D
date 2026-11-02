@@ -115,6 +115,11 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Removed an out-of-date note in the magazine panel that said tubes only feed the simple way.
 - Fix: an action lock now catches before anything else moves, so a heavy shot can't shove the parts linked to the bolt. (The pump carbine's fore-end no longer twitches back when it fires.)
 
+### Interface
+- **Save, Save as and Open are in the top bar.** Open lists your blueprints and the examples. The right panel no longer has a File tab: it's only for changing the gun (Inspect, Outline, Firing).
+- **Interface scale** is now in Settings > Interface, as Auto or 75-200%. Auto sizes it to your screen: 100% at 1080p, 125% at 1440p, 175% at 4K. **Ctrl +** and **Ctrl -** change it anywhere. A scale you had already set is kept.
+- Sizes can't go below zero any more (thickness stops at 0.5 mm; diameters, lengths, weights, springs, damping and so on at 0). Positions, depth and lip height can still go either way.
+
 ### Where it's held
 - Mark where the gun is held: **firing hand** (pistol grip or rifle wrist), **support hand** (fore-end or vertical grip) and **shoulder** (the stock's butt). Place them from Inspect (with nothing selected) or a part's *Held here* section. Each is a green line where the fingers wrap, with a hand-sized zone in 3D; drag its middle to move it and its end to turn it.
 - The designer says whether the gun is held with one hand or two. These markers are where the first-person hands and shoulder will go.
