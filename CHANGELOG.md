@@ -13,6 +13,7 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 0.1 alpha will be declared once the editor and the test bench are worked out.
 
 ### Editor (Build mode)
+- **Tutorials brought up to date:** a new *Carving in 3D* lesson (draw a block, cut it from the side and the top, change a cut, cut right through; every step has *Do it for me*). *Drawing and shaping* now covers extruding edges, the 32-corner limit and typing exact numbers, and points to Carve instead of using the knife for notches. *Feeding and magazines* explains removable and built-in magazines and round paths.
 - **Corner limit:** a part can have at most 32 corners, and edge splits have a short cooldown, so hammering *Split all edges* or the edge diamonds can no longer pile up thousands of corners and stall the game. *Split all edges* near the limit splits the longest edges first. The Shape section shows the count, and a part saved with more gets a *Simplify to 32 corners* button.
 - **Carving in 3D:** a new Carve tool cuts circles, half circles, rectangles and triangles into any face of a part, to any depth or right through, at any angle. Cuts change how parts collide (an ejector can run in a groove cut in the bolt) and how much they weigh. Each part lists its cuts, and each can be resized, re-aimed, duplicated or removed.
 - **Tracks in two clicks:** click the part that should slide, then where it slides to. Hold Shift to add bends. While drawing, the view names the part that slides and the part holding the slot, and a selected part is picked first when parts overlap.

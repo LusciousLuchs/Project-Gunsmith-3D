@@ -72,13 +72,15 @@ static void carveToolPanel() {
     muted("Click a part's surface to cut into it, or drag to size the cut. It goes straight in from the face you click: "
           "turn the view to cut from the top, the ends or the far side.");
     shapeButtons(A.carveShape);
+    tutAnchor("carve:shape");
     if (A.carveShape == "circle") pNumU("Diameter", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
     else {
         pNumU("Width", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
         pNumU("Height", A.carveH, 0.5, Q::Length);
     }
     pCheck("Right through", A.carveThrough, "Cut all the way through whatever is in the way of this part.");
-    if (!A.carveThrough) pNumU("Depth", A.carveDepth, 0.5, Q::Length, -1, "How deep the cut goes, measured straight in from where you click.");
+    tutAnchor("carve:through");
+    if (!A.carveThrough) { pNumU("Depth", A.carveDepth, 0.5, Q::Length, -1, "How deep the cut goes, measured straight in from where you click."); tutAnchor("carve:depth"); }
     A.carveW = std::max(0.2, A.carveW); A.carveH = std::max(0.2, A.carveH); A.carveDepth = std::max(0.1, A.carveDepth);
     editedAny = wasEdited;  // tool settings aren't part of the design
     ImGui::Spacing();
@@ -100,6 +102,7 @@ static void carvesSection(BodyDef& b) {
         if (c.shape != "circle" || c.h != c.w) t += " x " + fmtQ(Q::Length, c.h);
         t += c.depth > 0 ? ", " + fmtQ(Q::Length, c.depth) + " deep" : ", right through";
         if (ImGui::Selectable((t + "##cv" + std::to_string(k)).c_str(), A.selCarve == k)) A.selCarve = A.selCarve == k ? -1 : k;
+        if (k == 0) tutAnchor("carves:list");
     }
     if (A.selCarve < 0) { muted("Click one to change it. Del removes the selected one."); return; }
     CarveDef& c = b.carves[A.selCarve];
@@ -109,6 +112,7 @@ static void carvesSection(BodyDef& b) {
     else { pNumU("Width", c.w, 0.5, Q::Length); pNumU("Height", c.h, 0.5, Q::Length); }
     bool through = c.depth <= 0;
     if (pCheck("Right through", through, "Cut all the way through the part.")) c.depth = through ? 0 : 4;
+    tutAnchor("carve:through");
     if (!through) pNumU("Depth", c.depth, 0.5, Q::Length, -1, "How deep it goes, straight in from where it starts.");
     // aim: which way it goes in. 0, 0 is straight into the near side.
     double L = std::sqrt(c.dx * c.dx + c.dy * c.dy + c.dz * c.dz);
@@ -117,6 +121,7 @@ static void carvesSection(BodyDef& b) {
     if (std::fabs(std::fabs(tilt) - 90) < 1e-6) turn = 0;
     bool aim = pNum("Turn", turn, 5, "%.1f\xc2\xb0", "Which way it points, seen from above: 0 cuts into the near side, 180 into the far side,\n"
                                                    "90 from the back toward the muzzle, -90 from the muzzle end backward.");
+    tutAnchor("carve:aim");
     aim |= pNum("Tilt", tilt, 5, "%.1f\xc2\xb0", "Up or down: 90 cuts straight down from the top, -90 straight up from below.");
     if (aim) {
         tilt = std::clamp(tilt, -90.0, 90.0);

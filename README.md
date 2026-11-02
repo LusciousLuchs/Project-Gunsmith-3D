@@ -43,15 +43,16 @@ Saved to `gunsmith3d_settings.json` next to the game. None of them change how a 
 
 ## Tutorials
 
-**Tutorials** on the main menu (or the graduation-cap button next to the menu button) has fourteen short guided lessons:
+**Tutorials** on the main menu (or the graduation-cap button next to the menu button) has fifteen short guided lessons:
 - getting around
 - **build your first gun:** from a blank frame to a single-shot that fires, throws out its case and is reloaded by hand. You draw a barrel, a heavy bolt on a track and an ejector, then set up the firing system. Every step has a *Do it for me* button that makes the piece where it fits what you've already drawn.
-- drawing and shaping parts
+- drawing and shaping parts (corners, edges, the 32-corner limit, typing exact numbers)
+- **carving in 3D:** cut holes, slots and pockets into a block from the side and from the top, change a cut, and make one go right through
 - thickness, depth and collisions
 - joints
 - springs
 - breech, barrel and cartridge
-- feeding and magazines
+- feeding and magazines (removable and built-in magazines, round paths)
 - extraction and ejection
 - fire control
 - locking and operating systems

@@ -36,6 +36,8 @@ struct TutState {
     double cockAt = 0;
     // for building a gun: the parts and settings it needs, recognised by what they are rather than by name
     int movingParts = 0, heavyMoving = 0;
+    int carves = 0, carvesAcross = 0, carvesThrough = 0;  // cuts; cuts not made from the near or far side; right-through cuts
+    bool carveTool = false;
     bool breechOn = false, hasFace = false, hasMuzzle = false, chamberOk = false, handFeed = false;
 };
 static TutState snapshot() {
@@ -50,6 +52,12 @@ static TutState snapshot() {
         if (b.fixed) t.fixedParts++;
         if (b.ctrl != "none") t.controls++;
         if (b.layer == "none") t.solidOff++;
+        for (auto& c : b.carves) {
+            t.carves++;
+            double l = std::sqrt(c.dx * c.dx + c.dy * c.dy + c.dz * c.dz);
+            if (l > 0 && std::fabs(c.dz) / l < 0.7) t.carvesAcross++;
+            if (c.depth <= 0) t.carvesThrough++;
+        }
     }
     for (auto& b : D.bodies) if (!b.fixed && !b.magazine) { t.movingParts++; if (b.mass >= 250) t.heavyMoving++; }
     {
@@ -66,6 +74,7 @@ static TutState snapshot() {
         if (j.type == "spring") t.springs++;
     }
     t.yaw = A.yaw; t.pitch = A.pitch; t.dist = A.dist; t.target = A.target;
+    t.carveTool = A.tool == Tool::Carve;
     t.ortho = A.ortho; t.xray = A.xray; t.cutaway = A.cutaway; t.mode = A.mode; t.selKind = A.sel.kind;
     t.ignition = D.breech.ignition; t.fireMode = D.breech.fireMode; t.cockAt = D.breech.cockAt;
     t.snap = A.lastSnap;
@@ -137,6 +146,10 @@ static bool firedTwice(const TutState& w, const TutState& n) { return n.shots >=
 static bool fedOne(const TutState& w, const TutState& n) { return n.mode == Mode::Test && n.magRounds < w.magRounds; }
 static bool builtIn(const TutState&, const TutState& n) { return n.ignition == "button"; }
 static bool magOut(const TutState& w, const TutState& n) { return n.seatedMag != w.seatedMag || n.looseMags > w.looseMags; }
+static bool carvePicked(const TutState&, const TutState& n) { return n.carveTool; }
+static bool newCarve(const TutState& w, const TutState& n) { return n.carves > w.carves; }
+static bool carvedAcross(const TutState& w, const TutState& n) { return n.carvesAcross > w.carvesAcross; }
+static bool carvedThrough(const TutState& w, const TutState& n) { return n.carvesThrough > w.carvesThrough; }
 static bool roundsHandled(const TutState& w, const TutState& n) { return n.looseRounds > w.looseRounds || n.magRounds > w.magRounds; }
 
 // building a gun
@@ -208,6 +221,58 @@ static void helpEjector() {
     commit();
 }
 
+// carving: a block to cut into, and cuts made the way the tool would
+static void helpBlock() {
+    if (boltPart() >= 0) return;
+    int f = framePart();
+    Box fb = f >= 0 ? boxOf(A.design.bodies[f]) : Box{};
+    if (f < 0) { fb.x0 = 0; fb.y0 = 60; fb.x1 = 200; fb.y1 = 80; }
+    addPart("Block", rectPts(fb.x0 + 40, fb.y0 - 40, fb.x0 + 130, fb.y0 - 8), false, 20, "#3f7fe0");
+    A.sel = {1, (int)A.design.bodies.size() - 1, -1};
+    commit();
+}
+static int carvePart() { if (boltPart() < 0) helpBlock(); return boltPart(); }
+static void selectCut(int i) { A.sel = {1, i, -1}; A.selCarve = (int)A.design.bodies[i].carves.size() - 1; commit(); }
+static void helpCarve() {
+    int i = carvePart();
+    if (i < 0) return;
+    auto& b = A.design.bodies[i];
+    Box bx = boxOf(b);
+    CarveDef c; c.shape = A.carveShape; c.w = A.carveW; c.h = c.shape == "circle" ? A.carveW : A.carveH;
+    c.at = {bx.x0 + (bx.x1 - bx.x0) * std::min(0.85, 0.2 + 0.15 * b.carves.size()), bx.cy()}; c.atZ = b.thick / 2; c.dz = -1;
+    c.depth = A.carveThrough ? 0 : A.carveDepth;
+    b.carves.push_back(c);
+    selectCut(i);
+}
+static void helpCarveTop() {
+    int i = carvePart();
+    if (i < 0) return;
+    auto& b = A.design.bodies[i];
+    Box bx = boxOf(b);
+    CarveDef c; c.shape = "rect"; c.w = 8; c.h = std::min(8.0, b.thick * 0.5);
+    c.at = {bx.x0 + (bx.x1 - bx.x0) * 0.75, bx.y0}; c.atZ = 0; c.dx = 0; c.dy = 1; c.dz = 0; c.depth = 6;
+    b.carves.push_back(c);
+    selectCut(i);
+}
+static void helpPickCarve() { setTool(Tool::Carve); }
+static void helpChangeCut() {
+    int i = carvePart();
+    if (i < 0) return;
+    if (A.design.bodies[i].carves.empty()) helpCarve();
+    auto& b = A.design.bodies[i];
+    b.carves.front().depth += 2;   // the first cut, 2 mm deeper
+    selectCut(i);
+    A.selCarve = 0;
+}
+static void helpThrough() {
+    int i = carvePart();
+    if (i < 0) return;
+    if (A.design.bodies[i].carves.empty()) helpCarve();
+    A.design.bodies[i].carves.front().depth = 0;
+    selectCut(i);
+    A.selCarve = 0;
+}
+
 // ---------------------------------------------------------------- the lessons
 // One idea per step, in plain words. The outline shows where; the text says why.
 static const std::vector<Lesson>& lessons() {
@@ -241,10 +306,23 @@ static const std::vector<Lesson>& lessons() {
         Step("Draw a rectangle", "Pick Rectangle, then drag in the view.").check(newPart, "Draw a rectangle").at("tool:Rectangle"),
         Step("Draw any shape", "Pick Polygon and click to place corners. Click the first corner again to close the shape.").check(newPart, "Draw a polygon").at("tool:Polygon"),
         Step("Move a corner", "Pick Select and click a part. Its corners are the little squares: drag one.").check(reshaped, "Drag a corner").at("tool:Select"),
-        Step("Edges", "The diamonds sit in the middle of each edge. Drag one to move the whole edge. Right-click one to split the edge and get a new corner.").check(moreCorners, "Right-click a diamond"),
+        Step("Edges", "The diamonds sit in the middle of each edge. Drag one to move the whole edge, or Shift-drag it to pull out a step. Right-click (or double-click) one to split the edge and get a new corner. A part can have up to 32 corners.").check(moreCorners, "Right-click a diamond").at("shape:split"),
         Step("Round it off", "Round corners rounds every corner. Smoothness rounds the front and back edges: good for grips.").check(rounded, "Round the corners or add smoothness").at("shape:round|shape:smooth").onTab(0),
-        Step("Cut", "The Knife cuts a part in two along a line you drag. Delete the offcut to carve a notch.").check(newPart, "Cut a part with the knife").at("tool:Knife"),
+        Step("Exact numbers", "Every number on the right can be typed. Click it without dragging and type a value, or drag sideways to nudge it. Sliders take a double-click.").at("part:thickness").onTab(0),
+        Step("Cut", "The Knife cuts a part into two separate parts along a line you drag.").check(newPart, "Cut a part with the knife").at("tool:Knife"),
+        Step("Holes and pockets", "To cut a hole, slot or pocket into a part, use Carve. It has its own lesson, next.").at("tool:Carve"),
         Step("Undo", "Made a mess? Ctrl+Z undoes, Ctrl+Y redoes.").at("undo"),
+    }},
+    {"carving", "Carving in 3D", "Cut holes, slots and pockets into parts, from any side.", "blank", {
+        Step("Cutting in 3D", "Carve cuts a shape into a part: a round hole, a slot, a pocket. It goes straight in from the face you click, as deep as you say.").designer(),
+        Step("Something to carve", "Pick Rectangle and drag out a block above the frame.").check(newMoving, "Draw a block").at("tool:Rectangle").doIt(helpBlock),
+        Step("Pick a cutter", "Pick Carve. Its settings appear on the right: the shape (circle, half circle, rectangle or triangle), its size and how deep it cuts.").check(carvePicked, "Pick the Carve tool").at("tool:Carve").doIt(helpPickCarve),
+        Step("Cut into the block", "Move the cursor over the block: the outline shows where the cut will go. Click the side of the block to cut it.").check(newCarve, "Click the block").at("carve:shape|carve:depth").onTab(0).doIt(helpCarve),
+        Step("Size it as you go", "Press and drag instead of clicking: the cut grows as you drag, and the next plain click uses that size.").check(newCarve, "Drag out a cut").doIt(helpCarve),
+        Step("From any side", "Right-drag to turn the camera until you can see the top of the block, then click the top. The cut goes straight down from there.").check(carvedAcross, "Cut into the top").doIt(helpCarveTop),
+        Step("Change a cut", "Your cuts are listed under Carves on the part. Click one to change its shape, size or depth. Turn and Tilt aim it at an angle. Del removes it.").check(reshaped, "Change one of your cuts").at("carves:list|carve:aim").onTab(0).doIt(helpChangeCut),
+        Step("Right through", "Tick Right through for a hole that goes all the way through.").check(carvedThrough, "Make a cut go right through").at("carve:through").onTab(0).doIt(helpThrough),
+        Step("Real on the bench", "Cuts are real on the test bench too. A part slides past another part that sits in a groove you cut, and every cut makes a part lighter.\n\nOn magazines and on parts that turn on the bore, cuts only change the look for now."),
     }},
     {"depth", "Thickness, depth and collisions", "How flat parts stack into a 3D gun, and which parts touch.", "blowback", {
         Step("Parts sit side by side", "This is the right wall of the slide. Thickness is how thick it is. Depth is where it sits across the gun: 0 is the middle, + is towards you.").show("wall_r").at("part:thickness|part:depth"),
@@ -274,7 +352,8 @@ static const std::vector<Lesson>& lessons() {
         Step("Your own ammo", "Pick a round here, or click ... to design your own: the case, the bullet's shape, its weight and speed.").at("firing:cartridge").onTab(2),
     }},
     {"feeding", "Feeding and magazines", "How rounds get from the magazine into the chamber.", "blowback", {
-        Step("Three ways to feed", "A magazine you swap, a built-in supply, or one round at a time by hand.").at("firing:feeding").onTab(2),
+        Step("Ways to feed", "Most guns feed from a magazine. You can also load one round at a time by hand, or use a simple built-in counter that skips the physics of feeding.").at("firing:feeding").onTab(2),
+        Step("Any part can be a magazine", "In a part's Magazine section, make it Removable (it slides into a well and you swap it) or Built in (part of the gun and loaded in place, like an internal box or a tube). Draw the path the rounds sit along, side by side or nose to tail.").show("mag").at("mag:kind|mag:roundpath").onTab(0),
         Step("The magazine", "A magazine slides along its well (the green line) and clicks in. Fit to cartridge builds it around the round for you.").show("mag"),
         Step("Lips and spring", "The magazine's spring lifts each round up to the lips. If it's too weak, the slide comes back before the round is up, and the gun fails to feed.").show("mag").at("mag:lips|mag:spring"),
         Step("Feed one", "Drag the slide back and let go. It strips a round from the magazine and pushes it into the chamber.").check(fedOne, "Rack the slide").bench(),
