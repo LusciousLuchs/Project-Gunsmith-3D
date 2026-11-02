@@ -36,6 +36,7 @@ struct TutState {
     double cockAt = 0;
     // for building a gun: the parts and settings it needs, recognised by what they are rather than by name
     int movingParts = 0, heavyMoving = 0;
+    int tubeRounds = 0;                  // rounds in built-in magazines (a tube)
     int carves = 0, carvesAcross = 0, carvesThrough = 0;  // cuts; cuts not made from the near or far side; right-through cuts
     bool carveTool = false;
     bool breechOn = false, hasFace = false, hasMuzzle = false, chamberOk = false, handFeed = false;
@@ -87,6 +88,7 @@ static TutState snapshot() {
         for (auto& b : S.bodies) {
             if (b.gone) continue;
             if (b.isMag) { t.magRounds += b.rounds; if (b.loose) t.looseMags++; }
+            if (b.builtInMag) t.tubeRounds += b.rounds;
         }
         t.looseRounds = sim::looseRounds(S);
     }
@@ -150,6 +152,7 @@ static bool carvePicked(const TutState&, const TutState& n) { return n.carveTool
 static bool newCarve(const TutState& w, const TutState& n) { return n.carves > w.carves; }
 static bool carvedAcross(const TutState& w, const TutState& n) { return n.carvesAcross > w.carvesAcross; }
 static bool carvedThrough(const TutState& w, const TutState& n) { return n.carvesThrough > w.carvesThrough; }
+static bool tubeFed(const TutState& w, const TutState& n) { return n.mode == Mode::Test && n.tubeRounds < w.tubeRounds; }
 static bool roundsHandled(const TutState& w, const TutState& n) { return n.looseRounds > w.looseRounds || n.magRounds > w.magRounds; }
 
 // building a gun
@@ -358,6 +361,15 @@ static const std::vector<Lesson>& lessons() {
         Step("The magazine", "A magazine slides along its well (the green line) and clicks in. Fit to cartridge builds it around the round for you.").show("mag"),
         Step("Lips and spring", "The magazine's spring lifts each round up to the lips. If it's too weak, the slide comes back before the round is up, and the gun fails to feed.").show("mag").at("mag:lips|mag:spring"),
         Step("Feed one", "Drag the slide back and let go. It strips a round from the magazine and pushes it into the chamber.").check(fedOne, "Rack the slide").bench(),
+    }},
+    {"tubes", "Tube magazines and lifters", "Rounds pushed out of a tube, lifted to the bore by a part you draw.", "pump", {
+        Step("A tube", "This pump-action carbine keeps six rounds nose to tail in a tube under the barrel. With physical rounds, the tube's spring pushes each one out of the mouth at the back, head first, as a real round. What happens next is up to the parts you draw.").show("tube").at("mag:tubefeed").onTab(0).designer(),
+        Step("The lifter", "This brass fork is the lifter. While it's up, it sits in front of the tube's mouth and holds the next round back. It drops only at the very end of the pull, letting a round out onto it, then lifts it to the bore line for the bolt to push into the chamber.").show("lifter_r"),
+        Step("Free play and the lock", "Pulling the fore-end first moves it 6 mm on its own. That lifts this lock out of the bolt's way, and only then does it take the bolt along. While it's closed, a catch joint set to hold it closed keeps the shot from blowing the action open.").show("lock"),
+        Step("Worked by hand", "The fore-end is marked Worked by hand. It's the part you grab, and the part the reliability test pulls.").show("forend").at("ctrl:type").onTab(0),
+        Step("Work it", "On the bench, drag the fore-end all the way back, then push it home. Watch a round come out of the tube, ride up on the lifter and go into the chamber.").check(tubeFed, "Work the fore-end").bench(),
+        Step("Fire", "Fire it, then work it again.").check(fired, "Fire (Space)").at("fire"),
+        Step("Your turn", "Make the tube's spring much weaker (Magazine section) and run the reliability test: too weak, and the round can't get out of the tube before the lifter comes back up. That's a failure to feed."),
     }},
     {"extraction", "Extraction and ejection", "Getting the empty case out.", "blowback", {
         Step("The extractor", "When the breech closes, a hook grabs the rim of the round. It comes with the breech face, so there's nothing to draw."),

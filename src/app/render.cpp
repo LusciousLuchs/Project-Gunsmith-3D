@@ -527,16 +527,21 @@ void drawScene() {
             // a pin is drawn at its own size; a weld just makes the parts one, so there is nothing to draw
             if (j.type == "pin") drawCyl(W3(p, -z), W3(p, z), (float)(j.pinDia / 2) * U, steel);
         } else if (j.type == "track") {
-            float zb = frontZ(j.b) + 0.02f;
+            // a track is a path, not a part: on the bench it isn't drawn at all, and in the designer it's faint unless
+            // it belongs to what's selected (a slot in a moving part can reach well outside it)
+            if (!building) continue;
+            bool mine = selJ || (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size() &&
+                                 (D.bodies[A.sel.idx].id == j.a || D.bodies[A.sel.idx].id == j.b));
+            float zb = frontZ(j.b) + 0.02f, w = mine ? 0.26f : 0.12f, al = mine ? 1.f : 0.3f;
             for (size_t k = 0; k + 1 < j.path.size(); k++) {
                 Vector3 a = W3(curMM(j.b, j.path[k]), zb), b = W3(curMM(j.b, j.path[k + 1]), zb);
                 Vector3 mid = Vector3Scale(Vector3Add(a, b), 0.5f), dd = Vector3Subtract(b, a);
-                float len = Vector3Length(dd) + 0.26f, ang = std::atan2(dd.y, dd.x);
-                drawBox(mid, {len, 0.26f, 0.04f}, selJ ? Color{120, 90, 30, 255} : Color{28, 32, 40, 255}, MatrixRotateZ(ang));
+                float len = Vector3Length(dd) + w, ang = std::atan2(dd.y, dd.x);
+                drawBox(mid, {len, w, 0.04f}, selJ ? Color{120, 90, 30, 255} : Color{28, 32, 40, 255}, MatrixRotateZ(ang), al);
             }
             V2 f = curMM(j.a, j.p);
             float z = std::max(frontZ(j.a), frontZ(j.b)) + 0.2f;
-            drawCyl(W3(f, -z), W3(f, z), 0.14f, Color{240, 170, 60, 255});
+            if (mine) drawCyl(W3(f, -z), W3(f, z), 0.14f, Color{240, 170, 60, 255});
         } else if (j.type == "spring" && j.kind == "leaf") {
             V2 root = curMM(j.a, j.pa), tipDesign = curMM(j.a, j.pb), contact = curMM(j.b, j.pb);
             // the leaf bends from its clamped root to where it touches the other part

@@ -351,7 +351,9 @@ static void inspectPart(BodyDef& b) {
         for (int i = 0; i < 5; i++) if (b.ctrl == kinds[i]) ki = i;
         prop("Type", "Worked by hand: the part a shooter grabs to work the action (a pump's fore-end, a charging handle,\n"
                      "a bolt). The reliability test works the gun by this part. Without one, it works the breech itself.");
-        if (ImGui::Combo("##ctrl", &ki, "Not a control\0Button\0Lever\0Trigger\0Worked by hand\0")) {
+        bool ctrlHit = ImGui::Combo("##ctrl", &ki, "Not a control\0Button\0Lever\0Trigger\0Worked by hand\0");
+        tutAnchor("ctrl:type");
+        if (ctrlHit) {
             b.ctrl = kinds[ki]; editedAny = true;
             if (ki > 0 && b.ctrlPt.x == 0 && b.ctrlPt.y == 0) b.ctrlPt = centroidOf(b);
             if (ki == 3 && b.key == "none") b.key = "fire";
@@ -410,6 +412,7 @@ static void inspectPart(BodyDef& b) {
                                          "When the action opens: the round simply reaches the chamber once the action has opened far enough\n"
                                          "(how tubes worked in older versions).");
                     if (ImGui::Combo("##tubefeed", &tf, "Pushed out of the mouth\0When the action opens (simple)\0")) { b.tubeFeed = tf == 0 ? "physical" : "simple"; editedAny = true; }
+                    tutAnchor("mag:tubefeed");
                 }
                 if (b.roundPath.size() >= 2)
                     muted("Round path: %d points. Drag them in the view. The first is where rounds are fed from.", (int)b.roundPath.size());

@@ -13,6 +13,8 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 0.1 alpha will be declared once the editor and the test bench are worked out.
 
 ### Editor (Build mode)
+- **Tidier tracks:** a track's path is no longer drawn on the bench, and in the designer it's faint unless it belongs to what you've selected (slots in moving parts used to draw as long rods sticking out of the gun).
+- **New lesson: Tube magazines and lifters**, on the pump-action example.
 - **Physical tube feeding:** with physical rounds, a tube magazine's spring pushes each round out of its mouth, head first, as a real round. Whatever you draw takes it from there: a lifter raising it to the bore, a cartridge stop holding the next one back. A part in the way stops it, and a tube spring too weak for how fast the gun is worked fails to feed. Older blueprints' tubes keep the simple rule (the setting is *Rounds leave* in the Magazine section).
 - **New example: pump-action carbine** (.45, tube magazine): a fore-end and action bar with free travel, an action lock, a fork lifter driven by a slot in the bar, guides and an ejector, all drawn parts. 50 rounds in the reliability test, no jams.
 - **"Worked by hand" control:** mark the part a shooter grabs to work the action (a pump's fore-end, a charging handle). The reliability test works the gun by it.

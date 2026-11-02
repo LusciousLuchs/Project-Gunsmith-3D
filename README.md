@@ -49,7 +49,7 @@ Textures: put .png, .jpg, .bmp or .tga pictures in *user/textures*, click *Add a
 
 ## Tutorials
 
-**Tutorials** on the main menu (or the graduation-cap button next to the menu button) has fifteen short guided lessons:
+**Tutorials** on the main menu (or the graduation-cap button next to the menu button) has sixteen short guided lessons:
 - getting around
 - **build your first gun:** from a blank frame to a single-shot that fires, throws out its case and is reloaded by hand. You draw a barrel, a heavy bolt on a track and an ejector, then set up the firing system. Every step has a *Do it for me* button that makes the piece where it fits what you've already drawn.
 - drawing and shaping parts (corners, edges, the 32-corner limit, typing exact numbers)
@@ -59,6 +59,7 @@ Textures: put .png, .jpg, .bmp or .tga pictures in *user/textures*, click *Add a
 - springs
 - breech, barrel and cartridge
 - feeding and magazines (removable and built-in magazines, round paths)
+- tube magazines and lifters (the pump-action example: the tube, the lifter, free play and the action lock)
 - extraction and ejection
 - fire control
 - locking and operating systems
