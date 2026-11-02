@@ -425,8 +425,39 @@ static void inspectPart(BodyDef& b) {
                 }
                 tutAnchor("mag:roundpath");
                 if (!b.roundPath.empty()) { ImGui::SameLine(); if (ImGui::Button("Automatic", {w2, 0})) { b.roundPath.clear(); editedAny = true; } }
-                if (st == 1 && D.breech.physicalFeed)
-                    muted("For now a tube feeds the simple way: the round reaches the chamber once the action opens far enough. Feeding through a carrier you draw comes next.");
+                if (st == 0) {  // a belt instead of a spring
+                    int by = b.feedPawl.empty() ? 0 : 1;
+                    prop("Moved by", "Its spring: a follower pushes each round up to the lips (a box).\n"
+                                     "A pawl: a belt. A part you choose moves it on one round each time it travels the stroke\n"
+                                     "away from where it rests and comes back. The next round lies in the tray at the first point\n"
+                                     "of the round path; the rest of the belt hangs out of the side. A round still in the tray\n"
+                                     "stops the belt. See the belt-fed example.");
+                    if (ImGui::Combo("##movedby", &by, "Its spring\0A pawl (a belt)\0")) {
+                        if (by == 0) b.feedPawl.clear();
+                        else { b.feedPawl = D.breech.on ? D.breech.breech : ""; if (b.feedPawl.empty()) for (auto& o : D.bodies) if (!o.fixed && !o.magazine) { b.feedPawl = o.id; break; } }
+                        editedAny = true;
+                    }
+                    if (by == 1) {
+                        pBody("Pawl", b.feedPawl, false);
+                        if (tipHover()) ImGui::SetTooltip("The part whose stroke moves the belt: the bolt itself, or an arm you draw and link to it.");
+                        pNumU("Pawl stroke", b.pawlStroke, 0.5, Q::Length, 1, "How far the pawl must travel from where it rests to catch the next link.\nLonger than the part can actually travel, and the belt never moves.");
+                        b.pawlStroke = std::clamp(b.pawlStroke, 0.5, 500.0);
+                        if (b.roundPath.size() < 2) warn("Draw the round path: its first point is where the round lies in the tray.");
+                    }
+                }
+                {
+                    int ck = b.clip == "stripper" ? 1 : b.clip == "enbloc" ? 2 : 0;
+                    prop("Loaded with", "Loose rounds: reloading fills it.\n"
+                                        "Stripper clips: reloading pushes in one clip's worth at a time.\n"
+                                        "En-bloc clip: the clip goes in with the rounds. Only a full clip fits, so it can't be topped up,\n"
+                                        "and the empty clip is thrown out after the last round.");
+                    if (ImGui::Combo("##clip", &ck, "Loose rounds\0Stripper clips\0En-bloc clip\0")) { b.clip = ck == 1 ? "stripper" : ck == 2 ? "enbloc" : "none"; editedAny = true; }
+                    if (ck == 1) {
+                        prop("Rounds per clip");
+                        ImGui::DragInt("##clipsize", &b.clipSize, 0.2f, 1, 200, "%d"); markEdit();
+                        b.clipSize = std::clamp(b.clipSize, 1, 200);
+                    }
+                }
             }
             int mi = magwellIndex(b.id);
             if (mi >= 0 && D.joints[mi].path.size() >= 2) {

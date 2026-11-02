@@ -66,6 +66,8 @@ struct Body {
                                          // (leaving a tube: the tube's mouth and the way out)
     V2 clawB, clawR;                     // clawed: the extractor's grip, on the breech and on the cartridge (local, m)
     Body* top = nullptr;                 // magazines: the round held up under the lips (physical feeding)
+    Body* pawl = nullptr;                // belts: the part whose stroke moves the belt on
+    bool pawlArmed = false, indexReady = true;  // belts: the pawl has caught the next link; a round is ready to come into the tray
     double zFeed = 0;                    // presented by a double-position magazine: how far off the centre line it started (m);
                                          // it comes into the chamber at an angle sideways
     double zVis = 0;                     // ...and where it's drawn, easing to the centre. It collides as if centred: the example
@@ -109,7 +111,7 @@ struct Pusher {
     double ext = 0;         // how far the finger has pressed along the push direction (m)
 };
 
-enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction, MagLoaded };  // MagLoaded: a round pushed into a magazine  // EjectLive: an unfired round thrown out
+enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction, MagLoaded, ClipOut };  // MagLoaded: a round pushed into a magazine  // EjectLive: an unfired round thrown out
 
 // What can go wrong when a gun cycles. Physical feeding lets these happen for real.
 enum class Malf { None, FailureToFeed, DoubleFeed, Stovepipe, FailureToEject, FailureToReturn, LightStrike, FailureToCock, Count };

@@ -109,6 +109,10 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Hinged actions on the bench: the reliability test swings a hinged part marked *worked by hand* open about its pin (tip-ups, break actions), instead of pulling it straight back.
 - Extraction: a chamber that swings more than 25 degrees away from its breech face slips the case off the extractor hook, so the chamber carries it (or drops it). A case that never really left the chamber (the action only stirred) no longer counts as a failure to eject.
 - New cartridge: .41 Short (rimfire).
+- **Belts:** a magazine can be *moved by a pawl* instead of its spring (Inspect > Magazine > Moved by). Choose the part that works it and its stroke. Each time that part travels the stroke and comes back, it pushes the belt on one round into the tray. A round still in the tray stops the belt, and a pawl that can't travel the full stroke never moves it (the gun fires once, then fails to feed). The belt hangs out of the side of the gun.
+- **Belt-fed blowback example:** the blowback pistol's action fed from a 50-round belt, its slide working as the pawl. 50 rounds, no jams; with a 36 mm stroke (more than the slide travels) it fails to feed after one shot.
+- **Clips** (Magazine > Loaded with): stripper clips (reloading adds one clip at a time) or an en-bloc clip (only a full clip goes in, so no topping up; the empty clip pings out after the last round).
+- Removed an out-of-date note in the magazine panel that said tubes only feed the simple way.
 - Fix: an action lock now catches before anything else moves, so a heavy shot can't shove the parts linked to the bolt. (The pump carbine's fore-end no longer twitches back when it fires.)
 
 ### Example polish

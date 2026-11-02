@@ -95,6 +95,7 @@ void stepSim(float dt) {
             }
         }
         if (e.kind == sim::Ev::Eject && S.physicalFeed && SFX.ok && A.sound) PlaySound(SFX.clack);  // the case is a real part
+        if (e.kind == sim::Ev::ClipOut) { if (SFX.ok && A.sound) PlaySound(SFX.clack); toast("Ping: the empty clip flew out."); }
         if (e.kind == sim::Ev::Eject && br.hasFace && !S.physicalFeed) {
             V2 f = curMM(br.breech, br.face);
             Shell s;

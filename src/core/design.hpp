@@ -110,6 +110,14 @@ struct BodyDef {
     double magSpring = 1;                // follower spring strength against a standard spring (1): how hard and fast rounds come up
     bool doubleFeed = false;             // double stack: feed alternately from each side (double position) instead of
                                          // tapering to one central round (single position)
+    // a belt: no spring; a part you draw (the pawl) moves it on one round each time it travels pawlStroke from where it
+    // rests. Rounds wait in the tray at the lips; the rest of the belt hangs out of the side of the gun.
+    std::string feedPawl;                // "" = a spring brings rounds up (a box, a tube)
+    double pawlStroke = 10;              // mm
+    // clips: "stripper" (reloading adds one clip of clipSize rounds at a time), "enbloc" (the clip goes in with the rounds:
+    // it can only be loaded empty, and the empty clip is thrown out after the last round)
+    std::string clip = "none";
+    int clipSize = 5;
     MagGen gen;
     // controls: parts you work with a key in Test mode (trigger, buttons, levers)
     std::string ctrl = "none";           // none, button, lever, trigger

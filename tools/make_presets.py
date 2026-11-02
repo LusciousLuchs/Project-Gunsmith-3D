@@ -207,6 +207,29 @@ def pistol(kind='blowback'):
 
 
 def blowback(): return pistol('blowback')
+
+# ------------------------------------------------------------------ belt-fed blowback (a cursed one, on purpose)
+# The blowback pistol's action fed from a belt instead of a magazine. Nothing springs the rounds up: the slide is the
+# pawl. Each time it comes back far enough it moves the belt on one round, laying the next round in the tray under the
+# breech block, where the returning slide strips it as it would from magazine lips. A pawl that can't reach that far
+# never moves the belt: the gun fires once and then fails to feed.
+def belted():
+    d = pistol('blowback')
+    C = CART['.380 ACP']
+    dia = C['head'] * 1.02
+    mag = next(b for b in d['bodies'] if b['id'] == 'mag')
+    top = mag['magazine']['gen']['top']
+    p0 = [top[0], top[1] + 3 + dia / 2]          # the round's centre in the tray: where the magazine's lips held it
+    mag['name'] = 'Belt (feed tray)'
+    mag['fixed'] = True
+    mag['pts'] = [[p0[0] - C['oal'] / 2 - 1, p0[1] - dia / 2 - 1], [p0[0] + C['oal'] / 2 + 1, p0[1] - dia / 2 - 1],
+                  [p0[0] + C['oal'] / 2 + 1, p0[1] + dia / 2 + 2], [p0[0] - C['oal'] / 2 - 1, p0[1] + dia / 2 + 2]]
+    mag['magazine'] = {'cap': 50, 'builtIn': True, 'roundPath': [p0, [p0[0], p0[1] + 10]], 'pawl': {'part': 'slide', 'stroke': 26.0}}
+    d['bodies'] = [b for b in d['bodies'] if b['id'] != 'magbtn']
+    d['joints'] = [j for j in d['joints'] if j.get('a') != 'magbtn' and j['type'] != 'magwell']
+    d['breech']['rounds'] = 50
+    d['name'] = 'Belt-fed blowback'
+    return d
 def tilting(): return pistol('tilting')
 
 
@@ -472,6 +495,7 @@ NEW = [
     ('pump', 'Pump-action carbine', pump),
     ('pumpshotgun', 'Pump-action shotgun', lambda: pump('12 gauge 00 buck')),
     ('derringer', 'Over-under derringer', derringer),
+    ('belted', 'Belt-fed blowback', belted),
 ]
 LEGACY_LIST = [  # older examples built with simplified joints; kept for study and for the tests of those joints
     ('legacy-tilting', 'PRESET_TILTING'), ('legacy-blowback', 'PRESET_BLOWBACK'), ('longrecoil', 'PRESET_LONG'),
@@ -485,6 +509,7 @@ MENU = [  # what the example menu shows, in order
     ('pump', 'Pump-action carbine (.45, tube magazine and lifter)'),
     ('pumpshotgun', 'Pump-action shotgun (12 gauge buckshot, same action)'),
     ('derringer', 'Over-under derringer (.41 rimfire, two barrels, tips up)'),
+    ('belted', 'Belt-fed blowback (the pistol, fed from a belt by its slide)'),
     ('longrecoil', 'Long recoil, Chauchat style (simplified cam and catch)'),
     ('blank', 'Blank frame'),
 ]

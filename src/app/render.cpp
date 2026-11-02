@@ -269,6 +269,29 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
     if (!br.on || rounds <= 0) return;
     const BodyDef& d = A.design.bodies[r.tmpl];
     V2 c = centroidOf(d);
+    if (!d.feedPawl.empty() && d.roundPath.size() >= 2 && d.roundStyle != "line") {
+        // a belt: the next round waits in the tray at the first path point, the rest hang out of the left side, linked
+        double dia = br.cart.headDia() * 1.02, oal = br.cart.oal, pitch = dia * 1.25;
+        double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0;
+        V2 p0 = d.roundPath[0], p1 = d.roundPath[1];
+        double l = std::max(1e-9, std::hypot(p1.x - p0.x, p1.y - p0.y));
+        V2 u{(p1.x - p0.x) / l, (p1.y - p0.y) / l}, fwd{-u.y, u.x};
+        if (fwd.x * mx + fwd.y * my < 0) fwd = {-fwd.x, -fwd.y};
+        V2 head{p0.x - fwd.x * oal / 2, p0.y - fwd.y * oal / 2};
+        bool waiting = r.sb && !r.sb->top && !r.sb->indexReady;  // just stripped: the tray is empty until the pawl moves the belt
+        int n = std::min(rounds, 40);
+        for (int k = skip; k < n; k++) {
+            float z = -(float)((k + (waiting ? 1 : 0)) * pitch) * U;
+            Vector3 o = Vector3Transform({(float)(head.x - c.x) * U, -(float)(head.y - c.y) * U, z}, r.M);
+            Vector3 o2 = Vector3Transform({(float)(head.x + fwd.x - c.x) * U, -(float)(head.y + fwd.y - c.y) * U, z}, r.M);
+            drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)));
+            // its link: a band round the case, joined to the next
+            Vector3 lk = Vector3Transform({(float)(head.x + fwd.x * oal * 0.35 - c.x) * U, -(float)(head.y + fwd.y * oal * 0.35 - c.y) * U, z}, r.M);
+            Vector3 lk2 = Vector3Transform({(float)(head.x + fwd.x * oal * 0.35 - c.x) * U, -(float)(head.y + fwd.y * oal * 0.35 - c.y) * U, z - (float)pitch * U}, r.M);
+            if (k + 1 < n) drawCyl(lk, lk2, (float)(dia * 0.16) * U, Color{70, 72, 78, 255});
+        }
+        return;
+    }
     if (d.roundPath.size() >= 2) {  // along the path you drew: side by side across it, or nose to tail along it
         bool line = d.roundStyle == "line";
         double dia = br.cart.headDia() * 1.02, oal = br.cart.oal;

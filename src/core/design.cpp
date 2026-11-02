@@ -745,6 +745,8 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.magFixed) jb["magazine"]["builtIn"] = true;
             if (b.roundStyle != "side") jb["magazine"]["style"] = b.roundStyle;
             if (b.roundStyle == "line") jb["magazine"]["tubeFeed"] = b.tubeFeed;
+            if (!b.feedPawl.empty()) jb["magazine"]["pawl"] = {{"part", b.feedPawl}, {"stroke", b.pawlStroke}};
+            if (b.clip != "none") jb["magazine"]["clip"] = {{"kind", b.clip}, {"size", b.clipSize}};
             if (!b.roundPath.empty()) { json a = json::array(); for (auto& q : b.roundPath) a.push_back(v2j(q)); jb["magazine"]["roundPath"] = a; }
             if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
         }
@@ -880,6 +882,15 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.magFixed = opt<bool>(m, "builtIn", false);
             b.roundStyle = opt<std::string>(m, "style", "side") == "line" ? "line" : "side";
             b.tubeFeed = opt<std::string>(m, "tubeFeed", "simple") == "physical" ? "physical" : "simple";  // older tubes: the simple way
+            if (m.contains("pawl") && m["pawl"].is_object()) {
+                b.feedPawl = opt<std::string>(m["pawl"], "part", "");
+                b.pawlStroke = std::clamp(opt<double>(m["pawl"], "stroke", 10.0), 0.5, 500.0);
+            }
+            if (m.contains("clip") && m["clip"].is_object()) {
+                std::string k = opt<std::string>(m["clip"], "kind", "none");
+                b.clip = k == "stripper" || k == "enbloc" ? k : "none";
+                b.clipSize = std::clamp(opt<int>(m["clip"], "size", 5), 1, 200);
+            }
             if (m.contains("roundPath") && m["roundPath"].is_array()) for (auto& q : m["roundPath"]) b.roundPath.push_back(j2v(q));
             if (m.contains("gen") && m["gen"].is_object()) {
                 auto& g = m["gen"];

@@ -680,8 +680,10 @@ int fillMagazines(Sim& S) {
     int added = 0;
     for (auto& b : S.bodies) {
         if (!(b.isMag || b.builtInMag) || b.gone || !b.d) continue;
-        int cap = b.d->magCap;
-        if (b.rounds < cap) { added += cap - b.rounds; b.rounds = cap; b.idle = 0; }
+        int cap = b.d->magCap, add = cap - b.rounds;
+        if (b.d->clip == "enbloc" && b.rounds > 0) continue;  // an en-bloc clip can't be topped up: only a full one goes in
+        if (b.d->clip == "stripper") add = std::min(add, b.d->clipSize);  // one clip's worth at a time
+        if (add > 0) { added += add; b.rounds += add; b.idle = 0; if (!b.d->feedPawl.empty() && !b.top) b.indexReady = true; }  // (a new belt: its first round goes in the tray)
     }
     return added;
 }

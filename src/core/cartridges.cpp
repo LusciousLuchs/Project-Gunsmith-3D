@@ -506,7 +506,21 @@ static void chamberStep(Sim& S, bool main) {
     for (auto& b : S.bodies)  // a magazine leaving the gun takes its top round with it
         if (main)
         if ((b.rs == RS::Presented || b.rs == RS::Tube) && b.mag && (b.mag != M)) { b.mag->top = nullptr; b.mag = nullptr; retire(S, b); }
-    if (M && M->rounds > 0 && !M->top && !tubeMag(*M)) {
+    // a belt: the pawl moves it on one round each time it has been far enough from where it rests and comes back.
+    // Until then the tray stays empty, whatever the breech does.
+    bool belt = M && M->d && !M->d->feedPawl.empty();
+    if (belt) {
+        if (!M->pawl) { M->pawl = S.find(M->d->feedPawl); if (M->pawl == &S.world) M->pawl = nullptr; }
+        if (M->pawl) {
+            const Body& P = *M->pawl;
+            double d = std::hypot(P.x - P.x0, P.y - P.y0) * 1000;
+            // it rides back over the next link and catches it at the end of its stroke, then pushes the belt on one round
+            // on its way home. A round still sitting in the tray stops the belt: that push is lost.
+            if (!M->pawlArmed && d >= M->d->pawlStroke) M->pawlArmed = true;
+            if (M->pawlArmed && d < M->d->pawlStroke * 0.3) { M->pawlArmed = false; if (!M->top) M->indexReady = true; }
+        }
+    }
+    if (M && M->rounds > 0 && !M->top && !tubeMag(*M) && (!belt || M->indexReady)) {
         V2 hl, fl;
         magLips(S, *M, hl, fl);
         V2 LH = wpt(*M, hl), f = rot(fl, M->a);
@@ -521,7 +535,8 @@ static void chamberStep(Sim& S, bool main) {
                 setState(*r, RS::Presented);
                 // it starts one round down in the stack and the follower spring has to lift it to the lips
                 // (a double stack rises about half a round at a time); a weak spring may not get it there in time
-                double step = c.headDia() / 1000 * (doubleStack(*M) ? 0.55 : 1.0);
+                double step = belt ? 0 : c.headDia() / 1000 * (doubleStack(*M) ? 0.55 : 1.0);  // (a belt lays it in the tray)
+                if (belt) M->indexReady = false;
                 V2 up{f.y, -f.x};
                 placeHead(*r, {LH.x - up.x * step, LH.y - up.y * step}, std::atan2(f.y, f.x));
                 if (doubleStack(*M) && M->d->doubleFeed) {  // double position: the top round sits to one side, alternating
@@ -611,6 +626,7 @@ static void chamberStep(Sim& S, bool main) {
                 double release = Mg.d ? Mg.d->lipRelease : 0.45;   // the lips' grip: early release for short rounds, late for long
                 if (fwd > c.oal / 1000 * release || (b.inChamber && fwd > 0.002)) {
                     Mg.rounds--; Mg.top = nullptr; b.mag = nullptr;
+                    if (Mg.rounds == 0 && Mg.d && Mg.d->clip == "enbloc") S.events.push_back({Ev::ClipOut, S.t});  // ping
                     setState(b, RS::Free);
                 }
                 continue;

@@ -62,6 +62,7 @@ Textures: put .png, .jpg, .bmp or .tga pictures in *user/textures*, click *Add a
 - tube magazines and lifters (the pump-action example: the tube, the lifter, free play and the action lock)
 - shotshells, rimfire and caseless rounds (the pump-action shotgun example)
 - several chambers: doubles and volley guns (the over-under derringer example, which tips up on a hinge)
+- belts moved by a pawl you choose (the belt-fed blowback example), and stripper or en-bloc clips
 - extraction and ejection
 - fire control
 - locking and operating systems

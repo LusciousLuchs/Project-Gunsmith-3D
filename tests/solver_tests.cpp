@@ -1230,6 +1230,51 @@ static void severalChambers() {
     }
 }
 
+static void beltsAndClips() {
+    std::printf("Belts and clips\n");
+    Design d = loadPreset("belted");
+    {
+        sim::ReliabilityOptions o; o.rounds = 30;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 30 && R.jams == 0, "the belt-fed blowback: its slide moves the belt on, 30 rounds without a jam");
+        Design far = d;
+        for (auto& b : far.bodies) if (b.magazine) b.pawlStroke = 36;   // further than the slide can travel
+        auto F = sim::runReliability(far, o);
+        CHECK(F.byType[(int)sim::Malf::FailureToFeed] > 0 && F.fired < 5, "a pawl that can't reach the next link never moves the belt: failure to feed");
+    }
+    {
+        auto S = sim::build(d); sim::run(*S, 0.3);
+        sim::Body* M = sim::seatedMag(*S);
+        bool trayFull = M && M->top;
+        S->hand = {true, S->find("slide"), {0, 0}, {S->find("slide")->x - 0.012, S->find("slide")->y}};   // a short pull: not far enough
+        sim::run(*S, 0.15); S->hand.on = false; sim::run(*S, 0.2);
+        CHECK(trayFull && M->rounds == 50, "a round waits in the tray; a short pull doesn't move the belt");
+        Design back; designFromJson(designToJson(d), back);
+        bool kept = false;
+        for (auto& b : back.bodies) if (b.magazine) kept = b.feedPawl == "slide" && std::fabs(b.pawlStroke - 26) < 1e-9;
+        CHECK(kept, "the belt's pawl saves and loads");
+    }
+    {   // clips, on the bolt rifle's magazine
+        Design r = loadPreset("boltaction");
+        for (auto& b : r.bodies) if (b.magazine) { b.magFixed = true; b.clip = "enbloc"; }
+        auto S = sim::build(r); sim::run(*S, 0.1);
+        sim::Body* M = nullptr;
+        for (auto& b : S->bodies) if ((b.isMag || b.builtInMag) && !b.gone) M = &b;
+        bool ok = M != nullptr;
+        if (ok) { M->rounds = 2; int added = sim::fillMagazines(*S); ok = added == 0 && M->rounds == 2; }
+        if (ok) { M->rounds = 0; int added = sim::fillMagazines(*S); ok = added == M->d->magCap; }
+        CHECK(ok, "an en-bloc clip can't be topped up: it only reloads once empty, and then with a full clip");
+        Design st = loadPreset("boltaction");
+        for (auto& b : st.bodies) if (b.magazine) { b.magFixed = true; b.clip = "stripper"; b.clipSize = 2; }
+        auto T = sim::build(st); sim::run(*T, 0.1);
+        sim::Body* N = nullptr;
+        for (auto& b : T->bodies) if ((b.isMag || b.builtInMag) && !b.gone) N = &b;
+        bool ok2 = N != nullptr;
+        if (ok2) { N->rounds = 0; sim::fillMagazines(*T); ok2 = N->rounds == 2; sim::fillMagazines(*T); ok2 = ok2 && N->rounds == 4; }
+        CHECK(ok2, "stripper clips go in one clip at a time");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1256,6 +1301,7 @@ int main() {
     tubeFeeding();
     ammoKinds();
     severalChambers();
+    beltsAndClips();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;
