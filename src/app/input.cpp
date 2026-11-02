@@ -135,7 +135,7 @@ void handleKeys() {
         if (dx != 0 || dy != 0) {
             auto& d = A.design.bodies[A.sel.idx];
             if (!A.selVs.empty()) { for (int v : A.selVs) if (v < (int)d.pts.size()) { d.pts[v].x += dx; d.pts[v].y += dy; } }
-            else moveBody(A.sel.idx, dx, dy);
+            else for (int k : weldedWith(A.design, A.sel.idx)) moveBody(k, dx, dy);  // a welded piece moves as one
             commit();
         }
     }

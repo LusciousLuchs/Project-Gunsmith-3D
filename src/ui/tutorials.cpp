@@ -52,6 +52,7 @@ static TutState snapshot() {
         if (b.fixed) t.fixedParts++;
         if (b.ctrl != "none") t.controls++;
         if (b.layer == "none") t.solidOff++;
+        if (!b.weld.empty()) t.welds++;
         for (auto& c : b.carves) {
             t.carves++;
             double l = std::sqrt(c.dx * c.dx + c.dy * c.dy + c.dz * c.dz);
@@ -69,7 +70,6 @@ static TutState snapshot() {
     }
     for (auto& j : D.joints) {
         if (j.type == "pin") t.pins++;
-        if (j.type == "weld") t.welds++;
         if (j.type == "track") t.tracks++;
         if (j.type == "spring") t.springs++;
     }
@@ -335,7 +335,7 @@ static const std::vector<Lesson>& lessons() {
     {"joints", "Joints: pins, welds and tracks", "Connect parts so they pivot, slide or move as one.", "blank", {
         Step("Two parts", "Joints connect two parts. Draw two small rectangles on the frame.").check(twoParts, "Draw two parts").at("tool:Rectangle").designer(),
         Step("Pin", "A pin lets parts swing, like a trigger. Pick Pin and click where two parts overlap.").check(newPin, "Add a pin").at("tool:Pin"),
-        Step("Weld", "A weld glues two parts together so they move as one. Pick Weld and click where two parts overlap.").check(newWeld, "Add a weld").at("tool:Weld"),
+        Step("Weld", "Welding makes two parts one solid piece: they move as one, and nothing is added to the gun. Pick Weld, click one part, then the other.").check(newWeld, "Add a weld").at("tool:Weld"),
         Step("Track", "A track lets a part slide along a slot. Pick Track, click the part that should slide, then click where it slides to. Hold Shift on the second click to add bends.").check(newTrack, "Add a track").at("tool:Track"),
         Step("Try it", "Go to the test bench and drag your parts around.").check(onBench, "Open the test bench").at("mode:test"),
     }},

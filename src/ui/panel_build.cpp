@@ -159,6 +159,18 @@ static void inspectPart(BodyDef& b) {
         if (tipHover()) ImGui::SetTooltip("The part's name: shown when you point at it, in the Outline, and in joint and firing settings.");
     }
 
+    {   // welded: one solid piece with other parts
+        auto piece = weldedWith(D, A.sel.idx);
+        if (piece.size() > 1) {
+            std::string names;
+            for (int k : piece) if (k != A.sel.idx) names += (names.empty() ? "" : ", ") + D.bodies[k].name;
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextColored(colAccent(), ICON_FA_LINK "  One piece with %s", names.c_str());
+            ImGui::PopTextWrapPos();
+            if (ImGui::Button("Unweld this part", {-1, 0})) { unweld(D, b.id); editedAny = true; }
+            if (tipHover()) ImGui::SetTooltip("Makes this part separate again. The rest stay welded together.");
+        }
+    }
     if (section("Part", true)) {
         pCheck("Fixed", b.fixed, "Fixed parts are the frame: they don't move.");
         tutAnchor("part:fixed");
@@ -226,7 +238,7 @@ static void inspectPart(BodyDef& b) {
         }
         if (ImGui::Button("Copy to the other side", {-1, 0})) {
             BodyDef cpy = b;
-            cpy.id = uid(); cpy.name += " (other side)"; cpy.z = -b.z; cpy.magazine = false;
+            cpy.id = uid(); cpy.name += " (other side)"; cpy.z = -b.z; cpy.magazine = false; cpy.weld.clear();
             carve::flipCarvesZ(cpy);
             D.bodies.push_back(cpy);
             A.sel = {1, (int)D.bodies.size() - 1, -1};
@@ -523,12 +535,11 @@ static void inspectJoint(JointDef& j) {
     ImGui::PopFont();
     muted("%s", jointDesc(j).c_str());
     ImGui::Dummy({0, 2 * S()});
-    if (j.type == "pin" || j.type == "weld") { pBody("Part", j.a, false); pBody("Joined to", j.b, true); }
+    if (j.type == "pin") { pBody("Part", j.a, false); pBody("Joined to", j.b, true); }
     if (j.type == "pin") {
         pNumU("Diameter", j.pinDia, 0.5, Q::Length, -1, "How thick the pin is drawn. The parts pivot about its centre either way.");
         j.pinDia = std::clamp(j.pinDia, 0.3, 40.0);
     }
-    if (j.type == "weld") muted("The two parts move as one. A weld has nothing to draw: its dot only shows in the designer.");
     if (j.type == "track") {
         pBody("Rider", j.a, true); pBody("Track is in", j.b, true);
         pCheck("No turning", j.lockRot, "The rider keeps its angle, like a slide on a straight rail.");
@@ -646,7 +657,7 @@ static void outlineTab() {
             auto* dl = ImGui::GetWindowDrawList();
             dl->AddCircleFilled({p.x + 6 * S(), p.y + (h + 4 * S()) / 2}, 4 * S(), IM_COL32(c.r, c.g, c.b, 255));
             dl->AddText({p.x + 18 * S(), p.y + 2 * S()}, ImGui::GetColorU32(ImGuiCol_Text), b.name.c_str());
-            const char* tag = b.fixed ? "frame" : b.magazine ? "magazine" : b.rollOn ? "turns" : b.layer == "none" ? "not solid" : "";
+            const char* tag = b.fixed ? "frame" : b.magazine ? "magazine" : b.rollOn ? "turns" : !b.weld.empty() ? "welded" : b.layer == "none" ? "not solid" : "";
             if (*tag) {
                 float tw = ImGui::CalcTextSize(tag).x;
                 dl->AddText({p.x + ImGui::GetContentRegionAvail().x - tw - 4 * S(), p.y + 2 * S()}, ImGui::GetColorU32(ImGuiCol_TextDisabled), tag);

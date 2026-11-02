@@ -102,6 +102,7 @@ struct BodyDef {
     std::vector<double> rad;             // corner radius at each vertex (mm)
     std::vector<double> bulge;           // edge i (pts[i] -> pts[i+1]) bows outward by this much (mm, negative = inward)
     std::vector<CarveDef> carves;        // cut out of the shape in 3D, in order
+    std::string weld;                    // welded: every part with the same tag is one solid piece ("" = on its own)
     bool round = false;                  // turned: the outline spun about its long middle line (barrels, rods, bolts);
                                          // its thickness is then its width across
     int roundSides = 0;                  // 0 = a circle; 3+ = that many flats (4 = the square bar it was drawn as, 8 = octagon)
@@ -197,6 +198,13 @@ int splitEdge(BodyDef& b, int edge);                             // add a vertex
                                                                  // or -1 when the part already has MAX_CORNERS
 
 // Magazine maker.
+// Welding: parts that share a weld tag move as one piece. weldParts joins two parts (and whatever each was already
+// welded to); unweld takes one part out of its piece. weldJointsToTags turns the weld joints older blueprints used
+// into tags (a part welded to the ground becomes fixed).
+void weldParts(Design& d, const std::string& a, const std::string& b);
+void unweld(Design& d, const std::string& id);
+std::vector<int> weldedWith(const Design& d, int i);   // the parts in i's piece (including i)
+void weldJointsToTags(Design& d);
 void generateMagazine(Design& d, int bodyIndex);               // rebuild the magazine shape and its well
 V2 magCentre(const MagGen& g, double s, double* phiDeg);       // point on the magazine centreline, s mm below the lips
 

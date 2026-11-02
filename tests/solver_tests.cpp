@@ -1032,6 +1032,51 @@ static void roundParts() {
     CHECK(designFromJson(designToJson(dd), back) && back.bodies[0].round, "round parts are saved in the blueprint");
 }
 
+static void welding() {
+    std::printf("Welding\n");
+    {
+        bool noJoints = true, tagged = false;
+        for (auto& p : presetList()) {
+            Design d = loadPreset(p.key);
+            for (auto& j : d.joints) if (j.type == "weld") noJoints = false;
+            for (auto& b : d.bodies) if (!b.weld.empty()) tagged = true;
+        }
+        CHECK(noJoints && tagged, "the examples' welds load as welded pieces, with no weld joints left");
+    }
+    BodyDef a; a.id = "a"; a.name = "A"; a.layer = "A"; a.pts = {{0, 0}, {20, 0}, {20, 10}, {0, 10}}; fixShape(a);
+    BodyDef b = a; b.id = "b"; b.name = "B"; b.pts = {{20, 0}, {30, 0}, {30, 30}, {20, 30}}; fixShape(b);
+    BodyDef c = a; c.id = "c"; c.name = "C"; c.pts = {{40, 0}, {50, 0}, {50, 10}, {40, 10}}; fixShape(c);
+    Design d; d.bodies = {a, b, c};
+    {   // an old blueprint with weld joints
+        Design old = d;
+        JointDef w; w.type = "weld"; w.a = "a"; w.b = "b"; w.p = {20, 5}; old.joints = {w};
+        JointDef g; g.type = "weld"; g.a = "c"; g.b = "world"; g.p = {45, 5}; old.joints.push_back(g);
+        Design back;
+        CHECK(designFromJson(designToJson(old), back) && back.joints.empty() && !back.bodies[0].weld.empty() &&
+              back.bodies[0].weld == back.bodies[1].weld && back.bodies[2].fixed,
+              "older blueprints: weld joints become welded pieces, and a part welded to the ground is fixed");
+    }
+    weldParts(d, "a", "b");
+    CHECK(weldedWith(d, 0).size() == 2 && weldedWith(d, 2).size() == 1, "welding two parts makes one piece");
+    {   // pushed on one, the other comes along exactly
+        auto S = sim::build(d);
+        sim::Body *A = S->find("a"), *B = S->find("b");
+        S->hand = {true, A, {0, 0}, {A->x + 0.02, A->y + 0.01}};
+        sim::run(*S, 0.2);
+        double da = std::hypot(A->x - A->x0, A->y - A->y0);
+        double gap0 = std::hypot(A->x0 - B->x0, A->y0 - B->y0), gap = std::hypot(A->x - B->x, A->y - B->y);
+        CHECK(da > 0.005 && std::fabs(gap - gap0) < 1e-6 && std::fabs(A->a - B->a) < 1e-9, "welded parts move as one piece: they stay locked together");
+    }
+    Design back;
+    CHECK(designFromJson(designToJson(d), back) && back.bodies[0].weld == back.bodies[1].weld && !back.bodies[0].weld.empty(), "welds are saved");
+    weldParts(d, "c", "b");
+    CHECK(weldedWith(d, 2).size() == 3, "welding onto a welded piece adds to it");
+    unweld(d, "c");
+    CHECK(weldedWith(d, 2).size() == 1 && weldedWith(d, 0).size() == 2, "unwelding takes just that part out");
+    unweld(d, "a");
+    CHECK(d.bodies[1].weld.empty(), "the last part left on its own isn't welded to anything");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1054,6 +1099,7 @@ int main() {
     anyMagazine();
     carving();
     roundParts();
+    welding();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

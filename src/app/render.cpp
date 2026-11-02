@@ -46,7 +46,7 @@ std::vector<RB> renderList() {
 bool mainPart(const sim::Body& b) {  // moving parts worth graphing: not magazines, not welded-on pieces, not light controls
     if (b.fixed || b.isMag || b.slice || !b.tmpl.empty()) return false;
     if (b.d->ctrl != "none" || b.m < 0.05) return false;
-    for (auto& j : A.design.joints) if (j.type == "weld" && j.a == b.id) return false;
+    if (b.root) return false;  // a welded-on piece: its piece is graphed once
     return true;
 }
 
@@ -482,6 +482,8 @@ void drawScene() {
         if (isGhost(r)) continue;
         Color c = hexColor(D.bodies[r.tmpl].color);
         if (building && A.sel.kind == 1 && A.sel.idx == r.tmpl) c = shade(c, 1.12f);
+        else if (building && A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && !D.bodies[r.tmpl].weld.empty() &&
+                 D.bodies[r.tmpl].weld == D.bodies[A.sel.idx].weld) c = shade(c, 1.07f);  // the rest of its welded piece
         if (!building && r.sb && r.sb == A.hover) c = shade(c, 1.18f);
         if (!D.bodies[r.tmpl].texture.empty()) drawMeshTex(A.meshes[r.tmpl].mesh, r.M, c, userTexture(D.bodies[r.tmpl].texture));
         else drawMesh(A.meshes[r.tmpl].mesh, r.M, c);

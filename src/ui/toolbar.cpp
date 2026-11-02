@@ -88,7 +88,7 @@ static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_CIRCLE_MINUS, "Carve", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1}};
 static const RailTool RAIL_JOIN[] = {
     {ICON_FA_THUMBTACK, "Pin", "A pivot: two parts share a point and can turn (triggers, hammers, levers).", Tool::Pin, -1},
-    {ICON_FA_LINK, "Weld", "Join two parts rigidly so they move as one.", Tool::Weld, -1},
+    {ICON_FA_LINK, "Weld", "Click two parts to make them one solid piece. Nothing is added to the gun:\nthey just move as one. Unweld from the part's panel.", Tool::Weld, -1},
     {ICON_FA_ROUTE, "Track", "A point on one part rides a slot or rail in another (cam slots, guide rails).", Tool::Track, -1},
     {ICON_FA_WAVE_SQUARE, "Spring", "A coil or leaf spring between two parts (recoil, striker and sear springs).", Tool::Spring, -1}};
 

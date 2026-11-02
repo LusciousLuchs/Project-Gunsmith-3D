@@ -297,6 +297,16 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         for (size_t i = 0; i < grp.size(); i++) grp[i] = (int)i;
         std::function<int(int)> top = [&](int i) { return grp[i] == i ? i : grp[i] = top(grp[i]); };
         auto idx = [&](Body* b) { return b == &s.world ? -1 : (int)(b - s.bodies.data()); };
+        {   // welded parts (the same weld tag) are one solid piece
+            std::map<std::string, int> first;
+            for (size_t i = 0; i < s.bodies.size(); i++) {
+                const BodyDef* d = s.bodies[i].d;
+                if (!d || d->weld.empty() || s.bodies[i].slice || !s.bodies[i].tmpl.empty()) continue;
+                auto it = first.find(d->weld);
+                if (it == first.end()) first[d->weld] = (int)i;
+                else grp[top((int)i)] = top(it->second);
+            }
+        }
         for (size_t i = 0; i < s.bodies.size(); i++) {  // a carved part's slices are one solid
             if (!s.bodies[i].slice) continue;
             Body* m = s.find(s.bodies[i].d->id);

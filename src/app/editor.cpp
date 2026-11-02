@@ -69,8 +69,9 @@ void deleteSel() {
 void duplicateSel() {
     if (A.sel.kind != 1 || A.sel.idx >= (int)A.design.bodies.size()) return;
     BodyDef c = A.design.bodies[A.sel.idx];
-    c.id = uid(); c.name += " copy"; c.magazine = false;
+    c.id = uid(); c.name += " copy"; c.magazine = false; c.weld.clear();  // a copy is a part on its own
     for (auto& p : c.pts) { p.x += 10; p.y += 10; }
+    carve::moveCarves(c, 10, 10);
     if (c.ctrl != "none") { c.ctrlPt.x += 10; c.ctrlPt.y += 10; }
     A.design.bodies.push_back(c);
     A.sel = {1, (int)A.design.bodies.size() - 1, -1}; A.selVs.clear();
@@ -100,12 +101,9 @@ void finishRoundPath() {
     A.draft.clear(); A.drafting = false; A.tool = Tool::Select;
 }
 int trackHolderAt(V2 w) {  // the part a new track's slot is cut in: the topmost one under the path's first point
-    std::vector<std::string> group{A.draftA};  // never a part welded to the one that slides: it moves with it
-    for (size_t k = 0; k < group.size(); k++)
-        for (auto& j : A.design.joints) if (j.type == "weld") {
-            std::string o = j.a == group[k] ? j.b : j.b == group[k] ? j.a : "";
-            if (!o.empty() && o != "world" && std::find(group.begin(), group.end(), o) == group.end()) group.push_back(o);
-        }
+    std::vector<std::string> group;  // never a part welded to the one that slides: it moves with it
+    for (int k : weldedWith(A.design, A.design.bodyIndex(A.draftA))) group.push_back(A.design.bodies[k].id);
+    if (group.empty()) group.push_back(A.draftA);
     for (int i = (int)A.design.bodies.size() - 1; i >= 0; i--) {
         auto& d = A.design.bodies[i];
         if (std::find(group.begin(), group.end(), d.id) == group.end() && sim::inPoly(w.x, w.y, d.pts)) return i;
@@ -173,10 +171,26 @@ void buildInput(bool overUI) {
             A.drafting = true; A.draft.push_back(w);
             return;
         }
-        case Tool::Pin: case Tool::Weld: {
+        case Tool::Weld: {  // click one part, then another: they become one piece. Nothing is added to the gun.
             auto hits = bodiesUnderMouse();
             if (hits.empty()) { toast("Click on a part."); return; }
-            JointDef j; j.type = A.tool == Tool::Pin ? "pin" : "weld";
+            std::string id = A.design.bodies[hits[0].body].id;
+            if (!A.draftHasF) {
+                A.draftHasF = true; A.draftA = id; A.draftF = w; A.sel = {1, hits[0].body, -1};
+                return;
+            }
+            if (id == A.draftA) { if (hits.size() > 1) id = A.design.bodies[hits[1].body].id; else return; }
+            weldParts(A.design, A.draftA, id);
+            int i = A.design.bodyIndex(id);
+            toast(A.design.bodies[A.design.bodyIndex(A.draftA)].name + " and " + A.design.bodies[i].name + " are one piece now.");
+            A.draftHasF = false; A.sel = {1, i, -1};
+            commit(); A.tool = Tool::Select;
+            return;
+        }
+        case Tool::Pin: {
+            auto hits = bodiesUnderMouse();
+            if (hits.empty()) { toast("Click on a part."); return; }
+            JointDef j; j.type = "pin";
             j.a = A.design.bodies[hits[0].body].id;
             j.b = hits.size() > 1 ? A.design.bodies[hits[1].body].id : "world";
             j.p = w;
@@ -329,7 +343,7 @@ void buildInput(bool overUI) {
         if (A.tool == Tool::Mirror && A.sel.kind == 1) {
             BodyDef c = D.bodies[A.sel.idx];
             mirrorBody(c, a, w);
-            c.id = uid(); c.name += " (mirror)"; c.magazine = false;
+            c.id = uid(); c.name += " (mirror)"; c.magazine = false; c.weld.clear();
             D.bodies.push_back(c);
             A.sel = {1, (int)D.bodies.size() - 1, -1}; A.selVs.clear();
             commit(); toast("Mirrored copy added.");
@@ -346,7 +360,7 @@ void buildInput(bool overUI) {
                 D.bodies[i] = pcs[0];
                 for (size_t k = 1; k < pcs.size(); k++) {
                     BodyDef nb = pcs[k];
-                    nb.id = uid(); nb.name = base + " " + std::to_string(k + 1); nb.magazine = false; nb.ctrl = "none";
+                    nb.id = uid(); nb.name = base + " " + std::to_string(k + 1); nb.magazine = false; nb.ctrl = "none"; nb.weld.clear();
                     D.bodies.push_back(nb);
                     last = (int)D.bodies.size() - 1;
                 }
@@ -386,7 +400,7 @@ void buildInput(bool overUI) {
             if (A.dragKind == 2) {
                 V2 d{snapv(w.x - A.dragStart.x, A.snapOn), snapv(w.y - A.dragStart.y, A.snapOn)};
                 double ddx = d.x - A.dragLast.x, ddy = d.y - A.dragLast.y;
-                if (ddx != 0 || ddy != 0) { moveBody(A.sel.idx, ddx, ddy); A.dragLast = d; A.dragMoved = true; }
+                if (ddx != 0 || ddy != 0) { for (int k : weldedWith(A.design, A.sel.idx)) moveBody(k, ddx, ddy); A.dragLast = d; A.dragMoved = true; }
             } else {
                 auto& h = A.dragH;
                 auto& br = A.design.breech;

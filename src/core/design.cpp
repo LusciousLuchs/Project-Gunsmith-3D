@@ -621,6 +621,44 @@ void generateMagazine(Design& D, int bi) {
     if (j.pathAng.size() != 2) j.pathAng.resize(2, 0.0);   // (a tilt at the mouth is kept)
 }
 
+
+// ---------------------------------------------------------------- welding: parts that are one piece
+std::vector<int> weldedWith(const Design& d, int i) {
+    std::vector<int> out;
+    if (i < 0 || i >= (int)d.bodies.size()) return out;
+    if (d.bodies[i].weld.empty()) return {i};
+    for (int k = 0; k < (int)d.bodies.size(); k++) if (d.bodies[k].weld == d.bodies[i].weld) out.push_back(k);
+    return out;
+}
+void weldParts(Design& d, const std::string& a, const std::string& b) {
+    int ia = d.bodyIndex(a), ib = d.bodyIndex(b);
+    if (ia < 0 || ib < 0 || ia == ib) return;
+    std::string tag = !d.bodies[ia].weld.empty() ? d.bodies[ia].weld : !d.bodies[ib].weld.empty() ? d.bodies[ib].weld : "w-" + d.bodies[ia].id;
+    std::string other = d.bodies[ib].weld;
+    for (auto& x : d.bodies) if (!other.empty() && x.weld == other) x.weld = tag;  // b's whole piece joins
+    d.bodies[ia].weld = tag; d.bodies[ib].weld = tag;
+}
+void unweld(Design& d, const std::string& id) {
+    int i = d.bodyIndex(id);
+    if (i < 0 || d.bodies[i].weld.empty()) return;
+    std::string tag = d.bodies[i].weld;
+    d.bodies[i].weld.clear();
+    std::vector<int> rest;
+    for (int k = 0; k < (int)d.bodies.size(); k++) if (d.bodies[k].weld == tag) rest.push_back(k);
+    if (rest.size() == 1) d.bodies[rest[0]].weld.clear();  // one part left on its own: not welded to anything
+}
+void weldJointsToTags(Design& d) {
+    std::vector<JointDef> keep;
+    for (auto& j : d.joints) {
+        if (j.type != "weld") { keep.push_back(j); continue; }
+        int ia = d.bodyIndex(j.a), ib = d.bodyIndex(j.b);
+        if (ia >= 0 && (j.b == "world" || j.b.empty())) d.bodies[ia].fixed = true;  // welded to the ground: it doesn't move
+        else if (ib >= 0 && j.a == "world") d.bodies[ib].fixed = true;
+        else if (ia >= 0 && ib >= 0) weldParts(d, j.a, j.b);
+    }
+    d.joints = keep;
+}
+
 // ---------------------------------------------------------------- JSON
 std::string designToJson(const Design& d, bool pretty) {
     json o;
@@ -634,6 +672,7 @@ std::string designToJson(const Design& d, bool pretty) {
         json jb = {{"id", b.id}, {"name", b.name}, {"fixed", b.fixed}, {"layer", b.layer},
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
+        if (!b.weld.empty()) jb["weld"] = b.weld;
         if (!b.texture.empty()) { jb["texture"] = b.texture; jb["texScale"] = b.texScale; }
         if (b.round) {
             jb["round"] = true;
@@ -747,6 +786,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
+        b.weld = opt<std::string>(jb, "weld", "");
         b.round = opt<bool>(jb, "round", false);
         b.texture = opt<std::string>(jb, "texture", "");
         b.texScale = std::clamp(opt<double>(jb, "texScale", 40.0), 1.0, 5000.0);
@@ -838,6 +878,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         for (auto k : ok) if (j.type == k) known = true;
         if (known) d.joints.push_back(j);
     }
+    weldJointsToTags(d);
     if (o.contains("breech") && o["breech"].is_object()) {
         auto& jb = o["breech"];
         auto& r = d.breech;
