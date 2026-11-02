@@ -288,7 +288,7 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         } else if (j.type == "cam" || j.type == "lug" || j.type == "latch") {
             J.type = j.type == "cam" ? JT::Cam : j.type == "lug" ? JT::Lug : JT::Latch;
             J.rel0 = rel(*B, *A);
-            if (J.type == JT::Latch) { J.R = s.find(j.rel); if (J.R == &s.world) J.R = nullptr; if (J.R) J.relR0 = rel(*B, *J.R); }
+            if (J.type == JT::Latch) { J.R = s.find(j.rel); if (J.R == &s.world) J.R = nullptr; if (J.R) { J.relR0 = rel(*B, *J.R); J.relRA0 = rel(*A, *J.R); } }
         } else continue;
         s.joints.push_back(J);
     }
@@ -741,7 +741,7 @@ void substep(Sim& S) {
     for (auto& b : S.bodies) {  // gravity (and the shooter's motion) acts on every moving part
         if (b.fixed || b.staged) continue;
         // a seated magazine and the round under its lips are held by the frame: they get gravity only
-        bool held = (b.isMag && !b.loose) || (b.isRound && b.rs == RS::Presented);
+        bool held = (b.isMag && !b.loose) || (b.isRound && (b.rs == RS::Presented || b.rs == RS::Tube));
         V2 a = held ? S.frameAccel : acc;
         b.fx += b.m * a.x; b.fy += b.m * a.y;
     }
@@ -821,6 +821,22 @@ void substep(Sim& S) {
         if (J.type == JT::Magwell) { solveMagwell(S, J); continue; }
         if (J.merged) continue;
         Body &A = *J.A, &B = *J.B;
+        if (J.type == JT::Latch) {  // an action lock holds before anything else is solved, so a shot can't shove what it holds
+            if (!J.j->holdShut) continue;   // (catches that hold a part open are solved with the rotation joints, below)
+            const JointDef& j = *J.j;
+            double u = axial(A, B, J.rel0) * 1000, c = j.catchAt;
+            // released by the release part drawn back against the held part (a pump's bar in its lost motion): a shot
+            // that throws both back together never releases it
+            double r = J.R ? axial(*J.R, A, J.relRA0) * 1000 : 0;
+            bool release = J.R && r <= -std::fabs(j.releaseAt);
+            if (J.state == LatchState::Armed && u >= c && !release) J.state = LatchState::Hold;
+            if (J.state == LatchState::Hold) {
+                if (release) J.state = LatchState::Released;
+                else if (u < c) solveAxial(A, B, (c - u) / 1000);
+            }
+            if (J.state == LatchState::Released && !release) J.state = LatchState::Armed;  // catches again when it comes home
+            continue;
+        }
         if (J.type == JT::Spring) {  // a coil spring compressed to solid height becomes a hard stop
             if (J.j->kind != "coil") continue;
             double solid = (J.j->turns + 2) * J.j->wire / 1000;
@@ -919,7 +935,7 @@ void substep(Sim& S) {
             J.engaged = std::fabs(A.roll) < un && u > -0.0006;
             if (J.engaged) solveAxial(A, B, -axial(A, B, J.rel0));
             if (j.blockOpen && u < -0.002 && A.invIr > 0 && A.roll < un) A.roll = un;
-        } else if (J.type == JT::Latch) {
+        } else if (J.type == JT::Latch && !j.holdShut) {
             double u = axial(A, B, J.rel0) * 1000, c = j.catchAt;
             if (J.state == LatchState::Armed && u <= c) J.state = LatchState::Hold;
             if (J.state == LatchState::Hold) {
@@ -992,7 +1008,7 @@ void substep(Sim& S) {
             // a tube (rounds nose to tail) feeds the simple way for now, even with physical rounds: the round reaches the
             // chamber once the action has opened this far. (Feeding it physically needs a carrier you draw: to come.)
             Body* m = seatedMag(S);
-            if (m && m->rounds > 0 && m->d && m->d->roundStyle == "line" && m->d->roundPath.size() >= 2) { m->rounds--; S.inTransit = true; }
+            if (m && m->rounds > 0 && m->d && m->d->roundStyle == "line" && m->d->roundPath.size() >= 2 && m->d->tubeFeed != "physical") { m->rounds--; S.inTransit = true; }
         }
         if (gap < 1 && S.inTransit) { S.inTransit = false; S.chambered = true; }
         if (S.strikerIgnition) {  // fires when the striker's tip hits the primer hard enough

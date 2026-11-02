@@ -346,16 +346,18 @@ static void inspectPart(BodyDef& b) {
     }
 
     if (section("Control", b.ctrl != "none")) {
-        const char* kinds[] = {"none", "button", "lever", "trigger"};
+        const char* kinds[] = {"none", "button", "lever", "trigger", "handle"};
         int ki = 0;
-        for (int i = 0; i < 4; i++) if (b.ctrl == kinds[i]) ki = i;
-        prop("Type");
-        if (ImGui::Combo("##ctrl", &ki, "Not a control\0Button\0Lever\0Trigger\0")) {
+        for (int i = 0; i < 5; i++) if (b.ctrl == kinds[i]) ki = i;
+        prop("Type", "Worked by hand: the part a shooter grabs to work the action (a pump's fore-end, a charging handle,\n"
+                     "a bolt). The reliability test works the gun by this part. Without one, it works the breech itself.");
+        if (ImGui::Combo("##ctrl", &ki, "Not a control\0Button\0Lever\0Trigger\0Worked by hand\0")) {
             b.ctrl = kinds[ki]; editedAny = true;
             if (ki > 0 && b.ctrlPt.x == 0 && b.ctrlPt.y == 0) b.ctrlPt = centroidOf(b);
             if (ki == 3 && b.key == "none") b.key = "fire";
         }
-        if (b.ctrl != "none") {
+        if (b.ctrl == "handle") muted("Drag it on the bench to work the action. The reliability test pulls it all the way back along its track and pushes it home.");
+        if (b.ctrl != "none" && b.ctrl != "handle") {
             const char* keys[] = {"none", "fire", "magrelease", "k1", "k2", "k3", "k4"};
             Act acts[] = {Act::Count, Act::Fire, Act::MagRelease, Act::Control1, Act::Control2, Act::Control3, Act::Control4};
             const char* names[] = {"Hand only", "Fire", "Magazine release", "Your control 1", "Your control 2", "Your control 3", "Your control 4"};
@@ -396,7 +398,19 @@ static void inspectPart(BodyDef& b) {
                 int st = b.roundStyle == "line" ? 1 : 0;
                 prop("Rounds sit", "Side by side: stacked across the path, like a box magazine.\n"
                                    "Nose to tail: one behind another along the path, like a tube under a barrel.");
-                if (ImGui::Combo("##rstyle", &st, "Side by side\0Nose to tail\0")) { b.roundStyle = st ? "line" : "side"; editedAny = true; }
+                if (ImGui::Combo("##rstyle", &st, "Side by side\0Nose to tail\0")) {
+                    b.roundStyle = st ? "line" : "side"; editedAny = true;
+                    if (st) b.tubeFeed = "physical";  // a tube made now feeds the real way
+                }
+                if (st && A.design.breech.physicalFeed) {
+                    int tf = b.tubeFeed == "physical" ? 0 : 1;
+                    prop("Rounds leave", "Pushed out: the tube's spring pushes each round out of its mouth, head first, as a real round.\n"
+                                         "Something you draw has to take it from there, like a lifter that raises it to the bore,\n"
+                                         "and anything in the way (a lifter that's up) holds the next one back. See the pump-action example.\n"
+                                         "When the action opens: the round simply reaches the chamber once the action has opened far enough\n"
+                                         "(how tubes worked in older versions).");
+                    if (ImGui::Combo("##tubefeed", &tf, "Pushed out of the mouth\0When the action opens (simple)\0")) { b.tubeFeed = tf == 0 ? "physical" : "simple"; editedAny = true; }
+                }
                 if (b.roundPath.size() >= 2)
                     muted("Round path: %d points. Drag them in the view. The first is where rounds are fed from.", (int)b.roundPath.size());
                 else
@@ -605,6 +619,9 @@ static void inspectJoint(JointDef& j) {
         pNumU("Catches at", j.catchAt, 0.5, Q::Length);
         pBody("Released by", j.rel, false);
         pNumU("at travel", j.releaseAt, 0.5, Q::Length);
+        pCheck("Holds it closed", j.holdShut, "An action lock: the held part can't go back past where it catches (a shot can't blow it open)\n"
+                                              "until the release part has been drawn back this far against it (a pump's fore-end moving\n"
+                                              "in its free play before it takes the bolt along). It catches again when it comes home.");
     }
     ImGui::Dummy({0, 6 * S()});
     if (dangerButton("Delete joint", {-1, 0})) deleteSel();

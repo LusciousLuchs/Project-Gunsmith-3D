@@ -697,6 +697,7 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.doubleFeed) jb["magazine"]["feed"] = "double";
             if (b.magFixed) jb["magazine"]["builtIn"] = true;
             if (b.roundStyle != "side") jb["magazine"]["style"] = b.roundStyle;
+            if (b.roundStyle == "line") jb["magazine"]["tubeFeed"] = b.tubeFeed;
             if (!b.roundPath.empty()) { json a = json::array(); for (auto& q : b.roundPath) a.push_back(v2j(q)); jb["magazine"]["roundPath"] = a; }
             if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
         }
@@ -734,7 +735,7 @@ std::string designToJson(const Design& d, bool pretty) {
         if (j.type == "cam") { json t = json::array(); for (auto& q : j.table) t.push_back(v2j(q)); jj["table"] = t; }
         if (j.type == "lug") { jj["unlock"] = j.unlock; jj["blockOpen"] = j.blockOpen; }
         if (j.type == "magwell") { bool any = false; for (double a : j.pathAng) if (a != 0) any = true; if (any) jj["pathAng"] = j.pathAng; }
-        if (j.type == "latch") { jj["catchAt"] = j.catchAt; jj["rel"] = j.rel; jj["releaseAt"] = j.releaseAt; }
+        if (j.type == "latch") { jj["catchAt"] = j.catchAt; jj["rel"] = j.rel; jj["releaseAt"] = j.releaseAt; if (j.holdShut) jj["holdShut"] = true; }
         o["joints"].push_back(jj);
     }
     if (d.breech.on) {
@@ -824,6 +825,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.doubleFeed = opt<std::string>(m, "feed", "single") == "double";
             b.magFixed = opt<bool>(m, "builtIn", false);
             b.roundStyle = opt<std::string>(m, "style", "side") == "line" ? "line" : "side";
+            b.tubeFeed = opt<std::string>(m, "tubeFeed", "simple") == "physical" ? "physical" : "simple";  // older tubes: the simple way
             if (m.contains("roundPath") && m["roundPath"].is_array()) for (auto& q : m["roundPath"]) b.roundPath.push_back(j2v(q));
             if (m.contains("gen") && m["gen"].is_object()) {
                 auto& g = m["gen"];
@@ -872,6 +874,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         j.catchAt = opt<double>(jj, "catchAt", -30);
         j.rel = opt<std::string>(jj, "rel", "");
         j.releaseAt = opt<double>(jj, "releaseAt", j.type == "magwell" ? 2.0 : -2.0);
+        j.holdShut = opt<bool>(jj, "holdShut", false);
         if (jj.contains("pathAng") && jj["pathAng"].is_array()) for (auto& a : jj["pathAng"]) if (a.is_number()) j.pathAng.push_back(a.get<double>());
         static const char* ok[] = {"pin", "weld", "track", "spring", "cam", "lug", "latch", "magwell"};
         bool known = false;

@@ -59,7 +59,7 @@ struct Runner {
         for (int pass = 0; pass < 3; pass++) {
             Body* stuck = nullptr;
             for (auto& b : S.bodies)
-                if (b.isRound && !b.gone && (b.rs == RS::Free || b.rs == RS::Clawed || (hard && b.rs == RS::Presented))) { stuck = &b; break; }
+                if (b.isRound && !b.gone && (b.rs == RS::Free || b.rs == RS::Clawed || (hard && (b.rs == RS::Presented || b.rs == RS::Tube)))) { stuck = &b; break; }
             if (!stuck) break;
             V2 g = wpt(*stuck, {0, 0});
             S.hand = {true, stuck, {0, 0}, {g.x, g.y - 0.03}};
@@ -115,6 +115,8 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
     Sim& S = *Sp;
     if (!S.BR || !S.hasFace) { R.note = "This design has no breech face, so it can't fire."; return R; }
     Body* B = S.BR->root ? S.BR->root : S.BR;
+    for (auto& b : S.bodies)  // a part marked "worked by hand" (a pump's fore-end, a charging handle) is what the shooter pulls
+        if (b.d && b.d->ctrl == "handle" && !b.fixed && !b.slice && b.tmpl.empty()) { B = b.root ? b.root : &b; break; }
     BoreLine L0 = boreLine(S);
     Runner run_{S, B, L0.ok ? L0.dir : V2{1, 0}, breechStroke(S, B), B->invIr > 0, cancel};
     R.manual = run_.rolling || !S.breechSprung;

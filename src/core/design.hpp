@@ -82,6 +82,9 @@ struct BodyDef {
     bool magFixed = false;               // built in: part of the gun and loaded in place (internal box, tube, anything)
     std::vector<V2> roundPath;           // how rounds sit inside (design coords, mm), from the feed end inward; empty = automatic
     std::string roundStyle = "side";     // side: side by side across the path (a box); line: nose to tail along it (a tube)
+    std::string tubeFeed = "physical";   // a tube, with physical rounds: "physical" = the spring pushes each round out of the
+                                         // mouth, where parts you draw (a lifter) take it; "simple" = it reaches the chamber
+                                         // when the action opens (older blueprints)
     int magCap = 10;                     // rounds when full
     // feed lips and spring (physical feeding). The defaults are fitted to the cartridge; these nudge them.
     double lipHeight = 0;                // mm the top round sits above (+) or below (-) where the lips would normally hold it
@@ -132,6 +135,8 @@ struct JointDef {
     double catchAt = -30;                // latch: mm
     std::string rel;                     // latch: release part; magwell: catch button part
     double releaseAt = -2;               // latch: mm; magwell: button travel that releases the catch (mm)
+    bool holdShut = false;               // latch: an action lock. Holds the part from going back past "catchAt" until the
+                                         // release part has moved back "releaseAt" mm; it catches again when the part comes home
 };
 
 struct BreechDef {

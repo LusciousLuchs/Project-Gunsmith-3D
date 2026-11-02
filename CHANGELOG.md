@@ -13,6 +13,11 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 0.1 alpha will be declared once the editor and the test bench are worked out.
 
 ### Editor (Build mode)
+- **Physical tube feeding:** with physical rounds, a tube magazine's spring pushes each round out of its mouth, head first, as a real round. Whatever you draw takes it from there: a lifter raising it to the bore, a cartridge stop holding the next one back. A part in the way stops it, and a tube spring too weak for how fast the gun is worked fails to feed. Older blueprints' tubes keep the simple rule (the setting is *Rounds leave* in the Magazine section).
+- **New example: pump-action carbine** (.45, tube magazine): a fore-end and action bar with free travel, an action lock, a fork lifter driven by a slot in the bar, guides and an ejector, all drawn parts. 50 rounds in the reliability test, no jams.
+- **"Worked by hand" control:** mark the part a shooter grabs to work the action (a pump's fore-end, a charging handle). The reliability test works the gun by it.
+- **Action lock:** a catch joint can *hold it closed*: the held part can't be blown back past its catch point until the release part has been drawn back far enough against it. It catches again when it comes home.
+- Reliability test: a hand-worked gun that closes on an empty chamber with rounds still in the magazine now counts as a failure to feed (it used to keep pulling the trigger on nothing).
 - **Your own textures:** put pictures (.png, .jpg, .bmp, .tga) in *user/textures*, use *Add a picture...*, or drag them onto the game window. Gun parts get a *Surface* section with the picture and its size (the part colour tints it; white shows it as it is). In the map editor, your pictures come after the built-in materials on the Textures tab; maps save them by file name.
 - **Your files in one place:** blueprints save to *user/guns* and maps to *user/maps* in the game folder. Files in the old *blueprints* and *maps* folders are moved over the first time the game starts.
 - **Ctrl+S** saves the gun from anywhere (designer or bench), named after the design unless you typed a name or opened a saved one.

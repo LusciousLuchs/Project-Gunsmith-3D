@@ -881,10 +881,10 @@ static void anyMagazine() {
     }
     {   // a tube: rounds nose to tail along the path
         Design d = builtInBox("blowback");
-        for (auto& b : d.bodies) if (b.magazine) { b.roundStyle = "line"; b.roundPath = {{20, 60}, {20, 200}}; }
+        for (auto& b : d.bodies) if (b.magazine) { b.roundStyle = "line"; b.roundPath = {{20, 60}, {20, 200}}; b.tubeFeed = "simple"; }
         auto S = sim::build(d); sim::run(*S, 0.05);
         for (int k = 0; k < 9; k++) { S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true); sim::run(*S, 0.06); S->pressed = false; S->trigger = false; sim::setKey(*S, "fire", false); sim::run(*S, 0.25); }
-        CHECK(S->shots == 8 && sim::seatedMag(*S)->rounds == 0, "a tube magazine feeds every round (the simple way, for now)");
+        CHECK(S->shots == 8 && sim::seatedMag(*S)->rounds == 0, "a tube magazine set to feed the simple way feeds every round");
     }
     {   // a removable magazine that rocks in: tilted 20 degrees at the mouth of its well
         Design d = loadPreset("blowback");
@@ -1077,6 +1077,55 @@ static void welding() {
     CHECK(d.bodies[1].weld.empty(), "the last part left on its own isn't welded to anything");
 }
 
+static void tubeFeeding() {
+    std::printf("Tube feeding (the pump-action example)\n");
+    Design d = loadPreset("pump");
+    {
+        auto S = sim::build(d); sim::run(*S, 0.3);
+        sim::Body* M = sim::seatedMag(*S);
+        bool held = false;
+        for (auto& b : S->bodies) if (b.isRound && !b.gone && b.rs == sim::RS::Tube) held = sim::wpt(b, {b.headLx, 0}).x * 1000 > 100;
+        CHECK(M && M->rounds == 6 && held, "closed, the lifter is up and holds the next round in the tube's mouth");
+        S->pressed = true; sim::run(*S, 0.05); S->pressed = false; sim::run(*S, 0.1);
+        sim::Body* B = S->find("bolt");
+        CHECK(S->shots == 1 && std::fabs(B->x - B->x0) < 0.0005, "the action lock holds the bolt shut through the shot");
+        sim::Body* F = S->find("forend");
+        S->hand = {true, F, {0, 0}, {F->x, F->y}};
+        for (int k = 1; k <= 40; k++) { S->hand.t = {F->x0 - 0.095 * k / 40, F->y0}; sim::run(*S, 0.0025); }
+        sim::run(*S, 0.08);
+        bool out = false;
+        for (auto& b : S->bodies) if (b.isRound && !b.isCase && !b.gone && b.rs == sim::RS::Free) {
+            V2 h = sim::wpt(b, {b.headLx, 0});
+            out = std::fabs(h.x * 1000 - 70) < 1.5;
+        }
+        CHECK(out && M->rounds == 5, "pulled all the way back, the lifter drops and the spring pushes a real round out onto it");
+        for (int k = 1; k <= 40; k++) { S->hand.t = {F->x0 - 0.095 + 0.1 * k / 40, F->y0}; sim::run(*S, 0.0025); }
+        sim::run(*S, 0.1);
+        CHECK(S->chambered, "pushing the fore-end home lifts the round and the bolt chambers it");
+    }
+    {
+        sim::ReliabilityOptions o; o.rounds = 30;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 30 && R.jams == 0, "the pump fires 30 rounds from its tube without a jam (worked by its fore-end)");
+        Design weak = d;
+        for (auto& b : weak.bodies) if (b.magazine) b.magSpring = 0.01;
+        auto W = sim::runReliability(weak, o);
+        CHECK(W.byType[(int)sim::Malf::FailureToFeed] > 0, "a tube spring far too weak can't get the round out in time: failure to feed");
+    }
+    {   // an older blueprint's tube (no tubeFeed saved) keeps feeding the simple way
+        Design t = builtInBox("blowback");
+        for (auto& b : t.bodies) if (b.magazine) { b.roundStyle = "line"; b.roundPath = {{20, 60}, {20, 200}}; }
+        std::string js = designToJson(t);
+        size_t at = js.find("\"tubeFeed\"");
+        if (at != std::string::npos) js.replace(at, 10, "\"tubeXeed\"");
+        Design back;
+        bool ok = designFromJson(js, back);
+        bool simple = false;
+        for (auto& b : back.bodies) if (b.magazine) simple = b.tubeFeed == "simple";
+        CHECK(ok && simple, "older blueprints' tubes keep the simple feeding");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1100,6 +1149,7 @@ int main() {
     carving();
     roundParts();
     welding();
+    tubeFeeding();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

@@ -161,6 +161,14 @@ static void retire(Sim& S, Body& b) { retireBody(S, b); }
 static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL);
 static bool doubleStack(const Body& M) { return M.d && M.d->gen.on && M.d->gen.stack == 2; }
 static bool tubeMag(const Body& M) { return M.d && M.d->roundStyle == "line" && M.d->roundPath.size() >= 2; }   // rounds nose to tail
+static bool physicalTube(const Body& M) { return tubeMag(M) && M.d->tubeFeed == "physical"; }
+// A tube's mouth (its round path's first point) and the way out of it, in the magazine's frame.
+static void tubeMouth(const Body& M, V2& mouthL, V2& outL) {
+    V2 a = M.d->roundPath[0], b = M.d->roundPath[1];
+    mouthL = {a.x / 1000 - M.x0, a.y / 1000 - M.y0};
+    double dx = a.x - b.x, dy = a.y - b.y, l = std::hypot(dx, dy);
+    outL = l > 1e-9 ? V2{dx / l, dy / l} : V2{-1, 0};
+}
 // The spring's effective strength: a double stack tapering to one central round (single position) loses some to friction.
 static double springOf(const Body& M) { return M.d ? M.d->magSpring * (doubleStack(M) && !M.d->doubleFeed ? 0.8 : 1.0) : 1.0; }
 
@@ -350,16 +358,16 @@ static void chamberContacts(Sim& S, Body& r, const BoreLine& L) {
     if (!r.inChamber) contacts(r, C, 0);  // the barrel's corners pushing into the round
 }
 
-static bool inAction(const Body& b) { return b.isRound && !b.gone && (b.rs == RS::Free || b.rs == RS::Clawed || b.rs == RS::Presented); }
+static bool inAction(const Body& b) { return b.isRound && !b.gone && (b.rs == RS::Free || b.rs == RS::Clawed || b.rs == RS::Presented || b.rs == RS::Tube); }
 static bool solidPart(const Sim& S, const Body& b) {
     if (b.isRound) return inAction(b);  // rounds and cases in the action get in each other's way
     const Body* ch = S.CH ? (S.CH->root ? S.CH->root : S.CH) : nullptr;  // the chamber and anything welded to it: the
     return !b.gone && !b.isMag && &b != S.CH && b.root != ch && &b != ch && b.d && b.d->layer != "none";  // walls handle those
 }
-static void partContacts(Sim& S, Body& r) {  // a cartridge in the action against every solid part it meets in depth
+static void partContacts(Sim& S, Body& r, const Body* ignore = nullptr) {  // a cartridge in the action against every solid part it meets in depth
     bbox(r);
     for (auto& P : S.bodies) {
-        if (&P == &r || !solidPart(S, P)) continue;
+        if (&P == &r || &P == ignore || !solidPart(S, P)) continue;
         // the top round under the lips is solid to a loose empty case (the spring holds it up); a round being fed
         // over it gives way to it instead
         if (P.rs == RS::Presented && !(r.isCase && r.rs == RS::Free)) continue;
@@ -428,8 +436,8 @@ void cartridgeStep(Sim& S) {
     // a hand that grabs a cartridge in the action takes it out of the cycle: that's how you clear a jam
     if (S.hand.on && S.hand.b && S.hand.b->isRound) {
         Body& h = *S.hand.b;
-        if (h.rs == RS::Presented || h.rs == RS::Free || h.rs == RS::Clawed) {
-            if (h.rs == RS::Presented && h.mag) { h.mag->rounds--; h.mag->top = nullptr; h.mag = nullptr; }
+        if (h.rs == RS::Presented || h.rs == RS::Free || h.rs == RS::Clawed || h.rs == RS::Tube) {
+            if ((h.rs == RS::Presented || h.rs == RS::Tube) && h.mag) { h.mag->rounds--; h.mag->top = nullptr; h.mag = nullptr; }
             setState(h, RS::Loose); h.vz = 0; h.z = 0;
         }
     }
@@ -470,7 +478,7 @@ void cartridgeStep(Sim& S) {
     // the magazine holds its top round up under the lips, once the way is clear
     Body* M = seatedMag(S);
     for (auto& b : S.bodies)  // a magazine leaving the gun takes its top round with it
-        if (b.rs == RS::Presented && b.mag && (b.mag != M)) { b.mag->top = nullptr; b.mag = nullptr; retire(S, b); }
+        if ((b.rs == RS::Presented || b.rs == RS::Tube) && b.mag && (b.mag != M)) { b.mag->top = nullptr; b.mag = nullptr; retire(S, b); }
     if (M && M->rounds > 0 && !M->top && !tubeMag(*M)) {
         V2 hl, fl;
         magLips(S, *M, hl, fl);
@@ -497,10 +505,50 @@ void cartridgeStep(Sim& S) {
                 M->top = r;
             }
     }
+    // a tube: its spring pushes the next round out of the mouth, head first, as a real round. Whatever is in the way
+    // (a lifter that's up, a cartridge stop) holds it back; once it's all the way out it's loose in the action.
+    if (M && M->rounds > 0 && !M->top && physicalTube(*M)) {
+        V2 mouthL, outL;
+        tubeMouth(*M, mouthL, outL);
+        V2 mouth = wpt(*M, mouthL), out = rot(outL, M->a);
+        if (Body* r = newCartridge(S, {mouth.x * 1000, mouth.y * 1000}, false)) {
+            setState(*r, RS::Tube);
+            placeHead(*r, mouth, std::atan2(-out.y, -out.x));  // nose up the tube
+            r->z = M->z;
+            r->mag = M; r->lipsL = mouthL; r->feedL = outL;
+            M->top = r;
+        }
+    }
     int spentOnBench = 0;
     for (int pass = 0; pass < 2; pass++)
         for (auto& b : S.bodies) {
             if (!b.isRound || b.gone) continue;
+            if (b.rs == RS::Tube && b.mag) {  // on its way out of a tube: it runs along the tube's line, pushed by the spring
+                Body& Mg = *b.mag;
+                V2 mouth = wpt(Mg, b.lipsL), out = rot(b.feedL, Mg.a), n{out.y, -out.x};
+                b.a = std::atan2(-out.y, -out.x); b.pa = b.a; b.w = 0;
+                V2 h = wpt(b, {b.headLx, 0}), d = vsub(h, mouth);
+                double s = vdot(d, out);
+                if (s < 0) solve(b, Mg, h, {h.x - out.x * s, h.y - out.y * s}, out.x, out.y, -s);  // the column behind it
+                h = wpt(b, {b.headLx, 0}); d = vsub(h, mouth);
+                double e = vdot(d, n);
+                if (std::fabs(e) > 1e-7) solve(b, Mg, h, {h.x - n.x * e, h.y - n.y * e}, e > 0 ? -n.x : n.x, e > 0 ? -n.y : n.y, std::fabs(e));
+                if (pass == 0) {  // the spring: about 6 N on a standard spring, up to a couple of metres a second
+                    double sp = springOf(Mg), vmax = 2.5 * std::sqrt(sp), m = std::max(b.m, 1e-4);
+                    double v = ((b.x - b.px) * out.x + (b.y - b.py) * out.y) / H - (Mg.vx * out.x + Mg.vy * out.y);
+                    if (v < vmax) {
+                        double dv = std::min(6.0 * sp / m * H, vmax - v);
+                        b.px -= out.x * dv * H; b.py -= out.y * dv * H;
+                    }
+                }
+                partContacts(S, b, &Mg);  // (not against its own tube)
+                h = wpt(b, {b.headLx, 0});
+                if (vdot(vsub(h, mouth), out) > c.oal / 1000 - 0.0005) {  // the nose has left the mouth: it's out
+                    Mg.rounds--; Mg.top = nullptr; b.mag = nullptr;
+                    setState(b, RS::Free);
+                }
+                continue;
+            }
             if (b.rs == RS::Presented && b.mag) {  // under the lips: it can slide forward, or be pushed down into the magazine
                 Body& Mg = *b.mag;
                 V2 LH = wpt(Mg, b.lipsL), f = rot(b.feedL, Mg.a), n{f.y, -f.x};
@@ -626,7 +674,8 @@ void cartridgeStep(Sim& S) {
         for (auto& b : S.bodies)  // an empty case still in the action, on the extractor or lying loose in it: it never got out
             if (b.isCase && !b.gone && (b.rs == RS::Clawed || b.rs == RS::Free)) caseBack = true;
         Malf m = caseBack ? Malf::FailureToEject : (!S.chambered && !S.inTransit && Mg && Mg->rounds > 0) ? Malf::FailureToFeed : Malf::None;
-        if (m != Malf::None && S.malf == Malf::None && S.breechSprung) {
+        if (m != Malf::None && S.malf == Malf::None && (S.breechSprung || m == Malf::FailureToFeed)) {  // (worked by hand too: an
+            // action closed on an empty chamber with rounds still in the magazine failed to feed, whoever closed it)
             S.malf = m; S.malfCount[(int)m]++;
             S.events.push_back({Ev::Malfunction, S.t});
         }

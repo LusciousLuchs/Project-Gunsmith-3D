@@ -15,7 +15,7 @@ constexpr double D2R = 3.14159265358979323846 / 180.0;
 
 // Where a physical cartridge is: on the bench or in a hand, guided in by hand, under the magazine lips,
 // loose in the action, or held on the breech face by the extractor.
-enum class RS { None, Loose, Staged, Presented, Free, Clawed };
+enum class RS { None, Loose, Staged, Presented, Free, Clawed, Tube };  // Tube: being pushed out of a tube magazine
 
 struct Body {
     double tilt = 0;                     // presented round tipped nose-up by a feed ramp (rad, <= 0)
@@ -62,6 +62,7 @@ struct Body {
     double vz = 0;                       // sideways speed (m/s), for cases leaving through the ejection port
     Body* mag = nullptr;                 // presented: the magazine holding it
     V2 lipsL, feedL;                     // presented: where its head starts and the feed direction, in the magazine's frame
+                                         // (leaving a tube: the tube's mouth and the way out)
     V2 clawB, clawR;                     // clawed: the extractor's grip, on the breech and on the cartridge (local, m)
     Body* top = nullptr;                 // magazines: the round held up under the lips (physical feeding)
     double zFeed = 0;                    // presented by a double-position magazine: how far off the centre line it started (m);
@@ -82,7 +83,7 @@ struct Joint {
     Body* A = nullptr;
     Body* B = nullptr;
     Body* R = nullptr;
-    V2 la, lb, rel0, relR0;
+    V2 la, lb, rel0, relR0, relRA0;     // (relRA0: an action lock's release part, measured from the held part)
     std::vector<V2> path;
     LatchState state = LatchState::Armed;
     bool engaged = false;
