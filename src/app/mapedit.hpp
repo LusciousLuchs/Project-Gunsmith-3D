@@ -60,7 +60,7 @@ void meHollow();
 void meApplyMaterial(int mat);
 void meNew();
 void meLoadBuiltin();
-bool meSave();                             // to maps/<name>.gsmap
+bool meSave();                             // to user/maps/<name>.gsmap
 bool meOpen(const std::string& path);
 std::vector<std::string> meMapFiles();
 void meWalk(bool fromCamera);

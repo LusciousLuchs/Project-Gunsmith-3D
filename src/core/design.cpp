@@ -676,6 +676,7 @@ std::string designToJson(const Design& d, bool pretty) {
     for (auto& j : d.joints) {
         json jj = {{"type", j.type}, {"a", j.a}, {"b", j.b}};
         if (j.type == "pin" || j.type == "weld") jj["p"] = v2j(j.p);
+        if (j.type == "pin" && j.pinDia != 3.2) jj["dia"] = j.pinDia;
         if (j.type == "track" || j.type == "magwell") {
             jj["p"] = v2j(j.p);
             json p = json::array();
@@ -812,6 +813,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         if (jj.contains("path")) for (auto& p : jj["path"]) j.path.push_back(j2v(p));
         if (jj.contains("table")) for (auto& p : jj["table"]) j.table.push_back(j2v(p));
         j.lockRot = opt<bool>(jj, "lockRot", false);
+        j.pinDia = std::clamp(opt<double>(jj, "dia", 3.2), 0.3, 40.0);
         j.k = opt<double>(jj, "k", 1);
         j.rest = opt<double>(jj, "rest", 0);
         j.damp = opt<double>(jj, "damp", 0);

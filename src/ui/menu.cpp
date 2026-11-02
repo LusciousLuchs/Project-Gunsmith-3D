@@ -1,4 +1,5 @@
 // Gunsmith3D - Main menu, pause menu, settings, and choosing a gun for the test bench.
+#include "app/paths.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "app/keys.hpp"
@@ -127,8 +128,8 @@ void benchPicker() {
         if (ImGui::Selectable(p.label)) { uiTick(); enterBenchWith(loadPreset(p.key)); }
     }
     std::vector<fs::path> files;
-    if (fs::exists("blueprints"))
-        for (auto& e : fs::directory_iterator("blueprints")) if (e.path().extension() == ".json") files.push_back(e.path());
+    if (fs::exists(GUNS_DIR))
+        for (auto& e : fs::directory_iterator(GUNS_DIR)) if (e.path().extension() == ".json") files.push_back(e.path());
     std::sort(files.begin(), files.end());
     ImGui::SeparatorText("Your blueprints");
     if (files.empty()) ImGui::TextDisabled("None saved yet. Save one from the Sandbox.");

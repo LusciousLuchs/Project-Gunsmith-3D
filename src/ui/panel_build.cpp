@@ -6,6 +6,7 @@
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
+#include "app/paths.hpp"
 #include "app/keys.hpp"
 #include "app/settings.hpp"
 #include "ui/ui.hpp"
@@ -45,6 +46,7 @@ static void loadDesign(const Design& nd, const std::string& msg) {
     A.hist.push_back(designToJson(A.design));
     A.future.clear();
     A.design = nd; A.lastSnap = designToJson(A.design); A.sel = {}; A.selVs.clear();
+    A.saveName[0] = 0;  // saves under its own name until told otherwise
     save(); fitView();
     toast(msg);
 }
@@ -514,6 +516,11 @@ static void inspectJoint(JointDef& j) {
     muted("%s", jointDesc(j).c_str());
     ImGui::Dummy({0, 2 * S()});
     if (j.type == "pin" || j.type == "weld") { pBody("Part", j.a, false); pBody("Joined to", j.b, true); }
+    if (j.type == "pin") {
+        pNumU("Diameter", j.pinDia, 0.5, Q::Length, -1, "How thick the pin is drawn. The parts pivot about its centre either way.");
+        j.pinDia = std::clamp(j.pinDia, 0.3, 40.0);
+    }
+    if (j.type == "weld") muted("The two parts move as one. A weld has nothing to draw: its dot only shows in the designer.");
     if (j.type == "track") {
         pBody("Rider", j.a, true); pBody("Track is in", j.b, true);
         pCheck("No turning", j.lockRot, "The rider keeps its angle, like a slide on a straight rail.");
@@ -794,20 +801,16 @@ static void fileTab() {
     if (section("Save", true)) {
         float bw = 70 * S();
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - bw - ImGui::GetStyle().ItemSpacing.x);
-        ImGui::InputTextWithHint("##fname", "Blueprint name", A.saveName, sizeof A.saveName);
+        ImGui::InputTextWithHint("##fname", safeFileName(D.name).c_str(), A.saveName, sizeof A.saveName);
         ImGui::SameLine();
-        if (ImGui::Button("Save", {bw, 0}) && A.saveName[0]) {
-            fs::create_directories("blueprints");
-            std::string fn = std::string("blueprints/") + A.saveName + ".json";
-            std::ofstream(fn) << designToJson(D, true);
-            toast(std::string("Saved ") + A.saveName + ".");
-        }
-        muted("Your work also saves itself as you go (Settings > Designer).");
+        if (ImGui::Button("Save", {bw, 0})) saveBlueprint();
+        if (tipHover()) ImGui::SetTooltip("Ctrl+S saves too, from anywhere.");
+        muted("Saved in the game folder, under user/guns. Ctrl+S saves without coming here. Your work also saves itself as you go (Settings > Designer).");
     }
     if (section("Your blueprints", true)) {
         std::vector<fs::path> files;
-        if (fs::exists("blueprints"))
-            for (auto& e : fs::directory_iterator("blueprints")) if (e.path().extension() == ".json") files.push_back(e.path());
+        if (fs::exists(GUNS_DIR))
+            for (auto& e : fs::directory_iterator(GUNS_DIR)) if (e.path().extension() == ".json") files.push_back(e.path());
         std::sort(files.begin(), files.end());
         if (files.empty()) muted("None saved yet.");
         for (auto& f : files) {
@@ -815,7 +818,11 @@ static void fileTab() {
             if (!ImGui::Selectable(n.c_str())) continue;
             std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
             Design nd; std::string err;
-            if (designFromJson(ss.str(), nd, &err)) { std::string vn = blueprintVersionNote(nd); loadDesign(nd, vn.empty() ? "Opened " + n + ". Undo brings back what you had." : vn); }
+            if (designFromJson(ss.str(), nd, &err)) {
+                std::string vn = blueprintVersionNote(nd);
+                loadDesign(nd, vn.empty() ? "Opened " + n + ". Undo brings back what you had." : vn);
+                std::snprintf(A.saveName, sizeof A.saveName, "%s", n.c_str());  // Ctrl+S saves back to this file
+            }
             else toast("Couldn't read " + n + ": " + err);
         }
     }

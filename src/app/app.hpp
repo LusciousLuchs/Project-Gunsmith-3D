@@ -88,7 +88,7 @@ struct App {
     std::vector<BodyMesh> meshes;
     std::string toast; float toastT = 0;
     bool uiDirty = false;
-    char saveName[96] = "my-action";
+    char saveName[96] = "";              // the blueprint file it saves to; empty: named after the design
     V2 shapeStart{}; bool shaping = false;
     std::vector<int> selVs;              // selected vertices of the selected part
     std::vector<V2> dragOrig;            // vertex positions when a vertex/edge drag started

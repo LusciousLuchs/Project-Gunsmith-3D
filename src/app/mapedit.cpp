@@ -1,4 +1,5 @@
 // Gunsmith3D - The map editor (see mapedit.hpp).
+#include "app/paths.hpp"
 #include "app/mapedit.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
@@ -26,8 +27,8 @@ using gmap::norm;
 
 MapEd ME;
 
-static const char* MAP_DIR = "maps";
-static const char* MAP_AUTOSAVE = "maps/.autosave.gsmap";
+static const char* MAP_DIR = MAPS_DIR;
+static const char* MAP_AUTOSAVE = "user/maps/.autosave.gsmap";
 
 // ---------------------------------------------------------------- small helpers
 static Vector3 rv(V3 v) { return {(float)v.x, (float)v.y, (float)v.z}; }

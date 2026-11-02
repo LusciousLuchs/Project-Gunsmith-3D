@@ -508,8 +508,8 @@ void drawScene() {
         if (j.type == "pin" || j.type == "weld") {
             V2 p = curMM(j.a, j.p);
             float z = std::max(frontZ(j.a), frontZ(j.b)) + 0.25f;
-            if (j.type == "pin") drawCyl(W3(p, -z), W3(p, z), 0.16f, steel);
-            else drawBox(W3(p, 0), {0.45f, 0.45f, z * 2}, steel);
+            // a pin is drawn at its own size; a weld just makes the parts one, so there is nothing to draw
+            if (j.type == "pin") drawCyl(W3(p, -z), W3(p, z), (float)(j.pinDia / 2) * U, steel);
         } else if (j.type == "track") {
             float zb = frontZ(j.b) + 0.02f;
             for (size_t k = 0; k + 1 < j.path.size(); k++) {

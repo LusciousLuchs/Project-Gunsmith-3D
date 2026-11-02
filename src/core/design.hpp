@@ -116,6 +116,7 @@ struct JointDef {
     std::vector<V2> path;                // track / magwell path (on body b); magwell: path[0] = seated, last = exit
     std::vector<double> pathAng;         // magwell: the magazine's tilt at each path point (degrees): rock-in magazines
     bool lockRot = false;
+    double pinDia = 3.2;                 // pin: how thick it is drawn (mm). The pivot itself is a point; the pin is not solid
     double k = 1, rest = 0, damp = 0;    // spring: N/mm, mm, N*s/m
     std::string kind = "coil";           // spring: coil or leaf
     std::string guide;                   // coil: guide rod part ("" = none, it can buckle)

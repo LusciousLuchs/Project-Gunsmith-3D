@@ -2,6 +2,7 @@
 #include "app/app.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
+#include "app/paths.hpp"
 #include "app/bench.hpp"
 #include "app/input.hpp"
 #include "app/keys.hpp"
@@ -97,6 +98,7 @@ void handleKeys() {
         A.S->handStrength = A.handN;
     }
     if (!kb) return;
+    if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_S)) { saveBlueprint(); return; }  // in the designer or on the bench
     if (actPressed(Act::Screenshot)) {  // (raylib itself already saves one on F12)
         if (keyOf(Act::Screenshot) != KEY_F12) TakeScreenshot(TextFormat("gunsmith3d_%d.png", (int)GetTime()));
         toast("Screenshot saved.");

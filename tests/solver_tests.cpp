@@ -1014,6 +1014,14 @@ static void roundParts() {
         CHECK(designFromJson(designToJson(rt), rb) && rb.bodies[0].roundSides == 6 && rb.bodies[0].roundTurn == 30 && rb.bodies[0].roundSweep == 60,
               "sides, turn and sweep are saved");
     }
+    {
+        Design pd; pd.bodies = {bar};
+        JointDef pj; pj.type = "pin"; pj.a = "bar"; pj.p = {10, 0}; pj.pinDia = 5.5; pd.joints = {pj};
+        Design pb;
+        CHECK(designFromJson(designToJson(pd), pb) && pb.joints[0].pinDia == 5.5, "a pin's size is saved");
+        Design old; std::string js = designToJson(pd); js.replace(js.find("\"dia\""), 5, "\"xxx\"");
+        CHECK(designFromJson(js, old) && old.joints[0].pinDia == 3.2, "older pins keep the size they always had");
+    }
     Design dd; dd.bodies = {bar};
     Design back;
     CHECK(designFromJson(designToJson(dd), back) && back.bodies[0].round, "round parts are saved in the blueprint");

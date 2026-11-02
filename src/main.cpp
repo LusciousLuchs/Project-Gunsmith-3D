@@ -9,6 +9,7 @@
 #include "app/input.hpp"
 #include "app/reltest.hpp"
 #include "app/settings.hpp"
+#include "app/paths.hpp"
 #include "app/fonts.hpp"
 #include "app/scene.hpp"
 #include "app/mapedit.hpp"
@@ -88,6 +89,7 @@ int main(int argc, char** argv) {
     }
 #endif
     loadSettings();
+    setupUserFolders();  // user/guns, user/maps, user/textures (and files moved over from older versions)
     if (frames && !useSettings) CFG = Settings();  // automated screenshots use the defaults unless told otherwise
     unsigned flags = FLAG_WINDOW_RESIZABLE | (CFG.msaa ? FLAG_MSAA_4X_HINT : 0) | (CFG.vsync ? FLAG_VSYNC_HINT : 0);
     SetConfigFlags(flags);

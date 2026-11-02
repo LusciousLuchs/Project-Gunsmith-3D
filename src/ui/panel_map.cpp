@@ -305,7 +305,7 @@ static void mapTab() {
 
 static void fileTab() {
     heading("Save");
-    ImGui::TextDisabled("Saved as maps/<name>.gsmap. Maps are plain text, so they're easy to share and edit.");
+    ImGui::TextDisabled("Saved in the game folder as user/maps/<name>.gsmap. Maps are plain text, so they're easy to share and edit.");
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {-1, 30 * S()})) meSave();
     if (ME.dirty) ImGui::TextColored(colWarn(), "Unsaved changes (an autosave is kept).");
     ImGui::Dummy({0, 6 * S()});
