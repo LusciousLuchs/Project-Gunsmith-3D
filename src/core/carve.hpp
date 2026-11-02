@@ -24,11 +24,23 @@ std::vector<csg::Poly> prismPolys(const Prism& p, const CarveDef& c);
 // Where the cutter crosses the side-view plane at depth z: a convex polygon (design mm), or empty.
 std::vector<V2> section(const Prism& p, double z);
 
+// Round (turned) parts: the outline spun about its long middle line.
+struct RoundAxis { V2 o, dir; double R = 0; };                 // a point on the axis, its direction (unit), the largest radius
+RoundAxis roundAxis(const BodyDef& b);
+std::vector<V2> roundProfile(const BodyDef& b, const RoundAxis& ax);  // (along, radius) stations, front to back; a step is two
+                                                                     // stations at the same place
+// Its cross-section for a radius of 1: points (up, toward the near side), round the axis. `segs` for circles.
+// Wedges (sweep < 360) include the axis point. `smooth` (if given) marks points on curves, for shading.
+std::vector<V2> roundShape(const BodyDef& b, int segs, std::vector<char>* smooth = nullptr);
+void syncRound(BodyDef& b);                                          // a round part's thickness is its width across
+std::vector<std::vector<V2>> roundSection(const BodyDef& b, double dz);  // side outline(s) at depth dz from its middle
+
 struct Slice {
     double z0 = 0, z1 = 0;                       // depth range (absolute mm)
+    std::vector<std::vector<V2>> outlines;       // the side outline(s) at this depth; empty = the part's own outline
     std::vector<std::vector<V2>> cav;            // the cuts at this depth (design mm, convex)
 };
-// The part through its thickness. Empty when it has no carves (it is then one plain slab).
+// The part through its thickness. Empty for a plain slab (no carves, not round).
 std::vector<Slice> slices(const BodyDef& b, int maxSlices = 16);
 
 // Area, centroid and polar second moment (about the centroid) of `outline` minus `cav` (mm, mm^2, mm^4).

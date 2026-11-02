@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 // ---------------------------------------------------------------- UI helpers
@@ -102,7 +103,7 @@ static float labelW() { return 118 * CFG.uiScale; }
 void prop(const char* label, const char* tip) {
     ImGui::AlignTextToFramePadding();
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.66f, 0.69f, 0.74f, 1));
-    ImGui::TextUnformatted(label);
+    ImGui::TextUnformatted(label, std::strstr(label, "##"));  // "Depth##cut": shows "Depth", kept apart by the rest
     ImGui::PopStyleColor();
     if (tip && tipHover()) ImGui::SetTooltip("%s", tip);
     ImGui::SameLine(labelW());

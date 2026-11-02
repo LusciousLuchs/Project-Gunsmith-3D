@@ -31,6 +31,8 @@ These are what currently lock the designer. They are the roadmap, roughly in thi
 5. **One- or two-handed classification** from grip and stock markers the player places.
 6. **Rebuild and polish the examples** on these blocks, with no special code. Feeding has been made robust: the bolt action's ramp is longer (all bullet shapes feed when worked by hand), and the built-in cartridges now have real shapes. Still open: on the tilting-barrel pistol, racking out a live round is a knife-edge (26 of 30 shape and nose-length combinations), because a live round only leaves the extractor once it swings past 18 degrees (`cartridges.cpp`). A physics fix there would help every design, not just the example.
 
+Round (turned) parts (`src/core/round.cpp`, `latheMesh` in `app/gfx.cpp`): the outline spun about an axis, with sides, turn and sweep; the physics uses the same depth slabs as carving, each the round shape's outline at that depth.
+
 Carving (`src/core/carve.cpp`, `csg.cpp`, `app/carvetool.cpp`): parts can be cut in 3D from any direction. The display cuts the real solid (own BSP code; adding an outside geometry library was blocked). The physics slices a carved part through its depth into up to 16 welded slabs, each the outline minus the cuts there. Not yet in the physics: cuts on magazines and on parts that turn on the bore.
 
 Hard limit to keep in mind: the physics works in the side-view plane plus depth. Shapes can now be fully 3D (carving), but parts still only move in that plane. Things that move *across* the gun (swing-out cylinders, side-mounted magazines, cross-bolt safeties) need a simplified treatment. Do these last, and be upfront about it.

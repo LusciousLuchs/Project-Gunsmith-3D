@@ -308,6 +308,7 @@ static const std::vector<Lesson>& lessons() {
         Step("Move a corner", "Pick Select and click a part. Its corners are the little squares: drag one.").check(reshaped, "Drag a corner").at("tool:Select"),
         Step("Edges", "The diamonds sit in the middle of each edge. Drag one to move the whole edge, or Shift-drag it to pull out a step. Right-click (or double-click) one to split the edge and get a new corner. A part can have up to 32 corners.").check(moreCorners, "Right-click a diamond").at("shape:split"),
         Step("Round it off", "Round corners rounds every corner. Smoothness rounds the front and back edges: good for grips.").check(rounded, "Round the corners or add smoothness").at("shape:round|shape:smooth").onTab(0),
+        Step("Round parts", "Tick Round to turn a part on a lathe: a rectangle becomes a round bar or barrel, and steps in the outline become shoulders. Sides turns it down to flats instead (8 is an octagon), and Sweep makes a wedge, like a locking lug.").at("part:round").onTab(0),
         Step("Exact numbers", "Every number on the right can be typed. Click it without dragging and type a value, or drag sideways to nudge it. Sliders take a double-click.").at("part:thickness").onTab(0),
         Step("Cut", "The Knife cuts a part into two separate parts along a line you drag.").check(newPart, "Cut a part with the knife").at("tool:Knife"),
         Step("Holes and pockets", "To cut a hole, slot or pocket into a part, use Carve. It has its own lesson, next.").at("tool:Carve"),

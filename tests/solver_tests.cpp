@@ -964,6 +964,61 @@ static void carving() {
     }
 }
 
+static void roundParts() {
+    std::printf("Round parts\n");
+    BodyDef bar; bar.id = "bar"; bar.fixed = true; bar.layer = "A"; bar.pts = {{0, -8}, {100, -8}, {100, 8}, {0, 8}}; fixShape(bar);
+    bar.round = true; carve::syncRound(bar);
+    double v = carve::volume(bar), cyl = 3.14159265 * 64 * 100;
+    CHECK(std::fabs(bar.thick - 16) < 1e-6, "a round part is as thick as it is wide");
+    CHECK(std::fabs(v - cyl) < cyl * 0.03, "a 16 mm round bar has the volume of a cylinder, not a square bar");
+    BodyDef step = bar; step.pts = {{0, -8}, {60, -8}, {60, -5}, {100, -5}, {100, 5}, {60, 5}, {60, 8}, {0, 8}}; fixShape(step); carve::syncRound(step);
+    double vs = carve::volume(step), want = 3.14159265 * (64 * 60 + 25 * 40);
+    CHECK(std::fabs(vs - want) < want * 0.04, "a stepped outline turns into a barrel with a shoulder");
+    // a block dropped straight down onto the bar, out near its side (7.5 mm from the middle, the bar is 8 in radius):
+    // a square bar stops it at its top face, a round one lets it down much further
+    auto rig = [&](bool round) {
+        Design d;
+        BodyDef b = bar; b.round = round; if (!round) b.thick = 16;
+        BodyDef k; k.id = "block"; k.layer = "A"; k.thick = 1; k.z = 7.5; k.pts = {{40, -20}, {60, -20}, {60, -15}, {40, -15}}; fixShape(k);
+        d.bodies = {b, k};
+        JointDef t; t.type = "track"; t.a = "block"; t.b = "world"; t.p = {50, -17.5}; t.path = {{50, -17.5}, {50, 10}};
+        d.joints = {t};
+        auto S = sim::build(d);
+        sim::Body* m = S->find("block");
+        m->vy = 0.5;  // thrown down at it
+        for (int i = 0; i < 10; i++) sim::run(*S, 0.05);
+        return -15 + (m->y - m->y0) * 1000;  // where the block's bottom ended up (mm, y down)
+    };
+    double sq = rig(false), rd = rig(true);
+    CHECK(std::fabs(sq - -8) < 0.3, "dropped onto a square bar, a block stops on its flat top");
+    CHECK(rd > -4.2 && rd < -2.8, "on a round bar, out near its side, it goes down to where the curve really is");
+    {   // turned down to flats: square, octagon; turned; and a wedge
+        BodyDef q = bar; q.roundSides = 4; carve::syncRound(q);
+        double vq = carve::volume(q);
+        CHECK(std::fabs(q.thick - 16) < 0.01 && std::fabs(vq - 16 * 16 * 100) < 16 * 16 * 100 * 0.01, "4 sides is the square bar as drawn");
+        BodyDef o8 = bar; o8.roundSides = 8; carve::syncRound(o8);
+        double v8 = carve::volume(o8), want8 = 8 * 64 * std::tan(3.14159265 / 8) * 100;  // flats 8 mm from the axis
+        CHECK(std::fabs(v8 - want8) < want8 * 0.02, "8 sides is an octagon with its flats on the drawn outline");
+        BodyDef d45 = q; d45.roundTurn = 45; carve::syncRound(d45);
+        CHECK(std::fabs(d45.thick - 16 * std::sqrt(2.0)) < 0.05 && std::fabs(carve::volume(d45) - vq) < vq * 0.02,
+              "a square turned 45 degrees is a diamond: as much metal, wider across");
+        BodyDef w = bar; w.roundSweep = 60; carve::syncRound(w);
+        double vw = carve::volume(w);
+        CHECK(std::fabs(vw - cyl / 6) < cyl / 6 * 0.06, "a 60 degree sweep is a wedge, a sixth of the bar");
+        auto up = carve::roundSection(w, 0.0);  // pointing up: at the middle depth it fills only above the axis
+        double ymax = -1e9;
+        for (auto& pl : up) for (auto& p : pl) ymax = std::max(ymax, p.y);
+        CHECK(!up.empty() && ymax < 0.05, "a wedge turned to 0 points up");
+        Design rt; BodyDef w2 = w; w2.roundSides = 6; w2.roundTurn = 30; rt.bodies = {w2};
+        Design rb;
+        CHECK(designFromJson(designToJson(rt), rb) && rb.bodies[0].roundSides == 6 && rb.bodies[0].roundTurn == 30 && rb.bodies[0].roundSweep == 60,
+              "sides, turn and sweep are saved");
+    }
+    Design dd; dd.bodies = {bar};
+    Design back;
+    CHECK(designFromJson(designToJson(dd), back) && back.bodies[0].round, "round parts are saved in the blueprint");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -985,6 +1040,7 @@ int main() {
     tutorialGun();
     anyMagazine();
     carving();
+    roundParts();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

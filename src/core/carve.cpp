@@ -160,7 +160,7 @@ static bool same(const std::vector<std::vector<V2>>& A, const std::vector<std::v
 }
 
 std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
-    if (b.carves.empty()) return {};
+    if (b.carves.empty() && !b.round) return {};
     std::vector<Prism> P;
     for (auto& c : b.carves) P.push_back(prism(c, b));
     double t = std::max(0.5, b.thick), zA = b.z - t / 2, zB = b.z + t / 2;
@@ -179,6 +179,14 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
         return cav;
     };
     std::vector<double> br = {zA, zB};
+    if (b.round) {  // a round part changes all the way through: even slabs
+        int n = std::clamp((int)std::ceil(t / 1.5), 4, 10);
+        for (int k = 1; k < n; k++) br.push_back(zA + t * k / n);
+    }
+    auto shapeAt = [&](Slice& sl) {
+        sl.cav = cutsAt((sl.z0 + sl.z1) / 2);
+        if (b.round) sl.outlines = roundSection(b, (sl.z0 + sl.z1) / 2 - b.z);
+    };
     for (auto& p : P)
         for (auto* ring : {&p.lo, &p.hi})
             for (auto& q : *ring) if (q.z > zA && q.z < zB) br.push_back(q.z);
@@ -193,14 +201,18 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
         int n = vary ? std::max(1, (int)std::ceil((q - p) / 0.5)) : 1;
         for (int k = 0; k < n; k++) {
             Slice sl; sl.z0 = p + (q - p) * k / n; sl.z1 = p + (q - p) * (k + 1) / n;
-            sl.cav = cutsAt((sl.z0 + sl.z1) / 2);
-            if (!out.empty() && same(out.back().cav, sl.cav, 0.05)) out.back().z1 = sl.z1;  // no change: one slice
+            shapeAt(sl);
+            if (!b.round && !out.empty() && same(out.back().cav, sl.cav, 0.05)) out.back().z1 = sl.z1;  // no change: one slice
             else out.push_back(sl);
         }
     }
     // too many: merge the neighbours that differ least, weighted by how thick they are
-    auto diff = [](const std::vector<std::vector<V2>>& A, const std::vector<std::vector<V2>>& B) {
-        double d = 0;
+    auto diff = [](const Slice& SA, const Slice& SB) {
+        const auto &A = SA.cav, &B = SB.cav;
+        double d = 0, oa = 0, ob = 0;
+        for (auto& q : SA.outlines) oa += sigOf(q).a;
+        for (auto& q : SB.outlines) ob += sigOf(q).a;
+        d += std::fabs(oa - ob);
         if (A.size() != B.size()) { for (auto& q : A) d += sigOf(q).a; for (auto& q : B) d += sigOf(q).a; return d + 1; }
         for (size_t i = 0; i < A.size(); i++) {
             Sig a = sigOf(A[i]), b = sigOf(B[i]);
@@ -211,13 +223,15 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
     while ((int)out.size() > std::max(1, maxSlices)) {
         size_t best = 0; double bc = 1e18;
         for (size_t i = 0; i + 1 < out.size(); i++) {
-            double c = diff(out[i].cav, out[i + 1].cav) * (out[i + 1].z1 - out[i].z0);
+            double c = diff(out[i], out[i + 1]) * (out[i + 1].z1 - out[i].z0);
             if (c < bc) { bc = c; best = i; }
         }
         out[best].z1 = out[best + 1].z1;
-        out[best].cav = cutsAt((out[best].z0 + out[best].z1) / 2);
+        shapeAt(out[best]);
         out.erase(out.begin() + best + 1);
     }
+    if (b.round)  // depths the round part doesn't reach
+        out.erase(std::remove_if(out.begin(), out.end(), [](const Slice& x) { return x.outlines.empty(); }), out.end());
     return out;
 }
 
@@ -269,11 +283,12 @@ double volume(const BodyDef& b) {
     std::vector<V2> o = outlineOf(b);
     double a = 0;
     for (size_t i = 0; i < o.size(); i++) { const V2 &p = o[i], &r = o[(i + 1) % o.size()]; a += p.x * r.y - r.x * p.y; }
-    if (b.carves.empty()) return std::fabs(a / 2) * b.thick;
+    if (b.carves.empty() && !b.round) return std::fabs(a / 2) * b.thick;
     double v = 0;
     for (auto& s : slices(b)) {
         double ar, J; V2 c;
-        if (material(o, s.cav, ar, c, J)) v += ar * (s.z1 - s.z0);
+        if (s.outlines.empty()) { if (material(o, s.cav, ar, c, J)) v += ar * (s.z1 - s.z0); }
+        else for (auto& q : s.outlines) if (material(q, s.cav, ar, c, J)) v += ar * (s.z1 - s.z0);
     }
     return v;
 }

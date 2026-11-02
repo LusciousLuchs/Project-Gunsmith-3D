@@ -169,6 +169,31 @@ void testPanel() {
         if (detail(StatsDetail::Engineering)) ImGui::TextDisabled("Simulated time %.1f ms", S.t * 1000);
     }
 
+    // ---- how fast it runs, and the slow motion after each shot (saved with the settings)
+    if (section("Speed", true)) {
+        bool ch = false, wasEdited = editedAny;
+        static const float sp[] = {1, 0.5f, 0.25f, 0.1f};
+        int bi = 0;
+        for (int i = 0; i < 4; i++) if (std::fabs(CFG.benchSpeed - sp[i]) < 1e-4f) bi = i;
+        prop("Speed", "How fast the bench runs between shots. The simulation is the same at any speed.");
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##bs", &bi, "Real time\0Half speed\0Quarter speed\0One tenth\0")) { CFG.benchSpeed = sp[bi]; ch = true; }
+        ch |= pCheck("Slow motion on shots", CFG.slowOnShot, "Slows right down for a moment after every shot, so you can watch the action cycle.");
+        if (CFG.slowOnShot) {
+            static const float ss[] = {0.25f, 0.1f, 0.05f, 0.02f, 0.01f};
+            int si = 3;
+            for (int i = 0; i < 5; i++) if (std::fabs(CFG.slowSpeed - ss[i]) < 1e-4f) si = i;
+            prop("How slow");
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##ss", &si, "1/4\0" "1/10\0" "1/20\0" "1/50\0" "1/100\0")) { CFG.slowSpeed = ss[si]; ch = true; }
+            prop("For how long", "Of simulated time after the shot.");
+            ImGui::SetNextItemWidth(-1);
+            ch |= ImGui::SliderFloat("##sw", &CFG.slowWindowMs, 20, 400, "%.0f ms"); typeable();
+        }
+        if (ch) saveSettings();
+        editedAny = wasEdited;  // bench settings never touch the design
+    }
+
     reliabilitySection();
 
     // ---- bench conditions and the controls, folded away

@@ -100,6 +100,13 @@ struct BodyDef {
     std::vector<double> rad;             // corner radius at each vertex (mm)
     std::vector<double> bulge;           // edge i (pts[i] -> pts[i+1]) bows outward by this much (mm, negative = inward)
     std::vector<CarveDef> carves;        // cut out of the shape in 3D, in order
+    bool round = false;                  // turned: the outline spun about its long middle line (barrels, rods, bolts);
+                                         // its thickness is then its width across
+    int roundSides = 0;                  // 0 = a circle; 3+ = that many flats (4 = the square bar it was drawn as, 8 = octagon)
+    double roundTurn = 0;                // degrees the cross-section is turned about the axis (0 = a flat on top)
+    double roundSweep = 360;             // degrees it goes round: less makes a wedge (a lug), centred on the Turn direction
+    int roundAxis = 0;                   // the line it turns about, through its middle: 0 level (front to back), 1 upright,
+                                         // 2 along its own length (for parts drawn at a slant)
 };
 
 struct JointDef {

@@ -287,21 +287,7 @@ void designerPage() {
 
 void benchPage() {
     ImGui::SeparatorText("Speed");
-    row("Normal speed", "How fast the bench runs between shots. The simulation itself is the same at any speed.");
-    static const float sp[] = {1, 0.5f, 0.25f, 0.1f};
-    int bi = 0;
-    for (int i = 0; i < 4; i++) if (std::fabs(CFG.benchSpeed - sp[i]) < 1e-4f) bi = i;
-    if (ImGui::Combo("##bs", &bi, "Real time\0Half speed\0Quarter speed\0One tenth\0")) { CFG.benchSpeed = sp[bi]; dirty = true; }
-    row("Slow motion on each shot"); dirty |= ImGui::Checkbox("##so", &CFG.slowOnShot);
-    if (CFG.slowOnShot) {
-        static const float ss[] = {0.25f, 0.1f, 0.05f, 0.02f, 0.01f};
-        int si = 3;
-        for (int i = 0; i < 5; i++) if (std::fabs(CFG.slowSpeed - ss[i]) < 1e-4f) si = i;
-        row("How slow");
-        if (ImGui::Combo("##ss", &si, "1/4\0" "1/10\0" "1/20\0" "1/50\0" "1/100\0")) { CFG.slowSpeed = ss[si]; dirty = true; }
-        row("For how long", "Of simulated time after the shot.");
-        dirty |= ImGui::SliderFloat("##sw", &CFG.slowWindowMs, 20, 400, "%.0f ms"); typeable();
-    }
+    ImGui::TextDisabled("Speed and slow motion are on the test bench itself, in the Speed section of its panel.");
     ImGui::SeparatorText("Reliability test");
     row("Default rounds");
     static const int rr[] = {25, 50, 100, 200};

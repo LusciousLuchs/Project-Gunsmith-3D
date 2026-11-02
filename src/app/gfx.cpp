@@ -2,6 +2,7 @@
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "csg.hpp"
+#include "raymath.h"
 
 #include <algorithm>
 #include <cmath>
@@ -219,6 +220,82 @@ Mesh extrude(const std::vector<V2>& localMM, float depth, float roundMM) {
         }
     }
     m.vertexCount = k; m.triangleCount = k / 3;
+    UploadMesh(&m, false);
+    return m;
+}
+
+// A part turned on a lathe: `st` is (along the axis, radius) in mm, front to back; the axis runs through `o` (mm, in the
+// mesh's frame but y down, as designs are) along `dir`. `S` is the cross-section for radius 1, as (up, toward the
+// near side), counter-clockwise; `smooth` marks its points on curves (shaded round, the rest flat).
+Mesh latheMesh(const std::vector<V2>& st, V2 o, V2 dir, const std::vector<V2>& S, const std::vector<char>& smooth) {
+    std::vector<float> P, Nm;
+    auto put = [&](Vector3 p, Vector3 n) { P.insert(P.end(), {p.x, p.y, p.z}); Nm.insert(Nm.end(), {n.x, n.y, n.z}); };
+    Vector3 D{(float)dir.x, (float)-dir.y, 0}, UP{(float)dir.y, (float)dir.x, 0}, Z{0, 0, 1};
+    auto at = [&](double u, double r, V2 s) {
+        double ax = o.x + dir.x * u, ay = o.y + dir.y * u;
+        Vector3 c{(float)(ax * U), (float)(-ay * U), 0};
+        return Vector3Add(c, Vector3Add(Vector3Scale(UP, (float)(r * s.x * U)), Vector3Scale(Z, (float)(r * s.y * U))));
+    };
+    auto tri = [&](Vector3 a, Vector3 b, Vector3 c, Vector3 na, Vector3 nb, Vector3 nc) {
+        Vector3 g = Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(c, a));
+        if (Vector3LengthSqr(g) < 1e-14f) return;
+        if (Vector3DotProduct(g, Vector3Add(Vector3Add(na, nb), nc)) < 0) { std::swap(b, c); std::swap(nb, nc); }
+        put(a, na); put(b, nb); put(c, nc);
+    };
+    size_t n = S.size();
+    if (n < 3 || st.size() < 2) { Mesh m{}; return m; }
+    // outward normal of each side of the cross-section, and at each point (for curves)
+    std::vector<V2> en(n), vn(n);
+    for (size_t j = 0; j < n; j++) {
+        V2 a = S[j], c = S[(j + 1) % n];
+        double ex = c.x - a.x, ey = c.y - a.y, l = std::hypot(ex, ey);
+        en[j] = l > 0 ? V2{ey / l, -ex / l} : V2{0, 0};
+    }
+    for (size_t j = 0; j < n; j++) {
+        V2 a = en[(j + n - 1) % n], c = en[j];
+        double x = a.x + c.x, y = a.y + c.y, l = std::hypot(x, y);
+        vn[j] = l > 0 ? V2{x / l, y / l} : c;
+    }
+    auto normal = [&](V2 n2, V2 s, double slope) {  // tilted back where the part tapers
+        Vector3 v = Vector3Add(Vector3Scale(UP, (float)n2.x), Vector3Scale(Z, (float)n2.y));
+        return Vector3Normalize(Vector3Subtract(v, Vector3Scale(D, (float)(slope * (n2.x * s.x + n2.y * s.y)))));
+    };
+    for (size_t i = 0; i + 1 < st.size(); i++) {
+        double u0 = st[i].x, r0 = st[i].y, u1 = st[i + 1].x, r1 = st[i + 1].y, du = u1 - u0, dr = r1 - r0;
+        if (r0 < 1e-6 && r1 < 1e-6) continue;
+        if (std::fabs(du) < 1e-9) {  // a shoulder: a flat ring facing along the axis
+            Vector3 f = dr > 0 ? Vector3Negate(D) : D;
+            for (size_t j = 0; j < n; j++) {
+                V2 a = S[j], c = S[(j + 1) % n];
+                tri(at(u0, r0, a), at(u1, r1, a), at(u1, r1, c), f, f, f);
+                tri(at(u0, r0, a), at(u1, r1, c), at(u0, r0, c), f, f, f);
+            }
+            continue;
+        }
+        double slope = dr / du;
+        for (size_t j = 0; j < n; j++) {
+            size_t k = (j + 1) % n;
+            V2 a = S[j], c = S[k];
+            bool sm = smooth[j] && smooth[k];
+            Vector3 na = normal(sm ? vn[j] : en[j], a, slope), nc = normal(sm ? vn[k] : en[j], c, slope);
+            tri(at(u0, r0, a), at(u1, r1, a), at(u1, r1, c), na, na, nc);
+            tri(at(u0, r0, a), at(u1, r1, c), at(u0, r0, c), na, nc, nc);
+        }
+    }
+    for (int end = 0; end < 2; end++) {  // flat ends, fanned from the axis
+        const V2& e = end == 0 ? st.front() : st.back();
+        if (e.y < 1e-6) continue;
+        Vector3 cn = end == 0 ? Vector3Negate(D) : D, ctr = at(e.x, 0, {0, 0});
+        for (size_t j = 0; j < n; j++) tri(ctr, at(e.x, e.y, S[j]), at(e.x, e.y, S[(j + 1) % n]), cn, cn, cn);
+    }
+    Mesh m{};
+    m.vertexCount = (int)P.size() / 3; m.triangleCount = m.vertexCount / 3;
+    m.vertices = (float*)MemAlloc(std::max<size_t>(1, P.size()) * sizeof(float));
+    m.normals = (float*)MemAlloc(std::max<size_t>(1, Nm.size()) * sizeof(float));
+    m.texcoords = (float*)MemAlloc(std::max(1, m.vertexCount) * 2 * sizeof(float));
+    std::copy(P.begin(), P.end(), m.vertices);
+    std::copy(Nm.begin(), Nm.end(), m.normals);
+    for (int i = 0; i < m.vertexCount * 2; i++) m.texcoords[i] = 0;
     UploadMesh(&m, false);
     return m;
 }

@@ -20,8 +20,12 @@ bool carvePick(int& body, Vector3& p, Vector3& n) {
     Ray r = mouseRay();
     float best = 1e30f;
     body = -1;
+    for (int pass = 0; pass < 2 && body < 0; pass++)  // see-through parts (X-ray) only if nothing solid is there
     for (size_t i = 0; i < A.design.bodies.size() && i < A.meshes.size(); i++) {
         if (!A.meshes[i].ok) continue;
+        const BodyDef& d = A.design.bodies[i];
+        if (A.cutaway && d.z - d.thick / 2 > 0.5) continue;      // cut away: not there to point at
+        if (pass == 0 && A.xray && d.ghost) continue;
         V2 c = centroidOf(A.design.bodies[i]);
         Matrix M = MatrixTranslate((float)c.x * U, -(float)c.y * U, bodyZ((int)i));
         RayCollision h = GetRayCollisionMesh(r, A.meshes[i].mesh, M);

@@ -157,20 +157,25 @@ std::unique_ptr<Sim> build(const Design& design) {
     s.world.id = "world";
     s.bodies.reserve(s.design.bodies.size() + MAX_SPAWNED);  // body pointers must stay valid as magazines and rounds spawn
     s.groundY = groundLevelMM(s.design) / 1000;
+    for (auto& d : s.design.bodies) carve::syncRound(d);  // a round part's thickness is its diameter
     for (auto& d : s.design.bodies) {
         Body b;
         if (!makeBody(d, b)) continue;
-        if (d.carves.empty() || d.rollOn || d.magazine) { s.bodies.push_back(b); continue; }
+        if ((d.carves.empty() && !d.round) || d.rollOn || d.magazine) { s.bodies.push_back(b); continue; }
         // carved: one body per depth slice, welded into one part. The thickest-in-material slice keeps the part's id.
         std::vector<Body> sl;
         double vol = 0;
-        for (auto& c : carve::slices(d)) {
+        std::vector<V2> plain = outlineOf(d);
+        for (auto& c : carve::slices(d))
+        for (auto& shape : c.outlines.empty() ? std::vector<std::vector<V2>>{plain} : c.outlines) {  // (a round part's slab can be in pieces)
             double area, J; V2 cen;
-            if (!carve::material(outlineOf(d), c.cav, area, cen, J) || area < 0.5) continue;
+            if (!carve::material(shape, c.cav, area, cen, J) || area < 0.5) continue;
             // every slice keeps the part's own reference point (the outline's centre), so the part draws and joins
             // as before; like welded pieces, the small shift of the centre of mass is left out
             Body x = b;
             double t = c.z1 - c.z0, cx = b.x0 * 1000, cy = b.y0 * 1000;
+            x.lp.clear();
+            for (auto& p : shape) x.lp.push_back({(p.x - cx) / 1000, (p.y - cy) / 1000});
             x.cav.clear();
             for (auto& q : c.cav) {
                 std::vector<V2> lq;

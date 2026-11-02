@@ -8,10 +8,12 @@
 #include "app/units.hpp"
 #include "app/settings.hpp"
 #include "app/carvetool.hpp"
+#include "imgui.h"
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
+#include <string>
 
 void drawOverlay() {
     auto& D = A.design;
@@ -33,9 +35,11 @@ void drawOverlay() {
             viewText(t, s.x - w / 2, s.y + 2 + (h - 13 * CFG.uiScale) / 2, 13, RAYWHITE);
         }
         if (A.hover && !(A.S->hand.on)) {
-            const char* t = A.hoverHandle ? "Drag the handle: lift to unlock, pull back to open"
+            std::string nm = A.hover->d && !A.hover->isRound ? A.hover->d->name : "";
+            std::string tt = A.hoverHandle ? "Drag the handle: lift to unlock, pull back to open"
                           : A.hover->isRound ? (A.hover->staged ? "Push it home, or close the action on it" : "Drag into the open action, in front of the breech face")
-                          : A.hover->isMag ? "Drag to move the magazine" : "Drag to move";
+                          : nm.empty() ? "Drag to move" : nm + ": drag to move";
+            const char* t = tt.c_str();
             float w = viewTextWidth(t, 12);
             DrawRectangleRounded({m.x + 12, m.y + 12, w + 12, 20 * CFG.uiScale}, 0.4f, 6, Color{20, 23, 28, 190});
             viewText(t, m.x + 18, m.y + 12 + 4 * CFG.uiScale, 12, Color{236, 238, 242, 255});
@@ -169,4 +173,14 @@ void drawOverlay() {
         }
     }
     drawCarveOverlay();
+    // the name of the part under the cursor, so parts can be told apart without selecting them
+    if (!A.drafting && !A.draftHasF && !A.carveDrag && A.dragKind == 0 && mouseInViewport() && !ImGui::GetIO().WantCaptureMouse) {
+        int i; Vector3 p, n;
+        if (carvePick(i, p, n) && i < (int)D.bodies.size() && !D.bodies[i].name.empty()) {
+            const char* t = D.bodies[i].name.c_str();
+            float w = viewTextWidth(t, 12);
+            DrawRectangleRounded({m.x + 14, m.y + 14, w + 12, 20 * CFG.uiScale}, 0.4f, 6, Color{20, 23, 28, 190});
+            viewText(t, m.x + 20, m.y + 14 + 4 * CFG.uiScale, 12, Color{236, 238, 242, 255});
+        }
+    }
 }

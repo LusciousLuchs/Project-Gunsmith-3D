@@ -30,6 +30,7 @@ int main(int argc, char** argv) {
     std::string presetArg, shotPath, selectArg, demo;
     int frames = 0;
     bool trackDraft = false, carveTool = false;
+    float camYaw = -100, camPitch = 0;
     int selCarveArg = -1;
     bool fireArg = false, sideArg = false, testArg = false, designerArg = false;
     int relArg = 0;
@@ -59,7 +60,8 @@ int main(int argc, char** argv) {
         else if (a == "--side") sideArg = true;
         else if (a == "--select") selectArg = next();
         else if (a == "--trackdraft") trackDraft = true;
-        else if (a == "--carvetool") carveTool = true;        // (screenshots) pick the Carve tool
+        else if (a == "--carvetool") carveTool = true;
+        else if (a == "--cam") { camYaw = std::atof(next().c_str()); camPitch = std::atof(next().c_str()); }  // (screenshots) camera angles, radians        // (screenshots) pick the Carve tool
         else if (a == "--selcarve") selCarveArg = std::atoi(next().c_str());  // (screenshots) select carve N of the selected part   // (screenshots) start a track on the selected part
         else if (a == "--demo") demo = next();
         else if (a == "--designer") designerArg = true;
@@ -132,6 +134,7 @@ int main(int argc, char** argv) {
     if (sideArg) A.ortho = true;
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
     if (carveTool) A.tool = Tool::Carve;
+    if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
     if (selCarveArg >= 0) A.selCarve = selCarveArg;
     if (trackDraft && A.sel.kind == 1) {
         auto& b = A.design.bodies[A.sel.idx];

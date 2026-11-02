@@ -634,6 +634,13 @@ std::string designToJson(const Design& d, bool pretty) {
         json jb = {{"id", b.id}, {"name", b.name}, {"fixed", b.fixed}, {"layer", b.layer},
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
+        if (b.round) {
+            jb["round"] = true;
+            if (b.roundSides) jb["roundSides"] = b.roundSides;
+            if (b.roundTurn != 0) jb["roundTurn"] = b.roundTurn;
+            if (b.roundSweep < 360) jb["roundSweep"] = b.roundSweep;
+            if (b.roundAxis) jb["roundAxis"] = b.roundAxis;
+        }
         if (!b.carves.empty()) {
             json cs = json::array();
             for (auto& c : b.carves)
@@ -738,6 +745,12 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
+        b.round = opt<bool>(jb, "round", false);
+        b.roundSides = std::clamp(opt<int>(jb, "roundSides", 0), 0, 64);
+        if (b.roundSides > 0 && b.roundSides < 3) b.roundSides = 3;
+        b.roundTurn = opt<double>(jb, "roundTurn", 0.0);
+        b.roundSweep = std::clamp(opt<double>(jb, "roundSweep", 360.0), 1.0, 360.0);
+        b.roundAxis = std::clamp(opt<int>(jb, "roundAxis", 0), 0, 2);
         if (jb.contains("carves") && jb["carves"].is_array())
             for (auto& jc : jb["carves"]) {
                 if (!jc.is_object()) continue;

@@ -56,7 +56,7 @@ static void ensureMeshes() {
     for (size_t i = 0; i < D.bodies.size(); i++) {
         auto& d = D.bodies[i];
         std::ostringstream k;
-        k << d.thick << 's' << d.smooth;
+        k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis;
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
@@ -67,7 +67,13 @@ static void ensureMeshes() {
         V2 c = centroidOf(d);
         std::vector<V2> local;
         for (auto& p : outlineOf(d)) local.push_back({p.x - c.x, p.y - c.y});
-        A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
+        if (d.round) {  // turned on a lathe about its long middle line
+            carve::syncRound(d);
+            carve::RoundAxis ax = carve::roundAxis(d);
+            std::vector<char> sm;
+            std::vector<V2> S = carve::roundShape(d, 48, &sm);
+            A.meshes[i].mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
+        } else A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
         if (!d.carves.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
             std::vector<std::vector<csg::Poly>> cut;
             for (auto& cv : d.carves) {
@@ -93,7 +99,7 @@ static void drawOutline(int i, Matrix M, Color c) {
     const BodyDef& d = A.design.bodies[i];
     V2 cen = centroidOf(d);
     auto o = outlineOf(d);
-    float h = bodyDepth(d) / 2 + 0.003f;
+    float h = d.round ? 0.f : bodyDepth(d) / 2 + 0.003f;  // a round part: its silhouette, on its middle line
     size_t n = o.size();
     std::vector<Vector3> f(n), b(n);
     for (size_t k = 0; k < n; k++) {

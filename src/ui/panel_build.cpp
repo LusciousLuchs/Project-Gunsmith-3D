@@ -73,14 +73,14 @@ static void carveToolPanel() {
           "turn the view to cut from the top, the ends or the far side.");
     shapeButtons(A.carveShape);
     tutAnchor("carve:shape");
-    if (A.carveShape == "circle") pNumU("Diameter", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
+    if (A.carveShape == "circle") pNumU("Diameter##tool", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
     else {
-        pNumU("Width", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
-        pNumU("Height", A.carveH, 0.5, Q::Length);
+        pNumU("Width##tool", A.carveW, 0.5, Q::Length, -1, "Used for a plain click. Dragging sets the size instead.");
+        pNumU("Height##tool", A.carveH, 0.5, Q::Length);
     }
-    pCheck("Right through", A.carveThrough, "Cut all the way through whatever is in the way of this part.");
+    pCheck("Right through##tool", A.carveThrough, "Cut all the way through whatever is in the way of this part.");
     tutAnchor("carve:through");
-    if (!A.carveThrough) { pNumU("Depth", A.carveDepth, 0.5, Q::Length, -1, "How deep the cut goes, measured straight in from where you click."); tutAnchor("carve:depth"); }
+    if (!A.carveThrough) { pNumU("Depth##tool", A.carveDepth, 0.5, Q::Length, -1, "How deep the cut goes, measured straight in from where you click."); tutAnchor("carve:depth"); }
     A.carveW = std::max(0.2, A.carveW); A.carveH = std::max(0.2, A.carveH); A.carveDepth = std::max(0.1, A.carveDepth);
     editedAny = wasEdited;  // tool settings aren't part of the design
     ImGui::Spacing();
@@ -108,31 +108,31 @@ static void carvesSection(BodyDef& b) {
     CarveDef& c = b.carves[A.selCarve];
     ImGui::Spacing();
     if (shapeButtons(c.shape)) { if (c.shape == "circle") c.h = c.w; editedAny = true; }
-    if (c.shape == "circle" && c.h == c.w) { if (pNumU("Diameter", c.w, 0.5, Q::Length)) c.h = c.w; }
-    else { pNumU("Width", c.w, 0.5, Q::Length); pNumU("Height", c.h, 0.5, Q::Length); }
+    if (c.shape == "circle" && c.h == c.w) { if (pNumU("Diameter##cut", c.w, 0.5, Q::Length)) c.h = c.w; }
+    else { pNumU("Width##cut", c.w, 0.5, Q::Length); pNumU("Height##cut", c.h, 0.5, Q::Length); }
     bool through = c.depth <= 0;
-    if (pCheck("Right through", through, "Cut all the way through the part.")) c.depth = through ? 0 : 4;
+    if (pCheck("Right through##cut", through, "Cut all the way through the part.")) c.depth = through ? 0 : 4;
     tutAnchor("carve:through");
-    if (!through) pNumU("Depth", c.depth, 0.5, Q::Length, -1, "How deep it goes, straight in from where it starts.");
+    if (!through) pNumU("Depth##cut", c.depth, 0.5, Q::Length, -1, "How deep it goes, straight in from where it starts.");
     // aim: which way it goes in. 0, 0 is straight into the near side.
     double L = std::sqrt(c.dx * c.dx + c.dy * c.dy + c.dz * c.dz);
     if (L < 1e-9) { c.dz = -1; L = 1; }
     double tilt = std::asin(std::clamp(c.dy / L, -1.0, 1.0)) * 180 / PI, turn = std::atan2(c.dx / L, -c.dz / L) * 180 / PI;
     if (std::fabs(std::fabs(tilt) - 90) < 1e-6) turn = 0;
-    bool aim = pNum("Turn", turn, 5, "%.1f\xc2\xb0", "Which way it points, seen from above: 0 cuts into the near side, 180 into the far side,\n"
+    bool aim = pNum("Turn##cut", turn, 5, "%.1f\xc2\xb0", "Which way it points, seen from above: 0 cuts into the near side, 180 into the far side,\n"
                                                    "90 from the back toward the muzzle, -90 from the muzzle end backward.");
     tutAnchor("carve:aim");
-    aim |= pNum("Tilt", tilt, 5, "%.1f\xc2\xb0", "Up or down: 90 cuts straight down from the top, -90 straight up from below.");
+    aim |= pNum("Tilt##cut", tilt, 5, "%.1f\xc2\xb0", "Up or down: 90 cuts straight down from the top, -90 straight up from below.");
     if (aim) {
         tilt = std::clamp(tilt, -90.0, 90.0);
         double tr = turn * PI / 180, pr = tilt * PI / 180;
         c.dx = std::cos(pr) * std::sin(tr); c.dy = std::sin(pr); c.dz = -std::cos(pr) * std::cos(tr);
     }
-    pNum("Spin", c.spin, 5, "%.1f\xc2\xb0", "Turns the shape about the way it goes in.");
+    pNum("Spin##cut", c.spin, 5, "%.1f\xc2\xb0", "Turns the shape about the way it goes in.");
     if (section("Where it starts", false)) {
-        pNumU("Forward", c.at.x, 0.5, Q::Length);
-        pNumU("Down", c.at.y, 0.5, Q::Length);
-        pNumU("Across", c.atZ, 0.5, Q::Length, -1, "From the part's middle: + is toward the near side.");
+        pNumU("Forward##cut", c.at.x, 0.5, Q::Length);
+        pNumU("Down##cut", c.at.y, 0.5, Q::Length);
+        pNumU("Across##cut", c.atZ, 0.5, Q::Length, -1, "From the part's middle: + is toward the near side.");
     }
     c.w = std::max(0.2, c.w); c.h = std::max(0.2, c.h); c.depth = std::max(0.0, c.depth);
     float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
@@ -150,7 +150,12 @@ static void inspectPart(BodyDef& b) {
     if (ImGui::ColorEdit3("##col", col, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_NoLabel)) { b.color = colorHex(col); editedAny = true; }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(-1);
-    inputText("##pname", b.name);
+    {
+        char buf[128];
+        std::snprintf(buf, sizeof buf, "%s", b.name.c_str());
+        if (ImGui::InputTextWithHint("##pname", "Name this part", buf, sizeof buf)) { b.name = buf; editedAny = true; }
+        if (tipHover()) ImGui::SetTooltip("The part's name: shown when you point at it, in the Outline, and in joint and firing settings.");
+    }
 
     if (section("Part", true)) {
         pCheck("Fixed", b.fixed, "Fixed parts are the frame: they don't move.");
@@ -161,8 +166,44 @@ static void inspectPart(BodyDef& b) {
         if (solidHit)
             b.layer = solid ? "ABC" : "none";
         double oldThick = b.thick;
-        if (pNumU("Thickness", b.thick, 1, Q::Length)) carve::rethick(b, oldThick);
+        if (b.round) {
+            carve::syncRound(b);
+            prop("Thickness", "A round part is as thick as it is wide: change its outline instead.");
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s across (round)", fmtQ(Q::Length, b.thick).c_str());
+            if (oldThick != b.thick) carve::rethick(b, oldThick);
+        } else if (pNumU("Thickness", b.thick, 1, Q::Length)) carve::rethick(b, oldThick);
         tutAnchor("part:thickness");
+        {
+            bool wasRound = b.round;
+            if (pCheck("Round", b.round, "Turns the part on a lathe: its outline is spun around its long middle line, so a rectangle\n"
+                                         "becomes a round bar or barrel, and steps in the outline become shoulders. For barrels, bolts,\n"
+                                         "firing pins, rods and tubes. Its thickness becomes its diameter.") && b.round != wasRound) {
+                double ot = b.thick;
+                if (b.round) carve::syncRound(b);
+                carve::rethick(b, ot);
+            }
+            tutAnchor("part:round");
+        }
+        if (b.round) {  // turned down from bar stock: how many flats, turned which way, and how far round
+            prop("Axis", "The line it turns about, through the middle of the outline.\n"
+                         "For a lug: draw it right across the bolt, centred on the bore, then set Sweep.");
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::Combo("##raxis", &b.roundAxis, "Level (front to back)\0Upright\0Along its length\0")) editedAny = true;
+            int sl = b.roundSides >= 3 ? b.roundSides : 33;
+            prop("Sides", "4 is the square bar as drawn, 6 a hex, 8 an octagon, and all the way up is a full circle.\n"
+                          "The flats touch the outline you drew.");
+            ImGui::SetNextItemWidth(-1);
+            if (ImGui::SliderInt("##sides", &sl, 3, 33, sl >= 33 ? "Circle" : "%d sides")) { b.roundSides = sl >= 33 ? 0 : sl; editedAny = true; }
+            typeable();
+            pNum("Sweep", b.roundSweep, 5, "%.0f\xc2\xb0", "How far round it goes. 360 is all the way round. Less makes a wedge, like a locking lug,\n"
+                                                         "pointing where Turned to says.");
+            if (b.roundSides >= 3 || b.roundSweep < 360)
+                pNum("Turned to", b.roundTurn, 5, "%.1f\xc2\xb0", "Turns the shape about its axis: 0 points up, 90 toward you, 180 down, -90 away.\n"
+                                                              "A square turned 45 is a diamond.");
+            b.roundSweep = std::clamp(b.roundSweep, 1.0, 360.0);
+            if (b.rollOn) muted("This part turns on the bore: on the bench it still collides as a plain flat part for now.");
+        }
         pNumU("Depth", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, positive is the near side.\nParts only touch where their depths overlap.");
         tutAnchor("part:depth");
         if (!b.fixed) {
@@ -544,6 +585,7 @@ static void inspectJoint(JointDef& j) {
 }
 
 // ---------------------------------------------------------------- outline
+static bool gPickedInOutline = false;  // a pick in the Outline keeps the Outline open (so a double-click can rename)
 static void outlineTab() {
     auto& D = A.design;
     static char filter[64] = "";
@@ -565,7 +607,26 @@ static void outlineTab() {
             float h = ImGui::GetTextLineHeight();
             ImGui::PushID((int)i);
             bool sel = A.sel.kind == 1 && A.sel.idx == (int)i;
-            if (ImGui::Selectable("##row", sel, 0, {0, h + 4 * S()})) A.sel = {1, (int)i, -1};
+            static int renaming = -1;
+            static char rbuf[128];
+            if (renaming == (int)i) {  // renaming in place
+                ImGui::SetCursorScreenPos({p.x + 14 * S(), p.y});
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::IsWindowAppearing() || !ImGui::IsAnyItemActive()) ImGui::SetKeyboardFocusHere();
+                bool done = ImGui::InputText("##rename", rbuf, sizeof rbuf, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+                if (done || ImGui::IsItemDeactivated()) {
+                    if (rbuf[0] && b.name != rbuf) { b.name = rbuf; editedAny = true; }
+                    renaming = -1;
+                }
+                ImGui::PopID();
+                continue;
+            }
+            if (ImGui::Selectable("##row", sel, ImGuiSelectableFlags_AllowDoubleClick, {0, h + 4 * S()})) {
+                A.sel = {1, (int)i, -1};
+                gPickedInOutline = true;
+                if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) { renaming = (int)i; std::snprintf(rbuf, sizeof rbuf, "%s", b.name.c_str()); }
+            }
+            if (tipHover()) ImGui::SetTooltip("Click to pick it out in the view. Double-click to rename it.");
             ImGui::PopID();
             auto* dl = ImGui::GetWindowDrawList();
             dl->AddCircleFilled({p.x + 6 * S(), p.y + (h + 4 * S()) / 2}, 4 * S(), IM_COL32(c.r, c.g, c.b, 255));
@@ -583,7 +644,7 @@ static void outlineTab() {
             std::string d = jointDesc(j);
             if (!match(d) && !match(JT_LABEL(j.type))) continue;
             ImGui::PushID(1000 + (int)i);
-            if (ImGui::Selectable(d.c_str(), A.sel.kind == 2 && A.sel.idx == (int)i)) A.sel = {2, (int)i, -1};
+            if (ImGui::Selectable(d.c_str(), A.sel.kind == 2 && A.sel.idx == (int)i)) { A.sel = {2, (int)i, -1}; gPickedInOutline = true; }
             ImGui::PopID();
             if (tipHover()) ImGui::SetTooltip("%s", JT_LABEL(j.type));
         }
@@ -769,7 +830,8 @@ void buildPanel() {
     auto& D = A.design;
     // jump to Inspect whenever something new is picked in the view
     static int lastKind = 0, lastIdx = -1;
-    bool newSel = A.sel.kind != 0 && (A.sel.kind != lastKind || A.sel.idx != lastIdx);
+    bool newSel = A.sel.kind != 0 && (A.sel.kind != lastKind || A.sel.idx != lastIdx) && !gPickedInOutline;
+    gPickedInOutline = false;
     lastKind = A.sel.kind; lastIdx = A.sel.idx;
     ImGui::Dummy({0, 2 * S()});
     static bool envTab = false;
