@@ -21,9 +21,22 @@ struct Cartridge {
     double seat = 0;                    // how deep the bullet sits in the case (mm); 0 = a usual depth for the case
     std::vector<V2> custom;             // nose "custom": the outline drawn by hand, (mm from the bullet's base, radius mm)
     bool massFromShape = false;         // work the weight out from the shape (jacketed lead) instead of typing it
+    // What kind of round it is. Older blueprints are all "centerfire" with one bullet, as before.
+    //   centerfire  primer in the middle of the head
+    //   rimfire     the priming is in the rim: the firing pin has to hit the rim's edge, not the middle
+    //   shotshell   a hull (plastic or paper) on a brass head, crimped shut, holding shot or a slug; no bullet shows
+    //   caseless    the propellant is the round's body and burns away: nothing is left to extract
+    std::string kind = "centerfire";
+    int projectiles = 1;                // bullets, balls or pellets fired at once
+    double shotDia = 0;                 // shotshells: pellet size, mm. 0 = a slug (bulletMass)
+    double headLen = 8;                 // shotshells: the height of the brass head, mm
+    unsigned hullColor = 0xB0302AFF;    // shotshells: the hull's colour (RGBA)
+    bool shot() const { return kind == "shotshell" && shotDia > 0; }
+    double pelletMass() const { double r = shotDia / 20.0; return 4.18879 * r * r * r * 11.34; }  // g, a lead ball
+    double payloadMass() const { return (shot() ? pelletMass() : bulletMass) * (projectiles < 1 ? 1 : projectiles); }  // g, all of it
     double headDia() const { return rimDia > baseDia ? rimDia : baseDia; }
-    double impulse() const { return bulletMass / 1000.0 * velocity * 1.35; }  // N*s, bullet plus a share for the gas
-    double energy() const { return 0.5 * bulletMass / 1000.0 * velocity * velocity; }  // J
+    double impulse() const { return payloadMass() / 1000.0 * velocity * 1.35; }  // N*s, payload plus a share for the gas
+    double energy() const { return 0.5 * payloadMass() / 1000.0 * velocity * velocity; }  // J
 };
 const std::vector<Cartridge>& cartridgePresets();
 std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly = false);  // side view, head at x = 0, axis along +x at y = 0 (mm)
@@ -37,6 +50,10 @@ const char* noseStyles();                                  // "\0"-separated nam
 const char* noseId(int i);
 int noseIndex(const std::string& id);
 double cartridgeMass(const Cartridge& c);                   // loaded round, grams (bullet + brass estimate)
+double spentCaseMass(const Cartridge& c);                   // what's left after the shot, grams (0 for caseless)
+const char* cartKinds();                                    // "\0"-separated names, in kind-id order
+const char* cartKindId(int i);
+int cartKindIndex(const std::string& id);
 std::vector<Cartridge> loadUserCartridges();                 // cartridges.json next to the program
 bool saveUserCartridges(const std::vector<Cartridge>& list);
 

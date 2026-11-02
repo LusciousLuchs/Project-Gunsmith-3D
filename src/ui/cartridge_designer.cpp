@@ -43,7 +43,21 @@ void cartridgeDesigner() {
         }
     };
     drawProf(bulletProfile(c), IM_COL32(192, 106, 58, 255));
-    drawProf(caseProfile(c), IM_COL32(217, 164, 65, 255));
+    if (c.kind == "shotshell") {
+        unsigned h = c.hullColor;
+        drawProf(hullProfile(c, false), IM_COL32(h >> 24, (h >> 16) & 255, (h >> 8) & 255, 255));
+        if (c.shot()) {  // the pellets, packed in the hull's front part, to scale
+            double R = c.baseDia / 2 - 0.6, r = c.shotDia / 2, x = c.caseLen - 4 - r;
+            int shown = 0;
+            for (; x - r > c.rimThick + 10 && shown < c.projectiles; x -= c.shotDia * 0.95)   // (behind them: the powder and wad)
+                for (double y = -R + r; y <= R - r + 1e-6 && shown < c.projectiles; y += c.shotDia * 0.95, shown++) {
+                    ImVec2 q{x0 + (float)x * sc, yc + (float)y * sc};
+                    dl->AddCircleFilled(q, std::max(1.f, (float)r * sc), IM_COL32(112, 116, 126, 235));
+                    if (r * sc > 3) dl->AddCircle(q, (float)r * sc, IM_COL32(60, 62, 70, 255));
+                }
+        }
+    }
+    drawProf(caseProfile(c), c.kind == "caseless" ? IM_COL32(122, 98, 70, 255) : IM_COL32(217, 164, 65, 255));
     if (c.nose == "hollow") {  // show the cavity
         auto sh = bulletShape(c);
         if (sh.size() >= 3) {
@@ -94,17 +108,65 @@ void cartridgeDesigner() {
     std::snprintf(nm, sizeof nm, "%s", c.name.c_str());
     prop("Name");
     if (ImGui::InputText("##cname", nm, sizeof nm)) c.name = nm;
-    ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("Case"); ImGui::PopFont();
-    pNumU("Case length", c.caseLen, 0.1, Q::Length, CFG.units == Units::Metric ? 2 : 3);
-    pNumU("Rim", c.rimDia, 0.05, Q::Length, CFG.units == Units::Metric ? 2 : 3);
-    pNumU("Rim thickness", c.rimThick, 0.05, Q::Length, CFG.units == Units::Metric ? 2 : 3);
-    pNumU("Base", c.baseDia, 0.05, Q::Length, CFG.units == Units::Metric ? 2 : 3);
-    pNumU("Shoulder", c.shoulderDia, 0.05, Q::Length, CFG.units == Units::Metric ? 2 : 3);
-    pNumU("Shoulder at", c.shoulderAt, 0.1, Q::Length, CFG.units == Units::Metric ? 2 : 3);
-    pNumU("Neck", c.neckDia, 0.05, Q::Length, CFG.units == Units::Metric ? 2 : 3);
-    pCheck("Rimmed", c.rimmed);
-    ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("Bullet"); ImGui::PopFont();
     int dec = CFG.units == Units::Metric ? 2 : 3;
+    {
+        int ki = cartKindIndex(c.kind);
+        prop("Kind", "Centrefire: the primer is in the middle of the head.\n"
+                     "Rimfire: the priming is in the rim. A drawn firing pin has to strike the rim's edge, not the middle.\n"
+                     "Shotshell: a plastic hull on a brass head, crimped shut, holding shot or a slug.\n"
+                     "Caseless: the round is a block of propellant that burns away. Nothing is left to extract.");
+        if (ImGui::Combo("##kind", &ki, cartKinds())) {
+            std::string was = c.kind;
+            c.kind = cartKindId(ki);
+            if (c.kind == "shotshell" && was != "shotshell") {  // start from a 12 gauge buckshot shell
+                for (auto& p : cartridgePresets()) if (p.kind == "shotshell") { std::string n = c.name; c = p; c.name = n; break; }
+            }
+            if (c.kind == "rimfire") c.rimmed = true;
+            if (c.kind == "caseless") { c.rimDia = c.baseDia; c.rimThick = 0; c.rimmed = false; }
+            if (was == "shotshell" && c.kind != "shotshell") { c.shotDia = 0; c.oal = std::max(c.oal, c.caseLen + c.bulletDia); c.projectiles = 1; }
+        }
+    }
+    bool shell = c.kind == "shotshell", caseless = c.kind == "caseless";
+    ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted(shell ? "Shell" : caseless ? "Propellant block" : "Case"); ImGui::PopFont();
+    pNumU(shell ? "Length (crimped)" : caseless ? "Length" : "Case length", c.caseLen, 0.1, Q::Length, dec);
+    if (!caseless) {
+        pNumU("Rim", c.rimDia, 0.05, Q::Length, dec);
+        pNumU("Rim thickness", c.rimThick, 0.05, Q::Length, dec);
+    }
+    pNumU(caseless ? "Diameter##block" : "Base", c.baseDia, 0.05, Q::Length, dec);
+    if (caseless) c.rimDia = c.baseDia;
+    if (!shell) {
+        pNumU("Shoulder", c.shoulderDia, 0.05, Q::Length, dec);
+        pNumU("Shoulder at", c.shoulderAt, 0.1, Q::Length, dec);
+        pNumU("Neck", c.neckDia, 0.05, Q::Length, dec);
+        if (!caseless && c.kind != "rimfire") pCheck("Rimmed", c.rimmed);
+    } else {
+        c.shoulderDia = c.neckDia = c.baseDia; c.shoulderAt = c.caseLen; c.rimmed = true;
+        pNumU("Brass head", c.headLen, 0.5, Q::Length, dec, "How far the brass reaches up the hull. Low brass for light loads, high brass for heavy ones.");
+        c.headLen = std::clamp(c.headLen, c.rimThick + 0.5, c.caseLen - 2);
+        float col[3] = {(c.hullColor >> 24) / 255.f, ((c.hullColor >> 16) & 255) / 255.f, ((c.hullColor >> 8) & 255) / 255.f};
+        prop("Hull colour");
+        if (ImGui::ColorEdit3("##hull", col, ImGuiColorEditFlags_NoInputs))
+            c.hullColor = ((unsigned)(col[0] * 255) << 24) | ((unsigned)(col[1] * 255) << 16) | ((unsigned)(col[2] * 255) << 8) | 255u;
+        ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("Load"); ImGui::PopFont();
+        bool slug = c.shotDia <= 0;
+        int li = slug ? 1 : 0;
+        prop("Load", "Shot: a number of lead pellets. Their weight comes from their size.\nSlug: one heavy projectile.");
+        if (ImGui::Combo("##load", &li, "Shot\0Slug\0")) {
+            if (li == 1) { c.shotDia = 0; c.projectiles = 1; if (c.bulletMass < 5) c.bulletMass = 28.35; }
+            else { c.shotDia = 8.38; c.projectiles = 9; }
+        }
+        pNumU("Bore", c.bulletDia, 0.05, Q::Length, dec, "The barrel's bore: 18.5 mm for 12 gauge.");
+        if (li == 0) {
+            pNumU("Pellet size", c.shotDia, 0.05, Q::Length, dec, "00 buck is 8.4 mm, #4 buck 6.1 mm, #7 1/2 birdshot 2.4 mm.");
+            c.shotDia = std::clamp(c.shotDia, 0.5, c.bulletDia);
+            double n = c.projectiles;
+            if (pNum("Pellets", n, 1, "%.0f")) c.projectiles = std::clamp((int)std::lround(n), 1, 2000);
+            ImGui::TextDisabled("%s each, %s in all", fmtQ(Q::BulletMass, c.pelletMass()).c_str(), fmtQ(Q::BulletMass, c.payloadMass()).c_str());
+        } else pNumU("Slug weight", c.bulletMass, 0.5, Q::BulletMass);
+    }
+    if (!shell) {
+    ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("Bullet"); ImGui::PopFont();
     {
         int ni = noseIndex(c.nose);
         prop("Shape", "The bullet's shape is its real outline: it's what meets the feed ramp and the chamber mouth.\n"
@@ -149,15 +211,20 @@ void cartridgeDesigner() {
     ImGui::BeginDisabled(c.massFromShape && c.nose != "auto");
     pNumU("Weight", c.bulletMass, 0.1, Q::BulletMass);
     ImGui::EndDisabled();
+    {
+        double n = c.projectiles;
+        if (pNum("Bullets", n, 1, "%.0f", "Bullets fired at once, one behind the other (a duplex load) or side by side. Recoil and energy count them all.")) c.projectiles = std::clamp((int)std::lround(n), 1, 50);
+    }
+    }  // (not a shell)
     pNumU("Velocity", c.velocity, 5, Q::Velocity);
     c.tailDia = std::clamp(c.tailDia, 0.3, 1.0);
-    c.caseLen = std::max(3.0, c.caseLen); c.oal = std::max(c.caseLen + 1, c.oal);
+    c.caseLen = std::max(3.0, c.caseLen); c.oal = shell ? c.caseLen : std::max(c.caseLen + 1, c.oal);
     c.shoulderAt = std::clamp(c.shoulderAt, 1.0, c.caseLen); c.noseLen = std::clamp(c.noseLen, 0.5, c.oal - c.caseLen + 2);
     ImGui::TextDisabled("%s, recoil impulse %s", fmtQ(Q::Energy, c.energy()).c_str(), fmtQ(Q::Impulse, c.impulse()).c_str());
-    ImGui::TextDisabled("Ballistic coefficient %.3f (G1)", ballisticCoefficient(c));
-    if (tipHover()) ImGui::SetTooltip("How well it keeps its speed through the air: higher is better.\nEstimated from the shape and weight. The firing range will use it for drop and drift.");
-    if (c.neckDia < c.bulletDia) ImGui::TextColored(colBad(), "The neck is narrower than the bullet.");
-    if (c.rimDia < c.baseDia && c.rimmed) ImGui::TextColored(colBad(), "A rimmed case needs a rim wider than its base.");
+    if (!shell) ImGui::TextDisabled("Ballistic coefficient %.3f (G1)", ballisticCoefficient(c));
+    if (!shell && tipHover()) ImGui::SetTooltip("How well it keeps its speed through the air: higher is better.\nEstimated from the shape and weight. The firing range will use it for drop and drift.");
+    if (!shell && c.neckDia < c.bulletDia) ImGui::TextColored(colBad(), "The neck is narrower than the bullet.");
+    if (!caseless && c.rimDia < c.baseDia && c.rimmed) ImGui::TextColored(colBad(), "A rimmed case needs a rim wider than its base.");
     ImGui::Separator();
     if (ImGui::Button("Use in this design")) {
         auto& br = A.design.breech;

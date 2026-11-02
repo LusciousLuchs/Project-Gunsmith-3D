@@ -84,6 +84,7 @@ void cartridgeSetup(Sim& S) {
                     r = std::max(r, top[i].y + (top[i + 1].y - top[i].y) * t);
                 }
             r = std::max(r, c.bulletDia / 2);
+            if (c.kind == "shotshell") r = std::max(r, c.baseDia / 2);  // cut for the shell as it opens when fired
         }
         S.chamberR.push_back((r + 0.15) / 1000);  // a little clearance
     }
@@ -119,7 +120,7 @@ static Body* newCartridge(Sim& S, V2 head, bool isCase) {
     d = BodyDef();
     d.id = (isCase ? "case#" : "round#") + std::to_string(++S.spawned);
     d.name = c.name + (isCase ? " case" : " round");
-    d.mass = isCase ? cartridgeMass(c) - c.bulletMass : cartridgeMass(c);
+    d.mass = isCase ? spentCaseMass(c) : cartridgeMass(c);
     d.thick = c.headDia();
     d.color = "#d9a441";
     for (auto& p : cartridgeOutline(c, isCase)) d.pts.push_back({head.x + p.x, head.y + p.y});

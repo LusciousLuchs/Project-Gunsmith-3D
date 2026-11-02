@@ -17,4 +17,5 @@ bool mainPart(const sim::Body& b);
 float plateY();
 std::vector<V2> caseProfile(const Cartridge& c);
 std::vector<V2> bulletProfile(const Cartridge& c);
+std::vector<V2> hullProfile(const Cartridge& c, bool fired);  // shotshells only; empty otherwise
 void drawScene();

@@ -95,6 +95,14 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - The shape is the round's physical outline, so it can change how a gun feeds.
 - *Weight from shape* (as jacketed lead), and an estimated ballistic coefficient.
 - Built-in cartridges now have real shapes: round noses for 9 mm, .380 and .45, spitzers for 5.56, boat-tail spitzers for the 7.62s. Older blueprints keep the classic shape.
+- **Kinds of round:** centrefire, rimfire, shotshell and caseless.
+  - **Shotshells:** a coloured hull on a brass head (set how high the brass goes), crimped shut. Load shot (pellet size and count; the weight comes from the lead) or a slug. A fired hull opens at the crimp.
+  - **Rimfire:** the priming is in the rim, so a drawn firing pin has to hit the rim's edge. A centre-striking gun just clicks.
+  - **Caseless:** the round is a block of propellant that burns away. Nothing is left to extract.
+  - **Several bullets per round** for any cartridge. Recoil and energy count the whole payload.
+  - New built-in loads: 12 gauge 00 buck, slug and birdshot, .22 LR, and a 6 mm caseless round.
+- **Pump-action shotgun example:** the carbine's action redrawn for 12 gauge buckshot, six in the tube. 50 shells, no jams.
+- Fix: an action lock now catches before anything else moves, so a heavy shot can't shove the parts linked to the bolt. (The pump carbine's fore-end no longer twitches back when it fires.)
 
 ### Example polish
 - **Bolt-action rifle:** a longer, gentler feed ramp (13 mm instead of 10). The bolt used to kick rounds into the chamber about 25 degrees nose-up, and working it by hand jammed with most bullet shapes. Now every shape and nose length feeds: 40 of 40 combinations, up from 16.

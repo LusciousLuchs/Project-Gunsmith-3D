@@ -145,6 +145,7 @@ static void solveAxial(Body& A, Body& B, double c) {
 }
 
 // ---------- build ----------
+static bool leavesCase(const Sim& S) { return S.design.breech.cart.kind != "caseless"; }  // caseless rounds burn away
 static constexpr int MAX_SPAWNED = 200;  // magazines and loose rounds added during a test
 static void reshapeRolled(Body& b);
 void resample(Body& b);
@@ -816,13 +817,12 @@ void substep(Sim& S) {
         for (Body* p : b.pieces) { p->px = b.px + c * p->off.x - s * p->off.y; p->py = b.py + s * p->off.x + c * p->off.y; p->pa = b.pa + p->aOff; }
         placePieces(b);
     }
-    // geometric joints
+    // geometric joints. An action lock holds before anything else is solved, so a shot can't shove what it holds (and
+    // through it, whatever is linked to it) before the lock has caught it.
     for (auto& J : S.joints) {
-        if (J.type == JT::Magwell) { solveMagwell(S, J); continue; }
-        if (J.merged) continue;
+        if (J.type != JT::Latch || J.merged || !J.j->holdShut) continue;
         Body &A = *J.A, &B = *J.B;
-        if (J.type == JT::Latch) {  // an action lock holds before anything else is solved, so a shot can't shove what it holds
-            if (!J.j->holdShut) continue;   // (catches that hold a part open are solved with the rotation joints, below)
+        {
             const JointDef& j = *J.j;
             double u = axial(A, B, J.rel0) * 1000, c = j.catchAt;
             // released by the release part drawn back against the held part (a pump's bar in its lost motion): a shot
@@ -835,8 +835,13 @@ void substep(Sim& S) {
                 else if (u < c) solveAxial(A, B, (c - u) / 1000);
             }
             if (J.state == LatchState::Released && !release) J.state = LatchState::Armed;  // catches again when it comes home
-            continue;
         }
+    }
+    for (auto& J : S.joints) {
+        if (J.type == JT::Magwell) { solveMagwell(S, J); continue; }
+        if (J.merged) continue;
+        Body &A = *J.A, &B = *J.B;
+        if (J.type == JT::Latch) continue;  // (held shut: above; catches that hold a part open: with the rotation joints, below)
         if (J.type == JT::Spring) {  // a coil spring compressed to solid height becomes a hard stop
             if (J.j->kind != "coil") continue;
             double solid = (J.j->turns + 2) * J.j->wire / 1000;
@@ -1017,10 +1022,14 @@ void substep(Sim& S) {
             double rx = tip.x - st.x, ry = tip.y - st.y;
             double vx = st.vx - st.w * ry - S.BR->vx, vy = st.vy + st.w * rx - S.BR->vy;
             double d = std::hypot(tip.x - primer.x, tip.y - primer.y);
+            if (br.cart.kind == "rimfire") {  // the priming is in the rim: only a blow on its edge (above or below the bore) fires it
+                double rr = std::max(0.5, br.cart.rimDia / 2 - 0.6) / 1000, ux = -std::sin(S.CH->a), uy = std::cos(S.CH->a);
+                d = std::min(std::hypot(tip.x - primer.x - ux * rr, tip.y - primer.y - uy * rr), std::hypot(tip.x - primer.x + ux * rr, tip.y - primer.y + uy * rr));
+            }
             if (d > 0.004) S.primed = true;
             if (S.primed && d < 0.0012 && std::hypot(vx, vy) > br.igniteSpeed && S.t > S.fireT + dur * 2) {
                 S.primed = false;
-                if (S.chambered && inBattery(S)) { S.fireT = S.t; S.chambered = false; S.spent = true; S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0; S.events.push_back({Ev::Bang, S.t}); }
+                if (S.chambered && inBattery(S)) { S.fireT = S.t; S.chambered = false; S.spent = leavesCase(S); S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0; S.events.push_back({Ev::Bang, S.t}); }
                 else if (inBattery(S)) S.events.push_back({Ev::Click, S.t});
             }
         } else {
@@ -1030,7 +1039,7 @@ void substep(Sim& S) {
                 S.igniteAt = -1;
                 if (!inBattery(S)) return;
                 if (S.chambered) {
-                    S.fireT = S.t; S.chambered = false; S.spent = true; S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0;
+                    S.fireT = S.t; S.chambered = false; S.spent = leavesCase(S); S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0;
                     S.events.push_back({Ev::Bang, S.t});
                 } else S.events.push_back({Ev::Click, S.t});
             };

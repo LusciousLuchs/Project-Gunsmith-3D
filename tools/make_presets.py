@@ -51,6 +51,7 @@ CART = {
     '5.56x45mm': dict(oal=57.4, case=44.7, head=9.6),
     '7.62x54mmR': dict(oal=77.16, case=53.72, head=14.48),
     '.45 ACP': dict(oal=32.4, case=22.8, head=12.19),
+    '12 gauge 00 buck': dict(oal=63.5, case=63.5, head=22.8, bore=18.5),
 }
 
 STEEL = '#3f4654'; BLUE = '#3a6fc4'; BRIGHT = '#c9ccd2'; BRASS = '#e0b54a'; GRIP = '#2b2f36'; WOOD = '#7a5236'
@@ -330,38 +331,50 @@ def rifle(kind='bolt'):
 #    the very end of the pull, letting the next round out onto it. Pushing the fore-end raises it again behind the
 #    bolt face; the lost motion is what lets it be up on the way back and down only at the end of the way out.
 #  - Guides above hold the round down when the lifter stops. The empty case is thrown out behind where it lies.
-def pump():
-    cart = '.45 ACP'; C = CART[cart]
+def pump(cart='.45 ACP'):
+    # One drawing for any round: the carbine's numbers are the .45's, the shotgun's are worked out the same way.
+    C = CART[cart]
     R = C['head'] / 2
-    bore = 20.0; face = 120.0; muzzle = 420.0
-    stopX = 70.0                      # the round's head stops here, on the lifter
+    shotgun = cart != '.45 ACP'
+    bore = 20.0
+    face = 150.0 if shotgun else 120.0
+    muzzle = face + 400 if shotgun else 420.0
+    stopX = face - C['oal'] - 17.6    # the round's head stops here, on the lifter
     mouth = stopX + C['oal'] + 3.6    # the tube's mouth, just ahead of the round's nose
-    tubeY = 33.0                      # tube axis: the round in it clears the bolt above
+    barR = C['bore'] / 2 + 1.6 if shotgun else 6.5   # barrel and tube outsides
+    tubeR = R + 0.9 if shotgun else 7.0
+    # tube axis: under the barrel, and the round poking out of its mouth clear of the rim of a case being drawn back
+    tubeY = bore + max(barR + tubeR - 0.5, 2 * R + 1.5) if shotgun else 33.0
     lift = tubeY - bore
     lost = 6.0                        # fore-end travel before it takes the bolt along
     play = 1.5                        # and the bolt's free play the other way, so a shot never drags the bar
-    travel = 86.0                     # bolt travel
+    ejX = stopX - 24                  # ejector: behind where the round lies, so the case flips out clear of the guides
+    travel = face - (ejX - 12)        # bolt travel: open, the face is a little behind the ejector
     barTravel = travel + lost
-    upTo, downFrom = 82.0, 88.0       # fore-end travel (mm): lifter up until here, all the way down from here
-    ejX = 46.0                        # ejector: behind where the round lies, so the case flips out clear of the guides
+    upTo, downFrom = travel - 4, travel + 2  # fore-end travel (mm): lifter up until here, all the way down from here
     lfront = mouth - 3.0              # lifter's front face: blocks the tube while it's up
     lt = bore + R + 0.2               # lifter top, up: the round's underside on the bore line (a hair of clearance)
+    lh = 2 * R + 4 if shotgun else 16.0   # lifter height: enough to block the tube's mouth
     boltRear = face - 40
-    lpin = [86.0, lt + 8]             # lifter's pin
+    tubeEnd = muzzle - 20
+    cap = 6 if not shotgun else int((tubeEnd - mouth - 10) // C['oal'])
+    fx = face + 70                    # fore-end: from here forward
+    lpin = [round((stopX + lfront) / 2) if shotgun else 86.0, lt + 8]   # lifter's pin
     kpin = [boltRear - 4.5, bore - 3] # lock's pin
     klift = 20.0                      # how far the lock lifts: clear of the bolt's top
     bpin = [boltRear + 15, bore - 3]  # the bolt's pin in the bar's lost-motion slot
     parts = []
-    parts.append(part('rcv', 'Receiver', [[-10, bore - 36], [124, bore - 36], [124, tubeY + 12], [-10, tubeY + 12]], thick=26, solid=False,
+    parts.append(part('rcv', 'Receiver', [[-10, bore - 36], [face + 4, bore - 36], [face + 4, tubeY + 12], [-10, tubeY + 12]], thick=26, solid=False,
                       fixed=True, ghost=True, color='#4b5260', rad=[3, 3, 3, 3]))
     parts.append(part('stock', 'Stock', [[-10, bore - 8], [-250, bore + 6], [-250, bore + 92], [-222, bore + 92], [-80, bore + 42], [-10, bore + 40]],
                       thick=34, solid=False, fixed=True, color=WOOD, rad=[0, 6, 6, 20, 10, 0]))
-    parts.append(part('barrel', 'Barrel', rect(face, bore - 6.5, muzzle, bore + 6.5), thick=13, fixed=True, color=STEEL, round=True))
-    parts.append(part('tube', 'Tube magazine', rect(mouth, tubeY - 7, 400, tubeY + 7), thick=14, solid=False, fixed=True, color=STEEL, round=True,
-                      magazine={'cap': 6, 'builtIn': True, 'style': 'line', 'tubeFeed': 'physical', 'roundPath': [[mouth, tubeY], [400, tubeY]]}))
+    parts.append(part('barrel', 'Barrel', rect(face, bore - barR, muzzle, bore + barR), thick=2 * barR, fixed=True, color=STEEL, round=True))
+    parts.append(part('tube', 'Tube magazine', rect(mouth, tubeY - tubeR, tubeEnd, tubeY + tubeR), thick=2 * tubeR, solid=False, fixed=True, color=STEEL, round=True,
+                      magazine={'cap': cap, 'builtIn': True, 'style': 'line', 'tubeFeed': 'physical', 'roundPath': [[mouth, tubeY], [tubeEnd, tubeY]]}))
     # the head stop for a round coming out of the tube (below the bolt's way and the case's way out)
     parts.append(part('headstop', 'Head stop', rect(stopX - 6, bore + R + 0.4, stopX, tubeY + 18), thick=4, fixed=True, color=STEEL))
-    for p in both_sides(part('guide', 'Round guide', rect(stopX + 2, bore - R - 4.5, lfront, bore - R - 0.3), thick=3, fixed=True, color=STEEL), 5.0):
+    # (on the shotgun only at the front: the long empty shell swings up out of the way behind them)
+    for p in both_sides(part('guide', 'Round guide', rect(lfront - 18 if shotgun else stopX + 2, bore - R - 4.5, lfront, bore - R - 0.3), thick=3, fixed=True, color=STEEL), 5.0):
         parts.append(p)
     parts.append(part('ejector', 'Ejector', rect(ejX - 6, bore + 4, ejX, bore + 8), thick=2, fixed=True, color=STEEL))
     parts.append(part('bolt', 'Bolt', rect(boltRear, bore - 8, face, bore + 3), thick=6, mass=120, damp=4, color=BRIGHT, rad=[2, 0.5, 0.5, 2]))
@@ -371,14 +384,16 @@ def pump():
                       rad=[0.5, 0.5, 0.5, 0.5]))
     # action bar and fore-end: one piece, worked by hand. The bar's lug pushes the bolt home (a push can't drag it back
     # with the shot); the bolt's pin in the bar's slot pulls it open, once the bar's free travel is used up
-    parts.append(part('barlug', 'Action bar lug', rect(boltRear - 5, bore - 2, boltRear, bore + 3), thick=6, mass=4, color=STEEL))
+    # (half a millimetre behind the bolt when closed: the bolt's tiny recoil against its lock mustn't kick the fore-end back)
+    parts.append(part('barlug', 'Action bar lug', rect(boltRear - 5.5, bore - 2, boltRear - 0.5, bore + 3), thick=6, mass=4, color=STEEL))
     # (a strip under the tube with an arm up beside the bolt, where its slots are; see-through so the action shows)
-    bar = [[boltRear - 8, bore - 6], [boltRear + 18, bore - 6], [boltRear + 18, tubeY + 9], [270, tubeY + 9], [270, tubeY + 13], [boltRear - 8, tubeY + 13]]
+    bar = [[boltRear - 8, bore - 6], [boltRear + 18, bore - 6], [boltRear + 18, tubeY + tubeR + 2], [fx + 80, tubeY + tubeR + 2], [fx + 80, tubeY + tubeR + 6],
+           [boltRear - 8, tubeY + tubeR + 6]]
     parts.append(part('bar', 'Action bar', bar, z=8.5, thick=2, solid=False, mass=30, color=STEEL, ghost=True, rad=[1, 1, 0, 1, 1, 1]))
-    parts.append(part('forend', 'Fore-end', rect(190, bore + 2, 290, tubeY + 13), thick=34, solid=False, mass=80, damp=6, color=WOOD, rad=[6, 6, 6, 6],
-                      control={'kind': 'handle', 'key': 'none', 'at': [240, tubeY], 'dir': 180, 'force': 25}))
+    parts.append(part('forend', 'Fore-end', rect(fx, bore + 2, fx + 100, tubeY + tubeR + 6), thick=34, solid=False, mass=80, damp=6, color=WOOD, rad=[6, 6, 6, 6],
+                      control={'kind': 'handle', 'key': 'none', 'at': [fx + 50, tubeY], 'dir': 180, 'force': 25}))
     # its front top is a ramp: the empty case, sagging a little on the extractor as it's drawn back, rides up over it
-    lifter = [[stopX + 0.5, lt], [lfront - 8, lt], [lfront, lt + 4], [lfront, lt + 16], [stopX + 0.5, lt + 16]]
+    lifter = [[stopX + 0.5, lt], [lfront - 8, lt], [lfront, lt + 4], [lfront, lt + lh], [stopX + 0.5, lt + lh]]
     for p in both_sides(part('lifter', 'Lifter', lifter, thick=3, mass=10, color=BRASS, rad=[0.5, 0, 0.5, 0.5, 0.5]), 5.0):
         parts.append(p)
     parts.append(part('trigger', 'Trigger', [[60, tubeY + 12], [64, tubeY + 12], [65, tubeY + 24], [62, tubeY + 30], [60, tubeY + 30], [61, tubeY + 22]],
@@ -389,8 +404,8 @@ def pump():
     ks = [[kpin[0] - play, kpin[1]], [kpin[0] + play, kpin[1]], [kpin[0] + lost - 0.5, kpin[1] - klift], [kpin[0] + barTravel, kpin[1] - klift]]
     joints = [
         track('bolt', 'rcv', [face - 20, bore], [[face - 20 - travel, bore], [face - 20, bore]]),
-        track('forend', 'rcv', [240, tubeY], [[240 - barTravel, tubeY], [240, tubeY]]),
-        weld('bar', 'forend', [230, tubeY]), weld('barlug', 'bar', [boltRear - 2, bore]),
+        track('forend', 'rcv', [fx + 50, tubeY], [[fx + 50 - barTravel, tubeY], [fx + 50, tubeY]]),
+        weld('bar', 'forend', [fx + 40, tubeY]), weld('barlug', 'bar', [boltRear - 2, bore]),
         track('bolt', 'bar', bpin, [[bpin[0] - play, bpin[1]], [bpin[0] + lost, bpin[1]]]),  # the lost motion
         track('lock', 'rcv', kpin, [[kpin[0], kpin[1]], [kpin[0], kpin[1] - klift]]),       # the lock: up and down
         track('lock', 'bar', kpin, ks),                                                      # lifted by the bar's first 4 mm
@@ -400,9 +415,9 @@ def pump():
         track('lifter_r', 'bar', lpin, ls),                                                 # driven by its slot in the bar
     ]
     breech = {'breech': 'bolt', 'chamber': 'barrel', 'face': [face, bore], 'muzzle': [muzzle, bore], 'cartridge': cart, 'dur': 1.0,
-              'feed': 40, 'rounds': 6, 'auto': False, 'loaded': True, 'feedMode': 'magazine', 'physicalFeed': True,
+              'feed': 40, 'rounds': cap, 'auto': False, 'loaded': True, 'feedMode': 'magazine', 'physicalFeed': True,
               'ignition': 'button', 'hammer': 'hammer', 'cockAt': 40, 'fireMode': 'semi'}
-    return {'name': 'Pump-action carbine', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
+    return {'name': 'Pump-action shotgun' if shotgun else 'Pump-action carbine', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
 
 # ------------------------------------------------------------------ output
 NEW = [
@@ -411,6 +426,7 @@ NEW = [
     ('boltaction', 'Bolt-action rifle', rifle),
     ('single', 'Single-shot rifle', lambda: rifle('single')),
     ('pump', 'Pump-action carbine', pump),
+    ('pumpshotgun', 'Pump-action shotgun', lambda: pump('12 gauge 00 buck')),
 ]
 LEGACY_LIST = [  # older examples built with simplified joints; kept for study and for the tests of those joints
     ('legacy-tilting', 'PRESET_TILTING'), ('legacy-blowback', 'PRESET_BLOWBACK'), ('longrecoil', 'PRESET_LONG'),
@@ -422,6 +438,7 @@ MENU = [  # what the example menu shows, in order
     ('boltaction', 'Bolt-action rifle (5.56 mm, cock on close)'),
     ('single', 'Single-shot rifle (same action, load by hand)'),
     ('pump', 'Pump-action carbine (.45, tube magazine and lifter)'),
+    ('pumpshotgun', 'Pump-action shotgun (12 gauge buckshot, same action)'),
     ('longrecoil', 'Long recoil, Chauchat style (simplified cam and catch)'),
     ('blank', 'Blank frame'),
 ]

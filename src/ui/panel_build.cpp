@@ -764,7 +764,7 @@ static void firingTab() {
         if (ImGui::Button("...", {bw, 0})) { A.editCart = br.cart; A.showCartDesigner = true; }
         tutAnchor("firing:cartridge");
         if (tipHover()) ImGui::SetTooltip("Open the cartridge designer");
-        muted("%s at %s, %s", fmtQ(Q::BulletMass, br.cart.bulletMass).c_str(), fmtQ(Q::Velocity, br.cart.velocity).c_str(), fmtQ(Q::Energy, br.cart.energy()).c_str());
+        muted("%s at %s, %s", fmtQ(Q::BulletMass, br.cart.payloadMass()).c_str(), fmtQ(Q::Velocity, br.cart.velocity).c_str(), fmtQ(Q::Energy, br.cart.energy()).c_str());
         pCheck("Recoil from it", br.cartImpulse, "Works the recoil impulse out from the bullet and powder gas.");
         if (br.cartImpulse) applyCartridge(br);
         else pNumU("Recoil impulse", br.impulse, 0.1, Q::Impulse);

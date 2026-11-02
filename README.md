@@ -60,6 +60,7 @@ Textures: put .png, .jpg, .bmp or .tga pictures in *user/textures*, click *Add a
 - breech, barrel and cartridge
 - feeding and magazines (removable and built-in magazines, round paths)
 - tube magazines and lifters (the pump-action example: the tube, the lifter, free play and the action lock)
+- shotshells, rimfire and caseless rounds (the pump-action shotgun example)
 - extraction and ejection
 - fire control
 - locking and operating systems

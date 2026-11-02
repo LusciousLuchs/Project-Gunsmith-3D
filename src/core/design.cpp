@@ -29,7 +29,8 @@ static json cartToJson(const Cartridge& c) {
             {"oal", c.oal}, {"noseLen", c.noseLen}, {"bulletMass", c.bulletMass}, {"velocity", c.velocity}, {"rimmed", c.rimmed},
             {"nose", c.nose}, {"meplat", c.meplat}, {"tailLen", c.tailLen}, {"tailDia", c.tailDia}, {"seat", c.seat},
             {"custom", [&] { json a = json::array(); for (auto& q : c.custom) a.push_back({q.x, q.y}); return a; }()},
-            {"massFromShape", c.massFromShape}};
+            {"massFromShape", c.massFromShape}, {"kind", c.kind}, {"projectiles", c.projectiles}, {"shotDia", c.shotDia},
+            {"headLen", c.headLen}, {"hullColor", c.hullColor}};
 }
 static Cartridge cartFromJson(const json& j) {
     Cartridge c;
@@ -49,6 +50,11 @@ static Cartridge cartFromJson(const json& j) {
     if (j.contains("custom") && j["custom"].is_array())
         for (auto& q : j["custom"]) if (q.is_array() && q.size() >= 2) c.custom.push_back({q[0].get<double>(), q[1].get<double>()});
     c.massFromShape = opt<bool>(j, "massFromShape", false);
+    c.kind = cartKindId(cartKindIndex(opt<std::string>(j, "kind", "centerfire")));
+    c.projectiles = std::clamp(opt<int>(j, "projectiles", 1), 1, 2000);
+    c.shotDia = std::clamp(opt<double>(j, "shotDia", 0.0), 0.0, 30.0);
+    c.headLen = std::clamp(opt<double>(j, "headLen", 8.0), 0.0, 60.0);
+    c.hullColor = opt<unsigned>(j, "hullColor", 0xB0302AFF);
     if (c.massFromShape) c.bulletMass = bulletShapeMass(c);
     return c;
 }
@@ -165,7 +171,15 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
     double rim = c.rimDia / 2, base = c.baseDia / 2, sh = c.shoulderDia / 2, neck = c.neckDia / 2, bul = c.bulletDia / 2;
     double sAt = std::min(c.shoulderAt, c.caseLen), ogive = std::max(1.0, std::min(c.noseLen, c.oal - c.caseLen));
     std::vector<V2> top = {{0, rim}, {c.rimThick, rim}};
-    if (!c.rimmed) top.push_back({c.rimThick + 0.6, base * 0.86}), top.push_back({c.rimThick + 1.4, base});  // extractor groove
+    if (c.kind == "shotshell") {  // straight hull, crimped shut (a fired one has opened up)
+        top.push_back({c.rimThick, base});
+        double cr = std::min(3.0, c.caseLen * 0.08);
+        top.push_back({c.caseLen - cr, base});
+        if (caseOnly) { top.push_back({c.caseLen, base}); top.push_back({c.caseLen, base * 0.9}); }
+        else top.push_back({c.caseLen, base * 0.62});
+    } else {
+    if (c.kind == "caseless") top.push_back({c.rimThick, base});  // no rim, no groove: just the block
+    else if (!c.rimmed) top.push_back({c.rimThick + 0.6, base * 0.86}), top.push_back({c.rimThick + 1.4, base});  // extractor groove
     else top.push_back({c.rimThick, base});
     top.push_back({sAt, sh});
     if (sAt < c.caseLen - 0.5) top.push_back({std::min(c.caseLen - 0.3, sAt + (sh - neck) * 1.6 + 0.3), neck});
@@ -207,6 +221,7 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
             top.push_back({bodyEnd + ogive * t, bul * std::sqrt(std::max(0.0, 1 - t * t * 0.92))});
         }
     }
+    }  // (not a shotshell)
     std::vector<V2> out;
     for (auto& p : top) out.push_back({p.x, -p.y});
     for (int k = (int)top.size() - 1; k >= 0; k--)
@@ -216,15 +231,41 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
     for (auto& p : out) if (clean.empty() || std::hypot(p.x - clean.back().x, p.y - clean.back().y) > 1e-4) clean.push_back(p);
     return clean;
 }
-double cartridgeMass(const Cartridge& c) {
-    const double brass = 0.0085;  // g per mm^3
+static const char* KIND_IDS[] = {"centerfire", "rimfire", "shotshell", "caseless"};
+const char* cartKinds() { return "Centrefire\0Rimfire\0Shotshell\0Caseless\0"; }
+const char* cartKindId(int i) { return KIND_IDS[std::clamp(i, 0, 3)]; }
+int cartKindIndex(const std::string& id) { for (int i = 0; i < 4; i++) if (id == KIND_IDS[i]) return i; return 0; }
+double spentCaseMass(const Cartridge& c) {
+    const double brass = 0.0085, plastic = 0.00095;  // g per mm^3
+    if (c.kind == "caseless") return 0;
+    if (c.kind == "shotshell") {  // a thin brass head with a thick base wad, and a plastic hull
+        double hl = std::clamp(c.headLen, 0.0, c.caseLen);
+        double head = 3.14159 * c.baseDia * hl * 0.3 * brass + 3.14159 * c.headDia() * c.headDia() / 4 * 1.5 * brass;
+        return head + 3.14159 * c.baseDia * c.caseLen * 0.6 * plastic + 1.0;  // + the base wad
+    }
     double wall = 3.14159 * c.baseDia * c.caseLen * 0.35 * brass, head = 3.14159 * c.headDia() * c.headDia() / 4 * 3 * brass;
-    return c.bulletMass + wall + head;
+    if (c.kind == "rimfire") head *= 0.4;  // thin, folded head
+    return wall + head;
+}
+double cartridgeMass(const Cartridge& c) {
+    if (c.kind == "caseless") {  // the block of propellant
+        double r = c.baseDia / 2;
+        return c.payloadMass() + 3.14159 * r * r * c.caseLen * 0.0012;
+    }
+    if (c.kind == "shotshell") return c.payloadMass() + spentCaseMass(c) + 2.0 /* wad and powder */;
+    return c.payloadMass() + spentCaseMass(c);
 }
 
 const std::vector<Cartridge>& cartridgePresets() {
     static std::vector<Cartridge> v = [] {
         auto shaped = [](Cartridge c, const char* nose, double tail = 0) { c.nose = nose; c.tailLen = tail; return c; };
+        auto kinded = [](Cartridge c, const char* kind) { c.kind = kind; return c; };
+        // 12 gauge, 2 3/4 inch: about 63.5 mm long once crimped, bore 18.5 mm
+        auto shell = [](const char* n, unsigned col, double shotDia, int count, double vel, double slug = 0) {
+            Cartridge c = mk(n, 63.5, 22.80, 1.50, 20.60, 20.60, 63.5, 20.60, 18.50, 63.5, 0, slug, vel, true);
+            c.kind = "shotshell"; c.shotDia = shotDia; c.projectiles = count; c.hullColor = col; c.headLen = shotDia > 0 && shotDia < 4 ? 8 : 15;
+            return c;
+        };
         return std::vector<Cartridge>{
             shaped(mk("9x19mm", 19.15, 9.96, 1.27, 9.93, 9.65, 19.15, 9.65, 9.01, 29.69, 7.5, 7.45, 360, false), "round"),
             shaped(mk(".380 ACP", 17.30, 9.50, 1.10, 9.50, 9.50, 17.30, 9.50, 9.02, 25.00, 6.0, 6.15, 290, false), "round"),
@@ -232,6 +273,11 @@ const std::vector<Cartridge>& cartridgePresets() {
             shaped(mk("5.56x45mm", 44.70, 9.60, 1.14, 9.58, 9.00, 36.50, 6.43, 5.70, 57.40, 14.0, 4.00, 940, false), "spitzer"),
             shaped(mk("7.62x39mm", 38.70, 11.35, 1.50, 11.35, 10.07, 30.50, 8.60, 7.92, 56.00, 14.0, 7.90, 730, false), "spitzer", 3.0),
             shaped(mk("7.62x54mmR", 53.72, 14.48, 1.60, 12.37, 11.61, 45.00, 8.53, 7.92, 77.16, 18.0, 9.60, 830, true), "spitzer", 3.0),
+            kinded(shaped(mk(".22 LR", 15.57, 6.98, 1.04, 5.74, 5.74, 15.57, 5.74, 5.70, 25.40, 6.0, 2.59, 370, true), "round"), "rimfire"),
+            shell("12 gauge 00 buck", 0xB0302AFF, 8.38, 9, 400),
+            shell("12 gauge slug", 0x2F7A3AFF, 0, 1, 480, 28.35),
+            shell("12 gauge birdshot", 0xC9A227FF, 2.41, 380, 370),
+            kinded(shaped(mk("6mm caseless", 26.0, 9.50, 0.0, 9.50, 9.50, 26.0, 9.50, 6.00, 36.0, 10.0, 5.0, 880, false), "spitzer"), "caseless"),
         };
     }();
     return v;

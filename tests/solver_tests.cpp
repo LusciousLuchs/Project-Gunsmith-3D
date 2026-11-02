@@ -1126,6 +1126,69 @@ static void tubeFeeding() {
     }
 }
 
+static void ammoKinds() {
+    std::printf("Kinds of ammunition: shotshells, rimfire, caseless, several projectiles\n");
+    {   // an older cartridge (no kind saved) is centrefire with one bullet, and recoils exactly as before
+        Design d = loadPreset("blowback");
+        std::string js = designToJson(d);
+        for (const char* k : {"\"kind\"", "\"projectiles\""}) { size_t at = js.find(k); if (at != std::string::npos) js[at + 1] = 'x'; }
+        Design back;
+        bool ok = designFromJson(js, back);
+        const Cartridge& c = back.breech.cart;
+        CHECK(ok && c.kind == "centerfire" && c.projectiles == 1 && std::fabs(c.impulse() - c.bulletMass / 1000 * c.velocity * 1.35) < 1e-9,
+              "older cartridges load as centrefire with one bullet, recoil unchanged");
+    }
+    const Cartridge* buck = nullptr; const Cartridge* nine = nullptr;
+    for (auto& c : cartridgePresets()) { if (c.name == "12 gauge 00 buck") buck = &c; if (c.name == "9x19mm") nine = &c; }
+    CHECK(buck && std::fabs(buck->pelletMass() - 3.49) < 0.1 && std::fabs(buck->payloadMass() - 31.4) < 1, "nine 8.4 mm lead pellets: 3.5 g each, 31 g of shot");
+    CHECK(buck && nine && buck->impulse() > 3 * nine->impulse() && cartridgeMass(*buck) > 38 && cartridgeMass(*buck) < 50,
+          "a buckshot shell kicks over three times as hard as a 9 mm, and weighs about 45 g");
+    {
+        Cartridge two = *nine; two.projectiles = 2;
+        CHECK(std::fabs(two.energy() - 2 * nine->energy()) < 1e-9, "two bullets carry twice the energy");
+        Cartridge rt;
+        Design d = loadPreset("blowback"); d.breech.cart = *buck;
+        Design back; designFromJson(designToJson(d), back);
+        rt = back.breech.cart;
+        CHECK(rt.kind == "shotshell" && rt.projectiles == 9 && std::fabs(rt.shotDia - 8.38) < 1e-9 && rt.hullColor == buck->hullColor, "a shell saves and loads");
+        auto o = cartridgeOutline(*buck);
+        double front = 0; for (auto& p : o) front = std::max(front, p.x);
+        CHECK(std::fabs(front - buck->caseLen) < 1e-6, "a shell is crimped shut: nothing stands out of the hull");
+    }
+    {   // the pump shotgun: the carbine's action redrawn for 12 gauge
+        Design d = loadPreset("pumpshotgun");
+        auto S = sim::build(d); sim::run(*S, 0.3);
+        S->pressed = true; sim::run(*S, 0.05); S->pressed = false; sim::run(*S, 0.1);
+        sim::Body* B = S->find("bolt");
+        CHECK(S->shots == 1 && std::fabs(B->x - B->x0) < 0.0005, "the action lock holds the bolt shut through a 12 gauge shot");
+        sim::ReliabilityOptions o; o.rounds = 30;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 30 && R.jams == 0, "the pump shotgun fires 30 shells from its tube without a jam");
+    }
+    {   // caseless: nothing to extract, and the next round goes straight in
+        Design d = loadPreset("blowback");
+        d.breech.cart.kind = "caseless";
+        auto S = sim::build(d); sim::run(*S, 0.3);
+        sim::setKey(*S, "fire", true); S->pressed = true; S->trigger = true; sim::run(*S, 0.08);
+        sim::setKey(*S, "fire", false); S->pressed = false; S->trigger = false; sim::run(*S, 0.4);
+        int cases = 0;
+        for (auto& b : S->bodies) if (b.isCase && !b.gone) cases++;
+        CHECK(S->shots == 1 && cases == 0 && S->chambered && S->malf == sim::Malf::None, "a caseless round leaves nothing to eject; the next one chambers");
+    }
+    {   // rimfire: a firing pin on the bore line hits the middle of the head, where there's no priming
+        Design d = loadPreset("blowback");
+        auto S0 = sim::build(d);
+        if (S0->strikerIgnition) {
+            d.breech.cart.kind = "rimfire";
+            auto S = sim::build(d); sim::run(*S, 0.3);
+            auto pull = [](sim::Sim& T) { sim::setKey(T, "fire", true); T.pressed = T.trigger = true; sim::run(T, 0.08); sim::setKey(T, "fire", false); T.pressed = T.trigger = false; sim::run(T, 0.2); };
+            auto C = sim::build(loadPreset("blowback")); sim::run(*C, 0.3); pull(*C);
+            pull(*S);
+            CHECK(C->shots == 1 && S->shots == 0, "a rimfire round in a centre-striking gun doesn't fire");
+        } else CHECK(true, "(the blowback example has no drawn striker: rimfire strike not checked)");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1150,6 +1213,7 @@ int main() {
     roundParts();
     welding();
     tubeFeeding();
+    ammoKinds();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

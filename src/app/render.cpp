@@ -130,9 +130,20 @@ static void drawOutline(int i, Matrix M, Color c) {
     }
 }
 // Lathe-turned cartridge meshes, built from the cartridge's profile. Axis along +X, head at x = 0.
-struct RoundMesh { std::string key; Mesh caseM{}, bulletM{}; bool ok = false; } RM;
+struct RoundMesh { std::string key; Mesh caseM{}, bulletM{}, hullM{}, hullFiredM{}; bool ok = false, bullet = false, hull = false; } RM;
+std::vector<V2> hullProfile(const Cartridge& c, bool fired) {  // a shotshell's hull, from inside its brass head to the crimp
+    if (c.kind != "shotshell") return {};
+    double base = c.baseDia / 2, cr = std::min(3.0, c.caseLen * 0.08), x0 = std::min(c.rimThick, c.caseLen - cr - 0.5);
+    if (fired) return {{x0, 0}, {x0, base}, {c.caseLen, base}, {c.caseLen, base * 0.88}};
+    return {{x0, 0}, {x0, base}, {c.caseLen - cr, base}, {c.caseLen, base * 0.62}, {c.caseLen - 0.8, base * 0.2}, {c.caseLen - 0.8, 0}};
+}
 std::vector<V2> caseProfile(const Cartridge& c) {  // (x along the axis, radius), mm
     double rim = c.rimDia / 2, base = c.baseDia / 2, sh = c.shoulderDia / 2, neck = c.neckDia / 2;
+    if (c.kind == "shotshell") {  // the brass head, a touch proud of the hull it holds
+        double hl = std::clamp(c.headLen, c.rimThick + 0.5, c.caseLen - 1);
+        return {{0, 0}, {0, rim}, {c.rimThick, rim}, {c.rimThick, base + 0.08}, {hl, base + 0.08}, {hl, base * 0.9}};
+    }
+    if (c.kind == "caseless") return {{0, 0}, {0, base}, {c.caseLen, base}, {c.caseLen, std::min(base, c.bulletDia / 2)}};
     std::vector<V2> p = {{0, 0}, {0, rim}, {c.rimThick, rim}};
     if (!c.rimmed) { double g = base * 0.84; p.push_back({c.rimThick, g}); p.push_back({c.rimThick + 0.9, g}); p.push_back({c.rimThick + 1.6, base}); }
     else p.push_back({c.rimThick, base});
@@ -147,6 +158,7 @@ std::vector<V2> caseProfile(const Cartridge& c) {  // (x along the axis, radius)
     return p;
 }
 std::vector<V2> bulletProfile(const Cartridge& c) {
+    if (c.kind == "shotshell") return {};  // the shot or slug is inside the hull
     auto shape = bulletShape(c);
     if (!shape.empty()) {  // the designed shape, closed on the axis at its base
         std::vector<V2> p = {{shape.front().x, 0}};
@@ -194,10 +206,15 @@ static void ensureRoundMesh() {
                   c.nose.c_str(), c.meplat, c.tailLen, c.tailDia, c.seat);
     std::string key = buf;
     for (auto& q : c.custom) key += "/" + std::to_string(q.x) + "," + std::to_string(q.y);
+    key += "/" + c.kind + "/" + std::to_string(c.headLen);
     if (RM.ok && RM.key == key) return;
-    if (RM.ok) { UnloadMesh(RM.caseM); UnloadMesh(RM.bulletM); }
+    if (RM.ok) { UnloadMesh(RM.caseM); if (RM.bullet) UnloadMesh(RM.bulletM); if (RM.hull) { UnloadMesh(RM.hullM); UnloadMesh(RM.hullFiredM); } }
     RM.caseM = lathe(caseProfile(c));
-    RM.bulletM = lathe(bulletProfile(c));
+    auto bp = bulletProfile(c);
+    RM.bullet = bp.size() >= 2;
+    if (RM.bullet) RM.bulletM = lathe(bp);
+    RM.hull = c.kind == "shotshell";
+    if (RM.hull) { RM.hullM = lathe(hullProfile(c, false)); RM.hullFiredM = lathe(hullProfile(c, true)); }
     RM.key = key; RM.ok = true;
 }
 static Matrix alignX(Vector3 dir) {  // rotation taking +X onto dir
@@ -227,9 +244,19 @@ bool boltHandle(const RB& r, BoltHandle& h) {
 static void drawCartridgeAt(Vector3 o, Vector3 dir, bool caseOnly = false, float bright = 1.f) {
     ensureRoundMesh();
     Matrix M = MatrixMultiply(alignX(dir), MatrixTranslate(o.x, o.y, o.z));
+    const Cartridge& c = A.design.breech.cart;
     setSpecular(0.75f);  // polished brass and copper
-    drawMesh(RM.caseM, M, shade(Color{214, 168, 78, 255}, bright));
-    if (!caseOnly) drawMesh(RM.bulletM, M, shade(Color{184, 102, 62, 255}, bright));
+    if (c.kind == "caseless") {  // a block of propellant: matt
+        setSpecular(0.15f);
+        if (!caseOnly) drawMesh(RM.caseM, M, shade(Color{122, 98, 70, 255}, bright));
+        setSpecular(0.75f);
+    } else drawMesh(RM.caseM, M, shade(Color{214, 168, 78, 255}, bright));
+    if (!caseOnly && RM.bullet) drawMesh(RM.bulletM, M, shade(Color{184, 102, 62, 255}, bright));
+    if (RM.hull) {
+        unsigned h = c.hullColor;
+        setSpecular(0.35f);  // plastic
+        drawMesh(caseOnly ? RM.hullFiredM : RM.hullM, M, shade(Color{(unsigned char)(h >> 24), (unsigned char)(h >> 16), (unsigned char)(h >> 8), 255}, bright));
+    }
     setSpecular(0.3f);
 }
 static void drawCartridge(const std::string& bodyId, V2 face, float zc, bool caseOnly = false) {
