@@ -58,6 +58,7 @@ struct Body {
     RS rs = RS::None;
     bool isCase = false;                 // an empty case (fired)
     bool inChamber = false;              // its nose went into the chamber mouth straight: the chamber now guides it
+    int slot = 0;                        // which chamber it belongs to (several chambers: see Sim::chambers)
     bool wasOut = false;                 // has been clear of the chamber (so going back in means seating it)
     double vz = 0;                       // sideways speed (m/s), for cases leaving through the ejection port
     Body* mag = nullptr;                 // presented: the magazine holding it
@@ -131,7 +132,7 @@ struct Sim {
     Body* CH = nullptr;
     V2 faceB, faceC, muzC;
     bool hasFace = false, hasMuzzle = false;
-    struct { bool on = false; Body* b = nullptr; V2 l, t; } hand;
+    struct Hand { bool on = false; Body* b = nullptr; V2 l, t; } hand;
     struct { bool on = false; Body* b = nullptr; double t = 0, arm = 0; } rollHand;  // arm: lever (m) limiting the torque; 0 = no limit
     double handStrength = 150;           // N, the most force your hand applies
     bool magRelease = false;             // magazine release button held
@@ -175,9 +176,26 @@ struct Sim {
     // shot-to-shot variation (the reliability test sets these; 1 and 0 for a plain shot)
     double powerScale = 1;               // this round's power against the cartridge's nominal impulse
     double limp = 0;                     // how loosely the gun is held, 0 firm .. 1 free: the frame recoils with the slide
+    // Several chambers. Each has its own breech face, bore and state. The chamber being worked on is in the fields
+    // above (BR, CH, faceB ... gripped); useChamber() swaps another one in. Chamber 0 is the gun's first, and the one
+    // the magazine feeds. With one chamber nothing is ever swapped and everything behaves as it always has.
+    struct Chamber {
+        Body* BR = nullptr; Body* CH = nullptr;
+        V2 faceB, faceC, muzC;
+        bool hasFace = false, hasMuzzle = false;
+        bool chambered = false, inTransit = false, spent = false, gripped = false, cycledOpen = false;
+        double shotT = -1e9;             // when this chamber last fired (its pressure lasts the cartridge's burn time)
+    };
+    std::vector<Chamber> chambers;       // [cur] is stale while it's swapped in
+    int cur = 0;                         // which chamber is in the fields above
+    int nextChamber = 0;                 // fired in turn: the one to try first on the next pull
 
     Body* find(const std::string& id);
 };
+void useChamber(Sim& S, int k);          // swap chamber k's state into the working fields (no-op with one chamber)
+int chamberCount(const Sim& S);
+bool anyChambered(Sim& S);               // a live round in any chamber
+int chamberedCount(Sim& S);
 
 std::unique_ptr<Sim> build(const Design& d);
 void substep(Sim& S);
@@ -204,6 +222,7 @@ bool handLoad(Sim& S);                                     // drop a round strai
 // loose rounds: physical cartridges. Hold one in the open action, in line with the bore and in front of the
 // breech face, and it drops into place; closing the breech (or pushing it by hand) seats it in the chamber.
 Body* spawnRound(Sim& S, V2 headMM, double vx = 0, double vy = 0);  // head position in mm, velocity m/s
+Body* dropIntoChamber(Sim& S, int k);                             // a round pushed home into chamber k of an open action
 int looseRounds(const Sim& S);                                       // rounds lying about (not chambered)
 struct BoreLine { bool ok = false; V2 face, dir; double faceS = 0, faceLat = 0; };
 int jamCount(const Sim& S);

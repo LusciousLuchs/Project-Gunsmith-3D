@@ -64,6 +64,12 @@ void drawOverlay() {
     }
     if (br.on && br.hasFace) { Vector2 s = toScreen(W3(br.face, frontZ(br.breech))); A.handles.push_back({s, 5, -1, -1}); label(s, "Breech face", Color{255, 122, 89, 255}); }
     if (br.on && br.hasMuzzle) { Vector2 s = toScreen(W3(br.muzzle, frontZ(br.chamber))); A.handles.push_back({s, 6, -1, -1}); label(s, "Muzzle", Color{255, 122, 89, 255}); }
+    if (br.on) for (size_t k = 0; k < br.more.size(); k++) {  // further chambers: numbered from 2
+        auto& c = br.more[k];
+        std::string n = std::to_string(k + 2);
+        { Vector2 s = toScreen(W3(c.face, frontZ(c.breech.empty() ? br.breech : c.breech))); A.handles.push_back({s, 5, (int)k, -1}); label(s, ("Breech face " + n).c_str(), Color{255, 122, 89, 255}); }
+        if (c.hasMuzzle) { Vector2 s = toScreen(W3(c.muzzle, frontZ(c.chamber))); A.handles.push_back({s, 6, (int)k, -1}); label(s, ("Muzzle " + n).c_str(), Color{255, 122, 89, 255}); }
+    }
     // joints that belong to what you're working on are drawn strongly; the rest stay faint until hovered
     bool jointTool = A.tool == Tool::Pin || A.tool == Tool::Weld || A.tool == Tool::Track || A.tool == Tool::Spring;
     std::string selId = A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() ? D.bodies[A.sel.idx].id : "";

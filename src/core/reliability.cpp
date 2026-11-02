@@ -18,6 +18,42 @@ struct Runner {
     double stroke;         // how far the breech can come back (m)
     bool rolling;          // a turn bolt: lift the handle first
     const std::atomic<bool>* cancel;
+    // a hinged part (break-open barrels, a tip-up frame): swung open about its pin instead of drawn straight back
+    bool hinged = false;
+    V2 hinge, grab0, grabL;  // the pin (world), and where the hand holds the part (closed position, world; and local)
+    double sign = 1;         // which way it swings open
+
+    void findHinge() {
+        for (auto& J : S.joints) {
+            if (J.type != JT::Pin || !J.A || !J.B) continue;
+            Body* a = J.A->root ? J.A->root : J.A;
+            Body* b = J.B->root ? J.B->root : J.B;
+            Body* other = a == B ? b : b == B ? a : nullptr;
+            if (!other || !(other->fixed || other == &S.world)) continue;
+            hinge = a == B ? wpt(*J.B, J.lb) : wpt(*J.A, J.la);
+            hinged = true;
+            break;
+        }
+        if (!hinged) return;
+        const Body* hp = nullptr;  // the part marked "worked by hand", where the hand holds it
+        for (auto& b : S.bodies) if (b.d && b.d->ctrl == "handle" && (&b == B || b.root == B)) { hp = &b; break; }
+        grab0 = hp ? V2{hp->d->ctrlPt.x / 1000, hp->d->ctrlPt.y / 1000} : V2{B->x, B->y};
+        grabL = lpt(*B, grab0);
+        V2 r{grab0.x - hinge.x, grab0.y - hinge.y}, t{-r.y, r.x};
+        double dir = hp ? hp->d->ctrlDir * 3.14159265358979 / 180 : 0;
+        sign = t.x * std::cos(dir) + t.y * std::sin(dir) >= 0 ? 1 : -1;
+    }
+    void swing(double to) {  // turn the part about its pin to `to` radians open, at a hand's pace
+        S.hand = {true, B, grabL, wpt(*B, grabL)};
+        double from = B->a * sign, r = std::hypot(grab0.x - hinge.x, grab0.y - hinge.y);
+        int n = std::max(1, (int)(std::fabs(to - from) * r / 1.5 / 0.005));
+        for (int k = 1; k <= n; k++) {
+            double ph = sign * (from + (to - from) * k / n), c = std::cos(ph), s = std::sin(ph);
+            V2 d{grab0.x - hinge.x, grab0.y - hinge.y};
+            S.hand.t = {hinge.x + c * d.x - s * d.y, hinge.y + s * d.x + c * d.y};
+            run(S, 0.005);
+        }
+    }
 
     bool stop() const { return cancel && cancel->load(); }
 
@@ -34,11 +70,19 @@ struct Runner {
     }
     V2 home(double ahead) const { return {B->x0 + dir.x * ahead, B->y0 + dir.y * ahead}; }
     void open() {  // lift the handle and draw the breech all the way back; the hand keeps hold
+        if (hinged) { swing(80 * 3.14159265358979 / 180); run(S, 0.15); return; }  // (as far as it goes: a stop you drew holds it sooner)
         if (rolling) { S.rollHand = {true, B, B->rmax, 0}; run(S, 0.15); }
         handMove(home(-(stroke + 0.003)));
         run(S, 0.08);
     }
     void close() {
+        if (hinged) {  // swing it shut and press it home
+            swing(-0.01);
+            run(S, 0.1);
+            S.hand.on = false;
+            run(S, 0.2);
+            return;
+        }
         if (rolling) {
             handMove(home(0.005));
             run(S, 0.15);
@@ -71,22 +115,38 @@ struct Runner {
         S.hand = {true, B, {0, 0}, {B->x, B->y}};
     }
     // a round from the box, put into the open action in line with the bore: it drops into place
-    void loadByHand() {
+    void loadByHand(int chamber = 0) {
         Body* r = spawnRound(S, {S.gunBox[0] * 1000 + 30, S.groundY * 1000 - 20});
         if (!r) return;
         run(S, 0.1);
         Body* keep = S.hand.b;
+        Sim::Hand held = S.hand;
         V2 grab = wpt(*r, {0, 0});
         S.hand = {true, r, lpt(*r, grab), grab};
         for (int k = 1; k <= 40; k++) {
+            useChamber(S, chamber);
             BoreLine L = boreLine(S);
+            useChamber(S, 0);
             V2 tgt{L.face.x - L.dir.x * 0.02 - std::cos(r->a) * r->headLx, L.face.y - L.dir.y * 0.02};
             S.hand.t = {grab.x + (tgt.x - grab.x) * k / 40, grab.y + (tgt.y - grab.y) * k / 40};
             run(S, 0.01);
         }
         S.hand.on = false;
         run(S, 0.2);
-        if (keep == B) S.hand = {true, B, {0, 0}, {B->x, B->y}};
+        if (keep == B) {
+            if (hinged) { S.hand = held; return; }  // still holding it open
+            S.hand = {true, B, {0, 0}, {B->x, B->y}};
+        }
+    }
+    void loadAll() {  // a round into every empty chamber
+        for (int k = 0; k < chamberCount(S); k++) {
+            useChamber(S, k);
+            bool empty = !S.chambered && !S.spent && !S.inTransit && S.hasFace;
+            useChamber(S, 0);
+            if (!empty) continue;
+            if (hinged) { dropIntoChamber(S, k); run(S, 0.15); }  // one hand holds it open, the other pushes a round in
+            else loadByHand(k);
+        }
     }
 };
 
@@ -119,12 +179,13 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         if (b.d && b.d->ctrl == "handle" && !b.fixed && !b.slice && b.tmpl.empty()) { B = b.root ? b.root : &b; break; }
     BoreLine L0 = boreLine(S);
     Runner run_{S, B, L0.ok ? L0.dir : V2{1, 0}, breechStroke(S, B), B->invIr > 0, cancel};
+    run_.findHinge();
     R.manual = run_.rolling || !S.breechSprung;
     R.singleLoad = !S.magTmpl && S.feedMode == "single";
     run(S, 0.1);
 
     auto chamberNext = [&]() {  // get a round into the chamber the way this gun is loaded
-        if (R.singleLoad) { run_.open(); run_.loadByHand(); run_.close(); return; }
+        if (R.singleLoad) { run_.open(); run_.loadAll(); run_.close(); return; }
         if (S.magTmpl) {
             Body* M = seatedMag(S);
             if (!M || M->rounds == 0) { quickReload(S); R.reloads++; run(S, 0.1); }
@@ -135,7 +196,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         for (int tries = 0; tries < 3; tries++) {
             run_.open();
             run_.pickOut(tries > 0);
-            if (R.singleLoad) run_.loadByHand();
+            if (R.singleLoad) run_.loadAll();
             else if (S.magTmpl) { Body* M = seatedMag(S); if (!M || M->rounds == 0) { quickReload(S); R.reloads++; } }
             else if (Body* M = seatedMag(S); M && M->rounds == 0) { fillMagazines(S); R.reloads++; }
             run_.close();
@@ -156,7 +217,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
 
     int limit = o.rounds * 3 + 10;
     while (S.shots < o.rounds && R.attempts < limit && !run_.stop()) {
-        if (!S.chambered) chamberNext();
+        if (!anyChambered(S)) chamberNext();
         if (S.malf != Malf::None) {  // jammed while loading
             record(S.malf);
             if (!clear()) { R.gaveUp = true; R.note = std::string("Stuck after a ") + malfName(S.malf) + " that racking didn't clear."; break; }
@@ -165,7 +226,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         S.powerScale = std::clamp(power(rng), 0.8, 1.2);
         S.limp = o.limpMax * uni(rng);
         int before = S.shots;
-        bool wasChambered = S.chambered && inBattery(S);
+        bool wasChambered = (chamberCount(S) == 1 ? S.chambered : anyChambered(S)) && inBattery(S);
         // pull the drawn trigger if there is one, and press FIRE as the bench does (the built-in hammer listens for it;
         // with a drawn trigger it still waits until that part has actually moved)
         setKey(S, "fire", true);
@@ -183,7 +244,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
             } else if (S.malf == Malf::None) {
                 chamberNext();
             }
-        } else if (R.manual && S.malf == Malf::None) {
+        } else if (R.manual && S.malf == Malf::None && !anyChambered(S)) {  // (another barrel still loaded: fire that first)
             run_.cycle();
         }
         if (S.malf != Malf::None) {

@@ -47,6 +47,7 @@ struct App {
     std::unique_ptr<sim::Sim> S;
     bool running = false;
     Tool tool = Tool::Select;
+    int chamberEdit = -1;                // the Face and Muzzle tools place this further chamber's points (-1: the first chamber)
     Sel sel;
     bool snapOn = true, xray = true, sound = true, cutaway = false;  // cutaway: near-side parts drawn see-through
     float handN = 150;                   // hand strength on the bench (a test condition, so it lives here)

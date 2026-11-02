@@ -156,6 +156,14 @@ struct JointDef {
                                          // release part has moved back "releaseAt" mm; it catches again when the part comes home
 };
 
+// A further chamber, with its own bore, breech face and muzzle (doubles, volley guns, a cylinder's chambers). The gun's
+// first chamber is the BreechDef itself; these all take the same cartridge.
+struct ChamberDef {
+    std::string breech, chamber = "world";   // the part whose face closes it, and the part it's cut in
+    V2 face, muzzle;
+    bool hasMuzzle = false;
+    bool loaded = true;
+};
 struct BreechDef {
     bool on = false;
     std::string breech, chamber = "world";
@@ -181,6 +189,8 @@ struct BreechDef {
     int burst = 3;                       // shots per pull in burst
     bool doubleAction = false;           // pulling the trigger cocks and drops it, so it fires even when not cocked
     double lockTime = 0;                 // ms from the trigger breaking to the shot
+    std::vector<ChamberDef> more;        // further chambers (none in older blueprints)
+    std::string fireOrder = "turn";      // with several chambers: "turn" fires the next loaded one per pull, "together" all at once
     bool fullAuto() const { return fireMode == "auto" || (autoFire && fireMode != "burst"); }
 };
 void applyCartridge(BreechDef& b);      // copy round size and impulse from the cartridge

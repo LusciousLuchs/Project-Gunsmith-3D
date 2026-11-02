@@ -52,6 +52,7 @@ CART = {
     '7.62x54mmR': dict(oal=77.16, case=53.72, head=14.48),
     '.45 ACP': dict(oal=32.4, case=22.8, head=12.19),
     '12 gauge 00 buck': dict(oal=63.5, case=63.5, head=22.8, bore=18.5),
+    '.41 Short': dict(oal=23.4, case=11.7, head=11.2, bore=10.4),
 }
 
 STEEL = '#3f4654'; BLUE = '#3a6fc4'; BRIGHT = '#c9ccd2'; BRASS = '#e0b54a'; GRIP = '#2b2f36'; WOOD = '#7a5236'
@@ -419,6 +420,49 @@ def pump(cart='.45 ACP'):
               'ignition': 'button', 'hammer': 'hammer', 'cockAt': 40, 'fireMode': 'semi'}
     return {'name': 'Pump-action shotgun' if shotgun else 'Pump-action carbine', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
 
+# ------------------------------------------------------------------ over-under derringer
+# Two chambers, one above the other, in a barrel block that tips up on a hinge at the top of the standing breech.
+#  - The frame's standing breech is the breech face for both chambers; nothing moves to close it but the barrels.
+#  - Hinged at the top corner of the breech, every point of the barrel block swings forward as it tips up, so it
+#    clears the breech. Gravity holds it shut against the breech face (the shot pushes on the frame, not the barrels).
+#  - Tipped up, the chambers point down and back: the extractor lets go and the empty cases drop out.
+#  - The hammer fires the top barrel, then the bottom one (Firing > fires one per pull, in turn).
+def derringer():
+    cart = '.41 Short'; C = CART[cart]
+    bore = 20.0; sep = 15.0; face = 60.0; muzzle = face + 76
+    R = C['bore'] / 2 + 2.0
+    top, bot = bore - 9, bore + sep + 9
+    parts = []
+    frame = [[face - 16, top], [face, top], [face, bot + 1], [face - 6, bot + 7], [face - 20, bot + 50], [face - 36, bot + 54], [face - 44, bot + 47],
+             [face - 30, bot + 3], [face - 24, top + 5]]
+    parts.append(part('frame', 'Frame', frame, thick=16, fixed=True, color=STEEL, rad=[3, 0.5, 0.5, 4, 6, 8, 8, 6, 4]))
+    # the standing breech: its own part, so the barrel block (pinned to the frame, and pinned parts pass through each
+    # other) has something to come to rest against
+    parts.append(part('shield', 'Standing breech', rect(face - 8, top + 3, face, bot), thick=16, fixed=True, color=STEEL, rad=[0.5, 0.5, 0.5, 0.5]))
+    parts.append(part('grips', 'Grips', [[face - 10, bot + 9], [face - 21, bot + 47], [face - 35, bot + 50], [face - 41, bot + 45], [face - 28, bot + 6]],
+                      z=0, thick=20, solid=False, fixed=True, color=WOOD, rad=[3, 6, 6, 6, 3]))
+    # the barrel block: both chambers are cut in it; the barrels are welded on in front
+    parts.append(part('block', 'Barrel block', rect(face, top, face + 16, bot), thick=17, mass=60, color=STEEL, rad=[0.5, 1, 1, 0.5],
+                      control={'kind': 'handle', 'key': 'none', 'at': [muzzle - 6, bore], 'dir': 270, 'force': 20}))
+    parts.append(part('upper', 'Upper barrel', rect(face + 16, bore - R, muzzle, bore + R), thick=2 * R, mass=40, color=STEEL, round=True))
+    parts.append(part('lower', 'Lower barrel', rect(face + 16, bore + sep - R, muzzle, bore + sep + R), thick=2 * R, mass=40, color=STEEL, round=True))
+    parts.append(part('rib', 'Rib', rect(face + 16, bore - R - 1.2, muzzle - 2, bore - R + 1.5), thick=4, mass=6, color=STEEL))
+    # the spur trigger and the hammer (the fire control is built in: these show where it is)
+    parts.append(part('trigger', 'Trigger', [[face - 12, bot + 5], [face - 8, bot + 5], [face - 9, bot + 15], [face - 12, bot + 17]], thick=5,
+                      solid=False, fixed=True, color=BRASS, rad=[0, 0, 1.5, 1]))
+    parts.append(part('hammer', 'Hammer', [[face - 22, top + 6], [face - 16, top + 2], [face - 24, top - 8], [face - 30, top - 7], [face - 27, top + 6]],
+                      thick=5, solid=False, fixed=True, color=STEEL, rad=[0.5, 0.5, 2, 2, 0.5]))
+    joints = [
+        pin('block', 'frame', [face, top]),
+        weld('upper', 'block', [face + 18, bore]), weld('lower', 'block', [face + 18, bore + sep]), weld('rib', 'upper', [face + 30, bore - R]),
+    ]
+    breech = {'breech': 'shield', 'chamber': 'block', 'face': [face, bore], 'muzzle': [muzzle, bore], 'cartridge': cart, 'dur': 1.0,
+              'feed': 40, 'rounds': 2, 'auto': False, 'loaded': True, 'feedMode': 'single', 'physicalFeed': True,
+              'ignition': 'button', 'hammer': 'hammer', 'cockAt': 0, 'fireMode': 'semi',
+              'more': [{'breech': 'shield', 'chamber': 'block', 'face': [face, bore + sep], 'muzzle': [muzzle, bore + sep], 'loaded': True}],
+              'fireOrder': 'turn'}
+    return {'name': 'Over-under derringer', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
+
 # ------------------------------------------------------------------ output
 NEW = [
     ('blowback', 'Blowback pistol', blowback),
@@ -427,6 +471,7 @@ NEW = [
     ('single', 'Single-shot rifle', lambda: rifle('single')),
     ('pump', 'Pump-action carbine', pump),
     ('pumpshotgun', 'Pump-action shotgun', lambda: pump('12 gauge 00 buck')),
+    ('derringer', 'Over-under derringer', derringer),
 ]
 LEGACY_LIST = [  # older examples built with simplified joints; kept for study and for the tests of those joints
     ('legacy-tilting', 'PRESET_TILTING'), ('legacy-blowback', 'PRESET_BLOWBACK'), ('longrecoil', 'PRESET_LONG'),
@@ -439,6 +484,7 @@ MENU = [  # what the example menu shows, in order
     ('single', 'Single-shot rifle (same action, load by hand)'),
     ('pump', 'Pump-action carbine (.45, tube magazine and lifter)'),
     ('pumpshotgun', 'Pump-action shotgun (12 gauge buckshot, same action)'),
+    ('derringer', 'Over-under derringer (.41 rimfire, two barrels, tips up)'),
     ('longrecoil', 'Long recoil, Chauchat style (simplified cam and catch)'),
     ('blank', 'Blank frame'),
 ]

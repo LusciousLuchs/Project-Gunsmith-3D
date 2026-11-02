@@ -1189,6 +1189,47 @@ static void ammoKinds() {
     }
 }
 
+static void severalChambers() {
+    std::printf("Several chambers (the over-under derringer)\n");
+    Design d = loadPreset("derringer");
+    auto pull = [](sim::Sim& T) { sim::setKey(T, "fire", true); T.pressed = T.trigger = true; sim::run(T, 0.06); sim::setKey(T, "fire", false); T.pressed = T.trigger = false; sim::run(T, 0.1); };
+    {
+        auto S = sim::build(d); sim::run(*S, 0.3);
+        CHECK(sim::chamberCount(*S) == 2 && sim::chamberedCount(*S) == 2, "two chambers, both loaded");
+        sim::Body* B = S->find("block");
+        CHECK(std::fabs(B->a) < 0.01, "gravity holds the barrels shut against the standing breech");
+        pull(*S);
+        int afterOne = S->shots, left = sim::chamberedCount(*S);
+        pull(*S);
+        int afterTwo = S->shots;
+        int clicks = 0;
+        for (auto& e : S->events) if (e.kind == sim::Ev::Click) clicks++;
+        pull(*S);
+        for (auto& e : S->events) if (e.kind == sim::Ev::Click) clicks--;
+        CHECK(afterOne == 1 && left == 1 && afterTwo == 2 && S->shots == 2 && clicks < 0, "fires the top barrel, then the bottom one, then clicks");
+    }
+    {
+        Design v = d; v.breech.fireOrder = "together";
+        auto S = sim::build(v); sim::run(*S, 0.3);
+        pull(*S);
+        CHECK(S->shots == 2 && sim::chamberedCount(*S) == 0, "set to fire all at once, one pull fires both (a volley)");
+    }
+    {
+        Design back;
+        bool ok = designFromJson(designToJson(d), back);
+        CHECK(ok && back.breech.more.size() == 1 && std::fabs(back.breech.more[0].face.y - d.breech.more[0].face.y) < 1e-9 && back.breech.fireOrder == "turn",
+              "the further chambers save and load");
+        Design old = loadPreset("boltaction");
+        auto S = sim::build(old);
+        CHECK(old.breech.more.empty() && sim::chamberCount(*S) == 1, "older blueprints have one chamber, as before");
+    }
+    {
+        sim::ReliabilityOptions o; o.rounds = 30;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 30 && R.jams == 0, "30 rounds: tipped open, the empties drop out, both reloaded, no jams");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1214,6 +1255,7 @@ int main() {
     welding();
     tubeFeeding();
     ammoKinds();
+    severalChambers();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

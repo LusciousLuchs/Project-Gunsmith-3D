@@ -85,8 +85,12 @@ void stepSim(float dt) {
         if (e.kind == sim::Ev::Bang) {
             A.flash = 0.12f;
             if (SFX.ok && A.sound) PlaySound(SFX.bang);
-            if (br.hasMuzzle) {
-                Vector3 m = W3(curMM(br.chamber, br.muzzle), 0);
+            for (size_t k = 0; k <= br.more.size(); k++) {  // smoke from each muzzle that fired just now
+                bool fired = k < S.chambers.size() ? std::fabs(S.chambers[k].shotT - e.t) < 1e-9 : k == 0;
+                const std::string& chb = k == 0 ? br.chamber : br.more[k - 1].chamber;
+                V2 mz = k == 0 ? br.muzzle : br.more[k - 1].muzzle;
+                if (!fired || !(k == 0 ? br.hasMuzzle : br.more[k - 1].hasMuzzle)) continue;
+                Vector3 m = W3(curMM(chb, mz), 0);
                 for (int i = 0; i < 6; i++) A.puffs.push_back({Vector3Add(m, {1.5f + i * 0.9f, 0, 0}), {2.5f + GetRandomValue(0, 30) / 10.f, 0.8f + GetRandomValue(0, 10) / 10.f, GetRandomValue(-10, 10) / 10.f}, 0.35f + i * 0.08f, 1.3f, 1.3f});
             }
         }

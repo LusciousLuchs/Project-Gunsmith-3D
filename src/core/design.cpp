@@ -273,6 +273,7 @@ const std::vector<Cartridge>& cartridgePresets() {
             shaped(mk("5.56x45mm", 44.70, 9.60, 1.14, 9.58, 9.00, 36.50, 6.43, 5.70, 57.40, 14.0, 4.00, 940, false), "spitzer"),
             shaped(mk("7.62x39mm", 38.70, 11.35, 1.50, 11.35, 10.07, 30.50, 8.60, 7.92, 56.00, 14.0, 7.90, 730, false), "spitzer", 3.0),
             shaped(mk("7.62x54mmR", 53.72, 14.48, 1.60, 12.37, 11.61, 45.00, 8.53, 7.92, 77.16, 18.0, 9.60, 830, true), "spitzer", 3.0),
+            kinded(shaped(mk(".41 Short", 11.70, 11.20, 1.00, 10.40, 10.40, 11.70, 10.40, 10.40, 23.40, 6.0, 8.40, 130, true), "round"), "rimfire"),
             kinded(shaped(mk(".22 LR", 15.57, 6.98, 1.04, 5.74, 5.74, 15.57, 5.74, 5.70, 25.40, 6.0, 2.59, 370, true), "round"), "rimfire"),
             shell("12 gauge 00 buck", 0xB0302AFF, 8.38, 9, 400),
             shell("12 gauge slug", 0x2F7A3AFF, 0, 1, 480, 28.35),
@@ -795,6 +796,13 @@ std::string designToJson(const Design& d, bool pretty) {
         jb["auto"] = r.fullAuto();
         jb["face"] = r.hasFace ? v2j(r.face) : json(nullptr);
         jb["muzzle"] = r.hasMuzzle ? v2j(r.muzzle) : json(nullptr);
+        if (!r.more.empty()) {
+            json a = json::array();
+            for (auto& c : r.more)
+                a.push_back({{"breech", c.breech}, {"chamber", c.chamber}, {"face", v2j(c.face)}, {"muzzle", c.hasMuzzle ? v2j(c.muzzle) : json(nullptr)}, {"loaded", c.loaded}});
+            jb["more"] = a;
+            jb["fireOrder"] = r.fireOrder;
+        }
         o["breech"] = jb;
     } else o["breech"] = nullptr;
     return pretty ? o.dump(2) : o.dump();
@@ -974,6 +982,17 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         r.burst = std::max(2, opt<int>(jb, "burst", 3));
         r.doubleAction = opt<bool>(jb, "doubleAction", false);
         r.lockTime = std::max(0.0, opt<double>(jb, "lockTime", 0));
+        if (jb.contains("more") && jb["more"].is_array())
+            for (auto& jc : jb["more"]) {
+                if (!jc.is_object() || !jc.contains("face") || !jc["face"].is_array()) continue;
+                ChamberDef c;
+                c.breech = opt<std::string>(jc, "breech", r.breech); c.chamber = opt<std::string>(jc, "chamber", r.chamber);
+                c.face = j2v(jc["face"]);
+                if (jc.contains("muzzle") && jc["muzzle"].is_array()) { c.hasMuzzle = true; c.muzzle = j2v(jc["muzzle"]); }
+                c.loaded = opt<bool>(jc, "loaded", true);
+                r.more.push_back(c);
+            }
+        r.fireOrder = opt<std::string>(jb, "fireOrder", "turn") == "together" ? "together" : "turn";
         if (r.cartImpulse) applyCartridge(r);
     }
     out = d;

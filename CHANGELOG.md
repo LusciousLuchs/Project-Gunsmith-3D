@@ -102,6 +102,13 @@ The version is set in one place, at the top of `CMakeLists.txt`.
   - **Several bullets per round** for any cartridge. Recoil and energy count the whole payload.
   - New built-in loads: 12 gauge 00 buck, slug and birdshot, .22 LR, and a 6 mm caseless round.
 - **Pump-action shotgun example:** the carbine's action redrawn for 12 gauge buckshot, six in the tube. 50 shells, no jams.
+- **Several chambers per gun:** Firing > Chambers > *Add a chamber*. Each one has its own breech face and muzzle, on any part, and can be closed by any part. They all take the same cartridge; a magazine feeds the first.
+  - *Fires:* one per pull, in turn (a double), or all at once (a volley gun; the recoil adds up).
+  - The bench reliability test loads every chamber, fires them all, then reloads.
+- **Over-under derringer example:** two barrels in a block that tips up on a hinge at the top of the standing breech, in .41 rimfire. Tip it up and the empties drop out. 50 rounds, no jams.
+- Hinged actions on the bench: the reliability test swings a hinged part marked *worked by hand* open about its pin (tip-ups, break actions), instead of pulling it straight back.
+- Extraction: a chamber that swings more than 25 degrees away from its breech face slips the case off the extractor hook, so the chamber carries it (or drops it). A case that never really left the chamber (the action only stirred) no longer counts as a failure to eject.
+- New cartridge: .41 Short (rimfire).
 - Fix: an action lock now catches before anything else moves, so a heavy shot can't shove the parts linked to the bolt. (The pump carbine's fore-end no longer twitches back when it fires.)
 
 ### Example polish

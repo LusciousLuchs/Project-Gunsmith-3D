@@ -145,7 +145,36 @@ static void solveAxial(Body& A, Body& B, double c) {
 }
 
 // ---------- build ----------
+void useChamber(Sim& S, int k) {
+    if (k == S.cur || k < 0 || k >= (int)S.chambers.size()) return;
+    auto swapIn = [&](Sim::Chamber& c, bool save) {
+        if (save) {
+            c.BR = S.BR; c.CH = S.CH; c.faceB = S.faceB; c.faceC = S.faceC; c.muzC = S.muzC; c.hasFace = S.hasFace; c.hasMuzzle = S.hasMuzzle;
+            c.chambered = S.chambered; c.inTransit = S.inTransit; c.spent = S.spent; c.gripped = S.gripped; c.cycledOpen = S.cycledOpen;
+        } else {
+            S.BR = c.BR; S.CH = c.CH; S.faceB = c.faceB; S.faceC = c.faceC; S.muzC = c.muzC; S.hasFace = c.hasFace; S.hasMuzzle = c.hasMuzzle;
+            S.chambered = c.chambered; S.inTransit = c.inTransit; S.spent = c.spent; S.gripped = c.gripped; S.cycledOpen = c.cycledOpen;
+        }
+    };
+    swapIn(S.chambers[S.cur], true);
+    swapIn(S.chambers[k], false);
+    S.cur = k;
+}
+int chamberCount(const Sim& S) { return std::max(1, (int)S.chambers.size()); }
+int chamberedCount(Sim& S) {
+    int was = S.cur, n = 0;
+    for (int k = 0; k < chamberCount(S); k++) { useChamber(S, k); if (S.chambered) n++; }
+    useChamber(S, was);
+    return n;
+}
+bool anyChambered(Sim& S) { return chamberedCount(S) > 0; }
 static bool leavesCase(const Sim& S) { return S.design.breech.cart.kind != "caseless"; }  // caseless rounds burn away
+static void fireChamber(Sim& S) {  // the chamber that's swapped in goes off
+    S.fireT = S.t;
+    if (!S.chambers.empty()) S.chambers[S.cur].shotT = S.t;
+    S.chambered = false; S.spent = leavesCase(S); S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0;
+    S.events.push_back({Ev::Bang, S.t});
+}
 static constexpr int MAX_SPAWNED = 200;  // magazines and loose rounds added during a test
 static void reshapeRolled(Body& b);
 void resample(Body& b);
@@ -380,6 +409,18 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         if (s.BR && br.hasFace) { s.hasFace = true; s.faceB = anc(*s.BR, br.face); s.faceC = anc(*s.CH, br.face); }
         if (br.hasMuzzle) { s.hasMuzzle = true; s.muzC = anc(*s.CH, br.muzzle); }
         s.chambered = br.loaded;
+        s.chambers.assign(1 + br.more.size(), Sim::Chamber());
+        for (size_t k = 0; k < br.more.size(); k++) {  // the further chambers
+            const ChamberDef& cd = br.more[k];
+            Sim::Chamber& c = s.chambers[k + 1];
+            c.BR = s.find(cd.breech.empty() ? br.breech : cd.breech);
+            if (c.BR == &s.world) c.BR = nullptr;
+            c.CH = s.find(cd.chamber);
+            if (!c.CH) c.CH = &s.world;
+            if (c.BR) { c.hasFace = true; c.faceB = anc(*c.BR, cd.face); c.faceC = anc(*c.CH, cd.face); }
+            if (cd.hasMuzzle) { c.hasMuzzle = true; c.muzC = anc(*c.CH, cd.muzzle); }
+            c.chambered = cd.loaded;
+        }
         s.rounds = br.rounds;
         s.feedMode = br.feedMode;
         if (br.ignition == "striker" && !br.striker.empty()) {
@@ -780,13 +821,18 @@ void substep(Sim& S) {
     }
     // chamber pressure on the breech face
     double dur = std::max(0.05, br.dur) / 1000;
-    if (S.t >= S.fireT && S.t < S.fireT + dur && S.BR && S.hasFace) {
+    for (int k = 0; k < chamberCount(S); k++) {  // each chamber that has fired pushes on its own breech face
+        double t0 = S.chambers.empty() ? S.fireT : S.chambers[k].shotT;
+        if (!(S.t >= t0 && S.t < t0 + dur)) continue;
+        useChamber(S, k);
+        if (!S.BR || !S.hasFace) continue;
         double F = br.impulse * S.powerScale / dur, cx = std::cos(S.CH->a), cy = std::sin(S.CH->a);
         V2 p = wpt(*S.BR, S.faceB);
         Body& b = *S.BR;
         double rx = p.x - b.x, ry = p.y - b.y;
         b.fx -= cx * F; b.fy -= cy * F; b.tq -= rx * cy * F - ry * cx * F;
     }
+    useChamber(S, 0);
     if (S.rollHand.on && S.rollHand.b && S.rollHand.b->invIr > 0) {
         Body& b = *S.rollHand.b;
         double om = 2 * 3.14159265358979323846 * 5;
@@ -992,6 +1038,14 @@ void substep(Sim& S) {
     }
     S.t += H;
     // feeding and firing
+    for (int k = 1; k < chamberCount(S); k++) {  // the further chambers: their extractors take hold when the breech closes
+        useChamber(S, k);
+        if (!S.BR || !S.hasFace) continue;
+        double gap = breechGap(S);
+        if (gap < 1 && (S.chambered || S.spent)) S.gripped = true;
+        if (gap < 1 && S.inTransit) { S.inTransit = false; S.chambered = true; }
+    }
+    useChamber(S, 0);
     if (S.BR && S.hasFace) {
         double gap = breechGap(S), feed = br.feed;
         if (gap < 1 && (S.chambered || S.spent)) S.gripped = true;  // the extractor takes hold when the breech closes on it
@@ -1017,38 +1071,63 @@ void substep(Sim& S) {
         }
         if (gap < 1 && S.inTransit) { S.inTransit = false; S.chambered = true; }
         if (S.strikerIgnition) {  // fires when the striker's tip hits the primer hard enough
+            // (with several chambers: whichever primer it comes down on)
             Body& st = *S.STR;
-            V2 tip = wpt(st, S.strTip), primer = wpt(*S.BR, S.faceB);
+            V2 tip = wpt(st, S.strTip);
             double rx = tip.x - st.x, ry = tip.y - st.y;
-            double vx = st.vx - st.w * ry - S.BR->vx, vy = st.vy + st.w * rx - S.BR->vy;
-            double d = std::hypot(tip.x - primer.x, tip.y - primer.y);
-            if (br.cart.kind == "rimfire") {  // the priming is in the rim: only a blow on its edge (above or below the bore) fires it
-                double rr = std::max(0.5, br.cart.rimDia / 2 - 0.6) / 1000, ux = -std::sin(S.CH->a), uy = std::cos(S.CH->a);
-                d = std::min(std::hypot(tip.x - primer.x - ux * rr, tip.y - primer.y - uy * rr), std::hypot(tip.x - primer.x + ux * rr, tip.y - primer.y + uy * rr));
+            double d = 1e9; int hit = 0;
+            for (int k = 0; k < chamberCount(S); k++) {
+                useChamber(S, k);
+                if (!S.BR || !S.hasFace) continue;
+                V2 primer = wpt(*S.BR, S.faceB);
+                double dk = std::hypot(tip.x - primer.x, tip.y - primer.y);
+                if (br.cart.kind == "rimfire") {  // the priming is in the rim: only a blow on its edge (above or below the bore) fires it
+                    double rr = std::max(0.5, br.cart.rimDia / 2 - 0.6) / 1000, ux = -std::sin(S.CH->a), uy = std::cos(S.CH->a);
+                    dk = std::min(std::hypot(tip.x - primer.x - ux * rr, tip.y - primer.y - uy * rr), std::hypot(tip.x - primer.x + ux * rr, tip.y - primer.y + uy * rr));
+                }
+                if (dk < d) { d = dk; hit = k; }
             }
+            useChamber(S, hit);
+            double vx = st.vx - st.w * ry - S.BR->vx, vy = st.vy + st.w * rx - S.BR->vy;
             if (d > 0.004) S.primed = true;
             if (S.primed && d < 0.0012 && std::hypot(vx, vy) > br.igniteSpeed && S.t > S.fireT + dur * 2) {
                 S.primed = false;
-                if (S.chambered && inBattery(S)) { S.fireT = S.t; S.chambered = false; S.spent = leavesCase(S); S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0; S.events.push_back({Ev::Bang, S.t}); }
+                if (S.chambered && inBattery(S)) fireChamber(S);
                 else if (inBattery(S)) S.events.push_back({Ev::Click, S.t});
             }
+            useChamber(S, 0);
         } else {
             // The built-in hammer or striker: no parts, but the action must open far enough to cock it again.
             if (br.cockAt <= 0 || gap >= br.cockAt) S.cocked = true;
             auto ignite = [&]() {  // the hammer reaches the primer
                 S.igniteAt = -1;
-                if (!inBattery(S)) return;
-                if (S.chambered) {
-                    S.fireT = S.t; S.chambered = false; S.spent = leavesCase(S); S.shots++; S.recoilPeak = 0; S.recoilImpulse = 0;
-                    S.events.push_back({Ev::Bang, S.t});
-                } else S.events.push_back({Ev::Click, S.t});
+                int n = chamberCount(S);
+                if (n == 1) {
+                    if (!inBattery(S)) return;
+                    if (S.chambered) fireChamber(S);
+                    else S.events.push_back({Ev::Click, S.t});
+                    return;
+                }
+                // several chambers: the next loaded one in turn, or every loaded one at once (a volley)
+                bool closed = false, fired = false;
+                for (int i = 0; i < n && !(fired && br.fireOrder != "together"); i++) {
+                    int k = br.fireOrder == "together" ? i : (S.nextChamber + i) % n;
+                    useChamber(S, k);
+                    if (!S.BR || !S.hasFace || !inBattery(S)) continue;
+                    closed = true;
+                    if (S.chambered) { fireChamber(S); fired = true; S.nextChamber = (k + 1) % n; }
+                }
+                useChamber(S, 0);
+                if (closed && !fired) S.events.push_back({Ev::Click, S.t});
             };
             if (S.igniteAt >= 0 && S.t >= S.igniteAt) ignite();
             bool burst = br.fireMode == "burst", full = br.fullAuto();
             // a held trigger keeps firing in full-auto, and until the burst is spent; a fresh pull is needed otherwise
-            bool want = S.pressed || (S.trigger && S.chambered && (full || (burst && S.burstLeft > 0)));
+            bool want = S.pressed || (S.trigger && (chamberCount(S) == 1 ? S.chambered : anyChambered(S)) && (full || (burst && S.burstLeft > 0)));
             if (want && S.igniteAt < 0 && S.t > S.fireT + dur * 2) {
                 bool ok = inBattery(S);
+                for (int k = 1; k < chamberCount(S) && !ok; k++) { useChamber(S, k); ok = S.BR && S.hasFace && inBattery(S); }  // any one closed
+                useChamber(S, 0);
                 for (auto& p : S.pushers) {  // with a trigger part bound to FIRE, the shot waits until it has been pulled 2 mm
                     if (p.key != "fire") continue;
                     V2 w = wpt(*p.b, p.l), w0{p.b->x0 + p.l.x, p.b->y0 + p.l.y};

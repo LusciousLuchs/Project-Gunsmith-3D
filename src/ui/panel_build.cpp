@@ -740,10 +740,49 @@ static void firingTab() {
         tutAnchor("firing:chamber");
         if (tipHover()) ImGui::SetTooltip("The barrel, or whatever holds the chamber.");
         float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-        if (ImGui::Button("Place breech face", {w2, 0})) setTool(Tool::Face);
+        if (ImGui::Button("Place breech face", {w2, 0})) { setTool(Tool::Face); A.chamberEdit = -1; }
         tutAnchor("firing:breechface");
-        ImGui::SameLine(); if (ImGui::Button("Place muzzle", {w2, 0})) setTool(Tool::Muzzle);
+        ImGui::SameLine(); if (ImGui::Button("Place muzzle", {w2, 0})) { setTool(Tool::Muzzle); A.chamberEdit = -1; }
         tutAnchor("firing:muzzle");
+    }
+    if (section("Chambers", !br.more.empty())) {
+        muted(br.more.empty() ? "One chamber. Add more for a double, a volley gun, a pepperbox: each gets its own breech face and muzzle."
+                              : "Every chamber takes the same cartridge. The magazine, if any, feeds the first.");
+        int drop = -1;
+        float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        for (size_t k = 0; k < br.more.size(); k++) {
+            auto& c = br.more[k];
+            ImGui::PushID((int)k);
+            ImGui::PushFont(gFontBold, 15.0f); ImGui::Text("Chamber %d", (int)k + 2); ImGui::PopFont();
+            if (c.breech.empty()) c.breech = br.breech;
+            pBody("Breech##more", c.breech, false);
+            if (tipHover()) ImGui::SetTooltip("The part whose face closes this chamber. It can be the same as the first chamber's.");
+            pBody("Chamber##more", c.chamber, true);
+            if (ImGui::Button("Place breech face##more", {w2, 0})) { setTool(Tool::Face); A.chamberEdit = (int)k; }
+            ImGui::SameLine(); if (ImGui::Button("Place muzzle##more", {w2, 0})) { setTool(Tool::Muzzle); A.chamberEdit = (int)k; }
+            pCheck("Loaded at the start##more", c.loaded);
+            if (ImGui::Button("Remove this chamber", {-1, 0})) drop = (int)k;
+            ImGui::PopID();
+        }
+        if (drop >= 0) { br.more.erase(br.more.begin() + drop); editedAny = true; }
+        if (ImGui::Button("Add a chamber", {-1, 0})) {
+            ChamberDef c;
+            c.breech = br.breech; c.chamber = br.chamber; c.loaded = br.loaded;
+            V2 off{0, br.cart.headDia() + 2};  // just below the last one, to start with: place it where you want it
+            const V2 f0 = br.more.empty() ? br.face : br.more.back().face, m0 = br.more.empty() ? br.muzzle : br.more.back().muzzle;
+            c.face = {f0.x + off.x, f0.y + off.y};
+            c.hasMuzzle = br.hasMuzzle; c.muzzle = {m0.x + off.x, m0.y + off.y};
+            br.more.push_back(c);
+            A.chamberEdit = (int)br.more.size() - 1;
+            setTool(Tool::Face);
+            editedAny = true;
+            toast("Click where the new chamber's cartridge head sits against its breech.");
+        }
+        if (!br.more.empty()) {
+            int fo = br.fireOrder == "together" ? 1 : 0;
+            prop("Fires", "In turn: each pull fires the next loaded chamber.\nAll at once: every loaded chamber goes off together (a volley). The recoil adds up.");
+            if (ImGui::Combo("##fireorder", &fo, "One per pull, in turn\0All at once\0")) { br.fireOrder = fo ? "together" : "turn"; editedAny = true; }
+        }
     }
     if (section("Cartridge", true)) {
         prop("Cartridge");

@@ -619,6 +619,14 @@ void drawScene() {
             if (A.S->inTransit) drawCartridge(br.breech, br.face, 0);
             if (A.S->spent && A.S->physicalFeed) drawCartridge(br.chamber, br.face, 0, true);  // empty case still in the chamber
         } else if (br.loaded) drawCartridge(br.chamber, br.face, 0);
+        for (size_t k = 0; k < br.more.size(); k++) {  // the further chambers (the simulation keeps chamber 0 swapped in between steps)
+            auto& c = br.more[k];
+            if (A.S && k + 1 < A.S->chambers.size()) {
+                auto& st = A.S->chambers[k + 1];
+                if (st.chambered) drawCartridge(c.chamber, c.face, 0);
+                if (st.spent && A.S->physicalFeed) drawCartridge(c.chamber, c.face, 0, true);
+            } else if (!A.S && c.loaded) drawCartridge(c.chamber, c.face, 0);
+        }
     }
     for (auto& s : A.shells) drawCartridgeAt(Vector3Subtract(s.p, Vector3Scale(s.dir, s.len / 2)), s.dir, true);
     // loose rounds: on the bench, in the hand, or sitting in the open action
@@ -658,9 +666,16 @@ void drawScene() {
         drawOutline(r.tmpl, r.M, (selB || hov) ? Color{255, 205, 60, 255} : isGhost(r) ? look.ink : Color{18, 22, 30, 170});
     }
     // muzzle flash (unlit)
-    if (A.flash > 0 && br.on && br.hasMuzzle) {
-        Vector3 m = W3(curMM(br.chamber, br.muzzle), 0);
-        Vector3 ax = Vector3Normalize(Vector3Subtract(W3(curMM(br.chamber, {br.muzzle.x + 1, br.muzzle.y}), 0), m));
+    // (at the muzzle of the chamber that fired last)
+    std::string fc = br.chamber; V2 fm = br.muzzle; bool fh = br.hasMuzzle;
+    if (A.S && br.on) {
+        double last = A.S->chambers.empty() ? -1e9 : A.S->chambers[0].shotT;
+        for (size_t k = 0; k < br.more.size() && k + 1 < A.S->chambers.size(); k++)
+            if (A.S->chambers[k + 1].shotT > last) { last = A.S->chambers[k + 1].shotT; fc = br.more[k].chamber; fm = br.more[k].muzzle; fh = br.more[k].hasMuzzle; }
+    }
+    if (A.flash > 0 && br.on && fh) {
+        Vector3 m = W3(curMM(fc, fm), 0);
+        Vector3 ax = Vector3Normalize(Vector3Subtract(W3(curMM(fc, {fm.x + 1, fm.y}), 0), m));
         float k = A.flash / 0.12f;
         DrawSphere(Vector3Add(m, Vector3Scale(ax, 1.4f)), 1.4f * k + 0.4f, Color{255, 236, 170, 230});
         DrawSphere(Vector3Add(m, Vector3Scale(ax, 3.0f)), 1.0f * k + 0.3f, Color{255, 170, 60, 200});

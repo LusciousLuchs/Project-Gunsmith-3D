@@ -35,6 +35,7 @@ void moveBody(int i, double dx, double dy) {
     }
     auto& br = A.design.breech;
     if (br.on) { if (br.breech == d.id && br.hasFace) mv(br.face); if (br.chamber == d.id && br.hasMuzzle) mv(br.muzzle); }
+    if (br.on) for (auto& c : br.more) { if ((c.breech.empty() ? br.breech : c.breech) == d.id) mv(c.face); if (c.chamber == d.id && c.hasMuzzle) mv(c.muzzle); }
 }
 void deleteSel() {
     auto& D = A.design;
@@ -232,7 +233,11 @@ void buildInput(bool overUI) {
         case Tool::Face: case Tool::Muzzle: {
             auto& br = A.design.breech;
             if (!br.on) { br = BreechDef(); br.on = true; }
-            if (A.tool == Tool::Face) { br.face = w; br.hasFace = true; } else { br.muzzle = w; br.hasMuzzle = true; }
+            if (A.chamberEdit >= 0 && A.chamberEdit < (int)br.more.size()) {  // a further chamber's point
+                auto& c = br.more[A.chamberEdit];
+                if (A.tool == Tool::Face) c.face = w; else { c.muzzle = w; c.hasMuzzle = true; }
+            } else if (A.tool == Tool::Face) { br.face = w; br.hasFace = true; } else { br.muzzle = w; br.hasMuzzle = true; }
+            A.chamberEdit = -1;
             commit(); A.tool = Tool::Select;
             return;
         }
@@ -419,8 +424,8 @@ void buildInput(bool overUI) {
                 else if (h.kind == 8 && h.i < (int)A.design.bodies.size() && h.v < (int)A.design.bodies[h.i].roundPath.size()) A.design.bodies[h.i].roundPath[h.v] = p;
                 else if (h.kind == 3) A.design.joints[h.i].pa = p;
                 else if (h.kind == 4) A.design.joints[h.i].pb = p;
-                else if (h.kind == 5) br.face = p;
-                else if (h.kind == 6) br.muzzle = p;
+                else if (h.kind == 5) { if (h.i >= 0 && h.i < (int)br.more.size()) br.more[h.i].face = p; else br.face = p; }
+                else if (h.kind == 6) { if (h.i >= 0 && h.i < (int)br.more.size()) br.more[h.i].muzzle = p; else br.muzzle = p; }
                 if (h.kind != 0 && h.kind != 7) A.dragMoved = true;   // (kind 8: a magazine's round path point)
             }
         } else {

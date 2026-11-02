@@ -112,6 +112,7 @@ static void setState(Body& b, RS s) {
     b.loose = s == RS::Loose;
     b.staged = s == RS::Staged;
 }
+static void poseStaged(Body& b, const BoreLine& L);
 static Body* newCartridge(Sim& S, V2 head, bool isCase) {
     Body* slot; BodyDef* dp;
     if (!spawnSlot(S, &slot, &dp)) return nullptr;
@@ -129,6 +130,7 @@ static Body* newCartridge(Sim& S, V2 head, bool isCase) {
     if (!makeBody(d, b)) { if (!slot) S.extraDefs.pop_back(); return nullptr; }
     b.tmpl = "round";
     b.isRound = true;
+    b.slot = S.cur;
     b.isCase = isCase;
     b.z = 0; b.zh = c.headDia() / 2000;
     b.headLx = head.x / 1000 - b.x;
@@ -151,6 +153,18 @@ Body* spawnRound(Sim& S, V2 head, double vx, double vy) {
     setState(*b, RS::Loose);
     b->vx = vx; b->vy = vy;
     return b;
+}
+Body* dropIntoChamber(Sim& S, int k) {  // a round pushed all the way into chamber k of an open action
+    useChamber(S, k);
+    BoreLine L = boreLine(S);
+    Body* r = nullptr;
+    if (L.ok && !S.chambered && !S.spent && !S.inTransit && (r = newCartridge(S, {L.face.x * 1000, L.face.y * 1000}, false))) {
+        setState(*r, RS::Staged);
+        r->stageS = 0; r->slot = k;
+        poseStaged(*r, L);
+    }
+    useChamber(S, 0);
+    return r;
 }
 int looseRounds(const Sim& S) {
     int n = 0;
@@ -219,7 +233,8 @@ static void handRounds(Sim& S, const BoreLine& L) {
     for (auto& b : S.bodies) {
         if (!b.isRound || b.gone || b.isCase) continue;
         bool held = S.hand.on && S.hand.b == &b;
-        if (held && b.rs == RS::Loose && loadIntoMagazine(S, b)) continue;
+        if (held && b.rs == RS::Loose && S.cur == 0 && loadIntoMagazine(S, b)) continue;
+        if (b.rs == RS::Staged && b.slot != S.cur) continue;  // lined up with another chamber
         if (b.rs == RS::Staged) {
             if (!canTake) { setState(b, RS::Loose); continue; }
             double s = b.stageS;
@@ -250,7 +265,7 @@ static void handRounds(Sim& S, const BoreLine& L) {
             double s = rx * L.dir.x + ry * L.dir.y, lat = std::fabs(rx * L.dir.y - ry * L.dir.x);
             double latTol = std::max(0.006, c.headDia() / 1000);  // within about one head width of the bore line
             if (lat < latTol && s > -c.oal / 1000 * 0.6 && s < room + 0.004 && room > 0.004) {
-                setState(b, RS::Staged); b.stageS = std::max(0.0, std::min(s, room));
+                setState(b, RS::Staged); b.stageS = std::max(0.0, std::min(s, room)); b.slot = S.cur;
                 b.vx = b.vy = b.w = 0;
                 poseStaged(b, L);
             }
@@ -431,11 +446,20 @@ static void groundContact(Sim& S, Body& b) {
     }
 }
 
+static void chamberStep(Sim& S, bool main);
 void cartridgeStep(Sim& S) {
+    chamberStep(S, true);
+    for (int k = 1; k < chamberCount(S); k++) { useChamber(S, k); chamberStep(S, false); }  // the further chambers
+    useChamber(S, 0);
+}
+// One chamber's rounds: loading by hand, extraction, ejection and seating. The main pass (chamber 0) also runs the
+// magazine, the loose rounds and the jam checks.
+static void chamberStep(Sim& S, bool main) {
     BoreLine L = boreLine(S);
     const Cartridge& c = S.design.breech.cart;
+    const int me = S.cur;
     // a hand that grabs a cartridge in the action takes it out of the cycle: that's how you clear a jam
-    if (S.hand.on && S.hand.b && S.hand.b->isRound) {
+    if (main && S.hand.on && S.hand.b && S.hand.b->isRound) {
         Body& h = *S.hand.b;
         if (h.rs == RS::Presented || h.rs == RS::Free || h.rs == RS::Clawed || h.rs == RS::Tube) {
             if ((h.rs == RS::Presented || h.rs == RS::Tube) && h.mag) { h.mag->rounds--; h.mag->top = nullptr; h.mag = nullptr; }
@@ -443,6 +467,7 @@ void cartridgeStep(Sim& S) {
         }
     }
     for (auto& b : S.bodies) {  // loose rounds and cases keep their sideways motion until the bench stops them
+        if (!main) break;
         if (!b.isRound || b.gone || b.rs != RS::Loose) continue;
         if (S.hand.on && S.hand.b == &b) {  // a hand brings it back to the bore plane, where it can be loaded
             b.vz = 0;
@@ -477,8 +502,9 @@ void cartridgeStep(Sim& S) {
         }
     }
     // the magazine holds its top round up under the lips, once the way is clear
-    Body* M = seatedMag(S);
+    Body* M = main ? seatedMag(S) : nullptr;  // (the magazine feeds the first chamber)
     for (auto& b : S.bodies)  // a magazine leaving the gun takes its top round with it
+        if (main)
         if ((b.rs == RS::Presented || b.rs == RS::Tube) && b.mag && (b.mag != M)) { b.mag->top = nullptr; b.mag = nullptr; retire(S, b); }
     if (M && M->rounds > 0 && !M->top && !tubeMag(*M)) {
         V2 hl, fl;
@@ -523,7 +549,7 @@ void cartridgeStep(Sim& S) {
     int spentOnBench = 0;
     for (int pass = 0; pass < 2; pass++)
         for (auto& b : S.bodies) {
-            if (!b.isRound || b.gone) continue;
+            if (!b.isRound || b.gone || b.slot != me) continue;
             if (b.rs == RS::Tube && b.mag) {  // on its way out of a tube: it runs along the tube's line, pushed by the spring
                 Body& Mg = *b.mag;
                 V2 mouth = wpt(Mg, b.lipsL), out = rot(b.feedL, Mg.a), n{out.y, -out.x};
@@ -597,6 +623,9 @@ void cartridgeStep(Sim& S) {
                 double dx = pb.x - pr.x, dy = pb.y - pr.y;
                 double ax = dx * ca + dy * sa, lat = -dx * sa + dy * ca;
                 if (std::fabs(ax) > 0.004 || std::fabs(lat) > 0.006) { setState(b, RS::Free); continue; }  // torn off
+                // a chamber that swings away from the breech face (barrels tipped open on a hinge) turns the rim out of
+                // the hook: past about 25 degrees it can't hold it, and the chamber alone carries (or drops) the case
+                if (std::fabs(std::remainder(S.CH->a - S.BR->a, 2 * 3.14159265358979323846)) > 25 * D2R) { setState(b, RS::Free); continue; }
                 if (std::fabs(ax) > 1e-9) solve(b, *S.BR, pr, {pr.x + ca * ax, pr.y + sa * ax}, ax > 0 ? ca : -ca, ax > 0 ? sa : -sa, std::fabs(ax));
                 const double play = 0.003;
                 if (std::fabs(lat) > play) {
@@ -652,8 +681,8 @@ void cartridgeStep(Sim& S) {
                 bool wasCase = b.isCase;
                 retire(S, b);
                 if (wasCase) {  // the empty case went back in: nothing kicked it out (counted when the breech closes)
-                    S.spent = true;
-                    if (!S.breechSprung && S.malf == Malf::None) { S.malf = Malf::FailureToEject; S.malfCount[(int)Malf::FailureToEject]++; S.events.push_back({Ev::Malfunction, S.t}); }
+                    S.spent = true;  // (one that never got out, the action only stirred, isn't a failure)
+                    if (!S.breechSprung && b.wasOut && S.malf == Malf::None) { S.malf = Malf::FailureToEject; S.malfCount[(int)Malf::FailureToEject]++; S.events.push_back({Ev::Malfunction, S.t}); }
                 } else {
                     S.chambered = true;
                     if (b.wasOut) S.fed++;  // (not again for a round the breech merely closed on once more)
@@ -661,6 +690,7 @@ void cartridgeStep(Sim& S) {
                 }
             }
         }
+    if (!main) return;
     // keep the bench tidy: only the most recent empty cases stay
     for (auto it = S.bodies.rbegin(); it != S.bodies.rend(); ++it)
         if (it->isCase && !it->gone && it->rs == RS::Loose && ++spentOnBench > 30) retire(S, *it);
