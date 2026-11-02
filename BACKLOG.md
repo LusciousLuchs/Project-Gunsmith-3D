@@ -13,20 +13,24 @@ Bugs and ideas from playtesters, kept here so nothing gets lost. Newest at the t
 What's there already is noted; the rest is new work.
 
 - **Extrude**: exists for edges (Shift-drag an edge's diamond). Could add extruding a whole face in depth.
-- **Bevel**: corners can be rounded (Round corners) and front and back edges softened (Smoothness). A true bevel (flat chamfer) on edges is new.
-- **Boolean**: Carve subtracts shapes. Adding one part to another (union) and keeping only the overlap (intersect) are new.
-- **Mirror and asymmetry**: the Mirror tool and *Copy to the other side* exist. A live mirror (edit one side, the other follows, with a switch to break it) is new.
-- **Coordinates**: X, Y, Z fields exist for corners, cuts and part offsets. Could add them for the whole part (its position) and for joints.
-- **Merge**: Weld makes parts move as one. Merging two parts into one outline is new.
-- **Measurements**: the workbench ruler is there. A measuring tool (drag between two points for length and angle) is new.
+- [x] **Bevel**: corners can be rounded (Round corners) or cut flat (Chamfer, 0.2.2); front and back edges softened (Smoothness). Still new: a flat bevel on the front and back edges.
+- [x] **Boolean**: Merge, Keep overlap and Cut away between two parts (0.2.2). Carve still makes cuts partway in and holes.
+- **Mirror and asymmetry**: the Mirror tool and *Copy to the other side* exist. Still new: a live mirror (edit one side, the other follows, with a switch to break it).
+- [x] **Coordinates**: X, Y, Z for corners, cuts, and now a whole part's position (0.2.2). Could add them for joints.
+- [x] **Merge**: Weld makes parts move as one; Merge makes two parts one outline (0.2.2).
+- [x] **Measurements**: the workbench ruler, and the Measure tool (0.2.2).
 - **Thickness**: exists per part. Could add changing it by dragging in the view.
-- **Copy**: Duplicate (Ctrl+D) exists. Copy and paste between designs is new.
-- **Merge different parts**: see Merge.
-- **Save parts across guns** (like Sprocket's structures): a library of your own parts or assemblies (a trigger group, a magazine, a barrel) to drop into any design. New.
+- [x] **Copy**: Duplicate (Ctrl+D), and Ctrl+C / Ctrl+V between designs (0.2.2).
+- [x] **Merge different parts**: see Merge.
+- [x] **Save parts across guns** (like Sprocket's structures): *Save to my parts* and **Parts** in the top bar (0.2.2).
 
 ## Workbench idea (Smiffy)
 
-The designer's bench, dressed up: ammo boxes, a few loose shell casings, a gun mount (a vise or cradle the gun sits in), gun oil cans, a magazine rack. Today it has a ruler, a hammer, a screwdriver and a mug.
+- [x] The designer's bench, dressed up: ammo boxes, a few loose shell casings, a gun mount, gun oil cans, a magazine rack (0.2.2).
+
+## Noticed while testing
+
+- **The 50-round test is touchy on a knife-edge design.** The tilting pistol's sear, unchanged but with its corners listed from a different starting corner, can give 2 jams in 50 instead of 0. The run is the same every time for the same design, but tiny differences can tip it. A spec sheet should run a few seeds and give a range.
 
 ## Shelved
 

@@ -66,10 +66,16 @@ static LONG WINAPI onCrash(EXCEPTION_POINTERS* ep) {
     return EXCEPTION_EXECUTE_HANDLER;
 }
 void installCrashHandler() { SetUnhandledExceptionFilter(onCrash); }
+void openFolder(const std::string& p) { CreateDirectoryA(p.c_str(), nullptr); ShellExecuteA(nullptr, "open", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
 #else
 #include <cstdlib>
 bool pickImageFile(std::string&) { return false; }  // (the game ships for Windows; on Linux, drop files on the window)
 void installCrashHandler() {}
+void openFolder(const std::string& p) {
+    std::error_code ec; std::filesystem::create_directories(p, ec);
+    std::string cmd = "xdg-open \"" + p + "\" >/dev/null 2>&1 &";
+    if (std::system(cmd.c_str())) {}
+}
 void openTexturesFolder() {
     std::error_code ec;
     std::filesystem::create_directories("user/textures", ec);

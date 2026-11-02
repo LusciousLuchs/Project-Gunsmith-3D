@@ -2,6 +2,8 @@
 // Firing (breech, cartridge, feeding, ignition) and File (save, load, examples). Each shows only what matters
 // for the job at hand; less-used settings fold away.
 #include "carve.hpp"
+#include "app/usertex.hpp"
+#include "app/pieces.hpp"
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
@@ -155,6 +157,70 @@ static void heldSummary() {
     if (h.empty()) muted("Not posed yet: on the Test bench, press Pose to place the hands and shoulder.");
     else muted("Held with %s%s. Change it with Pose on the Test bench.", h.c_str(), A.design.pose.butt.on ? ", against the shoulder" : "");
 }
+// Merge, keep the overlap, or cut away: this part's outline combined with another's. The other part goes unless kept.
+static bool combineSection(BodyDef& b) {
+    Design& D = A.design;
+    static std::string other;
+    static bool keepOther = false;
+    if (!ImGui::TreeNodeEx("Combine with another part", ImGuiTreeNodeFlags_SpanAvailWidth)) return false;
+    if (tipHover()) ImGui::SetTooltip("Merge two parts into one outline, keep only where they overlap, or cut one out of the other.");
+    int oi = D.bodyIndex(other);
+    if (oi < 0 || D.bodies[oi].id == b.id) { other.clear(); oi = -1; }
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##combwith", oi >= 0 ? D.bodies[oi].name.c_str() : "Pick the other part...")) {
+        for (auto& o : D.bodies) {
+            if (o.id == b.id) continue;
+            ImGui::PushID(o.id.c_str());
+            if (ImGui::Selectable(o.name.c_str(), o.id == other)) other = o.id;
+            ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::Checkbox("Keep the other part", &keepOther);
+    if (tipHover()) ImGui::SetTooltip("Off: the other part is used up (removed, with its joints). On: it stays as it is.");
+    bool done = false;
+    if (oi >= 0) {
+        const BodyDef& o = D.bodies[oi];
+        float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+        int op = -1;
+        if (ImGui::Button("Merge", {w3, 0})) op = 0;
+        if (tipHover()) ImGui::SetTooltip("One outline covering both. It takes the depth of both together.");
+        ImGui::SameLine(); if (ImGui::Button("Keep overlap", {w3, 0})) op = 1;
+        if (tipHover()) ImGui::SetTooltip("Only where the two overlap is left, in the depth they share.");
+        ImGui::SameLine(); if (ImGui::Button("Cut away", {w3, 0})) op = 2;
+        if (tipHover()) ImGui::SetTooltip("The other part's outline is cut out of this one, through its whole depth.\n(For a cut only partway in, use the Carve tool.)");
+        if (op >= 0) {
+            std::vector<V2> out; std::vector<double> rad; std::string why;
+            double n0 = b.z - b.thick / 2, n1 = b.z + b.thick / 2, m0 = o.z - o.thick / 2, m1 = o.z + o.thick / 2;
+            if (b.magazine && b.gen.on) toast("This magazine's shape comes from its settings: turn off its generated shape first.");
+            else if (op == 1 && std::min(n1, m1) - std::max(n0, m0) < 0.05) toast("They don't overlap in depth: nothing would be left.");
+            else if (!combineOutlines(b, o, op, out, &why, &rad)) toast("Can't: " + why + ".");
+            else {
+                b.pts = out; b.rad = rad; b.bulge.assign(out.size(), 0.0);
+                if (op == 0) { b.z = (std::min(n0, m0) + std::max(n1, m1)) / 2; b.thick = std::max(n1, m1) - std::min(n0, m0); }
+                if (op == 1) { double z0 = std::max(n0, m0), z1 = std::min(n1, m1); b.z = (z0 + z1) / 2; b.thick = z1 - z0; }
+                std::string me = b.id, oid = o.id, oname = o.name;
+                if (!keepOther) {
+                    D.bodies.erase(D.bodies.begin() + oi);
+                    D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.a == oid || j.b == oid || j.rel == oid; }), D.joints.end());
+                    for (HandHold* h : {&D.pose.firing, &D.pose.support, &D.pose.butt}) if (h->part == oid) h->part = me;
+                }
+                A.sel = {1, D.bodyIndex(me), -1}; A.selVs.clear(); A.selCarve = -1;
+                other.clear();
+                commit();
+                const char* verb = op == 0 ? "Merged with " : op == 1 ? "Kept the overlap with " : "Cut away ";
+                bool depths = std::fabs(n0 - m0) > 0.05 || std::fabs(n1 - m1) > 0.05;
+                std::string note = op == 0 && depths ? " They were at different depths: a part has one depth, so it now fills both all over (use Weld to keep them as they were)." : "";
+                toast(std::string(verb) + oname + (why.empty() ? "." : ": " + why + ".") + note + " Ctrl+Z undoes it.");
+                done = true;
+            }
+        }
+        if (!done) muted("The result is one outline. Corners keep their rounding where they survive; curved edges come back as short straight pieces.");
+    }
+    ImGui::TreePop();
+    return done;
+}
+
 static void inspectPart(BodyDef& b) {
     auto& D = A.design;
     // colour swatch and name on one line
@@ -247,6 +313,17 @@ static void inspectPart(BodyDef& b) {
             tutAnchor("part:mass");
             if (b.mass <= 0) muted("Worked out from the shape: %s.", fmtQ(Q::PartMass, autoMass).c_str());
         }
+        {   // where it is: its middle, as X and Y (+ up). Typing moves it, with its welded piece and what's attached
+            V2 c = centroidOf(b);
+            double px = c.x, py = -c.y;
+            bool mx = pNumU("Position X", px, 0.5, Q::Length, lenDec(), "Where its middle is along the gun (+ toward the muzzle). Moves its welded piece with it.", SIGNED);
+            bool my = pNumU("Position Y", py, 0.5, Q::Length, lenDec(), "Where its middle is, up and down (+ up).", SIGNED);
+            if (mx || my) {
+                px = std::clamp(px, -5000.0, 5000.0); py = std::clamp(py, -5000.0, 5000.0);
+                double dx = px - c.x, dy = -py - c.y;
+                for (int k : weldedWith(D, D.bodyIndex(b.id))) moveBody(k, dx, dy);
+            }
+        }
         {   // turn it: in the side view (Z, the whole welded piece about this part's middle), or lean it out of it (X, Y)
             prop("Turn (Z)", "Turns it in the side view, about its middle (a welded piece turns together).\nWhat's attached to it (pins, slots, hands) turns with it.");
             float w4 = (ImGui::GetContentRegionAvail().x - 3 * ImGui::GetStyle().ItemSpacing.x) / 4;
@@ -271,6 +348,26 @@ static void inspectPart(BodyDef& b) {
             b.tiltX = std::clamp(b.tiltX, -85.0, 85.0); b.tiltY = std::clamp(b.tiltY, -85.0, 85.0);
             if (carve::tilted(b) || was) muted("Tilted parts collide by their tilted shape, sliced through the depth. Their cuts show but don't collide yet. Corners are edited as drawn, before the tilt.");
         }
+        {   // copy, and keep for other guns
+            float w2c = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+            if (ImGui::Button("Copy (Ctrl+C)", {w2c, 0})) copySelection();
+            if (tipHover()) ImGui::SetTooltip("Copies it, with its welded piece and the joints between them. Ctrl+V pastes it, here or in another gun.");
+            ImGui::SameLine();
+            if (ImGui::Button("Save to my parts", {w2c, 0})) ImGui::OpenPopup("##savepart");
+            if (tipHover()) ImGui::SetTooltip("Keeps it (with its welded piece) in your parts library, to drop into any gun from Parts in the top bar.");
+            if (ImGui::BeginPopup("##savepart")) {
+                static char nm[64];
+                if (ImGui::IsWindowAppearing()) { std::snprintf(nm, sizeof nm, "%s", b.name.c_str()); ImGui::SetKeyboardFocusHere(); }
+                ImGui::SetNextItemWidth(220 * S());
+                bool go = ImGui::InputText("##pname", nm, sizeof nm, ImGuiInputTextFlags_EnterReturnsTrue);
+                ImGui::SameLine();
+                if (ImGui::Button("Save") || go) {
+                    toast(savePieceToLibrary(D.bodyIndex(b.id), nm) ? std::string("Saved ") + nm + " to your parts (user/parts)." : "Couldn't save it.");
+                    ImGui::CloseCurrentPopup();
+                }
+                ImGui::EndPopup();
+            }
+        }
         if (ImGui::Button("Copy to the other side", {-1, 0})) {
             BodyDef cpy = b;
             cpy.id = uid(); cpy.name += " (other side)"; cpy.z = -b.z; cpy.magazine = false; cpy.weld.clear();
@@ -281,6 +378,7 @@ static void inspectPart(BodyDef& b) {
             return;
         }
         if (tipHover()) ImGui::SetTooltip("Makes the matching part on the far side of the gun: side walls, rails, grip panels.");
+        if (combineSection(b)) return;   // parts went away: this frame's references are stale
     }
 
     fixShape(b);
@@ -350,6 +448,17 @@ static void inspectPart(BodyDef& b) {
         ImGui::SameLine(); if (ImGui::Button("All", {bw, 0})) { for (auto& r : b.rad) r = allR; editedAny = true; }
         tutAnchor("shape:round");
         ImGui::SameLine(); if (ImGui::Button("Sharp", {bw, 0})) { for (auto& r : b.rad) r = 0; for (auto& q : b.bulge) q = 0; editedAny = true; }
+        {   // flat-cut corners, by the same amount
+            bool some = !A.selVs.empty();
+            if (ImGui::Button(some ? "Chamfer the selected corners" : "Chamfer all corners", {-1, 0})) {
+                int n = chamferCorners(b, allR, A.selVs);
+                A.selVs.clear(); A.sel.v = -1;
+                if (n) editedAny = true;
+                else toast((int)b.pts.size() >= MAX_CORNERS ? TextFormat("No room: a part has at most %d corners.", MAX_CORNERS) : "Nothing to cut.");
+            }
+            if (tipHover()) ImGui::SetTooltip("Cuts the corners off flat, the amount above back along each edge: a bevel as seen from the side.\n"
+                                              "Select corners first (click them, Shift for more) to cut only those.");
+        }
         prop("Smoothness", "Rounds the edges where the sides meet the front and back faces, like a grip, a stock\n"
                            "or a dehorned slide. 100% makes the part round across its thickness.\n"
                            "It only changes how the part looks: the physics uses the outline.");
@@ -1043,6 +1152,20 @@ void fileButtons() {
     if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Open", {0, sz})) ImGui::OpenPopup("##open");
     tutAnchor("file:open");
     if (ImGui::BeginPopup("##open")) { openList(); ImGui::EndPopup(); }
+    ImGui::SameLine(0, 2);
+    if (ImGui::Button(ICON_FA_PUZZLE_PIECE "  Parts", {0, sz})) ImGui::OpenPopup("##parts");
+    if (tipHover()) ImGui::SetTooltip("Your parts library: parts and assemblies you saved (Save to my parts, in a part's panel).");
+    tutAnchor("file:parts");
+    if (ImGui::BeginPopup("##parts")) {
+        auto names = libraryParts();
+        ImGui::TextDisabled("Your parts");
+        if (names.empty()) muted("None yet. Select a part and press Save to my parts in its panel.");
+        for (auto& n : names) if (ImGui::Selectable(n.c_str())) { if (insertLibraryPart(n)) toast("Added " + n + ". It's selected: drag it into place."); else toast("Couldn't read " + n + "."); }
+        ImGui::Separator();
+        if (ImGui::Selectable("Paste (Ctrl+V)")) pasteClipboard();
+        if (ImGui::Selectable("Open the parts folder")) { std::string p = std::filesystem::absolute(PARTS_DIR).string(); openFolder(p); }
+        ImGui::EndPopup();
+    }
     ImGui::SameLine(0, 2);
     if (ImGui::Button(ICON_FA_FILE "  New", {0, sz})) {
         loadDesign(loadPreset("blank"), "A new design. Undo brings back what you had (and your last one is still in Open if you saved it).");

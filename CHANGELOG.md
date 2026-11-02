@@ -8,7 +8,18 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
-## 0.2.2-alpha (in progress)
+## 0.2.2-alpha
+
+Playtester bugs fixed, and the first batch of editor ideas from playtesting.
+
+### Designer
+- **Merge, Keep overlap, Cut away** (a part's panel, *Combine with another part*): pick another part, then merge the two into one outline, keep only where they overlap, or cut the other's outline out of this one. The other part is used up unless you tick *Keep the other part*. Corners land exactly where they should (the two outlines' own corners and the points where their edges cross) and rounded corners stay rounded, so a mechanism keeps working: the examples' sears, triggers, slide walls and frames all go through it and still fire 50 rounds without a jam. A merge takes the depth of both parts together, and the game tells you when they were at different depths. A cut that would only leave a hole in the middle says so (an outline can't have holes: use Carve). Ctrl+Z undoes it.
+- **Chamfer** (Shape section, under Round corners): cuts corners off flat by the amount you set, back along each edge: all corners, or only the ones you've selected.
+- **Copy and paste between guns:** Ctrl+C copies the selected part with its welded piece and the joints between them; Ctrl+V pastes it, in this gun or another one (it goes through the system clipboard, so even between two copies of the game). Also *Copy* in the part's panel.
+- **My parts:** *Save to my parts* in a part's panel keeps it (with its welded piece) in your own library, in *user/parts* in the game folder. **Parts** in the top bar drops any of them into the gun you're working on. Share them by sending the files.
+- **Measure tool** (on the left, under Mirror): drag between two points for the length, how far across and up, and the angle. It snaps to corners and joints, and the line stays until you measure again.
+- **Position X and Y** for a whole part (in its panel), alongside Z: type where its middle is, and its welded piece moves with it.
+- **A better dressed workbench:** ammo boxes, a few loose casings, a gun mount under the gun, gun oil cans and a magazine rack.
 
 ### Fixes (from playtesting)
 - **Magazines no longer fall out after a while.** After about 200 reloads the bench filled up with dropped magazines and no new one could go in. Now the oldest clutter on the bench (empty cases, then dropped magazines, then loose rounds) is cleared away to make room.

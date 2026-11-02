@@ -1,4 +1,5 @@
 // Gunsmith3D - Camera controls, routing viewport input, keyboard shortcuts.
+#include "app/pieces.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/view.hpp"
@@ -133,6 +134,8 @@ void handleKeys() {
     else if (actPressed(Act::Undo)) undo();
     if (actPressed(Act::Delete) || (!ctrl && IsKeyPressed(KEY_BACKSPACE))) deleteSel();
     if (actPressed(Act::Duplicate) && A.sel.kind == 1) duplicateSel();
+    if (ctrl && IsKeyPressed(KEY_C)) copySelection();
+    if (ctrl && IsKeyPressed(KEY_V)) pasteClipboard();
     if (actPressed(Act::Knife)) setTool(Tool::Knife);
     if (A.sel.kind == 1 && A.sel.idx < (int)A.design.bodies.size()) {  // arrow keys nudge vertices or the whole part
         double st = std::max(0.1, gSnap > 0 ? gSnap : 0.5) * ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 10 : 1);

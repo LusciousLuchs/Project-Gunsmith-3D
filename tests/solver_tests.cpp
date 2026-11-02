@@ -1355,6 +1355,29 @@ static void barrelsAndTilt() {
     }
 }
 
+static void shapeTools() {
+    std::printf("shapeTools\n");
+    auto area = [](const std::vector<V2>& p) { double a = 0; for (size_t i = 0; i < p.size(); i++) { auto& u = p[i]; auto& v = p[(i + 1) % p.size()]; a += u.x * v.y - v.x * u.y; } return std::fabs(a / 2); };
+    BodyDef a, b; a.pts = {{0, 0}, {100, 0}, {100, 40}, {0, 40}}; b.pts = {{60, 20}, {160, 20}, {160, 60}, {60, 60}};
+    std::vector<V2> o;
+    CHECK(combineOutlines(a, b, 0, o) && std::fabs(area(o) - 7200) < 60 && o.size() <= (size_t)MAX_CORNERS, "merge covers both (7200 mm2)");
+    CHECK(combineOutlines(a, b, 1, o) && std::fabs(area(o) - 800) < 30, "keep overlap leaves 800 mm2");
+    CHECK(combineOutlines(a, b, 2, o) && std::fabs(area(o) - 3200) < 40, "cut away leaves 3200 mm2");
+    BodyDef hole; hole.pts = {{40, 10}, {60, 10}, {60, 30}, {40, 30}};
+    std::string why;
+    CHECK(!combineOutlines(a, hole, 2, o, &why) && why.find("Carve") != std::string::npos, "a cut that would only leave a hole points to the Carve tool");
+    BodyDef abut; abut.pts = {{100, 0}, {150, 0}, {150, 40}, {100, 40}};
+    CHECK(combineOutlines(a, abut, 0, o) && std::fabs(area(o) - 6000) < 60, "parts edge to edge merge");
+    BodyDef c; c.pts = {{300, 0}, {320, 0}, {320, 20}};
+    CHECK(!combineOutlines(a, c, 0, o), "parts that don't touch won't merge");
+    BodyDef g; g.pts = circlePts({0, 0}, 30, &g.bulge); fixShape(g);   // a round part and a bar through it
+    BodyDef bar; bar.pts = {{-80, -5}, {80, -5}, {80, 5}, {-80, 5}};
+    CHECK(combineOutlines(g, bar, 0, o) && o.size() <= (size_t)MAX_CORNERS && area(o) > 2827 + 900, "a disc and a bar merge within the corner limit");
+    BodyDef ch = a;
+    CHECK(chamferCorners(ch, 5) == 4 && ch.pts.size() == 8 && std::fabs(area(ch.pts) - (4000 - 4 * 12.5)) < 0.01, "chamfering takes 12.5 mm2 off each corner");
+    BodyDef one = a;
+    CHECK(chamferCorners(one, 5, {2}) == 1 && one.pts.size() == 5, "only the selected corner is chamfered");
+}
 static void benchBugs() {
     std::printf("Playtest bugs (0.2.1)\n");
     {   // the bench used to run out of room after about 200 reloads: no new magazine, the gun empty
@@ -1403,6 +1426,7 @@ int main() {
     grips();
     barrelsAndTilt();
     benchBugs();
+    shapeTools();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

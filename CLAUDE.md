@@ -37,6 +37,8 @@ Round (turned) parts (`src/core/round.cpp`, `latheMesh` in `app/gfx.cpp`): the o
 
 Carving (`src/core/carve.cpp`, `csg.cpp`, `app/carvetool.cpp`): parts can be cut in 3D from any direction. The display cuts the real solid (own BSP code; adding an outside geometry library was blocked). The physics slices a carved part through its depth into up to 16 welded slabs, each the outline minus the cuts there. Not yet in the physics: cuts on magazines and on parts that turn on the bore.
 
+Combining outlines (`src/core/outline.cpp`): `combineOutlines` (merge, keep overlap, cut away) works on a fine grid, then snaps the traced result onto the true corners, edge crossings and edges, so it is exact for straight-edged and rounded-corner parts (rounding is handed back where corners survive); `chamferCorners`. Pieces (`app/pieces.cpp`): a part, its welded piece and their joints as JSON with a `gunsmithPiece` marker, for Ctrl+C/V and the parts library in `user/parts`.
+
 Hard limit to keep in mind: the physics works in the side-view plane plus depth. Shapes can now be fully 3D (carving), but parts still only move in that plane. Things that move *across* the gun (swing-out cylinders, side-mounted magazines, cross-bolt safeties) need a simplified treatment. Do these last, and be upfront about it.
 
 Later: gun spec sheet from bench data, then firing range mode (first person, ballistics, live-fire jams), then the move from raylib/OpenGL to Vulkan (SDL3 GPU API; the owner wants Vulkan and no licensing fees), then career mode.

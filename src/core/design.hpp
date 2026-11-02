@@ -279,7 +279,14 @@ void flipBody(BodyDef& b, bool horizontal);                      // flip about i
 constexpr int MAX_CORNERS = 32;                                  // corners a part can be given (older blueprints may have more)
 int subdivideBody(BodyDef& b);                                   // add a vertex in the middle of every edge, longest first, up to
                                                                  // MAX_CORNERS; returns how many were added
-void simplifyBody(BodyDef& b, int maxCorners = MAX_CORNERS);    // drop the corners that change the shape least
+void simplifyBody(BodyDef& b, int maxCorners = MAX_CORNERS);
+// Two parts' side outlines combined: op 0 merge (union), 1 keep the overlap (intersect), 2 cut b away from a. False (with
+// why) when there's nothing to combine. The result fits the corner limit, within a grid step or so of the true shape.
+bool combineOutlines(const BodyDef& a, const BodyDef& b, int op, std::vector<V2>& out, std::string* why = nullptr,
+                     std::vector<double>* rad = nullptr);   // given: rounded corners that survive keep their rounding
+// Cuts corners off flat (a chamfer, or bevel in side view), each `size` mm back along both edges; `which` empty = all
+// corners. Stops at the corner limit. Returns how many were cut.
+int chamferCorners(BodyDef& b, double size, const std::vector<int>& which = {});    // drop the corners that change the shape least
 int splitEdge(BodyDef& b, int edge);                             // add a vertex in the middle of one edge (on its curve); returns its index,
                                                                  // or -1 when the part already has MAX_CORNERS
 

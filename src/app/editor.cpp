@@ -64,6 +64,15 @@ void rotateBody(int i, V2 c, double deg) {
     if (br.on) for (auto& cm : br.more) { if ((cm.breech.empty() ? br.breech : cm.breech) == d.id) rot(cm.face); if (cm.chamber == d.id && cm.hasMuzzle) rot(cm.muzzle); }
     fixShape(d);
 }
+// Measuring snaps to a corner or joint point within a few pixels of the cursor.
+V2 measureSnap(V2 w) {
+    Vector2 m = GetMousePosition();
+    V2 best = w; float bd = 9;
+    auto consider = [&](V2 p, float z) { float d = Vector2Distance(toScreen(W3(p, z)), m); if (d < bd) { bd = d; best = p; } };
+    for (size_t i = 0; i < A.design.bodies.size(); i++) for (auto& p : A.design.bodies[i].pts) consider(p, bodyFront((int)i));
+    for (auto& j : A.design.joints) { consider(j.p, 0); for (auto& q : j.path) consider(q, 0); }
+    return best;
+}
 // A barrel from the breech end (rear) to the muzzle: thick over the chamber, slimmer beyond it; turned round.
 BodyDef makeBarrel(V2 rear, V2 muzzle, const Cartridge& cart) {
     BodyDef b;
@@ -290,6 +299,7 @@ void buildInput(bool overUI) {
             return;
         }
         case Tool::Rect: case Tool::Circle: case Tool::Knife: case Tool::Barrel: A.shapeStart = w; A.shaping = true; return;
+        case Tool::Measure: A.measureA = A.measureB = measureSnap(w); A.measured = true; A.shaping = true; return;
         case Tool::Mirror:
             if (A.sel.kind != 1) { toast("Select the part to mirror first."); A.tool = Tool::Select; return; }
             A.shapeStart = w; A.shaping = true; return;
@@ -400,6 +410,11 @@ void buildInput(bool overUI) {
                 if (CheckCollisionPointRec(toScreen(W3(d.pts[v], z)), r) && std::find(A.selVs.begin(), A.selVs.end(), (int)v) == A.selVs.end()) A.selVs.push_back((int)v);
             if (!A.selVs.empty()) toast(TextFormat("%d vert%s selected. Drag one to move them together; arrow keys nudge.", (int)A.selVs.size(), A.selVs.size() == 1 ? "ex" : "ices"));
         }
+        return;
+    }
+    if (A.shaping && A.tool == Tool::Measure) {  // the line follows the mouse until you let go; it stays shown after
+        A.measureB = measureSnap(w);
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) A.shaping = false;
         return;
     }
     if (A.shaping && !IsMouseButtonDown(MOUSE_BUTTON_LEFT) && (A.tool == Tool::Knife || A.tool == Tool::Mirror)) {

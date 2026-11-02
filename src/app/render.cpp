@@ -575,14 +575,36 @@ static void drawWorkbench() {
         double h = k % big == 0 ? 9 : k % mid == 0 ? 6 : (imp && k % 4 == 0) ? 4.5 : 3;
         drawBox(P(x, rtop + h / 2, rz + 0.7), {0.35f * U, (float)h * U, 0.2f * U}, ink);
     }
-    // a hammer, a screwdriver and a mug: past either end of the gun, so the side view stays clear
-    double bz = L.zBack + 160, ty = L.top, gx0 = L.x0 + 320, gx1 = L.x1 - 320;
-    drawCyl(P(gx0 - 290, ty - 14, bz), P(gx0 - 40, ty - 14, bz - 30), 14 * U, Color{150, 110, 70, 255});
-    drawBox(P(gx0 - 295, ty - 16, bz), {28 * U, 32 * U, 110 * U}, Color{70, 74, 82, 255}, MatrixRotateY(0.12f));
-    drawCyl(P(gx1 + 40, ty - 15, bz + 90), P(gx1 + 140, ty - 15, bz + 90), 15 * U, Color{200, 60, 40, 255});
-    drawCyl(P(gx1 + 140, ty - 15, bz + 90), P(gx1 + 260, ty - 15, bz + 90), 3.2f * U, steel);
-    drawCyl(P(gx1 + 200, ty, bz - 40), P(gx1 + 200, ty - 95, bz - 40), 41 * U, Color{226, 228, 232, 255});
-    drawCyl(P(gx1 + 200, ty - 95, bz - 40), P(gx1 + 200, ty - 96, bz - 40), 36 * U, Color{60, 40, 30, 255});  // coffee
+    // dressing (Smiffy's layout): a gun mount under the gun, ammo boxes, loose cases and a magazine rack on the left,
+    // oil cans on the right; past the gun's ends so the side view stays clear
+    double ty = L.top, gx0 = L.x0 + 320, gx1 = L.x1 - 320, gl = gx1 - gx0, zm = (L.zFront + L.zBack) / 2;
+    double zg = ((L.zFront - 160) + (L.zBack + 420)) / 2;  // under the middle of the gun
+    const Color blue{58, 112, 196, 255}, maroon{122, 34, 34, 255}, brass{214, 168, 78, 255}, grey{150, 154, 160, 255};
+    // the gun mount: a blue base along the gun with a padded rest at each end, just under it
+    drawBox(P(gx0 + gl / 2, ty - 6, zg), {(float)(gl * 0.8) * U, 12 * U, 70 * U}, blue);
+    for (double f : {0.18, 0.82}) {
+        drawBox(P(gx0 + gl * f, ty - 16, zg), {26 * U, 20 * U, 60 * U}, blue);
+        drawBox(P(gx0 + gl * f, ty - 25, zg), {30 * U, 3 * U, 44 * U}, Color{40, 40, 44, 255});  // rubber pads
+    }
+    // ammo boxes
+    drawBox(P(gx0 - 210, ty - 30, L.zBack + 230), {130 * U, 60 * U, 90 * U}, maroon);
+    drawBox(P(gx0 - 210, ty - 61, L.zBack + 230), {134 * U, 3 * U, 94 * U}, shade(maroon, 0.8f));
+    drawBox(P(gx0 - 230, ty - 25, L.zBack + 360), {70 * U, 50 * U, 120 * U}, maroon);
+    // a few empty cases, lying about and standing
+    const double cs[][4] = {{-120, 300, 0.4, 0}, {-95, 330, 1.9, 0}, {-150, 270, 2.8, 0}, {-110, 380, 0, 1}};
+    for (auto& c : cs) {
+        double x = gx0 + c[0], z = L.zBack + c[1];
+        if (c[3] > 0) drawCyl(P(x, ty, z), P(x, ty - 19, z), 4.8f * U, brass);
+        else drawCyl(P(x, ty - 4.8, z), P(x + 19 * std::cos(c[2]), ty - 4.8, z + 19 * std::sin(c[2])), 4.8f * U, brass);
+    }
+    // a magazine rack: a board with slots, a few magazines standing in it
+    drawBox(P(gx0 - 210, ty - 8, L.rulerZ - 30), {150 * U, 16 * U, 50 * U}, Color{120, 84, 54, 255});
+    for (int k = 0; k < 4; k++) drawBox(P(gx0 - 270 + k * 38, ty - 16 - 60, L.rulerZ - 30), {28 * U, 120 * U, 12 * U}, Color{48, 52, 60, 255});
+    // gun oil cans
+    drawCyl(P(gx1 + 160, ty, zm - 60), P(gx1 + 160, ty - 120, zm - 60), 32 * U, grey);
+    drawCyl(P(gx1 + 160, ty - 120, zm - 60), P(gx1 + 160, ty - 150, zm - 60), 4 * U, Color{60, 60, 64, 255});
+    drawCyl(P(gx1 + 230, ty, zm + 20), P(gx1 + 230, ty - 90, zm + 20), 26 * U, Color{176, 60, 48, 255});
+    drawCyl(P(gx1 + 230, ty - 90, zm + 20), P(gx1 + 230, ty - 100, zm + 20), 9 * U, grey);
 }
 void drawScene() {
     auto& D = A.design;

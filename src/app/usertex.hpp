@@ -13,3 +13,4 @@ void handleDroppedFiles();                            // pictures dropped on the
 bool pickImageFile(std::string& out);                 // the system's open-file box (Windows); false if cancelled or not available
 void openTexturesFolder();
 void installCrashHandler();                           // Windows: a crash leaves a report in user/crashes
+void openFolder(const std::string& path);                // in the system's file browser
