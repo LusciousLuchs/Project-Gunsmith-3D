@@ -35,7 +35,7 @@ void moveBody(int i, double dx, double dy) {
     }
     auto& br = A.design.breech;
     if (br.on) { if (br.breech == d.id && br.hasFace) mv(br.face); if (br.chamber == d.id && br.hasMuzzle) mv(br.muzzle); }
-    for (auto& g : A.design.grips) if (g.part == d.id) mv(g.at);
+    for (HandHold* h : {&A.design.pose.firing, &A.design.pose.support, &A.design.pose.butt}) if (h->on && h->part == d.id) mv(h->at);
     if (br.on) for (auto& c : br.more) { if ((c.breech.empty() ? br.breech : c.breech) == d.id) mv(c.face); if (c.chamber == d.id && c.hasMuzzle) mv(c.muzzle); }
 }
 void deleteSel() {
@@ -60,7 +60,7 @@ void deleteSel() {
             std::string id = d.id;
             D.bodies.erase(D.bodies.begin() + A.sel.idx);
             D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.a == id || j.b == id || j.rel == id; }), D.joints.end());
-            D.grips.erase(std::remove_if(D.grips.begin(), D.grips.end(), [&](const GripDef& g) { return g.part == id; }), D.grips.end());
+            for (HandHold* h : {&D.pose.firing, &D.pose.support, &D.pose.butt}) if (h->part == id) h->on = false;  // nothing left to hold
             A.sel = {};
         }
     } else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) {
@@ -230,17 +230,6 @@ void buildInput(bool overUI) {
             if (std::hypot(w.x - A.draft.back().x, w.y - A.draft.back().y) < 0.5) { toast("Click where it slides to."); return; }
             A.draft.push_back(w);
             if (!(IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT))) finishTrack();
-            return;
-        }
-        case Tool::Grip: {  // a hand (or the shoulder) on the part under the click
-            int hit = -1;
-            for (int i = (int)A.design.bodies.size() - 1; i >= 0 && hit < 0; i--) if (sim::inPoly(w.x, w.y, A.design.bodies[i].pts)) hit = i;
-            if (hit < 0) { toast("Click on the part that's held there."); return; }
-            GripDef g; g.kind = A.gripKind; g.part = A.design.bodies[hit].id; g.at = w; g.angle = defaultGripAngle(g.kind, A.gripStyle);
-            A.design.grips.push_back(g);
-            A.sel = {1, hit, -1};
-            commit(); A.tool = Tool::Select;
-            toast(std::string(gripName(g.kind)) + " on " + (A.design.bodies[hit].name.empty() ? g.part : A.design.bodies[hit].name) + ". Drag the green dot at the end of its line to turn it.");
             return;
         }
         case Tool::Face: case Tool::Muzzle: {
@@ -415,11 +404,29 @@ void buildInput(bool overUI) {
     }
     if (A.dragKind == 1 || A.dragKind == 2) {
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-            if (A.dragKind == 2) {
+            // X, Y or Z while dragging: keep to one axis (press it again to free it). Z moves a part in depth.
+            for (auto [key, ax] : {std::pair{KEY_X, 1}, std::pair{KEY_Y, 2}, std::pair{KEY_Z, 3}})
+                if (IsKeyPressed(key)) {
+                    if (ax == 3 && A.dragKind != 2) { toast("Only a whole part moves in depth: corners stay on its outline."); continue; }
+                    A.axisLock = A.axisLock == ax ? 0 : ax;
+                    A.zDrag = A.zDragLast = 0;
+                }
+            if (A.dragKind == 2 && A.axisLock == 3) {  // depth: the mouse's up and down pushes it toward you or away
+                float perPx = (A.ortho ? A.orthoH : A.dist * 2 * std::tan(20 * DEG2RAD)) / std::max(1, A.vh) / U;
+                A.zDrag -= GetMouseDelta().y * perPx;
+                double dz = snapv(A.zDrag, A.snapOn) - A.zDragLast;
+                if (dz != 0) {
+                    for (int k : weldedWith(A.design, A.sel.idx)) A.design.bodies[k].z += dz;
+                    A.zDragLast += dz; A.dragMoved = true;
+                }
+            }
+            if (A.dragKind == 2 && A.axisLock != 3) {
                 V2 d{snapv(w.x - A.dragStart.x, A.snapOn), snapv(w.y - A.dragStart.y, A.snapOn)};
+                if (A.axisLock == 1) d.y = 0;
+                if (A.axisLock == 2) d.x = 0;
                 double ddx = d.x - A.dragLast.x, ddy = d.y - A.dragLast.y;
                 if (ddx != 0 || ddy != 0) { for (int k : weldedWith(A.design, A.sel.idx)) moveBody(k, ddx, ddy); A.dragLast = d; A.dragMoved = true; }
-            } else {
+            } else if (A.dragKind == 1) {
                 auto& h = A.dragH;
                 auto& br = A.design.breech;
                 V2 p = w;
@@ -428,6 +435,8 @@ void buildInput(bool overUI) {
                     float z = bodyFront(h.i);
                     V2 mm = mouseMM(z);
                     double dx = snapv(mm.x - A.dragMM.x, A.snapOn), dy = snapv(mm.y - A.dragMM.y, A.snapOn);
+                    if (A.axisLock == 1) dy = 0;
+                    if (A.axisLock == 2) dx = 0;
                     if (A.dragOrig.size() == d.pts.size())
                         for (int v : A.selVs) if (v >= 0 && v < (int)d.pts.size()) d.pts[v] = {A.dragOrig[v].x + dx, A.dragOrig[v].y + dy};
                     if (dx != 0 || dy != 0) A.dragMoved = true;
@@ -437,19 +446,13 @@ void buildInput(bool overUI) {
                 else if (h.kind == 8 && h.i < (int)A.design.bodies.size() && h.v < (int)A.design.bodies[h.i].roundPath.size()) A.design.bodies[h.i].roundPath[h.v] = p;
                 else if (h.kind == 3) A.design.joints[h.i].pa = p;
                 else if (h.kind == 4) A.design.joints[h.i].pb = p;
-                else if (h.kind == 9 && h.i < (int)A.design.grips.size()) A.design.grips[h.i].at = p;
-                else if (h.kind == 10 && h.i < (int)A.design.grips.size()) {  // turn it: the line points at the cursor
-                    auto& g = A.design.grips[h.i];
-                    double a = std::atan2(p.y - g.at.y, p.x - g.at.x) * 180 / 3.14159265358979;
-                    g.angle = std::round(a < 0 ? a + 360 : a);
-                }
                 else if (h.kind == 5) { if (h.i >= 0 && h.i < (int)br.more.size()) br.more[h.i].face = p; else br.face = p; }
                 else if (h.kind == 6) { if (h.i >= 0 && h.i < (int)br.more.size()) br.more[h.i].muzzle = p; else br.muzzle = p; }
                 if (h.kind != 0 && h.kind != 7) A.dragMoved = true;   // (kind 8: a magazine's round path point)
             }
         } else {
             if (A.dragMoved) commit();
-            A.dragKind = 0;
+            A.dragKind = 0; A.axisLock = 0;
         }
     }
 }

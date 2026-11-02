@@ -110,6 +110,7 @@ void setMode(Mode m) {
     if (m == A.mode) return;
     A.mode = m;
     A.drafting = false; A.draft.clear(); A.draftHasF = false; A.dragKind = 0;
+    A.posing = false; A.poseDrag = -1;
     if (m == Mode::Test) { buildSim(); A.running = true; }
     else resetSim();
 }
@@ -184,7 +185,7 @@ void spawnSpareMag() {
 }
 
 const char* TOOL_HINT[] = {
-    "Click a part to select it and drag it to move. Squares are corners (right-click removes one). Diamonds move an edge, Shift-drag extrudes it, right-click splits it in half.",
+    "Click a part to select it and drag it to move: X, Y or Z while dragging keeps it to one axis. Squares are corners (right-click removes one). Diamonds move an edge, Shift-drag extrudes it, right-click splits it in half.",
     "Click to place corners. Click the first one again, or press Enter, to close the part.",
     "Click where two parts overlap to pin them so they pivot. Over one part, it pins it to the ground.",
     "Click one part, then another: they become one solid piece. Nothing is added to the gun.",

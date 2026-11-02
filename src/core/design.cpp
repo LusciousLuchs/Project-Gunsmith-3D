@@ -231,19 +231,40 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
     for (auto& p : out) if (clean.empty() || std::hypot(p.x - clean.back().x, p.y - clean.back().y) > 1e-4) clean.push_back(p);
     return clean;
 }
-// ---------------------------------------------------------------- grips
-double defaultGripAngle(const std::string& kind, const std::string& style) {
-    if (kind == "support") return style == "vertical" ? 95 : 0;     // fore-end: along the barrel, the hand under it
-    if (kind == "shoulder") return 90;                              // the butt pad, upright
-    return style == "wrist" ? 145 : 110;                            // pistol grip, raked back; a rifle's wrist, nearly along the stock
-}
-const char* gripName(const std::string& kind) {
-    return kind == "support" ? "Support hand" : kind == "shoulder" ? "Shoulder" : "Firing hand";
+// ---------------------------------------------------------------- how it's held
+const char* holdName(int h) { return h == HOLD_HIP ? "Hip" : h == HOLD_LOWERED ? "Lowered" : "Aim"; }
+const char* holdKey(int h) { return h == HOLD_HIP ? "hip" : h == HOLD_LOWERED ? "lowered" : "aim"; }
+double defaultHandAngle(const std::string& which, const std::string& style) {
+    if (which == "support") return style == "vertical" ? 95 : 0;    // fore-end: along the barrel, the hand under it
+    if (which == "butt") return 90;                                 // the butt pad, upright
+    return style == "wrist" ? 145 : 110;                            // pistol grip, raked back; a rifle's wrist
 }
 std::string heldWith(const Design& d) {
-    bool firing = false, two = false;
-    for (auto& g : d.grips) { if (g.kind == "firing") firing = true; else two = true; }
-    return !firing ? "" : two ? "two hands" : "one hand";
+    return !d.pose.firing.on ? "" : d.pose.support.on ? "two hands" : "one hand";
+}
+BodyHold holdOf(const Design& d, int h) {
+    if (d.pose.hold[h].set) return d.pose.hold[h];
+    // the top of the gun (about where sights would be) and its rear
+    double top = 1e9, x0 = 1e9, x1 = -1e9;
+    for (auto& b : d.bodies) {
+        if (b.magazine) continue;
+        for (auto& p : b.pts) { top = std::min(top, p.y); x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); }
+    }
+    if (top > 1e8) { top = 0; x0 = 0; x1 = 200; }
+    const Pose& P = d.pose;
+    BodyHold o;
+    double sight = top - 15;   // the eye just over the top line
+    if (h == HOLD_HIP) {
+        double gx = P.firing.on ? P.firing.at.x : P.butt.on ? P.butt.at.x + 200 : x0 + 100;
+        // the gun at chest height on the right, the eye above and to its left; a stocked gun tucked in close
+        o.eye = {gx - (P.butt.on ? 110 : 330), sight - 330}; o.eyeZ = -110;
+        if (P.butt.on) o.yaw = 35;
+    } else {
+        o.eye = {P.butt.on ? P.butt.at.x + 90 : P.firing.on ? P.firing.at.x - 440 : x0 - 450, sight};
+        if (P.butt.on) o.yaw = 20;   // a shouldered gun: the body stands bladed, the support shoulder forward
+        if (h == HOLD_LOWERED) o.tilt = 35;
+    }
+    return o;
 }
 static const char* KIND_IDS[] = {"centerfire", "rimfire", "shotshell", "caseless"};
 const char* cartKinds() { return "Centrefire\0Rimfire\0Shotshell\0Caseless\0"; }
@@ -821,10 +842,17 @@ std::string designToJson(const Design& d, bool pretty) {
         }
         o["breech"] = jb;
     } else o["breech"] = nullptr;
-    if (!d.grips.empty()) {
-        json g = json::array();
-        for (auto& q : d.grips) g.push_back({{"kind", q.kind}, {"part", q.part}, {"at", v2j(q.at)}, {"angle", q.angle}});
-        o["grips"] = g;
+    {
+        json P = json::object();
+        auto hand = [](const HandHold& h) { return json{{"part", h.part}, {"at", v2j(h.at)}, {"angle", h.angle}}; };
+        if (d.pose.firing.on) P["firing"] = hand(d.pose.firing);
+        if (d.pose.support.on) P["support"] = hand(d.pose.support);
+        if (d.pose.butt.on) P["butt"] = hand(d.pose.butt);
+        for (int h = 0; h < HOLD_COUNT; h++) {
+            const BodyHold& b = d.pose.hold[h];
+            if (b.set) P[holdKey(h)] = {{"eye", v2j(b.eye)}, {"eyeZ", b.eyeZ}, {"yaw", b.yaw}, {"tilt", b.tilt}};
+        }
+        if (!P.empty()) o["pose"] = P;
     }
     return pretty ? o.dump(2) : o.dump();
 }
@@ -1025,17 +1053,32 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         r.fireOrder = opt<std::string>(jb, "fireOrder", "turn") == "together" ? "together" : "turn";
         if (r.cartImpulse) applyCartridge(r);
     }
-    if (o.contains("grips") && o["grips"].is_array())
-        for (auto& jg : o["grips"]) {
-            if (!jg.is_object() || !jg.contains("at")) continue;
-            GripDef g;
-            std::string k = opt<std::string>(jg, "kind", "firing");
-            g.kind = k == "support" || k == "shoulder" ? k : "firing";
-            g.part = opt<std::string>(jg, "part", "");
-            g.at = j2v(jg["at"]);
-            g.angle = opt<double>(jg, "angle", defaultGripAngle(g.kind));
-            d.grips.push_back(g);
+    auto readHand = [&](const json& jh, HandHold& h, const char* which) {
+        if (!jh.is_object() || !jh.contains("at") || !jh["at"].is_array()) return;
+        h.on = true; h.part = opt<std::string>(jh, "part", ""); h.at = j2v(jh["at"]);
+        h.angle = opt<double>(jh, "angle", defaultHandAngle(which));
+    };
+    if (o.contains("pose") && o["pose"].is_object()) {
+        auto& P = o["pose"];
+        if (P.contains("firing")) readHand(P["firing"], d.pose.firing, "firing");
+        if (P.contains("support")) readHand(P["support"], d.pose.support, "support");
+        if (P.contains("butt")) readHand(P["butt"], d.pose.butt, "butt");
+        for (int h = 0; h < HOLD_COUNT; h++) {
+            if (!P.contains(holdKey(h)) || !P[holdKey(h)].is_object()) continue;
+            auto& jh = P[holdKey(h)];
+            BodyHold& b = d.pose.hold[h];
+            b.set = true;
+            if (jh.contains("eye")) b.eye = j2v(jh["eye"]);
+            b.eyeZ = opt<double>(jh, "eyeZ", 0.0); b.yaw = opt<double>(jh, "yaw", 0.0); b.tilt = opt<double>(jh, "tilt", 0.0);
         }
+    } else if (o.contains("grips") && o["grips"].is_array()) {  // grip markers (dev22-23): the first of each kind
+        for (auto& jg : o["grips"]) {
+            if (!jg.is_object()) continue;
+            std::string k = opt<std::string>(jg, "kind", "firing");
+            HandHold& h = k == "support" ? d.pose.support : k == "shoulder" ? d.pose.butt : d.pose.firing;
+            if (!h.on) readHand(jg, h, k == "shoulder" ? "butt" : k.c_str());
+        }
+    }
     out = d;
     return true;
 }

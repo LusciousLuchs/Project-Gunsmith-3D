@@ -505,7 +505,7 @@ void drawScene() {
     SceneLook look = sceneLook();
     setFog(A.showcase ? Color{16, 18, 22, 255} : look.fog);
     bool building = A.mode == Mode::Build && !A.showcase;
-    if (!A.showcase) {
+    if (!A.showcase && !A.posing) {
         // the bench always has a floor and a stand; the designer shows them only in the classic studio look
         if (!building || look.studs) {
             if (look.studs) DrawMesh(G.plate, G.plateMat, MatrixTranslate(A.target.x, py, 0));
@@ -655,6 +655,7 @@ void drawScene() {
     // loose rounds: on the bench, in the hand, or sitting in the open action
     if (A.S) for (auto& b : A.S->bodies) {
         if (!b.isRound || b.gone) continue;
+        if (A.posing && b.rs == sim::RS::Loose) continue;  // (no bench to lie on while posing)
         V2 h = sim::wpt(b, {b.headLx, 0}), t = sim::wpt(b, {b.headLx + 0.001, 0});
         float z = (float)((b.z + b.zVis) * 1000) * U;  // cases fly out sideways through the port; double-position feed comes in from the side
         Vector3 o = W3({h.x * 1000, h.y * 1000}, z), o2 = W3({t.x * 1000, t.y * 1000}, z);
@@ -671,17 +672,6 @@ void drawScene() {
     }
     // ghosts drawn last, see-through
     rlDisableDepthMask();
-    if (building)  // where it's held: about the size of a hand (or a shoulder) round the grip line
-        for (auto& g : D.grips) {
-            int bi = D.bodyIndex(g.part);
-            if (bi < 0) continue;
-            bool sh = g.kind == "shoulder";
-            double a = g.angle * PI / 180, half = sh ? 60 : 40;
-            V2 dir{std::cos(a), std::sin(a)};
-            float z = bodyZ(bi);
-            Vector3 p0 = W3({g.at.x - dir.x * half, g.at.y - dir.y * half}, z), p1 = W3({g.at.x + dir.x * half, g.at.y + dir.y * half}, z);
-            drawCyl(p0, p1, (float)(sh ? 24 : 17) * U, Color{110, 230, 140, 255}, 0.18f);
-        }
     for (auto& p : A.puffs) drawSphereLit(p.p, p.r, Color{215, 215, 220, 255}, std::clamp(p.life / p.max, 0.f, 1.f) * 0.28f);
     for (auto& r : list) {
         if (!isGhost(r)) continue;

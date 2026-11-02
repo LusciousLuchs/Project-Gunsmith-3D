@@ -1276,13 +1276,19 @@ static void beltsAndClips() {
 }
 
 static void grips() {
-    std::printf("Where it's held\n");
+    std::printf("How it's held (the pose)\n");
     Design p = loadPreset("blowback"), r = loadPreset("boltaction");
-    CHECK(heldWith(p) == "one hand" && heldWith(r) == "two hands", "the pistol is held with one hand, the rifle with two");
+    CHECK(heldWith(p) == "one hand" && heldWith(r) == "two hands" && r.pose.butt.on, "the pistol is held with one hand, the rifle with two and against the shoulder");
     Design back; designFromJson(designToJson(r), back);
-    CHECK(back.grips.size() == 3 && back.grips[2].kind == "shoulder" && std::fabs(back.grips[0].angle - 105) < 1e-9, "grips save and load");
-    Design none = p; none.grips.clear();
-    CHECK(heldWith(none).empty(), "a design with no firing-hand grip has nowhere to hold it");
+    CHECK(back.pose.firing.on && back.pose.support.on && back.pose.butt.on && std::fabs(back.pose.firing.angle - 105) < 1e-9 && back.pose.firing.part == "stock",
+          "grip markers from earlier versions become the pose's hands and butt, and save as a pose");
+    r.pose.hold[HOLD_HIP].set = true; r.pose.hold[HOLD_HIP].eye = {12, -340}; r.pose.hold[HOLD_HIP].yaw = 20;
+    designFromJson(designToJson(r), back);
+    CHECK(back.pose.hold[HOLD_HIP].set && std::fabs(back.pose.hold[HOLD_HIP].yaw - 20) < 1e-9 && !back.pose.hold[HOLD_AIM].set, "a posed hold saves; the others stay worked out from the gun");
+    BodyHold aim = holdOf(r, HOLD_AIM), low = holdOf(r, HOLD_LOWERED);
+    CHECK(std::fabs(aim.eye.x - (r.pose.butt.at.x + 90)) < 1e-6 && low.tilt > 20, "unposed: the eye sits over the stock when aiming, and the muzzle drops when lowered");
+    Design none = p; none.pose = Pose();
+    CHECK(heldWith(none).empty(), "a design with no firing hand has nowhere to hold it");
 }
 
 int main() {

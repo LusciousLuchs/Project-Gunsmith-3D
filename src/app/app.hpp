@@ -48,7 +48,12 @@ struct App {
     bool running = false;
     Tool tool = Tool::Select;
     std::string gripKind = "firing", gripStyle;  // the Grip tool places this kind (and style) of grip
-    int chamberEdit = -1;                // the Face and Muzzle tools place this further chamber's points (-1: the first chamber)
+    int chamberEdit = -1;
+    int axisLock = 0;                    // while dragging: 1 side to side (X), 2 up and down (Y), 3 depth (Z), 0 free
+    double zDrag = 0, zDragLast = 0;     // depth dragged so far (Z lock), mm
+    bool posing = false;                 // the bench's pose editor (app/pose.cpp)
+    int poseHold = 0;                    // which hold is being posed (HOLD_AIM ...)
+    int poseDrag = -1;                   // the pose handle being dragged                // the Face and Muzzle tools place this further chamber's points (-1: the first chamber)
     Sel sel;
     bool snapOn = true, xray = true, sound = true, cutaway = false;  // cutaway: near-side parts drawn see-through
     float handN = 150;                   // hand strength on the bench (a test condition, so it lives here)

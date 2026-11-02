@@ -203,20 +203,29 @@ struct BreechDef {
 };
 void applyCartridge(BreechDef& b);      // copy round size and impulse from the cartridge
 
-// Where the shooter holds the gun: a hand or the shoulder, on a part. Moves with that part.
-//   firing   the hand that works the trigger (a pistol grip, a rifle's wrist)
-//   support  the other hand (a handguard or fore-end, a vertical grip)
-//   shoulder where the gun beds into the shoulder (a stock's butt)
-// angle: the direction the grip runs, degrees (0 = toward the muzzle, 90 = down): fingers wrap around this line.
-struct GripDef {
-    std::string kind = "firing";
+// How the shooter holds the gun, posed on the bench (Test bench > Pose). The hands and the stock's butt are points on
+// parts (they move with them); each hold (aim, hip, lowered) places the body against the gun. Older blueprints with grip
+// markers load them as the hands and butt.
+struct HandHold {
+    bool on = false;
     std::string part;
-    V2 at;
-    double angle = 105;
+    V2 at;                 // the middle of the hand, or of the butt (design mm)
+    double angle = 105;    // the line the fingers wrap round (or the butt pad's line), degrees: 0 toward the muzzle, 90 down
 };
-double defaultGripAngle(const std::string& kind, const std::string& style = "");
-const char* gripName(const std::string& kind);
-std::string heldWith(const struct Design& d);  // "one hand", "two hands", or "" with no firing-hand grip
+struct BodyHold {
+    bool set = false;      // false: worked out from the gun (holdOf)
+    V2 eye;                // the aiming eye, in the gun's coordinates (mm)
+    double eyeZ = 0;       // across the gun, mm: + is the gun's right side
+    double yaw = 0;        // the body turned against the gun, degrees (+ = to its right)
+    double tilt = 0;       // the muzzle lowered against the body, degrees
+};
+enum { HOLD_AIM, HOLD_HIP, HOLD_LOWERED, HOLD_COUNT };
+struct Pose { HandHold firing, support, butt; BodyHold hold[HOLD_COUNT]; };
+const char* holdName(int h);
+const char* holdKey(int h);
+double defaultHandAngle(const std::string& which, const std::string& style = "");   // firing, support, butt
+std::string heldWith(const struct Design& d);  // "one hand", "two hands", or "" with no firing hand placed
+BodyHold holdOf(const struct Design& d, int h); // the hold as posed, or one worked out from the gun
 struct Design {
     std::string name = "Untitled action";
     double speed = 0.02;                 // slow-motion speed for shots
@@ -224,7 +233,7 @@ struct Design {
     std::vector<BodyDef> bodies;
     std::vector<JointDef> joints;
     BreechDef breech;
-    std::vector<GripDef> grips;          // where it's held (none in older blueprints)
+    Pose pose;                           // how it's held (nothing placed in older blueprints)
     // where the blueprint came from (filled in when loading; saving always writes the current version)
     int format = 1;                      // blueprint format number (GUNSMITH_BLUEPRINT_FORMAT when saved)
     std::string savedWith;               // app version that saved it, "" for blueprints older than versioning

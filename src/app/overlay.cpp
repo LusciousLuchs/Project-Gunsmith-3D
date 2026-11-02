@@ -70,19 +70,13 @@ void drawOverlay() {
         { Vector2 s = toScreen(W3(c.face, frontZ(c.breech.empty() ? br.breech : c.breech))); A.handles.push_back({s, 5, (int)k, -1}); label(s, ("Breech face " + n).c_str(), Color{255, 122, 89, 255}); }
         if (c.hasMuzzle) { Vector2 s = toScreen(W3(c.muzzle, frontZ(c.chamber))); A.handles.push_back({s, 6, (int)k, -1}); label(s, ("Muzzle " + n).c_str(), Color{255, 122, 89, 255}); }
     }
-    // where it's held: a line where the fingers wrap (or the butt pad lies), its middle and its end to drag
-    for (size_t gi = 0; gi < D.grips.size(); gi++) {
-        auto& g = D.grips[gi];
-        double a = g.angle * 3.14159265358979 / 180, half = g.kind == "shoulder" ? 60 : 40;
-        V2 dir{std::cos(a), std::sin(a)};
-        float z = frontZ(g.part);
-        Vector2 s0 = toScreen(W3({g.at.x - dir.x * half, g.at.y - dir.y * half}, z)), s1 = toScreen(W3({g.at.x + dir.x * half, g.at.y + dir.y * half}, z));
-        Vector2 sc = toScreen(W3(g.at, z));
-        Color gc{110, 230, 140, 255};
-        DrawLineEx(s0, s1, 3.f, Color{gc.r, gc.g, gc.b, 170});
-        A.handles.push_back({sc, 9, (int)gi, -1});
-        A.handles.push_back({s1, 10, (int)gi, -1});
-        label(sc, gripName(g.kind), gc);
+    if (A.axisLock && (A.dragKind == 1 || A.dragKind == 2)) {  // which way a drag is held to
+        static const char* what[] = {"", "X: side to side only", "Y: up and down only", "Z: depth only (move the mouse up and down)"};
+        Color lc = A.axisLock == 1 ? Color{235, 90, 80, 255} : A.axisLock == 2 ? Color{110, 220, 120, 255} : Color{90, 150, 240, 255};
+        Vector2 s0 = toScreen(W3(A.dragKind == 2 ? A.dragStart : A.dragMM, 0));
+        if (A.axisLock == 1) DrawLineEx({0, s0.y}, {(float)A.vw, s0.y}, 1.5f, Color{lc.r, lc.g, lc.b, 150});
+        if (A.axisLock == 2) DrawLineEx({s0.x, (float)TOOLBAR_H}, {s0.x, (float)(TOOLBAR_H + A.vh)}, 1.5f, Color{lc.r, lc.g, lc.b, 150});
+        viewText(what[A.axisLock], m.x + 16, m.y + 12, 13, lc);
     }
     // joints that belong to what you're working on are drawn strongly; the rest stay faint until hovered
     bool jointTool = A.tool == Tool::Pin || A.tool == Tool::Weld || A.tool == Tool::Track || A.tool == Tool::Spring;

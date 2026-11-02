@@ -74,7 +74,7 @@ void testInput(bool overUI) {
 
 
 void stepSim(float dt) {
-    if (!A.S || !A.running) return;
+    if (!A.S || !A.running || A.posing) return;
     auto& S = *A.S;
     bool slow = CFG.slowOnShot && S.shots > 0 && (S.t - S.fireT) * 1000 < CFG.slowWindowMs;
     double speed = slow ? CFG.slowSpeed : CFG.benchSpeed;

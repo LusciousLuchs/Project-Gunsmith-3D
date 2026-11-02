@@ -1,4 +1,5 @@
 // Gunsmith3D - Top bar: menu, designer / bench switch, tools as icons, view toggles.
+#include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "app/keys.hpp"
@@ -224,6 +225,11 @@ void toolbar() {
         if (ImGui::Combo("##snap", &si, CFG.units == Units::Imperial ? imp : metric, 6)) { gSnap = steps[si]; A.snapOn = si > 0; CFG.snap = gSnap; saveSettings(); }
         if (tipHover()) ImGui::SetTooltip("Corners and parts jump to this step when you draw or drag them.");
     } else {
+        if (accentButton(ICON_FA_PERSON "  Pose", A.posing, {0, sz})) { if (A.posing) { leavePose(); A.running = true; } else { restartTest(); enterPose(); } }
+        if (tipHover()) ImGui::SetTooltip("How a person holds this gun: place the hands and the stock's butt on it,\nand stand the body against it for aiming, from the hip and lowered.");
+        tutAnchor("mode:pose");
+        gap(12);
+        if (A.posing) goto rightSide;
         if (iconButton(A.running ? ICON_FA_PAUSE : ICON_FA_PLAY, A.running ? "Pause" : "Resume")) A.running = !A.running;
         gap(3);
         if (iconButton(ICON_FA_ARROWS_ROTATE, "Restart the test")) restartTest();
@@ -239,6 +245,7 @@ void toolbar() {
         gap(3);
         if (ImGui::Button("Reload", {0, sz})) { if (A.S) { sim::quickReload(*A.S); toast("Reloaded."); } }
     }
+rightSide:
     // view toggles on the right
     float right = 5 * (sz + 4 * CFG.uiScale) + 10 * CFG.uiScale;
     ImGui::SameLine(GetScreenWidth() - right);

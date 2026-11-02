@@ -1,4 +1,5 @@
 // Gunsmith3D - Test mode panels: bench controls and motion trace.
+#include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/render.hpp"
 #include "app/reltest.hpp"
@@ -7,6 +8,7 @@
 #include "ui/ui.hpp"
 #include "imgui.h"
 
+#include <cstring>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -108,9 +110,83 @@ static void reliabilitySection() {
 
 static bool detail(StatsDetail d) { return (int)CFG.stats >= (int)d; }
 
+static void muted(const char* t) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", t); ImGui::PopTextWrapPos(); }
+static void handControls(const char* title, HandHold& h, const char* which, const char* tip) {
+    ImGui::PushID(which);
+    bool on = h.on;
+    if (ImGui::Checkbox(title, &on)) {
+        h.on = on;
+        if (on && h.part.empty()) {  // start it in the middle of the gun's side; drag it where it goes
+            const auto& br = A.design.breech;
+            V2 c = br.on && br.hasFace ? V2{br.face.x + (std::string(which) == "support" ? 120 : std::string(which) == "butt" ? -250 : -40), br.face.y + 25} : V2{0, 0};
+            h.at = c; h.angle = defaultHandAngle(which);
+            for (int i = (int)A.design.bodies.size() - 1; i >= 0; i--) if (sim::inPoly(c.x, c.y, A.design.bodies[i].pts)) { h.part = A.design.bodies[i].id; break; }
+            if (h.part.empty() && !A.design.bodies.empty()) h.part = A.design.bodies[0].id;
+        }
+        commit();
+    }
+    if (tip && tipHover()) ImGui::SetTooltip("%s", tip);
+    if (h.on) {
+        if (std::string(which) != "butt") {
+            bool firing = std::string(which) == "firing";
+            double a0 = defaultHandAngle(which, ""), a1 = defaultHandAngle(which, firing ? "wrist" : "vertical");
+            int st = std::fabs(h.angle - a0) < 0.5 ? 0 : std::fabs(h.angle - a1) < 0.5 ? 1 : 2;
+            prop("Style");
+            if (ImGui::Combo("##style", &st, firing ? "Pistol grip\0Rifle wrist\0Custom\0" : "Fore-end\0Vertical grip\0Custom\0") && st < 2) { h.angle = st == 0 ? a0 : a1; commit(); }
+        }
+        pNum("Angle", h.angle, 1, "%.0f\xc2\xb0", "The line the fingers wrap round (the butt pad's line, for the butt). 0 points at the muzzle, 90 straight down.\nOr drag the dot at the end of its green line.");
+        int bi = A.design.bodyIndex(h.part);
+        ImGui::TextDisabled("On: %s", bi >= 0 ? (A.design.bodies[bi].name.empty() ? h.part.c_str() : A.design.bodies[bi].name.c_str()) : "nothing");
+    }
+    ImGui::PopID();
+}
+static void posePanel() {
+    auto& P = A.design.pose;
+    ImGui::PushFont(gFontBold, 18.0f); ImGui::TextUnformatted("Pose"); ImGui::PopFont();
+    std::string held = heldWith(A.design);
+    ImGui::TextDisabled("%s", held.empty() ? "Place the firing hand to hold it." : ("Held with " + held + (P.butt.on ? ", against the shoulder." : ".")).c_str());
+    ImGui::Dummy({0, 4 * CFG.uiScale});
+    // which hold
+    for (int h = 0; h < HOLD_COUNT; h++) {
+        if (h) ImGui::SameLine();
+        if (accentButton(holdName(h), A.poseHold == h, {0, 0})) { A.poseHold = h; poseView(); }
+    }
+    ImGui::Dummy({0, 4 * CFG.uiScale});
+    if (section("Body", true)) {
+        BodyHold& b = P.hold[A.poseHold];
+        if (!b.set) b = holdOf(A.design, A.poseHold);
+        BodyHold was = b;
+        muted("Drag the orange dot over the head to move the body. These are where the aiming eye sits against the gun.");
+        pNumU("Along the gun", b.eye.x, 2, Q::Length, -1, "Forward (toward the muzzle) or back.", SIGNED);
+        double up = -b.eye.y;
+        if (pNumU("Height", up, 2, Q::Length, -1, "Up from the gun's drawing origin.", SIGNED)) b.eye.y = -up;
+        pNumU("Across", b.eyeZ, 2, Q::Length, -1, "+ puts the eye to the gun's right side.", SIGNED);
+        pNum("Body turned", b.yaw, 1, "%.0f\xc2\xb0", "The body turned against the gun (+ to the right). Rifle shooters stand bladed.");
+        pNum("Muzzle down", b.tilt, 1, "%.0f\xc2\xb0", "The gun tipped against the body: about 35 for a lowered gun, 0 when aiming.");
+        if (std::memcmp(&was, &b, sizeof b) != 0 || !was.set) { b.set = true; }
+        if (ImGui::IsItemDeactivatedAfterEdit()) commit();
+        if (ImGui::Button("Reset this hold", {-1, 0})) { b = BodyHold(); b = holdOf(A.design, A.poseHold); b.set = false; commit(); poseView(); }
+    }
+    if (section("Hands and shoulder", true)) {
+        muted("Drag a green dot to move it onto any part, and the dot at the end of its line to turn it. All three holds share them.");
+        handControls("Firing hand", P.firing, "firing", "The hand on the trigger.");
+        handControls("Support hand", P.support, "support", "The other hand. Off: held with one hand.");
+        handControls("Stock in the shoulder", P.butt, "butt", "Where the gun beds into the shoulder (a stock's butt). Off: nothing touches the shoulder.");
+    }
+    PoseReport R = poseReport();
+    if (R.rightShort > 0.5) ImGui::TextColored(colBad(), "The firing arm can't reach: %s short.", fmtQ(Q::Length, R.rightShort, 0).c_str());
+    if (R.leftShort > 0.5) ImGui::TextColored(colBad(), "The support arm can't reach: %s short.", fmtQ(Q::Length, R.leftShort, 0).c_str());
+    if (P.butt.on) {
+        if (R.buttIn) ImGui::TextColored(colGood(), "The butt sits in the shoulder.");
+        else ImGui::TextColored(colWarn(), "The butt is %s from the shoulder pocket (the orange ball).", fmtQ(Q::Length, R.buttOff, 0).c_str());
+    }
+    ImGui::Dummy({0, 6 * CFG.uiScale});
+    if (ImGui::Button("Done posing", {-1, 0})) { leavePose(); A.running = true; }
+}
 void testPanel() {
     panelHeader();
     if (!A.S) { ImGui::PopItemWidth(); ImGui::End(); return; }
+    if (A.posing) { posePanel(); ImGui::PopItemWidth(); ImGui::End(); return; }
     auto& S = *A.S;
     bool batt = sim::inBattery(S);
     sim::Body* mag = sim::seatedMag(S);   // removable (latched) or built in

@@ -1,4 +1,5 @@
 // Gunsmith3D - Camera controls, routing viewport input, keyboard shortcuts.
+#include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -76,7 +77,8 @@ void handleViewportInput() {
     bool overUI = io.WantCaptureMouse || !mouseInViewport();
     cameraInput(overUI);
     if (A.dragKind == 4 || A.dragKind == 5) return;
-    if (A.mode == Mode::Test) testInput(overUI);
+    if (A.mode == Mode::Test && A.posing) poseInput(overUI);
+    else if (A.mode == Mode::Test) testInput(overUI);
     else buildInput(overUI);
 }
 
@@ -106,7 +108,8 @@ void handleKeys() {
     if (actPressed(Act::ToggleMode) && !A.benchOnly) setMode(A.mode == Mode::Build ? Mode::Test : Mode::Build);
     if (actPressed(Act::FitView)) fitView();
     if (actPressed(Act::SideView)) A.ortho = !A.ortho;
-    if (actPressed(Act::XRay)) A.xray = !A.xray;
+    bool dragging = (A.dragKind == 1 || A.dragKind == 2) && IsMouseButtonDown(MOUSE_BUTTON_LEFT);  // (X, Y, Z lock the drag then)
+    if (actPressed(Act::XRay) && !dragging) A.xray = !A.xray;
     if (actPressed(Act::Cutaway)) A.cutaway = !A.cutaway;
     if (A.mode == Mode::Test) {
         if (actPressed(Act::Reload) && A.S) { sim::quickReload(*A.S); toast("Reloaded."); }

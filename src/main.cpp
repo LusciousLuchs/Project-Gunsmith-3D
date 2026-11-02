@@ -1,4 +1,5 @@
 // Gunsmith3D - Gunsmith3D entry point: command line, window, main loop.
+#include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/audio.hpp"
@@ -35,6 +36,7 @@ int main(int argc, char** argv) {
     float camYaw = -100, camPitch = 0;
     int selCarveArg = -1;
     bool fireArg = false, sideArg = false, testArg = false, designerArg = false;
+    int poseArg = -1;
     int relArg = 0;
     bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
     int settingsPage = 0;
@@ -59,6 +61,7 @@ int main(int argc, char** argv) {
         else if (a == "--frames") frames = std::atoi(next().c_str());
         else if (a == "--fire") fireArg = true;
         else if (a == "--test") testArg = true;
+        else if (a == "--pose") { testArg = true; poseArg = std::atoi(next().c_str()); }  // (screenshots) the pose editor at hold N
         else if (a == "--side") sideArg = true;
         else if (a == "--select") selectArg = next();
         else if (a == "--trackdraft") trackDraft = true;
@@ -147,6 +150,7 @@ int main(int argc, char** argv) {
     }
     if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
     if (testArg || !demo.empty()) setMode(Mode::Test);
+    if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); }
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();
@@ -252,9 +256,12 @@ int main(int argc, char** argv) {
         ClearBackground(Color{30, 34, 41, 255});
         drawBackdrop(0, TOOLBAR_H, (float)A.vw, (float)A.vh);
         beginViewport3D();
-        drawScene();
+        if (A.posing) {  // the gun at this hold's tilt, and the mannequin holding it
+            rlPushMatrix(); rlMultMatrixf(MatrixToFloat(poseGunMatrix())); drawScene(); rlPopMatrix();
+            drawPoseBody();
+        } else drawScene();
         endViewport3D();
-        drawOverlay();
+        if (A.posing) drawPoseOverlay(); else drawOverlay();
         if (A.mode == Mode::Test) DrawRectangleLinesEx({0, TOOLBAR_H, (float)A.vw, (float)A.vh}, 2, Color{232, 161, 58, 90});
 
         rlImGuiBegin();

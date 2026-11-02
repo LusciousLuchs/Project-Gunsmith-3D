@@ -115,6 +115,19 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - Removed an out-of-date note in the magazine panel that said tubes only feed the simple way.
 - Fix: an action lock now catches before anything else moves, so a heavy shot can't shove the parts linked to the bolt. (The pump carbine's fore-end no longer twitches back when it fires.)
 
+### Pose (how it's held)
+- **Pose mode on the Test bench** (the Pose button in the top bar). A plain upper-body mannequin stands with the gun:
+  - drag the **firing hand**, the **support hand** and the **stock's butt** onto any part, and drag the dot at the end of each green line to turn it. Hand styles: pistol grip, rifle wrist, fore-end, vertical grip.
+  - pose three holds, **Aim**, **Hip** and **Lowered**: drag the dot over the head to move the body, or set the eye's position, how far the body is turned, and how far the muzzle is lowered. Unposed holds are worked out from the gun.
+  - the arms bend to reach the hands and **turn red if they can't**, saying how far short they are. A shoulder pocket shows whether the butt is in the shoulder.
+  - A lowered gun pivots on its butt (or on the firing hand).
+- This replaces the grip markers in the designer. Guns saved with grips (dev22, dev23) keep them as their pose's hands and butt. The designer now just says how the gun is held.
+- These poses are what first-person mode will use.
+
+### Designer
+- Fix: with the Carve tool on and a part's cut selected, the two sets of shape buttons clashed (the "conflicting ID" error box).
+- **Axis lock while dragging:** press **X** (side to side), **Y** (up and down) or **Z** (depth: move the mouse up and down) while dragging a part to keep it to that axis. Press the same key again to free it. X and Y also work when dragging corners. A coloured guide shows the lock.
+
 ### Interface
 - **Save, Save as and Open are in the top bar.** Open lists your blueprints and the examples. The right panel no longer has a File tab: it's only for changing the gun (Inspect, Outline, Firing).
 - **Interface scale** is now in Settings > Interface, as Auto or 75-200%. Auto sizes it to your screen: 100% at 1080p, 125% at 1440p, 175% at 4K. **Ctrl +** and **Ctrl -** change it anywhere. A scale you had already set is kept.
