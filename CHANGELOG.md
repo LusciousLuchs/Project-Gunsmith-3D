@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.2-alpha (in progress)
+
+### Fixes (from playtesting)
+- **Magazines no longer fall out after a while.** After about 200 reloads the bench filled up with dropped magazines and no new one could go in. Now the oldest clutter on the bench (empty cases, then dropped magazines, then loose rounds) is cleared away to make room.
+- **Changing a magazine's capacity no longer turns it over.** A magazine whose well pointed upward (a negative drop-out travel in older versions, or the well's end dragged above its start) flipped over to feed from the top. Now it only turns when you set its *Well angle* (180 for a magazine on top, on purpose).
+- **Dragging a corner far out:** a drag can no longer throw a corner kilometres away (or snap it back to the middle) when the view looks along the drawing plane, and parts stay within 5 m.
+- **Crash reports (Windows):** if the game ever crashes it says so and leaves a report in the game folder under *user/crashes* (a short text file and a .dmp). Send both and the exact spot can be found.
+
 ## 0.2.1-alpha
 
 The editor and the test bench are worked out (0.1.0-dev, builds dev1 to dev25). Alpha 0.2 adds barrels, rotation in any axis, and first-person shooting.

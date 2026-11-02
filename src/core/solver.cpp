@@ -673,7 +673,25 @@ static void solveMagwell(Sim& S, Joint& J) {
 bool spawnSlot(Sim& S, Body** slot, BodyDef** def) {
     for (auto& o : S.bodies)
         if (o.gone && !o.tmpl.empty() && o.d) { *slot = &o; *def = const_cast<BodyDef*>(o.d); return true; }  // spawned defs live in extraDefs
-    if (S.bodies.size() >= S.bodies.capacity()) return false;
+    if (S.bodies.size() >= S.bodies.capacity()) {
+        // the bench is full: clear away the oldest thing lying on it, first an empty case, then a dropped magazine,
+        // then a loose round (never anything in the gun or in your hand)
+        Joint* J = magwell(S);
+        auto lying = [&](const Body& o) { return !o.gone && !o.tmpl.empty() && o.d && !(S.hand.on && S.hand.b == &o); };
+        Body* pick = nullptr;
+        for (int pass = 0; pass < 3 && !pick; pass++)
+            for (auto& o : S.bodies) {
+                if (!lying(o)) continue;
+                bool ok = pass == 0 ? (o.isCase && o.rs == RS::Loose)
+                        : pass == 1 ? (o.isMag && o.loose && !(J && J->A == &o) && !o.top)
+                                    : (o.isRound && !o.isCase && o.rs == RS::Loose);
+                if (ok) { pick = &o; break; }
+            }
+        if (!pick) return false;
+        retireBody(S, *pick);
+        *slot = pick; *def = const_cast<BodyDef*>(pick->d);
+        return true;
+    }
     S.extraDefs.emplace_back();
     *slot = nullptr; *def = &S.extraDefs.back();
     return true;

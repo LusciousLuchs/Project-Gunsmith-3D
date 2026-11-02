@@ -533,6 +533,8 @@ static void inspectPart(BodyDef& b) {
                     if (travel != t0 || ang != a0) {
                         travel = std::max(5.0, travel);
                         j.path = {j.path.front(), {j.path.front().x + travel * std::sin(ang * DEG2RAD), j.path.front().y + travel * std::cos(ang * DEG2RAD)}};
+                        if (b.gen.on && ang != a0) { b.gen.angle = ang; generateMagazine(D, A.sel.idx); }  // (this is what turns it, even right over)
+                        editedAny = true;
                     }
                 }
                 // the insertion path: bends, and how far the magazine has rocked at each point (rock-in magazines)

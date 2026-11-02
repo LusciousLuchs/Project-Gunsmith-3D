@@ -1355,6 +1355,24 @@ static void barrelsAndTilt() {
     }
 }
 
+static void benchBugs() {
+    std::printf("Playtest bugs (0.2.1)\n");
+    {   // the bench used to run out of room after about 200 reloads: no new magazine, the gun empty
+        auto S = sim::build(loadPreset("blowback")); sim::run(*S, 0.3);
+        bool ok = true;
+        for (int i = 0; i < 300 && ok; i++) { sim::quickReload(*S); sim::run(*S, 0.05); ok = sim::seatedMag(*S) != nullptr; }
+        CHECK(ok, "300 reloads in a row: a magazine always goes in (the oldest clutter on the bench is cleared away)");
+    }
+    {   // changing capacity re-read the magazine's direction from its well: a well pointing up turned it over
+        Design d = loadPreset("blowback");
+        int mi = -1; for (size_t i = 0; i < d.bodies.size(); i++) if (d.bodies[i].magazine) mi = (int)i;
+        for (auto& j : d.joints) if (j.type == "magwell") j.path.back().y = j.path.front().y - 60;
+        d.bodies[mi].magCap = 9; generateMagazine(d, mi);
+        double top = 1e9, bot = -1e9; for (auto& p : d.bodies[mi].pts) { top = std::min(top, p.y); bot = std::max(bot, p.y); }
+        CHECK(std::fabs(d.bodies[mi].gen.angle) < 1 && std::fabs(top - d.bodies[mi].gen.top.y) < 1 && bot > top + 50, "changing a magazine's capacity never turns it over");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1384,6 +1402,7 @@ int main() {
     beltsAndClips();
     grips();
     barrelsAndTilt();
+    benchBugs();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

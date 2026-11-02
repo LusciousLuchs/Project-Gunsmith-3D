@@ -12,3 +12,4 @@ std::string importTexture(const std::string& path);   // copy a picture into use
 void handleDroppedFiles();                            // pictures dropped on the window are imported
 bool pickImageFile(std::string& out);                 // the system's open-file box (Windows); false if cancelled or not available
 void openTexturesFolder();
+void installCrashHandler();                           // Windows: a crash leaves a report in user/crashes

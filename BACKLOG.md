@@ -4,9 +4,9 @@ Bugs and ideas from playtesters, kept here so nothing gets lost. Newest at the t
 
 ## Bugs (from playtesting, 0.2.1-alpha)
 
-- [ ] **Crash: dragging a polygon corner too far.** Dragging a corner far enough to make the part very large crashes the game. (Smiffy)
-- [ ] **Magazines fall out of the gun after a while** on the test bench. (Smiffy)
-- [ ] **Changing a magazine's capacity flips it round** so it feeds from the wrong end (top feeds). (Smiffy)
+- [~] **Crash: dragging a polygon corner too far.** Dragging a corner far enough to make the part very large crashes the game. (Smiffy) Couldn't reproduce (dragged far in side and 3D views, loaded parts kilometres wide, on the designer and the bench). Made safer: a drag can't throw a corner more than 5 m out or to nowhere when the view looks along the drawing plane. Windows crashes now leave a report in user/crashes to send in.
+- [x] **Magazines fall out of the gun after a while** on the test bench. (Smiffy) Found: after about 200 reloads the bench was full of dropped magazines and no new one could appear. Now the oldest clutter (cases, dropped magazines, loose rounds) is cleared to make room.
+- [x] **Changing a magazine's capacity flips it round** so it feeds from the wrong end (top feeds). (Smiffy) Found: the magazine re-read its direction from its well, and a well whose drop-out end pointed up (a negative drop-out travel in older builds, or its end dragged up) turned it over. Now only the Well angle turns it (180 for a top magazine, on purpose).
 
 ## Editor ideas (Maulwurf)
 

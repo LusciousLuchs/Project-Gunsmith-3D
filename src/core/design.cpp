@@ -670,6 +670,7 @@ void generateMagazine(Design& D, int bi) {
     const Cartridge& c = D.breech.cart;
     int wi = -1;
     for (size_t i = 0; i < D.joints.size(); i++) if (D.joints[i].type == "magwell" && D.joints[i].a == b.id) wi = (int)i;
+    const bool wasOn = g.on;
     if (!g.on) {  // first time: keep the top of the existing part where it is
         auto o = outlineOf(b);
         double x0 = 1e9, x1 = -1e9, y0 = 1e9;
@@ -677,9 +678,10 @@ void generateMagazine(Design& D, int bi) {
         g.top = {(x0 + x1) / 2, y0};
         g.on = true;
     }
-    if (wi >= 0 && D.joints[wi].path.size() >= 2) {
-        auto& j = D.joints[wi];
-        g.angle = std::atan2(j.path.back().x - j.path.front().x, j.path.back().y - j.path.front().y) * 180 / PI_;
+    if (wi >= 0 && D.joints[wi].path.size() >= 2) {  // it follows the well's tilt, but never turns itself over: which way
+        auto& j = D.joints[wi];                        // up it goes is set by the Well angle (a top magazine: 180)
+        double pa = std::atan2(j.path.back().x - j.path.front().x, j.path.back().y - j.path.front().y) * 180 / PI_;
+        if (!wasOn || std::fabs(std::remainder(pa - g.angle, 360.0)) <= 90) g.angle = pa;
     }
     b.magCap = std::clamp(b.magCap, 1, 250);
     double dia = c.headDia() * 1.02;

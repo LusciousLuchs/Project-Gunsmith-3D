@@ -21,7 +21,20 @@ static bool rayZ(const Ray& r, float z, Vector3& out, float* tOut = nullptr) {
     if (tOut) *tOut = t;
     return true;
 }
-V2 mouseMM(float z) { Vector3 w; if (!rayZ(mouseRay(), z, w)) return {0, 0}; return toMM(w); }
+V2 mouseMM(float z) {
+    // A ray almost along the drawing plane (looking at it edge on, or above the horizon) would put the point kilometres
+    // away, or nowhere: keep the last good point instead, and never more than 5 m from the middle.
+    static V2 last{0, 0};
+    Ray r = mouseRay();
+    Vector3 w;
+    float along = std::fabs(Vector3DotProduct(Vector3Normalize(r.direction), {0, 0, 1}));
+    if (along < 0.05f || !rayZ(r, z, w)) return last;
+    V2 p = toMM(w);
+    if (!std::isfinite(p.x) || !std::isfinite(p.y)) return last;
+    p.x = std::clamp(p.x, -5000.0, 5000.0); p.y = std::clamp(p.y, -5000.0, 5000.0);
+    last = p;
+    return p;
+}
 V2 snapMM(V2 p) { return {snapv(p.x, A.snapOn), snapv(p.y, A.snapOn)}; }
 
 // ---------------------------------------------------------------- picking

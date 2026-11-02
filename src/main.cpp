@@ -29,6 +29,7 @@
 #include <sstream>
 
 int main(int argc, char** argv) {
+    installCrashHandler();
     // command-line options for automated screenshots
     std::string presetArg, shotPath, selectArg, demo;
     int frames = 0;
