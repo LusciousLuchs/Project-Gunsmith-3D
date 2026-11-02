@@ -2,6 +2,7 @@
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
+#include "app/editor.hpp"
 #include "app/render.hpp"
 #include "app/overlay.hpp"
 #include "app/fonts.hpp"
@@ -62,13 +63,14 @@ void drawOverlay() {
         }
         if (j.type == "spring") { A.handles.push_back({toScreen(W3(j.pa, 0)), 3, (int)ji, -1}); A.handles.push_back({toScreen(W3(j.pb, 0)), 4, (int)ji, -1}); }
     }
-    if (br.on && br.hasFace) { Vector2 s = toScreen(W3(br.face, frontZ(br.breech))); A.handles.push_back({s, 5, -1, -1}); label(s, "Breech face", Color{255, 122, 89, 255}); }
-    if (br.on && br.hasMuzzle) { Vector2 s = toScreen(W3(br.muzzle, frontZ(br.chamber))); A.handles.push_back({s, 6, -1, -1}); label(s, "Muzzle", Color{255, 122, 89, 255}); }
+    const bool fromBarrels = barrelCount(D) > 0;  // (then the barrels place these: nothing to drag)
+    if (br.on && br.hasFace) { Vector2 s = toScreen(W3(br.face, frontZ(br.breech))); if (!fromBarrels) A.handles.push_back({s, 5, -1, -1}); label(s, "Breech face", Color{255, 122, 89, 255}); }
+    if (br.on && br.hasMuzzle) { Vector2 s = toScreen(W3(br.muzzle, frontZ(br.chamber))); if (!fromBarrels) A.handles.push_back({s, 6, -1, -1}); label(s, "Muzzle", Color{255, 122, 89, 255}); }
     if (br.on) for (size_t k = 0; k < br.more.size(); k++) {  // further chambers: numbered from 2
         auto& c = br.more[k];
         std::string n = std::to_string(k + 2);
-        { Vector2 s = toScreen(W3(c.face, frontZ(c.breech.empty() ? br.breech : c.breech))); A.handles.push_back({s, 5, (int)k, -1}); label(s, ("Breech face " + n).c_str(), Color{255, 122, 89, 255}); }
-        if (c.hasMuzzle) { Vector2 s = toScreen(W3(c.muzzle, frontZ(c.chamber))); A.handles.push_back({s, 6, (int)k, -1}); label(s, ("Muzzle " + n).c_str(), Color{255, 122, 89, 255}); }
+        { Vector2 s = toScreen(W3(c.face, frontZ(c.breech.empty() ? br.breech : c.breech))); if (!fromBarrels) A.handles.push_back({s, 5, (int)k, -1}); label(s, ("Breech face " + n).c_str(), Color{255, 122, 89, 255}); }
+        if (c.hasMuzzle) { Vector2 s = toScreen(W3(c.muzzle, frontZ(c.chamber))); if (!fromBarrels) A.handles.push_back({s, 6, (int)k, -1}); label(s, ("Muzzle " + n).c_str(), Color{255, 122, 89, 255}); }
     }
     if (A.axisLock && (A.dragKind == 1 || A.dragKind == 2)) {  // which way a drag is held to
         static const char* what[] = {"", "X: side to side only", "Y: up and down only", "Z: depth only (move the mouse up and down)"};
@@ -77,6 +79,20 @@ void drawOverlay() {
         if (A.axisLock == 1) DrawLineEx({0, s0.y}, {(float)A.vw, s0.y}, 1.5f, Color{lc.r, lc.g, lc.b, 150});
         if (A.axisLock == 2) DrawLineEx({s0.x, (float)TOOLBAR_H}, {s0.x, (float)(TOOLBAR_H + A.vh)}, 1.5f, Color{lc.r, lc.g, lc.b, 150});
         viewText(what[A.axisLock], m.x + 16, m.y + 12, 13, lc);
+    }
+    if (A.mode == Mode::Build && CFG.workbench && !A.showcase) {  // the ruler's numbers, as many as fit
+        BenchLayout L = benchLayout();
+        bool imp = CFG.units == Units::Imperial;
+        double unit = imp ? 25.4 : 10, len = L.rulerLen;
+        Vector2 a = toScreen(W3({L.rulerX0, L.top - 11}, (float)(L.rulerZ + 1) * U)), b = toScreen(W3({L.rulerX0 + unit, L.top - 11}, (float)(L.rulerZ + 1) * U));
+        float px = Vector2Distance(a, b);
+        int every = px > 26 ? 1 : px > 12 ? (imp ? 2 : 5) : (imp ? 4 : 10);
+        if (px > 3)
+            for (int k = 0; k * unit <= len + 1e-6; k += every) {
+                Vector2 s = toScreen(W3({L.rulerX0 + k * unit, L.top - 11}, (float)(L.rulerZ + 1) * U));
+                std::string t = std::to_string(k) + (k == 0 ? (imp ? " in" : " cm") : "");
+                viewText(t.c_str(), s.x + 2, s.y - 4, 10, Color{30, 32, 36, 255});
+            }
     }
     // joints that belong to what you're working on are drawn strongly; the rest stay faint until hovered
     bool jointTool = A.tool == Tool::Pin || A.tool == Tool::Weld || A.tool == Tool::Track || A.tool == Tool::Spring;
@@ -132,7 +148,14 @@ void drawOverlay() {
         viewText(A.tool == Tool::Knife ? "Cut" : "Mirror axis", m.x + 14, m.y + 12, 12, c);
     } else if (A.shaping) {
         V2 a = A.shapeStart, w = snapMM(mouseMM(0));
-        if (A.tool == Tool::Rect) {
+        if (A.tool == Tool::Barrel) {
+            const Cartridge& cart = A.design.breech.on ? A.design.breech.cart : cartridgePresets()[0];
+            if (std::hypot(w.x - a.x, w.y - a.y) >= 10) {
+                BodyDef pv = makeBarrel(a, w, cart);
+                for (size_t k = 0; k < pv.pts.size(); k++) DrawLineEx(toScreen(W3(pv.pts[k], 0)), toScreen(W3(pv.pts[(k + 1) % pv.pts.size()], 0)), 2, Color{255, 205, 60, 255});
+            }
+            viewText((fmtQ(Q::Length, std::hypot(w.x - a.x, w.y - a.y)) + "  breech  \xe2\x86\x92  muzzle").c_str(), m.x + 14, m.y + 12, 12, RAYWHITE);
+        } else if (A.tool == Tool::Rect) {
             Vector2 p[4] = {toScreen(W3({a.x, a.y}, 0)), toScreen(W3({w.x, a.y}, 0)), toScreen(W3({w.x, w.y}, 0)), toScreen(W3({a.x, w.y}, 0))};
             for (int k = 0; k < 4; k++) DrawLineEx(p[k], p[(k + 1) % 4], 2, Color{255, 205, 60, 255});
             viewText((fmtQ(Q::Length, std::fabs(w.x - a.x)) + "  x  " + fmtQ(Q::Length, std::fabs(w.y - a.y))).c_str(), m.x + 14, m.y + 12, 12, RAYWHITE);

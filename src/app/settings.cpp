@@ -32,6 +32,7 @@ void loadSettings() {
         CFG.backdrop = (Backdrop)std::clamp(g("backdrop", (int)d.backdrop), 0, 4);
         CFG.solidColor = g("solidColor", d.solidColor) & 0xFFFFFFu;
         CFG.grid = g("grid", d.grid);
+        CFG.workbench = g("workbench", d.workbench);
         CFG.volMaster = std::clamp(g("volMaster", d.volMaster), 0.f, 1.f);
         CFG.volGunfire = std::clamp(g("volGunfire", d.volGunfire), 0.f, 1.f);
         CFG.volMechanical = std::clamp(g("volMechanical", d.volMechanical), 0.f, 1.f);
@@ -65,7 +66,7 @@ void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
         {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
-        {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid},
+        {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused},
         {"units", (int)CFG.units}, {"stats", (int)CFG.stats}, {"tooltips", CFG.tooltips}, {"hints", CFG.hints},

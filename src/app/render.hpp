@@ -19,3 +19,7 @@ std::vector<V2> caseProfile(const Cartridge& c);
 std::vector<V2> bulletProfile(const Cartridge& c);
 std::vector<V2> hullProfile(const Cartridge& c, bool fired);  // shotshells only; empty otherwise
 void drawScene();
+
+// The designer's workbench (for scale): where its top is and where the ruler lies, from the design's size (mm).
+struct BenchLayout { double x0, x1, top, zFront, zBack, rulerX0, rulerLen, rulerZ; bool ok = false; };
+BenchLayout benchLayout();

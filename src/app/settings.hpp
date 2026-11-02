@@ -24,6 +24,7 @@ struct Settings {
     Backdrop backdrop = Backdrop::Blueprint;  // the workspace behind the gun
     unsigned solidColor = 0x2E3440;      // RGB, for Backdrop::Solid
     bool grid = true;                    // drafting grid behind the parts in the designer
+    bool workbench = true;               // a bench, a few tools and a ruler under the gun in the designer, for scale
     // audio (0..1)
     float volMaster = 0.8f, volGunfire = 1.0f, volMechanical = 1.0f, volInterface = 0.7f;
     bool muteUnfocused = true;

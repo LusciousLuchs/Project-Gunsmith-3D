@@ -1309,6 +1309,52 @@ static void grips() {
     CHECK(heldWith(none).empty(), "a design with no firing hand has nowhere to hold it");
 }
 
+static void barrelsAndTilt() {
+    std::printf("Barrels and tilted parts\n");
+    Design d = loadPreset("single");
+    const Cartridge* r556 = nullptr; const Cartridge* r22 = nullptr;
+    for (auto& c : cartridgePresets()) { if (c.name == "5.56x45mm") r556 = &c; if (c.name == ".22 LR") r22 = &c; }
+    V2 face0 = d.breech.face, muz0 = d.breech.muzzle;
+    for (auto& b : d.bodies) if (b.id == "barrel") { b.barrel.on = true; b.barrel.cart = *r556; b.barrel.muzzleEnd = 1; }
+    syncBarrels(d);
+    CHECK(std::fabs(d.breech.face.x - face0.x) < 0.5 && std::fabs(d.breech.face.y - face0.y) < 0.5 && std::fabs(d.breech.muzzle.x - muz0.x) < 0.5 && d.breech.chamber == "barrel",
+          "a barrel part sets the chamber mouth and muzzle from its own ends");
+    {
+        sim::ReliabilityOptions o; o.rounds = 20;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 20 && R.jams == 0, "the single-shot rifle, its chamber taken from a barrel part: 20 rounds, no jams");
+    }
+    {   // a second barrel, for another cartridge
+        Design t = d;
+        BodyDef b2;
+        for (auto& b : t.bodies) if (b.id == "barrel") b2 = b;
+        b2.id = "barrel2"; b2.name = "Barrel 2"; b2.barrel.cart = *r22;
+        for (auto& p : b2.pts) p.y += 40;
+        t.bodies.push_back(b2);
+        t.breech.fireOrder = "together";
+        t.breech.ignition = "button"; t.breech.cockAt = 0;   // the built-in hammer (one drawn firing pin only reaches one primer)
+        syncBarrels(t);
+        auto S = sim::build(t);
+        bool own = t.breech.more.size() == 1 && t.breech.more[0].ownCart && S->chambers.size() == 2 && S->chambers[1].cart.name == ".22 LR" && S->design.breech.cart.name == "5.56x45mm";
+        double i1 = S->chambers[1].impulse, i0 = S->design.breech.impulse;
+        sim::run(*S, 0.2);
+        sim::setKey(*S, "fire", true); S->pressed = S->trigger = true; sim::run(*S, 0.08); sim::setKey(*S, "fire", false); S->pressed = S->trigger = false; sim::run(*S, 0.1);
+        CHECK(own && i1 < i0 * 0.5 && S->shots == 2, "each barrel is cut for its own cartridge, with its own recoil; fired together, both go off");
+        Design back; designFromJson(designToJson(t), back);
+        int bn = 0; for (auto& b : back.bodies) if (b.barrel.on) bn++;
+        CHECK(bn == 2 && back.breech.more.size() == 1 && back.breech.more[0].cart.name == ".22 LR", "barrels and their cartridges save and load");
+    }
+    {   // tilted out of the side view: the physics slices the tilted shape
+        BodyDef p; p.id = "plate"; p.pts = {{0, 0}, {60, 0}, {60, 20}, {0, 20}}; p.thick = 6; p.layer = "ABC";
+        BodyDef q = p; q.tiltY = 40;
+        double z0, z1; carve::tiltDepth(q, z0, z1);
+        auto sl = carve::slices(q);
+        double area0 = 0; for (auto& c : sl) for (auto& o : c.outlines) { double a, J; V2 cen; carve::material(o, {}, a, cen, J); area0 += a * (c.z1 - c.z0); }
+        CHECK(carve::slices(p).empty() && sl.size() >= 3 && z1 - z0 > 40 && std::fabs(area0 - 60 * 20 * 6) < 0.12 * 60 * 20 * 6,
+              "a plate swung 40 degrees spans much more depth, sliced into pieces that keep its volume");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1337,6 +1383,7 @@ int main() {
     severalChambers();
     beltsAndClips();
     grips();
+    barrelsAndTilt();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

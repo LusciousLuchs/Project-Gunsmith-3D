@@ -2,6 +2,8 @@
 #pragma once
 #include "app/app.hpp"
 
+BodyDef makeBarrel(V2 rear, V2 muzzle, const Cartridge& cart);  // the Barrel tool's part
+void rotateBody(int i, V2 centre, double deg);  // turn in the side view (about Z), with what's attached
 void moveBody(int i, double dx, double dy);
 void deleteSel();
 void duplicateSel();

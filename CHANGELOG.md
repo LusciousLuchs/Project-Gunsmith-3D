@@ -8,9 +8,28 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
-## 0.1.0-dev (in progress, towards 0.1 alpha)
+## 0.2.1-alpha
 
-0.1 alpha will be declared once the editor and the test bench are worked out.
+The editor and the test bench are worked out (0.1.0-dev, builds dev1 to dev25). Alpha 0.2 adds barrels, rotation in any axis, and first-person shooting.
+
+### Designer
+- **New** in the top bar, next to Open: start a new design (Undo brings back what you had).
+- **Select first, move second:** the first click on a part only selects it. Drag a part that's already selected to move it.
+- **Parts inside other parts:** click a selected part again (without dragging) to select the next part behind it under the cursor, and again for the one behind that. The first click tells you how many are there. (The Outline tab lists every part too.)
+- **A workbench for scale:** the gun now sits on a wooden bench in the designer, with a **steel ruler** in front of it (marked in mm with cm numbers, or in 1/16" with inch numbers) and a hammer, a screwdriver and a mug for a sense of real size. Switch it off in the background (palette) menu or Settings > Designer.
+
+### Barrels
+- **The Barrel tool** (on the left, under Rectangle): drag from the breech end to the muzzle. You get a turned barrel, thicker over the chamber, with a **chamber cut for its cartridge** at the breech end and a **bore** right through to the muzzle (real holes you can look into).
+- In the barrel's panel: **Chambered for** (any cartridge, yours too), **Rifled** or **Smoothbore**, the rifling's **twist** (1 turn in so many inches) and **grooves** (cut into the bore, so you can see them at the muzzle), and *Swap breech and muzzle*. Shotshells start smoothbore. What rifling does to accuracy comes with the firing range.
+- **Barrels set the firing system:** each barrel's chamber mouth and muzzle come from the barrel itself, so there's nothing to place. Firing lists the barrels; pick what closes each one's breech. Several barrels make several chambers, fired in turn or all at once.
+- **Each barrel can take its own cartridge**: its chamber, its rounds and its recoil follow that cartridge. A magazine feeds the first barrel.
+- Guns without barrel parts (all the examples, and anything saved before) keep their placed breech face and muzzle, and work as before.
+
+### Turn and tilt parts
+- In a part's panel: **Turn (Z)** turns it in the side view (by 90 or 15 degrees, or any angle you type), with its cuts and whatever is pinned or attached to it; a welded piece turns together.
+- **Tilt X** and **Tilt Y** lean it out of the side view (X about the gun's length, Y about the upright), up to 85 degrees. The physics slices the tilted shape through its depth, so it collides as it's drawn. For now a tilted part's own cuts show but don't collide, and its corners are edited as drawn, before the tilt.
+
+## 0.1.0-dev (dev1 to dev25)
 
 ### Editor (Build mode)
 - **Tidier tracks:** a track's path is no longer drawn on the bench, and in the designer it's faint unless it belongs to what you've selected (slots in moving parts used to draw as long rods sticking out of the gun).

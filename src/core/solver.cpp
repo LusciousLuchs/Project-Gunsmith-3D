@@ -158,6 +158,15 @@ void useChamber(Sim& S, int k) {
     };
     swapIn(S.chambers[S.cur], true);
     swapIn(S.chambers[k], false);
+    // each chamber's own cartridge (a barrel's): moved, not copied
+    {
+        auto& o = S.chambers[S.cur]; auto& n = S.chambers[k];
+        Cartridge live = std::move(S.design.breech.cart);
+        S.design.breech.cart = std::move(n.cart); o.cart = std::move(live);
+        std::vector<double> r = std::move(S.chamberR);
+        S.chamberR = std::move(n.chamberR); o.chamberR = std::move(r);
+        o.impulse = S.design.breech.impulse; S.design.breech.impulse = n.impulse;
+    }
     S.cur = k;
 }
 int chamberCount(const Sim& S) { return std::max(1, (int)S.chambers.size()); }
@@ -183,6 +192,7 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S);
 std::unique_ptr<Sim> build(const Design& design) {
     auto S = std::make_unique<Sim>();
     S->design = design;
+    syncBarrels(S->design);  // barrels drawn with the Barrel tool set the chambers and muzzles
     Sim& s = *S;
     s.world.id = "world";
     s.bodies.reserve(s.design.bodies.size() + MAX_SPAWNED);  // body pointers must stay valid as magazines and rounds spawn
@@ -191,7 +201,7 @@ std::unique_ptr<Sim> build(const Design& design) {
     for (auto& d : s.design.bodies) {
         Body b;
         if (!makeBody(d, b)) continue;
-        if ((d.carves.empty() && !d.round) || d.rollOn || d.magazine) { s.bodies.push_back(b); continue; }
+        if ((d.carves.empty() && !d.round && !carve::tilted(d)) || d.rollOn || d.magazine) { s.bodies.push_back(b); continue; }
         // carved: one body per depth slice, welded into one part. The thickest-in-material slice keeps the part's id.
         std::vector<Body> sl;
         double vol = 0;
@@ -420,6 +430,8 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
             if (c.BR) { c.hasFace = true; c.faceB = anc(*c.BR, cd.face); c.faceC = anc(*c.CH, cd.face); }
             if (cd.hasMuzzle) { c.hasMuzzle = true; c.muzC = anc(*c.CH, cd.muzzle); }
             c.chambered = cd.loaded;
+            c.cart = cd.ownCart ? cd.cart : br.cart;
+            c.impulse = cd.ownCart && br.cartImpulse ? std::round(c.cart.impulse() * 100) / 100 : br.impulse;
         }
         s.rounds = br.rounds;
         s.feedMode = br.feedMode;
@@ -438,6 +450,8 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         s.pushers.push_back(p);
     }
     cartridgeSetup(s);
+    for (int k = 1; k < chamberCount(s); k++) { useChamber(s, k); cartridgeSetup(s); }  // each chamber cut for its own round
+    useChamber(s, 0);
     if (s.BR) {  // does a spring close the breech? then an action stuck open is a jam, not a bolt left open
         Body* br = s.BR->root ? s.BR->root : s.BR;
         for (auto& J : s.joints)

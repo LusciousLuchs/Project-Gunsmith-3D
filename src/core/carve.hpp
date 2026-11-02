@@ -35,6 +35,13 @@ std::vector<V2> roundShape(const BodyDef& b, int segs, std::vector<char>* smooth
 void syncRound(BodyDef& b);                                          // a round part's thickness is its width across
 std::vector<std::vector<V2>> roundSection(const BodyDef& b, double dz);  // side outline(s) at depth dz from its middle
 
+// Parts tilted out of the side view (BodyDef::tiltX, tiltY): the rotation, in design axes (x forward, y down, z the
+// gun's right), applied about the part's middle; and the side outline(s) of the tilted solid at depth z (absolute mm).
+bool tilted(const BodyDef& b);
+void tiltMatrix(const BodyDef& b, double R[3][3]);
+std::vector<std::vector<V2>> tiltSection(const BodyDef& b, double z);
+void tiltDepth(const BodyDef& b, double& z0, double& z1);   // the depth the tilted part spans
+
 struct Slice {
     double z0 = 0, z1 = 0;                       // depth range (absolute mm)
     std::vector<std::vector<V2>> outlines;       // the side outline(s) at this depth; empty = the part's own outline

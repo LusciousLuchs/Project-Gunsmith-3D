@@ -142,6 +142,10 @@ int main(int argc, char** argv) {
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
     if (carveTool) A.tool = Tool::Carve;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
+    if (const char* z = std::getenv("GUNSMITH_ZOOM")) {  // (screenshots) "x y dist": look at a design point (mm) from close by
+        double zx = 0, zy = 0, zd = 300; std::sscanf(z, "%lf %lf %lf", &zx, &zy, &zd);
+        A.target = W3({zx, zy}, 0); A.dist = (float)zd * U;
+    }
     if (selCarveArg >= 0) A.selCarve = selCarveArg;
     if (trackDraft && A.sel.kind == 1) {
         auto& b = A.design.bodies[A.sel.idx];

@@ -38,6 +38,52 @@ void moveBody(int i, double dx, double dy) {
     for (HandHold* h : {&A.design.pose.firing, &A.design.pose.support, &A.design.pose.butt}) if (h->on && h->part == d.id) mv(h->at);
     if (br.on) for (auto& c : br.more) { if ((c.breech.empty() ? br.breech : c.breech) == d.id) mv(c.face); if (c.chamber == d.id && c.hasMuzzle) mv(c.muzzle); }
 }
+// Turn a part in the side view (about Z) by deg about c: its outline and cuts, and what's attached at points on it.
+void rotateBody(int i, V2 c, double deg) {
+    BodyDef& d = A.design.bodies[i];
+    double a = deg * 3.14159265358979 / 180, cs = std::cos(a), sn = std::sin(a);
+    auto rot = [&](V2& p) { double x = p.x - c.x, y = p.y - c.y; p = {c.x + x * cs - y * sn, c.y + x * sn + y * cs}; };
+    for (auto& p : d.pts) rot(p);
+    for (auto& p : d.roundPath) rot(p);
+    for (auto& cv : d.carves) {
+        rot(cv.at);
+        double dx = cv.dx * cs - cv.dy * sn, dy = cv.dx * sn + cv.dy * cs;
+        cv.dx = dx; cv.dy = dy;
+        if (std::fabs(cv.dz) > 0.7) cv.spin += deg * (cv.dz > 0 ? 1 : -1);  // a cut from the side turns with it
+    }
+    for (auto& j : A.design.joints) {
+        if ((j.type == "pin" || j.type == "weld") && j.a == d.id) rot(j.p);
+        if (j.type == "track") { if (j.a == d.id) rot(j.p); if (j.b == d.id) for (auto& q : j.path) rot(q); }
+        if (j.type == "magwell" && j.a == d.id) { rot(j.p); for (auto& q : j.path) rot(q); }
+        if (j.type == "spring") { if (j.a == d.id) rot(j.pa); if (j.b == d.id) rot(j.pb); }
+    }
+    auto& br = A.design.breech;
+    if (br.on) { if (br.breech == d.id && br.hasFace) rot(br.face); if (br.chamber == d.id && br.hasMuzzle) rot(br.muzzle); }
+    for (HandHold* h : {&A.design.pose.firing, &A.design.pose.support, &A.design.pose.butt})
+        if (h->on && h->part == d.id) { rot(h->at); h->angle += deg; }
+    if (br.on) for (auto& cm : br.more) { if ((cm.breech.empty() ? br.breech : cm.breech) == d.id) rot(cm.face); if (cm.chamber == d.id && cm.hasMuzzle) rot(cm.muzzle); }
+    fixShape(d);
+}
+// A barrel from the breech end (rear) to the muzzle: thick over the chamber, slimmer beyond it; turned round.
+BodyDef makeBarrel(V2 rear, V2 muzzle, const Cartridge& cart) {
+    BodyDef b;
+    double dx = muzzle.x - rear.x, dy = muzzle.y - rear.y, L = std::hypot(dx, dy);
+    double ang = std::atan2(dy, dx) * 180 / 3.14159265358979;
+    bool level = std::fabs(ang) < 3 || std::fabs(std::fabs(ang) - 180) < 3;
+    if (level) { dy = 0; muzzle.y = rear.y; L = std::fabs(dx); }
+    V2 u{dx / L, dy / L}, n{-u.y, u.x};
+    double rc = cart.headDia() / 2 + 4, rm = std::min(rc, std::max(cart.bulletDia / 2 + 3.5, rc * 0.55)), lc = cart.caseLen + 8;
+    auto at = [&](double s, double r) { return V2{rear.x + u.x * s + n.x * r, rear.y + u.y * s + n.y * r}; };
+    if (L > lc + 20) b.pts = {at(0, rc), at(lc, rc), at(lc + 15, rm), at(L, rm), at(L, -rm), at(lc + 15, -rm), at(lc, -rc), at(0, -rc)};
+    else b.pts = {at(0, rc), at(L, rc), at(L, -rc), at(0, -rc)};
+    b.layer = "ABC"; b.fixed = true; b.color = "#3f4654"; b.round = true; b.roundAxis = level ? 0 : 2; b.thick = 2 * rc;
+    b.barrel.on = true; b.barrel.cart = cart;
+    b.barrel.rifled = cart.kind != "shotshell";   // shot goes down a smooth bore; bullets, a rifled one
+    fixShape(b);
+    carve::RoundAxis ax = carve::roundAxis(b);
+    b.barrel.muzzleEnd = dx * ax.dir.x + dy * ax.dir.y >= 0 ? 1 : -1;
+    return b;
+}
 void deleteSel() {
     auto& D = A.design;
     if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && A.selCarve >= 0 && A.selCarve < (int)D.bodies[A.sel.idx].carves.size()) {
@@ -243,7 +289,7 @@ void buildInput(bool overUI) {
             commit(); A.tool = Tool::Select;
             return;
         }
-        case Tool::Rect: case Tool::Circle: case Tool::Knife: A.shapeStart = w; A.shaping = true; return;
+        case Tool::Rect: case Tool::Circle: case Tool::Knife: case Tool::Barrel: A.shapeStart = w; A.shaping = true; return;
         case Tool::Mirror:
             if (A.sel.kind != 1) { toast("Select the part to mirror first."); A.tool = Tool::Select; return; }
             A.shapeStart = w; A.shaping = true; return;
@@ -316,11 +362,25 @@ void buildInput(bool overUI) {
             } else if (hh.i >= 0) { A.sel = {2, hh.i, -1}; A.selVs.clear(); }
             return;
         }
-        auto hits = bodiesUnderMouse();
+        auto hits = bodiesUnderMouse();  // nearest first
         if (!hits.empty()) {
-            if (!(A.sel.kind == 1 && A.sel.idx == hits[0].body)) A.selVs.clear();
-            A.sel = {1, hits[0].body, -1};
-            A.dragKind = 2; A.dragStart = w; A.dragLast = {0, 0}; A.dragMoved = false;
+            // the selected part (or its welded piece) under the cursor: a drag moves it, and a plain click picks the
+            // next part behind it. Anything else: the first click only selects it, and doesn't move it.
+            int pos = -1;
+            if (A.sel.kind == 1 && A.sel.idx < (int)A.design.bodies.size()) {
+                auto grp = weldedWith(A.design, A.sel.idx);
+                for (size_t k = 0; k < hits.size() && pos < 0; k++)
+                    if (hits[k].body == A.sel.idx || std::find(grp.begin(), grp.end(), hits[k].body) != grp.end()) pos = (int)k;
+                for (size_t k = 0; k < hits.size(); k++) if (hits[k].body == A.sel.idx) pos = (int)k;  // (itself, if it's there)
+            }
+            if (pos >= 0) {
+                A.dragKind = 2; A.dragStart = w; A.dragLast = {0, 0}; A.dragMoved = false;
+                A.pressNext = hits.size() > 1 ? hits[(pos + 1) % hits.size()].body : -1;
+            } else {
+                A.sel = {1, hits[0].body, -1}; A.selVs.clear(); A.selCarve = -1;
+                A.dragKind = 0;
+                if (hits.size() > 1) toast("Selected " + A.design.bodies[hits[0].body].name + ". Click it again for the part behind it (" + std::to_string(hits.size()) + " here). Drag to move it.");
+            }
             return;
         }
         // empty space: box-select vertices of the selected part (a plain click deselects)
@@ -386,6 +446,21 @@ void buildInput(bool overUI) {
         static const char* pal[] = {"#3f7fe0", "#c9ccd2", "#f0a43a", "#5cb85c", "#d9534f", "#9b7fd4", "#e8d44d"};
         b.id = uid(); b.name = "Part " + std::to_string(A.design.bodies.size() + 1);
         b.layer = "ABC"; b.thick = 12; b.color = pal[A.design.bodies.size() % 7];
+        if (A.tool == Tool::Barrel) {
+            if (std::hypot(w.x - a.x, w.y - a.y) >= 10) {
+                const Cartridge& cart = A.design.breech.on ? A.design.breech.cart : cartridgePresets()[0];
+                BodyDef br = makeBarrel(a, w, cart);
+                br.id = uid(); br.name = barrelCount(A.design) ? "Barrel " + std::to_string(barrelCount(A.design) + 1) : "Barrel";
+                A.design.bodies.push_back(br);
+                A.sel = {1, (int)A.design.bodies.size() - 1, -1};
+                syncBarrels(A.design);
+                commit();
+                toast(A.design.breech.breech.empty() ? "Barrel drawn. In Firing, pick the part that closes its breech (a bolt, a slide, a standing breech)."
+                                                    : "Barrel drawn, chambered for " + cart.name + ". Change it in its panel.");
+            } else toast("Drag from the breech end to the muzzle.");
+            A.tool = Tool::Select;
+            return;
+        }
         if (A.tool == Tool::Rect) {
             double x0 = std::min(a.x, w.x), x1 = std::max(a.x, w.x), y0 = std::min(a.y, w.y), y1 = std::max(a.y, w.y);
             if (x1 - x0 >= 1 && y1 - y0 >= 1) b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
@@ -452,6 +527,10 @@ void buildInput(bool overUI) {
             }
         } else {
             if (A.dragMoved) commit();
+            else if (A.dragKind == 2 && A.pressNext >= 0 && A.pressNext < (int)A.design.bodies.size()) {  // a click: the next one behind
+                A.sel = {1, A.pressNext, -1}; A.selVs.clear(); A.selCarve = -1;
+            }
+            A.pressNext = -1;
             A.dragKind = 0; A.axisLock = 0;
         }
     }

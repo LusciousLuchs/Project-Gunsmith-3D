@@ -79,6 +79,16 @@ struct CarveDef {
     double depth = 4;                    // mm deep; 0 = right through
 };
 
+// A barrel (the Barrel tool): a round part with a chamber cut at its breech end for one cartridge, and a bore through
+// to the muzzle. Its ends come from its own shape; the firing system takes its chamber and muzzle from it.
+struct BarrelDef {
+    bool on = false;
+    Cartridge cart;               // what its chamber is cut for
+    bool rifled = true;           // false: smoothbore
+    double twist = 254;           // rifling: mm of barrel per turn (254 = 1 in 10")
+    int grooves = 6;
+    int muzzleEnd = 1;            // which end is the muzzle, along the part's axis: +1 or -1
+};
 struct BodyDef {
     std::string id, name;
     bool fixed = false;
@@ -91,6 +101,9 @@ struct BodyDef {
     std::string texture;                 // a picture from user/textures on its surface ("" = plain colour); the colour tints it
     double texScale = 40;                // mm before the picture repeats
     bool ghost = false;                  // drawn see-through in X-ray mode
+    BarrelDef barrel;
+    double tiltX = 0, tiltY = 0;         // degrees: leaned out of the side view about the part's middle (X: about the
+                                         // gun's length, + top toward you; Y: about the upright, + front toward you)
     double smooth = 0;                   // 0..1: rounds the front and back edges (grips, dehorned slides). Looks only.
     bool rollOn = false;                 // rotates about the bore (rotating bolt)
     double rollMin = 0, rollMax = 90;    // degrees
@@ -171,6 +184,8 @@ struct ChamberDef {
     V2 face, muzzle;
     bool hasMuzzle = false;
     bool loaded = true;
+    bool ownCart = false;                    // cut for its own cartridge (a barrel's); otherwise the breech's
+    Cartridge cart;
 };
 struct BreechDef {
     bool on = false;
@@ -288,6 +303,12 @@ bool designFromJson(const std::string& text, Design& out, std::string* err = nul
 // Height of the baseplate (mm, y down): below every part, with room for magazines to drop clear.
 double groundLevelMM(const Design& d);
 
+// Barrels: where a barrel part's chamber mouth and muzzle are (design mm), and the firing system kept in step with the
+// barrels drawn: the first is the breech's chamber, the rest its further chambers, each with its own cartridge.
+// Does nothing in a design without barrel parts (older blueprints keep their placed breech face and muzzle).
+bool barrelEnds(const BodyDef& b, V2& rear, V2& muzzle);
+void syncBarrels(Design& d);
+int barrelCount(const Design& d);
 struct PresetInfo { const char* key; const char* label; };
 const std::vector<PresetInfo>& presetList();
 Design loadPreset(const std::string& key);

@@ -21,7 +21,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor };  // the main menu, the designer / test bench, or the map editor
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; };
@@ -49,6 +49,7 @@ struct App {
     Tool tool = Tool::Select;
     std::string gripKind = "firing", gripStyle;  // the Grip tool places this kind (and style) of grip
     int chamberEdit = -1;
+    int pressNext = -1;                  // a click (no drag) on the selected part picks this one, behind it
     int axisLock = 0;                    // while dragging: 1 side to side (X), 2 up and down (Y), 3 depth (Z), 0 free
     double zDrag = 0, zDragLast = 0;     // depth dragged so far (Z lock), mm
     bool posing = false;                 // the bench's pose editor (app/pose.cpp)

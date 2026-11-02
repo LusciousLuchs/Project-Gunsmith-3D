@@ -45,7 +45,7 @@ void openExample(const char* key, const char* msg) { loadDesign(loadPreset(key),
 static void loadDesign(const Design& nd, const std::string& msg) {
     A.hist.push_back(designToJson(A.design));
     A.future.clear();
-    A.design = nd; A.lastSnap = designToJson(A.design); A.sel = {}; A.selVs.clear();
+    A.design = nd; syncBarrels(A.design); A.lastSnap = designToJson(A.design); A.sel = {}; A.selVs.clear();
     A.saveName[0] = 0;  // saves under its own name until told otherwise
     save(); fitView();
     toast(msg);
@@ -247,6 +247,30 @@ static void inspectPart(BodyDef& b) {
             tutAnchor("part:mass");
             if (b.mass <= 0) muted("Worked out from the shape: %s.", fmtQ(Q::PartMass, autoMass).c_str());
         }
+        {   // turn it: in the side view (Z, the whole welded piece about this part's middle), or lean it out of it (X, Y)
+            prop("Turn (Z)", "Turns it in the side view, about its middle (a welded piece turns together).\nWhat's attached to it (pins, slots, hands) turns with it.");
+            float w4 = (ImGui::GetContentRegionAvail().x - 3 * ImGui::GetStyle().ItemSpacing.x) / 4;
+            double turn = 0;
+            if (ImGui::Button("-90##rz", {w4, 0})) turn = -90;
+            ImGui::SameLine(); if (ImGui::Button("-15##rz", {w4, 0})) turn = -15;
+            ImGui::SameLine(); if (ImGui::Button("+15##rz", {w4, 0})) turn = 15;
+            ImGui::SameLine(); if (ImGui::Button("+90##rz", {w4, 0})) turn = 90;
+            static double typed = 5;
+            pNum("By##rz", typed, 0.5, "%.1f\xc2\xb0");
+            ImGui::SameLine();
+            if (ImGui::Button("Turn##rz")) turn = typed;
+            if (turn != 0) {
+                int me = D.bodyIndex(b.id);
+                V2 c = centroidOf(b);
+                for (int k : weldedWith(D, me)) rotateBody(k, c, -turn);   // (+ is anticlockwise as you look at it: y is down)
+                editedAny = true;
+            }
+            bool was = carve::tilted(b);
+            pNum("Tilt X", b.tiltX, 1, "%.1f\xc2\xb0", "Leans it about the gun's length (X), out of the side view: + tips its top toward you.");
+            pNum("Tilt Y", b.tiltY, 1, "%.1f\xc2\xb0", "Swings it about the upright (Y), out of the side view: + brings its front toward you.");
+            b.tiltX = std::clamp(b.tiltX, -85.0, 85.0); b.tiltY = std::clamp(b.tiltY, -85.0, 85.0);
+            if (carve::tilted(b) || was) muted("Tilted parts collide by their tilted shape, sliced through the depth. Their cuts show but don't collide yet. Corners are edited as drawn, before the tilt.");
+        }
         if (ImGui::Button("Copy to the other side", {-1, 0})) {
             BodyDef cpy = b;
             cpy.id = uid(); cpy.name += " (other side)"; cpy.z = -b.z; cpy.magazine = false; cpy.weld.clear();
@@ -358,6 +382,31 @@ static void inspectPart(BodyDef& b) {
         b.damp = std::max(0.0, b.damp);
     }
 
+    if (b.barrel.on && section("Barrel", true)) {
+        auto& R = b.barrel;
+        prop("Chambered for", "The cartridge its chamber is cut for. Each barrel can take its own.");
+        if (ImGui::BeginCombo("##bcart", R.cart.name.c_str())) {
+            for (auto& c : cartridgePresets()) if (ImGui::Selectable(c.name.c_str(), R.cart.name == c.name)) { R.cart = c; editedAny = true; }
+            if (!A.userCarts.empty()) ImGui::Separator();
+            for (auto& c : A.userCarts) if (ImGui::Selectable((c.name + "##ub").c_str(), R.cart.name == c.name)) { R.cart = c; editedAny = true; }
+            ImGui::EndCombo();
+        }
+        muted("Bore %s, chamber %s deep.", fmtQ(Q::Length, R.cart.bulletDia, 2).c_str(), fmtQ(Q::Length, R.cart.caseLen, 1).c_str());
+        int bore = R.rifled ? 0 : 1;
+        prop("Bore", "Rifled: spiral grooves spin the bullet, which keeps it flying point first.\nSmoothbore: for shot (pellets spread more from rifling) and for slugs made for it.\nWhat it does to accuracy comes with the firing range.");
+        if (ImGui::Combo("##rifling", &bore, "Rifled\0Smoothbore\0")) { R.rifled = bore == 0; editedAny = true; }
+        if (R.rifled) {
+            double inches = R.twist / 25.4;
+            if (pNum("Twist", inches, 0.5, "1 turn in %.1f\"", "How far the bullet travels down the bore for one turn of the rifling. Faster twists (fewer inches) suit longer, heavier bullets.")) R.twist = std::clamp(inches, 2.0, 80.0) * 25.4;
+            double g = R.grooves;
+            if (pNum("Grooves", g, 1, "%.0f")) R.grooves = std::clamp((int)std::lround(g), 2, 16);
+        }
+        float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        if (ImGui::Button("Swap breech and muzzle", {w2, 0})) { R.muzzleEnd = -R.muzzleEnd; editedAny = true; }
+        ImGui::SameLine();
+        if (ImGui::Button("Not a barrel", {w2, 0})) { R.on = false; editedAny = true; }
+        if (tipHover()) ImGui::SetTooltip("Keeps the shape as a plain round part.");
+    }
     if (section("Control", b.ctrl != "none")) {
         const char* kinds[] = {"none", "button", "lever", "trigger", "handle"};
         int ki = 0;
@@ -777,8 +826,32 @@ static void firingTab() {
         return;
     }
     bool hasWell = std::any_of(D.joints.begin(), D.joints.end(), [](const JointDef& j) { return j.type == "magwell"; });
-    if (!br.hasFace) warn("Click where the cartridge head sits against the breech to finish setting it up.");
-    if (section("Breech and barrel", true)) {
+    const bool barrels = barrelCount(D) > 0;
+    if (barrels && section("Barrels", true)) {  // drawn with the Barrel tool: chambers and muzzles come from them
+        muted("Each barrel has its chamber and muzzle built in. Pick what closes each one's breech (a bolt, a slide, a standing breech).");
+        int k = 0;
+        for (auto& b : D.bodies) {
+            if (!b.barrel.on) continue;
+            ImGui::PushID(k);
+            ImGui::PushFont(gFontBold, 15.0f); ImGui::Text("%s", b.name.c_str()); ImGui::PopFont();
+            ImGui::SameLine(); ImGui::TextDisabled("%s, %s", b.barrel.cart.name.c_str(), b.barrel.rifled ? "rifled" : "smoothbore");
+            if (k == 0) { pBody("Closed by", br.breech, false); if (br.breech.empty()) warn("Pick the part that closes this breech."); }
+            else if (k - 1 < (int)br.more.size()) {
+                if (pBody("Closed by", br.more[k - 1].breech, false)) commit();
+                pCheck("Loaded at the start", br.more[k - 1].loaded);
+            }
+            ImGui::PopID();
+            k++;
+        }
+        if (br.more.size() > 0) {
+            int fo = br.fireOrder == "together" ? 1 : 0;
+            prop("Fires", "In turn: each pull fires the next loaded barrel.\nAll at once: every loaded barrel goes off together (a volley). The recoil adds up.");
+            if (ImGui::Combo("##fireorder", &fo, "One per pull, in turn\0All at once\0")) { br.fireOrder = fo ? "together" : "turn"; editedAny = true; }
+        }
+    }
+    if (!barrels && !br.hasFace) warn("Click where the cartridge head sits against the breech to finish setting it up.");
+    if (!barrels && section("Breech and barrel", true)) {
+        muted("Tip: the Barrel tool (on the left) draws a barrel with its chamber, bore and muzzle built in.");
         pBody("Breech", br.breech, false);
         if (tipHover()) ImGui::SetTooltip("The bolt or slide: the part whose face holds the cartridge.");
         pBody("Chamber", br.chamber, true);
@@ -790,7 +863,7 @@ static void firingTab() {
         ImGui::SameLine(); if (ImGui::Button("Place muzzle", {w2, 0})) { setTool(Tool::Muzzle); A.chamberEdit = -1; }
         tutAnchor("firing:muzzle");
     }
-    if (section("Chambers", !br.more.empty())) {
+    if (!barrels && section("Chambers", !br.more.empty())) {
         muted(br.more.empty() ? "One chamber. Add more for a double, a volley gun, a pepperbox: each gets its own breech face and muzzle."
                               : "Every chamber takes the same cartridge. The magazine, if any, feeds the first.");
         int drop = -1;
@@ -830,12 +903,14 @@ static void firingTab() {
         }
     }
     if (section("Cartridge", true)) {
+        if (barrels) muted("The first barrel's. Each barrel's own is in its panel; a magazine feeds this one.");
         prop("Cartridge");
         float bw = 30 * S();
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - bw - ImGui::GetStyle().ItemSpacing.x);
         if (ImGui::BeginCombo("##cart", br.cart.name.c_str())) {
             auto pick = [&](const Cartridge& c) {
                 br.cart = c; br.cartImpulse = true; applyCartridge(br);
+                for (auto& b : D.bodies) if (b.barrel.on) { b.barrel.cart = c; break; }   // (with barrels: the first one's)
                 for (size_t i = 0; i < D.bodies.size(); i++) if (D.bodies[i].magazine && D.bodies[i].gen.on) generateMagazine(D, (int)i);
                 editedAny = true;
             };
@@ -966,6 +1041,13 @@ void fileButtons() {
     if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Open", {0, sz})) ImGui::OpenPopup("##open");
     tutAnchor("file:open");
     if (ImGui::BeginPopup("##open")) { openList(); ImGui::EndPopup(); }
+    ImGui::SameLine(0, 2);
+    if (ImGui::Button(ICON_FA_FILE "  New", {0, sz})) {
+        loadDesign(loadPreset("blank"), "A new design. Undo brings back what you had (and your last one is still in Open if you saved it).");
+        A.saveName[0] = 0;
+    }
+    if (tipHover()) ImGui::SetTooltip("Start a new design on a blank frame. Undo brings back what you had.");
+    tutAnchor("file:new");
 }
 
 void buildPanel() {

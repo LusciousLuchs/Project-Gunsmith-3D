@@ -187,6 +187,9 @@ struct Sim {
         bool hasFace = false, hasMuzzle = false;
         bool chambered = false, inTransit = false, spent = false, gripped = false, cycledOpen = false;
         double shotT = -1e9;             // when this chamber last fired (its pressure lasts the cartridge's burn time)
+        Cartridge cart;                  // what it's cut for (moved in and out of design.breech.cart with the rest)
+        std::vector<double> chamberR;
+        double impulse = 0;
     };
     std::vector<Chamber> chambers;       // [cur] is stale while it's swapped in
     int cur = 0;                         // which chamber is in the fields above

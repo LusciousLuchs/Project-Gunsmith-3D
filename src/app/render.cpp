@@ -2,12 +2,14 @@
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/render.hpp"
+#include "app/settings.hpp"
 #include "carve.hpp"
 #include "app/usertex.hpp"
 #include "app/scene.hpp"
 #include "rlgl.h"
 
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <cstdio>
 #include <sstream>
@@ -57,10 +59,11 @@ static void ensureMeshes() {
     for (size_t i = 0; i < D.bodies.size(); i++) {
         auto& d = D.bodies[i];
         std::ostringstream k;
-        k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis << 'T' << d.texture << ' ' << d.texScale;
+        k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis << 'T' << d.texture << ' ' << d.texScale << 'X' << d.tiltX << 'Y' << d.tiltY;
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
+        if (d.barrel.on) k << 'B' << d.barrel.cart.caseLen << ' ' << d.barrel.cart.headDia() << ' ' << d.barrel.cart.bulletDia << ' ' << d.barrel.rifled << d.barrel.grooves << d.barrel.muzzleEnd;
         for (auto& c : d.carves) k << 'c' << c.shape << c.at.x << ' ' << c.at.y << ' ' << c.atZ << ' ' << c.dx << ' ' << c.dy << ' ' << c.dz << ' ' << c.spin << ' ' << c.w << ' ' << c.h << ' ' << c.depth;
         std::string key = k.str();
         if (A.meshes[i].ok && A.meshes[i].key == key) continue;
@@ -75,9 +78,30 @@ static void ensureMeshes() {
             std::vector<V2> S = carve::roundShape(d, 48, &sm);
             A.meshes[i].mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
         } else A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
-        if (!d.carves.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
+        std::vector<CarveDef> cuts = d.carves;
+        V2 rear, muz;
+        if (barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
+            // chamber's walls are the cartridge physics' business, not the solid's)
+            const Cartridge& ct = d.barrel.cart;
+            double L = std::hypot(muz.x - rear.x, muz.y - rear.y);
+            V2 u{(muz.x - rear.x) / L, (muz.y - rear.y) / L}, n{-u.y, u.x};
+            CarveDef ch; ch.shape = "circle"; ch.at = rear; ch.atZ = 0; ch.dx = u.x; ch.dy = u.y; ch.dz = 0;
+            ch.w = ch.h = std::max(ct.baseDia, ct.shoulderDia) + 0.4; ch.depth = ct.caseLen;
+            cuts.push_back(ch);
+            CarveDef bo = ch; bo.at = muz; bo.dx = -u.x; bo.dy = -u.y; bo.w = bo.h = ct.bulletDia; bo.depth = std::max(1.0, L - ct.caseLen + 0.5);
+            cuts.push_back(bo);
+            if (d.barrel.rifled)
+                for (int g = 0; g < d.barrel.grooves; g++) {
+                    double th = 2 * PI * g / d.barrel.grooves, r = ct.bulletDia / 2;
+                    CarveDef gr = bo; gr.shape = "rect";
+                    gr.at = {muz.x + n.x * r * std::cos(th), muz.y + n.y * r * std::cos(th)}; gr.atZ = r * std::sin(th);
+                    gr.w = PI * ct.bulletDia / (2.0 * d.barrel.grooves); gr.h = 1.0; gr.spin = th * 180 / PI;
+                    cuts.push_back(gr);
+                }
+        }
+        if (!cuts.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
             std::vector<std::vector<csg::Poly>> cut;
-            for (auto& cv : d.carves) {
+            for (auto& cv : cuts) {
                 std::vector<csg::Poly> ps;
                 for (auto& q : carve::prismPolys(carve::prism(cv, d), cv)) {
                     std::vector<csg::Vert> vs;
@@ -102,6 +126,20 @@ static void ensureMeshes() {
                 m.texcoords[v * 2] = (float)(a / sc); m.texcoords[v * 2 + 1] = (float)(c / sc);
             }
             UpdateMeshBuffer(m, 1, m.texcoords, m.vertexCount * 2 * sizeof(float), 0);
+        }
+        if (carve::tilted(d)) {  // leaned out of the side view: turn the solid about its middle (mesh axes have y up)
+            double R[3][3]; carve::tiltMatrix(d, R);
+            const double f[3] = {1, -1, 1};
+            Mesh& m = A.meshes[i].mesh;
+            for (int v = 0; v < m.vertexCount; v++)
+                for (float* arr : {m.vertices, m.normals}) {
+                    if (!arr) continue;
+                    double p[3] = {arr[v * 3], arr[v * 3 + 1], arr[v * 3 + 2]}, q[3];
+                    for (int r = 0; r < 3; r++) { q[r] = 0; for (int c = 0; c < 3; c++) q[r] += f[r] * R[r][c] * f[c] * p[c]; }
+                    for (int r = 0; r < 3; r++) arr[v * 3 + r] = (float)q[r];
+                }
+            UpdateMeshBuffer(m, 0, m.vertices, m.vertexCount * 3 * sizeof(float), 0);
+            if (m.normals) UpdateMeshBuffer(m, 2, m.normals, m.vertexCount * 3 * sizeof(float), 0);
         }
         A.meshes[i].key = key;
         A.meshes[i].ok = true;
@@ -130,7 +168,7 @@ static void drawOutline(int i, Matrix M, Color c) {
     }
 }
 // Lathe-turned cartridge meshes, built from the cartridge's profile. Axis along +X, head at x = 0.
-struct RoundMesh { std::string key; Mesh caseM{}, bulletM{}, hullM{}, hullFiredM{}; bool ok = false, bullet = false, hull = false; } RM;
+struct RoundMesh { std::string key; Mesh caseM{}, bulletM{}, hullM{}, hullFiredM{}; bool ok = false, bullet = false, hull = false; };
 std::vector<V2> hullProfile(const Cartridge& c, bool fired) {  // a shotshell's hull, from inside its brass head to the crimp
     if (c.kind != "shotshell") return {};
     double base = c.baseDia / 2, cr = std::min(3.0, c.caseLen * 0.08), x0 = std::min(c.rimThick, c.caseLen - cr - 0.5);
@@ -199,16 +237,16 @@ static Mesh lathe(const std::vector<V2>& prof) {
     UploadMesh(&m, false);
     return m;
 }
-static void ensureRoundMesh() {
-    const Cartridge& c = A.design.breech.cart;
+static RoundMesh& ensureRoundMesh(const Cartridge& c) {  // one set of meshes per cartridge (barrels can each take their own)
     char buf[320];
     std::snprintf(buf, sizeof buf, "%g/%g/%g/%g/%g/%g/%g/%g/%g/%g/%g/%d/%s/%g/%g/%g/%g", c.caseLen, c.rimDia, c.rimThick, c.baseDia, c.shoulderDia, c.shoulderAt, c.neckDia, c.bulletDia, c.oal, c.noseLen, c.bulletMass, (int)c.rimmed,
                   c.nose.c_str(), c.meplat, c.tailLen, c.tailDia, c.seat);
     std::string key = buf;
     for (auto& q : c.custom) key += "/" + std::to_string(q.x) + "," + std::to_string(q.y);
     key += "/" + c.kind + "/" + std::to_string(c.headLen);
-    if (RM.ok && RM.key == key) return;
-    if (RM.ok) { UnloadMesh(RM.caseM); if (RM.bullet) UnloadMesh(RM.bulletM); if (RM.hull) { UnloadMesh(RM.hullM); UnloadMesh(RM.hullFiredM); } }
+    static std::map<std::string, RoundMesh> cache;
+    RoundMesh& RM = cache[key];
+    if (RM.ok) return RM;
     RM.caseM = lathe(caseProfile(c));
     auto bp = bulletProfile(c);
     RM.bullet = bp.size() >= 2;
@@ -216,6 +254,7 @@ static void ensureRoundMesh() {
     RM.hull = c.kind == "shotshell";
     if (RM.hull) { RM.hullM = lathe(hullProfile(c, false)); RM.hullFiredM = lathe(hullProfile(c, true)); }
     RM.key = key; RM.ok = true;
+    return RM;
 }
 static Matrix alignX(Vector3 dir) {  // rotation taking +X onto dir
     Vector3 x{1, 0, 0}, d = Vector3Normalize(dir);
@@ -241,10 +280,10 @@ bool boltHandle(const RB& r, BoltHandle& h) {
     h.axis = Vector3Normalize(Vector3Subtract(Vector3Transform({hx + 1, 0, 0}, r.M), h.base));
     return true;
 }
-static void drawCartridgeAt(Vector3 o, Vector3 dir, bool caseOnly = false, float bright = 1.f) {
-    ensureRoundMesh();
+static void drawCartridgeAt(Vector3 o, Vector3 dir, bool caseOnly = false, float bright = 1.f, const Cartridge* cart = nullptr) {
+    const Cartridge& c = cart ? *cart : A.design.breech.cart;
+    RoundMesh& RM = ensureRoundMesh(c);
     Matrix M = MatrixMultiply(alignX(dir), MatrixTranslate(o.x, o.y, o.z));
-    const Cartridge& c = A.design.breech.cart;
     setSpecular(0.75f);  // polished brass and copper
     if (c.kind == "caseless") {  // a block of propellant: matt
         setSpecular(0.15f);
@@ -259,10 +298,10 @@ static void drawCartridgeAt(Vector3 o, Vector3 dir, bool caseOnly = false, float
     }
     setSpecular(0.3f);
 }
-static void drawCartridge(const std::string& bodyId, V2 face, float zc, bool caseOnly = false) {
+static void drawCartridge(const std::string& bodyId, V2 face, float zc, bool caseOnly = false, const Cartridge* cart = nullptr) {
     V2 f = curMM(bodyId, face), ax = curMM(bodyId, {face.x + 1, face.y});
     Vector3 o = W3(f, zc), dir = Vector3Normalize(Vector3Subtract(W3(ax, zc), o));
-    drawCartridgeAt(o, dir, caseOnly);
+    drawCartridgeAt(o, dir, caseOnly, 1.f, cart);
 }
 static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top slots shown elsewhere  // rounds stacked inside a magazine, top round at the lips
     auto& br = A.design.breech;
@@ -498,6 +537,53 @@ static void drawStands(float py) {  // one slim post behind the main fixed part,
     drawCyl({x, top, z}, {x, top, z + 0.9f}, 0.9f, steel);    // the clamp that holds the frame
     setSpecular(0.3f);
 }
+BenchLayout benchLayout() {
+    BenchLayout L;
+    const Design& D = A.design;
+    double x0 = 1e9, x1 = -1e9, y1 = -1e9, z0 = 1e9, z1 = -1e9;
+    for (auto& b : D.bodies) {
+        for (auto& p : b.pts) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y1 = std::max(y1, p.y); }
+        z0 = std::min(z0, b.z - b.thick / 2); z1 = std::max(z1, b.z + b.thick / 2);
+    }
+    if (x0 > x1) { x0 = 0; x1 = 200; y1 = 60; z0 = -10; z1 = 10; }
+    L.x0 = x0 - 320; L.x1 = x1 + 320;
+    L.top = y1 + 25;                         // just under the gun's lowest point
+    L.zFront = z1 + 160; L.zBack = z0 - 420;
+    L.rulerLen = (x1 - x0) > 380 ? 600 : 300;
+    L.rulerX0 = std::floor(x0 / 10) * 10;
+    L.rulerZ = z1 + 70;                      // standing on its edge in front of the gun, its scale facing you
+    L.ok = true;
+    return L;
+}
+static void drawWorkbench() {
+    BenchLayout L = benchLayout();
+    auto P = [&](double x, double y, double z) { return Vector3{(float)x * U, -(float)y * U, (float)z * U}; };
+    const Color wood{132, 94, 62, 255}, woodDark{104, 72, 48, 255}, steel{184, 188, 196, 255}, ink{30, 32, 36, 255};
+    // the top, and its legs
+    drawBox(P((L.x0 + L.x1) / 2, L.top + 22, (L.zFront + L.zBack) / 2), {(float)(L.x1 - L.x0) * U, 44 * U, (float)(L.zFront - L.zBack) * U}, wood);
+    for (double lx : {L.x0 + 70, L.x1 - 70})
+        for (double lz : {L.zFront - 70, L.zBack + 70}) drawBox(P(lx, L.top + 44 + 360, lz), {70 * U, 720 * U, 70 * U}, woodDark);
+    // the ruler: a steel rule on its edge, 20 mm tall, marked every millimetre (every 1/16" in imperial)
+    bool imp = CFG.units == Units::Imperial;
+    double len = L.rulerLen, rz = L.rulerZ, rtop = L.top - 20;
+    drawBox(P(L.rulerX0 + len / 2, L.top - 10, rz), {(float)len * U, 20 * U, 1.2f * U}, steel);
+    double step = imp ? 25.4 / 16 : 1;
+    int n = (int)(len / step);
+    for (int k = 0; k <= n; k++) {
+        double x = L.rulerX0 + k * step;
+        int big = imp ? 16 : 10, mid = imp ? 8 : 5;
+        double h = k % big == 0 ? 9 : k % mid == 0 ? 6 : (imp && k % 4 == 0) ? 4.5 : 3;
+        drawBox(P(x, rtop + h / 2, rz + 0.7), {0.35f * U, (float)h * U, 0.2f * U}, ink);
+    }
+    // a hammer, a screwdriver and a mug: past either end of the gun, so the side view stays clear
+    double bz = L.zBack + 160, ty = L.top, gx0 = L.x0 + 320, gx1 = L.x1 - 320;
+    drawCyl(P(gx0 - 290, ty - 14, bz), P(gx0 - 40, ty - 14, bz - 30), 14 * U, Color{150, 110, 70, 255});
+    drawBox(P(gx0 - 295, ty - 16, bz), {28 * U, 32 * U, 110 * U}, Color{70, 74, 82, 255}, MatrixRotateY(0.12f));
+    drawCyl(P(gx1 + 40, ty - 15, bz + 90), P(gx1 + 140, ty - 15, bz + 90), 15 * U, Color{200, 60, 40, 255});
+    drawCyl(P(gx1 + 140, ty - 15, bz + 90), P(gx1 + 260, ty - 15, bz + 90), 3.2f * U, steel);
+    drawCyl(P(gx1 + 200, ty, bz - 40), P(gx1 + 200, ty - 95, bz - 40), 41 * U, Color{226, 228, 232, 255});
+    drawCyl(P(gx1 + 200, ty - 95, bz - 40), P(gx1 + 200, ty - 96, bz - 40), 36 * U, Color{60, 40, 30, 255});  // coffee
+}
 void drawScene() {
     auto& D = A.design;
     ensureMeshes();
@@ -513,6 +599,7 @@ void drawScene() {
             drawStands(py);
         }
     }
+    if (building && CFG.workbench && !A.showcase) drawWorkbench();
     // drafting board behind the part plane
     if (building) {
         float back = 0;
@@ -646,9 +733,10 @@ void drawScene() {
             auto& c = br.more[k];
             if (A.S && k + 1 < A.S->chambers.size()) {
                 auto& st = A.S->chambers[k + 1];
-                if (st.chambered) drawCartridge(c.chamber, c.face, 0);
-                if (st.spent && A.S->physicalFeed) drawCartridge(c.chamber, c.face, 0, true);
-            } else if (!A.S && c.loaded) drawCartridge(c.chamber, c.face, 0);
+                const Cartridge* cc = c.ownCart ? &c.cart : nullptr;
+                if (st.chambered) drawCartridge(c.chamber, c.face, 0, false, cc);
+                if (st.spent && A.S->physicalFeed) drawCartridge(c.chamber, c.face, 0, true, cc);
+            } else if (!A.S && c.loaded) drawCartridge(c.chamber, c.face, 0, false, c.ownCart ? &c.cart : nullptr);
         }
     }
     for (auto& s : A.shells) drawCartridgeAt(Vector3Subtract(s.p, Vector3Scale(s.dir, s.len / 2)), s.dir, true);
@@ -659,7 +747,9 @@ void drawScene() {
         V2 h = sim::wpt(b, {b.headLx, 0}), t = sim::wpt(b, {b.headLx + 0.001, 0});
         float z = (float)((b.z + b.zVis) * 1000) * U;  // cases fly out sideways through the port; double-position feed comes in from the side
         Vector3 o = W3({h.x * 1000, h.y * 1000}, z), o2 = W3({t.x * 1000, t.y * 1000}, z);
-        drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)), b.isCase, &b == A.hover ? 1.3f : 1.f);
+        const Cartridge* rc = nullptr;  // a round from a further chamber is that chamber's cartridge
+        if (b.slot > 0 && b.slot < (int)A.S->chambers.size()) rc = &A.S->chambers[b.slot].cart;
+        drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)), b.isCase, &b == A.hover ? 1.3f : 1.f, rc);
     }
     // the hand: a line from where you grabbed the part to the cursor
     if (A.S && A.S->hand.on && A.S->hand.b && A.dragKind == 3) {

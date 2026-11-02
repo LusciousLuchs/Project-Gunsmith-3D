@@ -82,6 +82,7 @@ static const RailTool RAIL_SELECT = {ICON_FA_ARROW_POINTER, "Select", "Click par
 static const RailTool RAIL_DRAW[] = {
     {ICON_FA_DRAW_POLYGON, "Polygon", "Click corners to draw any outline. Click the first corner again, or press Enter, to close it.", Tool::Body, -1},
     {ICON_FA_SQUARE, "Rectangle", "Drag out a rectangle.", Tool::Rect, -1},
+    {ICON_FA_GRIP_LINES, "Barrel", "Drag from the breech end to the muzzle. A round barrel with a bore, and a chamber at the\nbreech end cut for the cartridge you choose (in its panel). Rifled or smoothbore.", Tool::Barrel, -1},
     {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius.", Tool::Circle, -1}};
 static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
@@ -256,6 +257,8 @@ rightSide:
         if (CFG.backdrop == Backdrop::Solid) { backdropColour(); ImGui::SameLine(); ImGui::TextUnformatted("Colour"); }
         ImGui::Separator();
         backdropGrid("Drafting grid");
+        if (ImGui::Checkbox("Workbench, tools and ruler", &CFG.workbench)) saveSettings();
+        if (tipHover()) ImGui::SetTooltip("A bench under the gun in the designer, with a ruler and a few tools for scale.");
         ImGui::EndPopup();
     }
     gap(4);

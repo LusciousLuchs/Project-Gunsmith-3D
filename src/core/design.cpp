@@ -337,6 +337,39 @@ bool saveUserCartridges(const std::vector<Cartridge>& list) {
     out << j.dump(2);
     return true;
 }
+// ---------------------------------------------------------------- barrels
+bool barrelEnds(const BodyDef& b, V2& rear, V2& muzzle) {
+    if (!b.barrel.on || b.pts.size() < 3) return false;
+    carve::RoundAxis ax = carve::roundAxis(b);
+    double u0 = 1e9, u1 = -1e9;
+    for (auto& p : outlineOf(b)) { double u = (p.x - ax.o.x) * ax.dir.x + (p.y - ax.o.y) * ax.dir.y; u0 = std::min(u0, u); u1 = std::max(u1, u); }
+    V2 a{ax.o.x + ax.dir.x * u0, ax.o.y + ax.dir.y * u0}, c{ax.o.x + ax.dir.x * u1, ax.o.y + ax.dir.y * u1};
+    if (b.barrel.muzzleEnd > 0) { rear = a; muzzle = c; } else { rear = c; muzzle = a; }
+    return true;
+}
+int barrelCount(const Design& d) { int n = 0; for (auto& b : d.bodies) if (b.barrel.on) n++; return n; }
+void syncBarrels(Design& d) {
+    std::vector<const BodyDef*> bs;
+    for (auto& b : d.bodies) if (b.barrel.on) bs.push_back(&b);
+    if (bs.empty()) return;
+    BreechDef& br = d.breech;
+    if (!br.on) { br = BreechDef(); br.on = true; br.physicalFeed = true; br.feedMode = "single"; }
+    V2 rear, muz;
+    barrelEnds(*bs[0], rear, muz);
+    br.chamber = bs[0]->id; br.face = rear; br.hasFace = true; br.muzzle = muz; br.hasMuzzle = true;
+    br.cart = bs[0]->barrel.cart; br.cartImpulse = true; applyCartridge(br);
+    std::vector<ChamberDef> more;
+    for (size_t k = 1; k < bs.size(); k++) {
+        ChamberDef c;
+        for (auto& o : br.more) if (o.chamber == bs[k]->id) c = o;   // keep what was set for it (its breech part, loaded)
+        if (c.breech.empty()) c.breech = br.breech;
+        barrelEnds(*bs[k], rear, muz);
+        c.chamber = bs[k]->id; c.face = rear; c.muzzle = muz; c.hasMuzzle = true;
+        c.ownCart = true; c.cart = bs[k]->barrel.cart;
+        more.push_back(c);
+    }
+    br.more = more;
+}
 void applyCartridge(BreechDef& b) {
     b.roundLen = b.cart.oal;
     b.roundDia = b.cart.headDia();
@@ -785,6 +818,8 @@ std::string designToJson(const Design& d, bool pretty) {
             if (!b.roundPath.empty()) { json a = json::array(); for (auto& q : b.roundPath) a.push_back(v2j(q)); jb["magazine"]["roundPath"] = a; }
             if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
         }
+        if (b.tiltX != 0 || b.tiltY != 0) jb["tilt"] = {b.tiltX, b.tiltY};
+        if (b.barrel.on) jb["barrel"] = {{"cartridge", cartToJson(b.barrel.cart)}, {"rifled", b.barrel.rifled}, {"twist", b.barrel.twist}, {"grooves", b.barrel.grooves}, {"muzzleEnd", b.barrel.muzzleEnd}};
         if (b.rollOn) jb["roll"] = {{"on", true}, {"min", b.rollMin}, {"max", b.rollMax}, {"handle", b.handle}};
         if (b.ctrl != "none") jb["control"] = {{"kind", b.ctrl}, {"key", b.key}, {"at", v2j(b.ctrlPt)}, {"dir", b.ctrlDir}, {"force", b.ctrlForce}};
         json pts = json::array();
@@ -836,7 +871,11 @@ std::string designToJson(const Design& d, bool pretty) {
         if (!r.more.empty()) {
             json a = json::array();
             for (auto& c : r.more)
-                a.push_back({{"breech", c.breech}, {"chamber", c.chamber}, {"face", v2j(c.face)}, {"muzzle", c.hasMuzzle ? v2j(c.muzzle) : json(nullptr)}, {"loaded", c.loaded}});
+            {
+                json jc = {{"breech", c.breech}, {"chamber", c.chamber}, {"face", v2j(c.face)}, {"muzzle", c.hasMuzzle ? v2j(c.muzzle) : json(nullptr)}, {"loaded", c.loaded}};
+                if (c.ownCart) jc["cartridge"] = cartToJson(c.cart);
+                a.push_back(jc);
+            }
             jb["more"] = a;
             jb["fireOrder"] = r.fireOrder;
         }
@@ -927,6 +966,16 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.rollMax = opt<double>(r, "max", 90);
             b.handle = opt<double>(r, "handle", 0);
         }
+        if (jb.contains("barrel") && jb["barrel"].is_object()) {
+            auto& jr = jb["barrel"];
+            b.barrel.on = true;
+            if (jr.contains("cartridge") && jr["cartridge"].is_object()) b.barrel.cart = cartFromJson(jr["cartridge"]);
+            b.barrel.rifled = opt<bool>(jr, "rifled", true);
+            b.barrel.twist = std::clamp(opt<double>(jr, "twist", 254.0), 50.0, 2000.0);
+            b.barrel.grooves = std::clamp(opt<int>(jr, "grooves", 6), 2, 16);
+            b.barrel.muzzleEnd = opt<int>(jr, "muzzleEnd", 1) < 0 ? -1 : 1;
+        }
+        if (jb.contains("tilt") && jb["tilt"].is_array() && jb["tilt"].size() >= 2) { b.tiltX = jb["tilt"][0].get<double>(); b.tiltY = jb["tilt"][1].get<double>(); }
         if (jb.contains("magazine") && jb["magazine"].is_object()) {
             auto& m = jb["magazine"];
             b.magazine = true; b.magCap = opt<int>(m, "cap", 10);
@@ -1056,6 +1105,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 c.face = j2v(jc["face"]);
                 if (jc.contains("muzzle") && jc["muzzle"].is_array()) { c.hasMuzzle = true; c.muzzle = j2v(jc["muzzle"]); }
                 c.loaded = opt<bool>(jc, "loaded", true);
+                if (jc.contains("cartridge") && jc["cartridge"].is_object()) { c.ownCart = true; c.cart = cartFromJson(jc["cartridge"]); }
                 r.more.push_back(c);
             }
         r.fireOrder = opt<std::string>(jb, "fireOrder", "turn") == "together" ? "together" : "turn";

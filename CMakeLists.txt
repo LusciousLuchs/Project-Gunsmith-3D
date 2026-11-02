@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 # ---- version: the one place to change it. See CHANGELOG.md.
-#   0.1.0 with stage "dev" while the editor and test area are being worked out,
-#   then stage "alpha" for the 0.1 alpha release.
-project(Gunsmith3D VERSION 0.1.0 LANGUAGES C CXX)
-set(GUNSMITH_STAGE "dev" CACHE STRING "Release stage: dev, alpha, beta, rc, or empty for a release")
+#   0.1.0-dev: the editor and test bench worked out (dev1 to dev25).
+#   0.2.x-alpha: barrels, posing, and first-person shooting.
+project(Gunsmith3D VERSION 0.2.1 LANGUAGES C CXX)
+set(GUNSMITH_STAGE "alpha" CACHE STRING "Release stage: dev, alpha, beta, rc, or empty for a release")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

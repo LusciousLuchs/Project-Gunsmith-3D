@@ -36,11 +36,7 @@ std::vector<Hit> bodiesUnderMouse() {  // Build mode: design parts
         V2 mm = toMM(w);
         if (sim::inPoly(mm.x, mm.y, outlineOf(d))) hits.push_back({i, t, mm});
     }
-    std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.t < b.t; });
-    if (A.sel.kind == 1) {
-        auto it = std::find_if(hits.begin(), hits.end(), [](const Hit& h) { return h.body == A.sel.idx; });
-        if (it != hits.end() && it != hits.begin()) std::rotate(hits.begin(), it, it + 1);
-    }
+    std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.t < b.t; });  // nearest first
     return hits;
 }
 TestHit testPick() {  // Test mode: a bolt handle, else the nearest movable live body or loose round under the cursor

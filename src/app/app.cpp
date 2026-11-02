@@ -49,6 +49,7 @@ void autosaveTick() {
     if (CFG.autosave == AutosaveEvery::Change || (every > 0 && GetTime() - A.lastSave >= every)) save();
 }
 void commit() {
+    syncBarrels(A.design);  // barrels set the firing system's chambers and muzzles
     A.hist.push_back(A.lastSnap);
     if (A.hist.size() > 120) A.hist.erase(A.hist.begin());
     A.future.clear();

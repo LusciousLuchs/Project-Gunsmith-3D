@@ -279,6 +279,9 @@ void interfacePage() {
 }
 
 void designerPage() {
+    ImGui::SeparatorText("Workspace");
+    row("Workbench", "A bench under the gun with a ruler, a hammer, a screwdriver and a mug: a sense of real size.");
+    dirty |= ImGui::Checkbox("##wb", &CFG.workbench);
     ImGui::SeparatorText("Editing");
     row("Snap step");
     static const double steps[] = {0, 0.1, 0.5, 1, 2, 5};

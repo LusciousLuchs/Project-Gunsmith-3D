@@ -159,8 +159,72 @@ static bool same(const std::vector<std::vector<V2>>& A, const std::vector<std::v
     return true;
 }
 
+bool tilted(const BodyDef& b) { return std::fabs(b.tiltX) > 1e-6 || std::fabs(b.tiltY) > 1e-6; }
+void tiltMatrix(const BodyDef& b, double R[3][3]) {
+    // + X leans the top (-y) toward the near side (+z); + Y swings the front (+x) toward the near side
+    double ax = -b.tiltX * PI_ / 180, ay = -b.tiltY * PI_ / 180;
+    double cx = std::cos(ax), sx = std::sin(ax), cy = std::cos(ay), sy = std::sin(ay);
+    double Rx[3][3] = {{1, 0, 0}, {0, cx, -sx}, {0, sx, cx}};
+    double Ry[3][3] = {{cy, 0, sy}, {0, 1, 0}, {-sy, 0, cy}};
+    for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) { R[i][j] = 0; for (int k = 0; k < 3; k++) R[i][j] += Ry[i][k] * Rx[k][j]; }
+}
+void tiltDepth(const BodyDef& b, double& z0, double& z1) {
+    double R[3][3]; tiltMatrix(b, R);
+    V2 c = centroidOf(b);
+    double t = std::max(0.5, b.thick) / 2;
+    z0 = 1e9; z1 = -1e9;
+    for (auto& p : outlineOf(b)) for (double dz : {-t, t}) {
+        double z = R[2][0] * (p.x - c.x) + R[2][1] * (p.y - c.y) + R[2][2] * dz;
+        z0 = std::min(z0, b.z + z); z1 = std::max(z1, b.z + z);
+    }
+}
+static std::vector<V2> clipHalf(const std::vector<V2>& poly, double a, double bb, double c) {  // keep a*x + b*y <= c
+    std::vector<V2> out;
+    for (size_t i = 0; i < poly.size(); i++) {
+        V2 p = poly[i], q = poly[(i + 1) % poly.size()];
+        double fp = a * p.x + bb * p.y - c, fq = a * q.x + bb * q.y - c;
+        if (fp <= 0) out.push_back(p);
+        if ((fp < 0) != (fq < 0) && std::fabs(fp - fq) > 1e-12) { double t = fp / (fp - fq); out.push_back({p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t}); }
+    }
+    return out;
+}
+std::vector<std::vector<V2>> tiltSection(const BodyDef& b, double z) {
+    // a point (x, y) at depth z is in the part when R^T (its offset from the middle) lies in the outline, within the thickness
+    double R[3][3]; tiltMatrix(b, R);
+    V2 c = centroidOf(b);
+    double t = std::max(0.5, b.thick) / 2, qz = z - b.z;
+    // R^T rows: part.x = R[0][0] qx + R[1][0] qy + R[2][0] qz, part.y = R[0][1] qx + R[1][1] qy + R[2][1] qz, part.z = R[0][2] ...
+    double m00 = R[0][0], m01 = R[1][0], m10 = R[0][1], m11 = R[1][1], det = m00 * m11 - m01 * m10;
+    if (std::fabs(det) < 0.02) return {};   // edge on: too thin a sliver to stand for anything
+    std::vector<V2> poly;
+    for (auto& p : outlineOf(b)) {
+        double px = p.x - c.x - R[2][0] * qz, py = p.y - c.y - R[2][1] * qz;
+        double qx = (m11 * px - m01 * py) / det, qy = (-m10 * px + m00 * py) / det;
+        poly.push_back({qx, qy});
+    }
+    // within the thickness: -t <= R[0][2] qx + R[1][2] qy + R[2][2] qz <= t
+    double a = R[0][2], bb = R[1][2], k = R[2][2] * qz;
+    poly = clipHalf(poly, a, bb, t - k);
+    if (poly.size() >= 3) poly = clipHalf(poly, -a, -bb, t + k);
+    if (poly.size() < 3) return {};
+    for (auto& p : poly) { p.x += c.x; p.y += c.y; }
+    return {poly};
+}
+
 std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
-    if (b.carves.empty() && !b.round) return {};
+    if (b.carves.empty() && !b.round && !tilted(b)) return {};
+    if (tilted(b) && !b.round) {  // even slabs through the depth the tilted part spans (its carves show, but don't collide yet)
+        double z0, z1;
+        tiltDepth(b, z0, z1);
+        int n = std::clamp((int)std::ceil((z1 - z0) / 1.5), 3, std::max(3, maxSlices));
+        std::vector<Slice> out;
+        for (int k = 0; k < n; k++) {
+            Slice sl; sl.z0 = z0 + (z1 - z0) * k / n; sl.z1 = z0 + (z1 - z0) * (k + 1) / n;
+            sl.outlines = tiltSection(b, (sl.z0 + sl.z1) / 2);
+            if (!sl.outlines.empty()) out.push_back(sl);
+        }
+        return out;
+    }
     std::vector<Prism> P;
     for (auto& c : b.carves) P.push_back(prism(c, b));
     double t = std::max(0.5, b.thick), zA = b.z - t / 2, zB = b.z + t / 2;
