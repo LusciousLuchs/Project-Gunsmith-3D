@@ -1416,6 +1416,20 @@ static void liveMirrors() {
     bool none = true; for (auto& x : old.bodies) none &= x.mirror.empty();
     CHECK(none, "older designs have no mirrors");
 }
+static void springBuckling() {
+    std::printf("springBuckling\n");
+    CHECK(bucklingSqueeze(16, 4, 0.6) > 1e6, "a spring short for its width never buckles");
+    double mid = bucklingSqueeze(60, 10.6, 0.6), slim = bucklingSqueeze(100, 10.6, 0.6);   // 6 and 10 coil widths long
+    CHECK(mid > 0.35 * 60 && mid < 0.5 * 60, "six coil widths long: it takes a good squeeze to buckle it (about 40%)");
+    CHECK(slim > 0.08 * 100 && slim < 0.16 * 100, "ten coil widths long: it buckles early (about 12%)");
+    // a long recoil spring with its guide rod taken out: it buckles, but keeps pushing and the gun still works
+    Design d = loadPreset("blowback");
+    for (auto& j : d.joints) if (j.type == "spring" && j.guide == "rod") j.guide.clear();
+    auto S = sim::build(d); sim::run(*S, 0.3);
+    bool buck = false; double F = 0, bow = 0;
+    for (auto& J : S->joints) if (J.j && J.j->type == "spring" && J.j->a == "nose") { buck = J.buckled; F = J.force; bow = J.bow; }
+    CHECK(buck && F > 5 && bow > 0 && bow <= 0.014 + 1e-9, "unguided, it bows out (no more than two coil widths) and still pushes");
+}
 static void benchBugs() {
     std::printf("Playtest bugs (0.2.1)\n");
     {   // the bench used to run out of room after about 200 reloads: no new magazine, the gun empty
@@ -1466,6 +1480,7 @@ int main() {
     benchBugs();
     shapeTools();
     liveMirrors();
+    springBuckling();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

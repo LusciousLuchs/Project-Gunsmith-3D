@@ -417,8 +417,9 @@ static void drawDyn(const DynMesh& d, Color c) {
     rlEnableBackfaceCulling();
 }
 // A coil spring from a to b: `turns` active coils plus a closed coil at each end, the way real springs are wound,
-// so it looks solid at its solid height. The wire stays round however far it's compressed.
-static void drawCoil(size_t slot, Vector3 a, Vector3 b, float coilR, float wireR, double activeTurns, Color c) {
+// so it looks solid at its solid height. The wire stays round however far it's compressed. `bow`: a buckled spring
+// bends into a smooth arc, out by this much (world units, and that way) at its middle.
+static void drawCoil(size_t slot, Vector3 a, Vector3 b, float coilR, float wireR, double activeTurns, Color c, Vector3 bow = {0, 0, 0}) {
     Vector3 d = Vector3Subtract(b, a);
     float L = Vector3Length(d);
     if (L < 1e-4f) return;
@@ -428,12 +429,13 @@ static void drawCoil(size_t slot, Vector3 a, Vector3 b, float coilR, float wireR
     if (rings * SIDES > 65000) return;
     DynMesh& D = springSlot(slot);
     bool fresh = prepare(D, rings * SIDES, (rings - 1) * SIDES * 2);
-    std::vector<float> key = {a.x, a.y, a.z, b.x, b.y, b.z, coilR, wireR};
+    std::vector<float> key = {a.x, a.y, a.z, b.x, b.y, b.z, coilR, wireR, bow.x, bow.y, bow.z};
     if (fresh || key != D.key) {
         D.key = key;
-        Vector3 ax = Vector3Scale(d, 1 / L);
-        Vector3 up = std::fabs(ax.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
-        Vector3 u = Vector3Normalize(Vector3CrossProduct(ax, up)), v = Vector3CrossProduct(ax, u);
+        Vector3 ax0 = Vector3Scale(d, 1 / L);
+        float bowL = Vector3Length(bow);
+        Vector3 up = bowL > 1e-6f ? Vector3Scale(bow, 1 / bowL) : std::fabs(ax0.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+        Vector3 w = Vector3Normalize(Vector3CrossProduct(ax0, up));   // across the bend: the same all along
         float wd = 2 * wireR, span = std::max(L - wd, 1e-4f);
         float e = std::min(wd, span / total), act = (span - 2 * e) / turns;   // pitch of the closed end coils and the active ones
         float* P = D.m.vertices; float* N = D.m.normals;
@@ -442,8 +444,13 @@ static void drawCoil(size_t slot, Vector3 a, Vector3 b, float coilR, float wireR
             float z = wireR + e * std::min(s, 1.f) + act * std::clamp(s - 1, 0.f, (float)turns) + e * std::max(0.f, s - 1 - turns);
             float pitch = (s < 1 || s > 1 + turns) ? e : act;
             float ang = s * 2 * PI, ca = std::cos(ang), sa = std::sin(ang);
+            // the middle line: straight, or a half wave out to `bow` at the middle, with the coil square to it
+            float tt = std::clamp(z / L, 0.f, 1.f);
+            Vector3 mid = Vector3Add(Vector3Add(a, Vector3Scale(ax0, z)), Vector3Scale(bow, std::sin(PI * tt)));
+            Vector3 ax = Vector3Normalize(Vector3Add(ax0, Vector3Scale(bow, PI / L * std::cos(PI * tt))));
+            Vector3 v = Vector3Normalize(Vector3CrossProduct(ax, w)), u = Vector3CrossProduct(v, ax);
             Vector3 rad = Vector3Add(Vector3Scale(u, ca), Vector3Scale(v, sa));
-            Vector3 ctr = Vector3Add(Vector3Add(a, Vector3Scale(ax, z)), Vector3Scale(rad, coilR));
+            Vector3 ctr = Vector3Add(mid, Vector3Scale(rad, coilR));
             Vector3 T = Vector3Normalize(Vector3Add(Vector3Scale(ax, pitch), Vector3Scale(Vector3Add(Vector3Scale(u, -sa), Vector3Scale(v, ca)), coilR * 2 * PI)));
             Vector3 B = Vector3Normalize(Vector3CrossProduct(T, rad)), Nn = Vector3CrossProduct(B, T);
             for (int k = 0; k < SIDES; k++) {
@@ -714,14 +721,20 @@ void drawScene() {
             // at the depth of the part it pushes (the first one, or the second if the first is the ground)
             float z = A.design.bodyIndex(j.a) >= 0 ? partZ(j.a) : partZ(j.b);
             Vector3 a = W3(curMM(j.a, j.pa), z), b = W3(curMM(j.b, j.pb), z);
-            bool buckled = false;
-            if (A.S) for (auto& J : A.S->joints) if (J.defIndex == (int)ji) buckled = J.buckled;
+            bool buckled = false; double bowM = 0;
+            if (A.S) for (auto& J : A.S->joints) if (J.defIndex == (int)ji) { buckled = J.buckled; bowM = J.bow; }
             Color sc = selJ ? Color{255, 200, 60, 255} : buckled ? Color{235, 120, 90, 255} : Color{176, 190, 208, 255};
             float cr = (float)j.coilDia / 2 * U, wr = std::max(0.02f, (float)j.wire / 2 * U);
-            if (buckled) {  // draw it bowed out sideways
-                Vector3 mid = Vector3Add(Vector3Scale(Vector3Add(a, b), 0.5f), {0, -cr * 2.5f, 0});
-                drawCoil(ji * 3 + 1, a, mid, cr, wr, j.turns / 2, sc); drawCoil(ji * 3 + 2, mid, b, cr, wr, j.turns / 2, sc);
-            } else drawCoil(ji * 3, a, b, cr, wr, j.turns, sc);
+            Vector3 bow{0, 0, 0};
+            if (buckled && bowM > 0) {   // bowed out sideways in a smooth arc, in the side view so you can see it
+                Vector3 ax = Vector3Normalize(Vector3Subtract(b, a)), side = Vector3CrossProduct(ax, {0, 0, 1});
+                if (Vector3Length(side) > 1e-4f) {
+                    side = Vector3Normalize(side);
+                    if (side.y > 0) side = Vector3Negate(side);
+                    bow = Vector3Scale(side, (float)(bowM * 1000) * U);
+                }
+            }
+            drawCoil(ji * 3, a, b, cr, wr, j.turns, sc, bow);
         } else if (j.type == "magwell" && building && j.path.size() >= 2) {
             float z = frontZ(j.a) + 0.15f;
             Vector3 a = W3(j.path.front(), z), b = W3(j.path.back(), z);

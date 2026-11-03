@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.4-alpha
+
+### Springs
+- **Coil springs no longer fold in half.** A spring with nothing inside it (no guide rod) used to count as buckled once it was squeezed a quarter of the way and was longer than four times its width: it was drawn as two straight halves meeting in a sharp kink, and its push suddenly dropped to a third.
+- Now it follows the spring makers' standard rule (EN 13906-1, ends seated flat): a spring up to about five times as long as it is wide never buckles; a longer one buckles after a squeeze that depends on how slim it is (about 40% for six widths long, about 12% for ten).
+- A buckled spring still pushes: from the point it buckles it just gets much softer. It's drawn bowed out in a smooth arc (orange), still a proper coil, by up to two coil widths.
+- The spring's panel says how far it can be squeezed before it buckles, and turns red when it's drawn past that.
+- The examples' springs are unchanged (the long ones have guide rods). The blowback pistol with its guide rod taken out still runs: 50 fired, 1 failure to eject.
+
 ## 0.2.3-alpha
 
 ### Designer

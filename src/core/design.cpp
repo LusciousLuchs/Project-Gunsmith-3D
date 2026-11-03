@@ -1197,3 +1197,13 @@ Design loadPreset(const std::string& key) {
         if (d.bodies[i].magazine && d.bodies[i].gen.on) generateMagazine(d, (int)i);
     return d;
 }
+
+double bucklingSqueeze(double L0, double coilDia, double wire) {
+    const double g = 0.385;   // shear over Young's modulus, spring steel
+    const double nu = 0.5;    // seating: both ends flat against their parts
+    double D = std::max(0.1, coilDia - wire);
+    if (L0 <= 0) return 1e9;
+    double t = (1 - g) / (0.5 + g) * std::pow(PI_ * D / (nu * L0), 2);
+    if (t >= 1) return 1e9;   // short and stout: stable however far it's squeezed
+    return L0 * 0.5 / (1 - g) * (1 - std::sqrt(1 - t));
+}

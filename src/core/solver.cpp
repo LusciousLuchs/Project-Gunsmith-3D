@@ -945,10 +945,21 @@ void substep(Sim& S) {
         double rax = pa.x - A.x, ray = pa.y - A.y, rbx = pb.x - B.x, rby = pb.y - B.y;
         double vax = A.vx - A.w * ray, vay = A.vy + A.w * rax, vbx = B.vx - B.w * rby, vby = B.vy + B.w * rbx;
         double vrel = (vbx - vax) * dx + (vby - vay) * dy;
-        double F = J.j->k * 1000 * (J.j->rest / 1000 - L) - J.j->damp * vrel;
-        // a long coil spring with nothing inside it bows out sideways and loses most of its push
-        J.buckled = J.j->guide.empty() && J.j->rest > 4 * J.j->coilDia && (J.j->rest / 1000 - L) > 0.25 * J.j->rest / 1000;
-        if (J.buckled && F > 0) F *= 0.35;
+        double x = J.j->rest / 1000 - L;   // how far it's squeezed (m)
+        double F = J.j->k * 1000 * x - J.j->damp * vrel;
+        // a long coil spring with nothing inside it bows out sideways once it's squeezed past what its proportions
+        // allow, and from there it gets much softer: it still pushes, but squeezing it further mostly bends it
+        J.buckled = false; J.bow = 0;
+        if (J.j->guide.empty() && x > 0) {
+            double sk = bucklingSqueeze(J.j->rest, J.j->coilDia, J.j->wire) / 1000;
+            if (x > sk) {
+                J.buckled = true;
+                F = J.j->k * 1000 * (sk + 0.3 * (x - sk)) - J.j->damp * vrel;
+                // how far it bows (a bent column's arc), but not more than a couple of coil widths: in a gun it soon
+                // lies against whatever is around it
+                J.bow = std::min({0.4 * L, 2 * J.j->coilDia / 1000, 2 * L / 3.14159265358979 * std::sqrt((x - sk) / std::max(L, 1e-6))});
+            }
+        }
         J.force = F;
         B.fx += dx * F; B.fy += dy * F; B.tq += rbx * dy * F - rby * dx * F;
         A.fx -= dx * F; A.fy -= dy * F; A.tq -= rax * dy * F - ray * dx * F;

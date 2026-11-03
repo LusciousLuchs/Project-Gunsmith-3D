@@ -808,7 +808,14 @@ static void inspectJoint(JointDef& j) {
             }
             double L = std::hypot(j.pb.x - j.pa.x, j.pb.y - j.pa.y), F = j.k * (j.rest - L), solid = (j.turns + 2) * j.wire;
             muted("%s %s as drawn. Solid at %s.", fmtQ(Q::Force, std::fabs(F)).c_str(), F >= 0 ? "pushing" : "pulling", fmtQ(Q::Length, solid).c_str());
-            if (j.guide.empty() && j.rest > 4 * j.coilDia) warn("Longer than four times its diameter with no guide rod: it will buckle. Draw a rod part and pick it under Coil.");
+            if (j.guide.empty()) {
+                double sk = bucklingSqueeze(j.rest, j.coilDia, j.wire);
+                if (sk < j.rest) {
+                    std::string m = "With nothing inside it, it bows out sideways once squeezed more than " + fmtQ(Q::Length, sk) +
+                                    " (" + std::to_string((int)std::lround(100 * sk / j.rest)) + "% of its length) and goes soft. A guide rod (under Coil) stops that.";
+                    if (j.rest - L > sk) warn(m.c_str()); else muted("%s", m.c_str());
+                }
+            }
             if (L < solid) warn("Drawn shorter than its solid height, so it can't fit. Use thinner wire or fewer turns.");
         } else {
             pBody("Clamped to", j.a, true); pBody("Presses on", j.b, true);

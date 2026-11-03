@@ -107,6 +107,7 @@ struct Joint {
     bool merged = false;                     // weld inside a rigid assembly: nothing left to solve
     V2 nrm;                                  // leaf spring: push direction in A's frame
     bool buckled = false;                    // coil spring with no guide rod, bent sideways
+    double bow = 0;                          // ...by this much at its middle (m)
 };
 
 // A control (trigger, button, lever) pushed by a key in Test mode.

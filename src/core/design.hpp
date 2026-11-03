@@ -294,6 +294,10 @@ int subdivideBody(BodyDef& b);                                   // add a vertex
 void simplifyBody(BodyDef& b, int maxCorners = MAX_CORNERS);
 // Two parts' side outlines combined: op 0 merge (union), 1 keep the overlap (intersect), 2 cut b away from a. False (with
 // why) when there's nothing to combine. The result fits the corner limit, within a grid step or so of the true shape.
+// How far (mm) a coil spring with nothing inside it can be squeezed before it buckles sideways: the spring
+// standard's formula (EN 13906-1) for ends seated flat, from its free length and mean coil diameter. A spring
+// short for its width never buckles (returns a huge number).
+double bucklingSqueeze(double freeLen, double coilDia, double wire);
 bool combineOutlines(const BodyDef& a, const BodyDef& b, int op, std::vector<V2>& out, std::string* why = nullptr,
                      std::vector<double>* rad = nullptr);   // given: rounded corners that survive keep their rounding
 // Cuts corners off flat (a chamfer, or bevel in side view), each `size` mm back along both edges; `which` empty = all
