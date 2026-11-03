@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.10-alpha
+
+### Shaping parts from any view
+- **Corners drag in the plane you're looking at**, not only from the side: look from the **top** and a corner moves forward, back and in depth; from the **front or back end** it moves up, down and in depth; from the side, as before. So the top of a part can be a different shape from its bottom: from above, pull the top corners in and leave the bottom ones where they are.
+- Where corners sit on top of each other on screen (looking straight down, a top corner hides the bottom one), the one nearest you is picked.
+- Z while dragging still moves a corner in depth from any view.
+
 ## 0.2.9-alpha
 
 ### Parts shaped in depth (Faces tool)

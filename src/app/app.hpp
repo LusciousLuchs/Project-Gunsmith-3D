@@ -89,6 +89,7 @@ struct App {
     CornerPick cornerHover, cornerDrag;
     bool cornerDragging = false;
     double cornerOrigX = 0, cornerOrigY = 0, cornerOrigZ = 0, cornerZDrag = 0;
+    int cornerPlane = 2;                 // the plane a corner is dragged in: 0 across the gun from the front (y-z), 1 from the top (x-z), 2 the side (x-y)
     // drafting
     bool drafting = false;
     std::vector<V2> draft;

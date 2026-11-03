@@ -215,7 +215,7 @@ const char* TOOL_HINT[] = {
     "",   // (grip markers: replaced by Pose on the test bench)
     "Drag from the breech end to the muzzle. Its cartridge, rifling and length are in its panel.",
     "Drag between two points to measure the length, how far across and up, and the angle. Snaps to corners and joints.",
-    "Point at any face of a part and drag to push or pull it; E extrudes it. The selected part's corners show on both faces (squares front, circles back): drag one on its own to shape the part in depth, Z while dragging moves it in depth."};
+    "Point at any face of a part and drag to push or pull it; E extrudes it. The selected part's corners show on both faces (squares front, circles back): drag one on its own to shape the part in depth. It moves in the plane you look at: from the side up and along, from the top along and in depth, from the front up and in depth (Z while dragging: in depth from any view)."};
 static_assert(sizeof(TOOL_HINT) / sizeof(TOOL_HINT[0]) == (size_t)Tool::Count, "a hint for every tool");
 void setTool(Tool t) {
     if (A.mode == Mode::Test) setMode(Mode::Build);

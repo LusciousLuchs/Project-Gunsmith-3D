@@ -231,17 +231,31 @@ void cornerApply() {
         (c.far ? d.depthZf : d.depthZn)[c.idx] = A.cornerOrigZ + z;
         return;
     }
-    // across the side view, at its own depth
+    // in the plane the view looks at, through the corner: from the side x and y, from the top x and depth,
+    // from the front or back y and depth
     std::vector<P3d> N, F;
     depthRings(d, N, F);
     const P3d& p = c.far ? F[c.idx] : N[c.idx];
+    Vector3 pw = ringW(c.body, p);
     Ray r = mouseRay();
-    float zw = (float)(p.z * U) + bodyBias(c.body);
-    if (std::fabs(r.direction.z) < 0.05f) return;   // looking along the face: no sure point
-    float t = (zw - r.position.z) / r.direction.z;
+    int ax = A.cornerPlane;   // the axis the plane faces
+    float dir = ax == 0 ? r.direction.x : ax == 1 ? r.direction.y : r.direction.z;
+    float org = ax == 0 ? r.position.x : ax == 1 ? r.position.y : r.position.z;
+    float at = ax == 0 ? pw.x : ax == 1 ? pw.y : pw.z;
+    if (std::fabs(dir) < 0.05f) return;   // looking along the plane: no sure point
+    float t = (at - org) / dir;
     if (t <= 0) return;
-    V2 mm = toMM(Vector3Add(r.position, Vector3Scale(r.direction, t)));
+    Vector3 hit = Vector3Add(r.position, Vector3Scale(r.direction, t));
+    V2 mm = toMM(hit);
+    double depth = (hit.z - bodyBias(c.body)) / U;
+    if (ax == 0) mm.x = p.x;
+    if (ax == 1) mm.y = p.y;
+    if (ax == 2) depth = p.z;
     mm = {snapv(mm.x, A.snapOn), snapv(mm.y, A.snapOn)};
+    if (ax != 2) {   // the corner's depth from the face it belongs to
+        double half = std::max(0.5, d.thick) / 2, face = c.far ? d.z - half : d.z + half;
+        (c.far ? d.depthZf : d.depthZn)[c.idx] = snapv(depth - face, A.snapOn);
+    }
     if (c.far) d.depthOff[c.idx] = {mm.x - d.pts[c.idx].x, mm.y - d.pts[c.idx].y};
     else {   // the near corner moves; its far partner stays where it is
         V2 farP{d.pts[c.idx].x + d.depthOff[c.idx].x, d.pts[c.idx].y + d.depthOff[c.idx].y};
@@ -263,10 +277,16 @@ void facesInput(bool overUI) {
     A.cornerHover = {};
     if (!overUI && !A.faceDragging) {   // the selected part's corners come first: they sit on its faces
         Vector2 m = GetMousePosition();
-        float best = 8;
-        for (auto& cd : cornerDots()) {
-            float dd = Vector2Distance(cd.s, m);
-            if (dd < best) { best = dd; A.cornerHover = {A.sel.idx, cd.idx, cd.far}; }
+        float best = 1e9f;   // within 8 px; of dots on top of each other, the one nearest the eye
+        if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()) {
+            std::vector<P3d> N, F; depthRings(A.design.bodies[A.sel.idx], N, F);
+            for (auto& cd : cornerDots()) {
+                float dd = Vector2Distance(cd.s, m);
+                if (dd > 8) continue;
+                float eye = Vector3Distance(A.cam.position, ringW(A.sel.idx, cd.far ? F[cd.idx] : N[cd.idx])) / U;
+                float score = std::floor(dd / 3) * 1000 + eye;   // a few pixels nearer wins, then the nearer to the eye
+                if (score < best) { best = score; A.cornerHover = {A.sel.idx, cd.idx, cd.far}; }
+            }
         }
         if (A.cornerHover.body >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             BodyDef& d = A.design.bodies[A.sel.idx];
@@ -275,6 +295,9 @@ void facesInput(bool overUI) {
             A.cornerDrag = A.cornerHover; A.cornerDragging = true; A.cornerZDrag = 0;
             const auto& c = A.cornerDrag;
             A.cornerOrigZ = (c.far ? d.depthZf : d.depthZn)[c.idx];
+            Vector3 v = mouseRay().direction;   // the plane to drag in: the one the view looks at most
+            float vx = std::fabs(v.x), vy = std::fabs(v.y), vz = std::fabs(v.z);
+            A.cornerPlane = vz >= vx && vz >= vy ? 2 : vy >= vx ? 1 : 0;
             return;
         }
         if (A.cornerHover.body >= 0) { A.faceHover = {}; return; }
@@ -305,7 +328,7 @@ void drawFaces() {
             if (cd.far) { DrawCircleV(cd.s, r, Color{20, 24, 32, 220}); DrawCircleLinesV(cd.s, r, c); }
             else { DrawRectangleRec({cd.s.x - r, cd.s.y - r, 2 * r, 2 * r}, Color{20, 24, 32, 220}); DrawRectangleLinesEx({cd.s.x - r, cd.s.y - r, 2 * r, 2 * r}, 1.5f, c); }
             if (hot && !A.cornerDragging) {
-                const char* t = cd.far ? "Back corner: drag (Z: in depth)" : "Front corner: drag (Z: in depth)";
+                const char* t = cd.far ? "Back corner: drag it (from the top or the front too)" : "Front corner: drag it (from the top or the front too)";
                 DrawText(t, (int)cd.s.x + 10, (int)cd.s.y - 22, 14, c);
             }
         }
