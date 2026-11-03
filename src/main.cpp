@@ -40,6 +40,7 @@ int main(int argc, char** argv) {
     int poseArg = -1;
     int relArg = 0;
     bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
+    int introArg = 0;
     int settingsPage = 0;
     bool useSettings = false;
     std::string mapArg; bool walkArg = false;
@@ -76,6 +77,8 @@ int main(int argc, char** argv) {
         else if (a == "--cart") cartArg = next();
         else if (a == "--reltest") relArg = std::atoi(next().c_str());
         else if (a == "--menu") menuArg = true;
+        else if (a == "--intro") introArg = 1;              // (screenshots) the launch splash
+        else if (a == "--eula") introArg = 2;               // (screenshots) the agreement screen
         else if (a == "--usesettings") useSettings = true;  // (screenshots) honour the settings file            // (screenshots) stay on the main menu
         else if (a == "--settings") settingsArg = true;    // (screenshots) open the settings
         else if (a == "--settingspage") { settingsArg = true; settingsPage = std::atoi(next().c_str()); }
@@ -176,6 +179,9 @@ int main(int argc, char** argv) {
         if (walkArg) meWalk(false);
     }
     if (tutListArg) A.showTutorials = true;
+    // a normal launch: the studio's splash, then the agreement until it's agreed to (screenshot runs skip them)
+    if (introArg == 2) introForceEula();
+    else if (introArg == 1 || (!frames && !direct && mapArg.empty() && !tutListArg && tutArg <= 0 && !settingsArg)) introStart(false);
     if (tutArg > 0) startTutorial(tutArg - 1);
 
     int frame = 0;
@@ -212,6 +218,17 @@ int main(int argc, char** argv) {
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
             toastOverlay();
+            rlImGuiEnd();
+            EndDrawing();
+            frame++;
+            if (frames && frame >= frames) { if (!shotPath.empty()) TakeScreenshot(shotPath.c_str()); break; }
+            continue;
+        }
+        if (introActive()) {
+            BeginDrawing();
+            ClearBackground(Color{8, 9, 11, 255});
+            rlImGuiBegin();
+            introFrame(dt);
             rlImGuiEnd();
             EndDrawing();
             frame++;

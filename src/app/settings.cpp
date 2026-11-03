@@ -59,6 +59,7 @@ void loadSettings() {
         if (j.contains("keys") && j["keys"].is_object())
             for (auto& [k, v] : j["keys"].items()) if (v.is_number_integer()) CFG.keys[k] = v.get<int>();
         if (j.contains("tutorialsDone") && j["tutorialsDone"].is_string()) CFG.tutorialsDone = j["tutorialsDone"].get<std::string>();
+        if (j.contains("eulaAgreed") && j["eulaAgreed"].is_string()) CFG.eulaAgreed = j["eulaAgreed"].get<std::string>();
     } catch (...) {}
 }
 
@@ -74,7 +75,7 @@ void saveSettings() {
         {"orbitMiddle", CFG.orbitMiddle}, {"zoomSpeed", CFG.zoomSpeed}, {"invertZoom", CFG.invertZoom},
         {"slowOnShot", CFG.slowOnShot}, {"slowSpeed", CFG.slowSpeed}, {"slowWindowMs", CFG.slowWindowMs},
         {"benchSpeed", CFG.benchSpeed}, {"relRounds", CFG.relRounds},
-        {"mouseSens", CFG.mouseSens}, {"invertMouse", CFG.invertMouse}, {"fov", CFG.fov}, {"keys", CFG.keys}, {"tutorialsDone", CFG.tutorialsDone}};
+        {"mouseSens", CFG.mouseSens}, {"invertMouse", CFG.invertMouse}, {"fov", CFG.fov}, {"keys", CFG.keys}, {"tutorialsDone", CFG.tutorialsDone}, {"eulaAgreed", CFG.eulaAgreed}};
     std::ofstream(settingsFile()) << j.dump(2);
 }
 

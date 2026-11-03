@@ -18,7 +18,10 @@ Your work autosaves to `gunsmith3d_autosave.json` next to where you start it. Na
 
 ## The menu
 
-The game opens on the main menu:
+The game opens on the studio's splash (a key or click skips it), then, the first time, the End User License Agreement: agree to go on to the main menu, or decline to close the game. It's asked again only if the agreement changes.
+
+The main menu:
+
 - **Sandbox** opens the designer, with your last design.
 - **Test bench** puts any gun on the bench: your sandbox design, an example, or a saved blueprint.
 - **Map editor** builds your own ranges and lets you walk them in first person (see below).

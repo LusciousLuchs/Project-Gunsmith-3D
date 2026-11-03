@@ -53,6 +53,7 @@ struct Settings {
     // controls: action id -> key (raylib KeyboardKey); missing entries use the defaults
     std::map<std::string, int> keys;
     std::string tutorialsDone;           // ids of finished tutorials, comma separated
+    std::string eulaAgreed;              // the fingerprint of the agreement text agreed to (empty: not yet)
 };
 extern Settings CFG;
 

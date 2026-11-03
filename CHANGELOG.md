@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.15-alpha
+
+### At launch
+- **Studio splash:** the game opens on *One Armed Bandit Games*, fading in and out over about three seconds. A key or a click skips it.
+- **License agreement:** then, before the main menu, the End User License Agreement. Tick *I have read and agree*, then *I agree* to go on; *Decline* closes the game. It's asked once: the game remembers which agreement you agreed to, and asks again only when its text changes.
+- The agreement is a temporary placeholder for now (a work in progress, no warranty, no liability, and not real engineering). The full one will replace it. The text is also in *EULA.txt* next to the game.
+
 ## 0.2.14-alpha
 
 ### Pick first, then move: everywhere
