@@ -153,6 +153,12 @@ struct Sim {
     V2 faceB, faceC, muzC;
     bool hasFace = false, hasMuzzle = false;
     struct Hand { bool on = false; Body* b = nullptr; V2 l, t; } hand;
+    Hand animHand[2];                    // an animation's firing and support hands, each holding a part (same grip as the mouse)
+    // a recorded animation playing (Design::anims): which, how far in (s of simulated time; < 0 = none), and how many
+    // of its keys have passed (their events done)
+    std::string animSlot;
+    double animT = -1;
+    size_t animKeysDone = 0;
     struct { bool on = false; Body* b = nullptr; double t = 0, arm = 0; } rollHand;  // arm: lever (m) limiting the torque; 0 = no limit
     double handStrength = 150;           // N, the most force your hand applies
     bool magRelease = false;             // magazine release button held
@@ -236,6 +242,11 @@ Body* seatedMag(Sim& S);                                   // attached and latch
 Body* spawnMagazine(Sim& S, V2 centreMM, bool seat);      // full magazine; seat=true puts it straight in the well
 void dropMagazine(Sim& S);                                 // unlatch and pull the seated magazine out
 void quickReload(Sim& S);                                  // drop the old magazine, seat a full one
+// Recorded animations: start one (false if that slot has no keys: do the plain action instead), and whether one is
+// playing. While it plays, its hands grip and move parts every substep.
+bool playAnim(Sim& S, const std::string& slot);
+bool animPlaying(const Sim& S);
+AnimHands animHandsNow(const Sim& S);                      // where the hands are now (the pose's hold when none plays)
 bool magLoadPoint(const Sim& S, const Body& M, V2& w);     // where to hold a round to push it into this magazine (m)
 int fillMagazines(Sim& S);                                 // top up every magazine (seated and on the bench); rounds added
 // Remove spent cases that have lain on the bench `caseLife` seconds, and dropped empty magazines nobody has touched

@@ -164,6 +164,100 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
     }
     ImGui::PopID();
 }
+// Recorded animations: keys on a timeline where both hands are; the hands go smoothly through them
+static void animSection() {
+    if (!section("Animations", A.animEdit)) return;
+    auto& D = A.design;
+    bool playing = A.S && sim::animPlaying(*A.S);
+    if (pCheck("Edit an animation", A.animEdit, "On: the hands you drag are the animation's, at the moment on its timeline.\n"
+                                               "Off: they're the hold's again.")) { A.animPreview = false; if (!A.animEdit) A.animT = 0; }
+    if (!A.animEdit) { muted("Reload, inspect, clear a jam, or work a control, with hands you place. Not animated, it just happens."); return; }
+    auto slots = animSlots(D);
+    if (std::find(slots.begin(), slots.end(), A.animSlot) == slots.end()) A.animSlot = slots.front();
+    prop("Animation");
+    if (ImGui::BeginCombo("##aslot", animSlotName(D, A.animSlot).c_str())) {
+        for (auto& s : slots) {
+            auto it = D.anims.find(s);
+            int n = it == D.anims.end() ? 0 : (int)it->second.keys.size();
+            std::string lab = animSlotName(D, s) + (n ? "  (" + std::to_string(n) + (n == 1 ? " key)" : " keys)") : "  (not animated)");
+            if (ImGui::Selectable(lab.c_str(), s == A.animSlot)) { A.animSlot = s; A.animT = 0; A.animPreview = false; }
+        }
+        ImGui::EndCombo();
+    }
+    Animation& an = D.anims[A.animSlot];
+    double len = animLength(an), span = std::max(2.0, len + 0.5);
+    if (an.keys.empty()) muted("Not animated yet: on the bench the plain action happens. Move the time slider, then drag a hand: a key is made there. The hands start and end in the aiming hold.");
+    else muted(TextFormat("%d %s, %.2f s long. Move the slider and drag a hand to add a key; drag one at a key to change it.", (int)an.keys.size(), an.keys.size() == 1 ? "key" : "keys", len));
+    // the timeline, with the keys marked on it
+    float t = (float)A.animT;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::SliderFloat("##atime", &t, 0, (float)span, "%.2f s")) { A.animT = t; A.animPreview = false; }
+    {
+        ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
+        auto* dl = ImGui::GetWindowDrawList();
+        float pad = ImGui::GetStyle().GrabMinSize / 2 + 2;
+        for (auto& k : an.keys) {
+            float x = a.x + pad + (b.x - a.x - 2 * pad) * (float)(k.t / span);
+            bool here = std::fabs(k.t - A.animT) < 0.03;
+            dl->AddTriangleFilled({x, b.y - 2}, {x - 4, b.y + 5}, {x + 4, b.y + 5}, here ? IM_COL32(255, 205, 60, 255) : IM_COL32(110, 230, 140, 255));
+        }
+        ImGui::Dummy({0, 6 * CFG.uiScale});
+    }
+    float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+    if (ImGui::Button("< Key", {w3, 0})) { for (int i = (int)an.keys.size() - 1; i >= 0; i--) if (an.keys[i].t < A.animT - 0.031) { A.animT = an.keys[i].t; break; } A.animPreview = false; }
+    ImGui::SameLine();
+    if (ImGui::Button(A.animPreview ? "Stop" : "Preview", {w3, 0})) { A.animPreview = !A.animPreview; if (A.animPreview && A.animT >= len - 1e-3) A.animT = 0; }
+    if (tipHover()) ImGui::SetTooltip("Plays the hands only, the gun standing still.");
+    ImGui::SameLine();
+    if (ImGui::Button("Key >", {w3, 0})) { for (auto& k : an.keys) if (k.t > A.animT + 0.031) { A.animT = k.t; break; } A.animPreview = false; }
+    ImGui::BeginDisabled(an.keys.empty() || playing);
+    if (ImGui::Button("Play on the gun", {-1, 0})) {
+        A.animPreview = false;
+        A.S->design.anims = D.anims;
+        sim::playAnim(*A.S, A.animSlot);
+        A.running = true;
+    }
+    if (tipHover()) ImGui::SetTooltip("Runs it for real: gripping hands pull their parts through the physics.\nIf the gun doesn't work that way, it shows (a slide not pulled back far enough won't chamber).");
+    ImGui::EndDisabled();
+    if (A.animPreview) {   // the hands move along; the slider follows
+        A.animT += GetFrameTime();
+        if (A.animT > len) { A.animT = len; A.animPreview = false; }
+    }
+    // the key here, if any
+    int ki = animKeyAt(an, A.animT);
+    if (ki >= 0) {
+        AnimKey& k = an.keys[ki];
+        heading("This key");
+        double kt = k.t;
+        if (pNum("Time", kt, 0.01, "%.2f s", "When the hands get here, from the start.")) {
+            k.t = std::max(0.0, kt); A.animT = k.t;
+            std::stable_sort(an.keys.begin(), an.keys.end(), [](const AnimKey& x, const AnimKey& y) { return x.t < y.t; });
+            ki = animKeyAt(an, A.animT); if (ki < 0) return;
+        }
+        AnimKey& kk = an.keys[ki];
+        bool edit = false;
+        edit |= pCheck("Firing hand", kk.firing.on, "On the gun at this key. Off: away from the gun (it hangs at the side).");
+        if (kk.firing.on) edit |= pCheck("  grips its part", kk.gripF, "From here the hand holds the part it's on and moves it, until a key lets go.");
+        edit |= pCheck("Support hand", kk.support.on, "On the gun at this key. Off: away from the gun.");
+        if (kk.support.on) edit |= pCheck("  grips its part##s", kk.gripS, "From here the hand holds the part it's on (a slide, a bolt handle, a catch)\nand moves it, until a key lets go.");
+        if (kk.firing.on && kk.gripF) ImGui::TextDisabled("Firing hand holds: %s", bname(kk.firing.part).c_str());
+        if (kk.support.on && kk.gripS) ImGui::TextDisabled("Support hand holds: %s", bname(kk.support.part).c_str());
+        int ev = kk.event == "dropmag" ? 1 : kk.event == "freshmag" ? 2 : 0;
+        prop("Magazine", "What happens to the magazine as the hands reach this key.\nDrop: it's let go and falls out (or slides out sideways).\nFresh one in: a full magazine goes into the well.");
+        if (ImGui::Combo("##aev", &ev, "Nothing\0Drop it\0Fresh one in\0")) { kk.event = ev == 1 ? "dropmag" : ev == 2 ? "freshmag" : ""; edit = true; }
+        if (edit) commit();
+        if (ImGui::Button("Delete this key", {-1, 0})) { an.keys.erase(an.keys.begin() + ki); commit(); }
+    }
+    if (!an.keys.empty()) {
+        ImGui::Dummy({0, 2 * CFG.uiScale});
+        if (ImGui::Button("Clear this animation", {-1, 0})) ImGui::OpenPopup("##aclear");
+        if (ImGui::BeginPopup("##aclear")) {
+            ImGui::TextUnformatted("Remove every key? (Undo brings them back.)");
+            if (ImGui::Button("Clear it")) { an.keys.clear(); A.animT = 0; commit(); ImGui::CloseCurrentPopup(); }
+            ImGui::EndPopup();
+        }
+    }
+}
 static void posePanel() {
     auto& P = A.design.pose;
     ImGui::PushFont(gFontBold, 18.0f); ImGui::TextUnformatted("Pose"); ImGui::PopFont();
@@ -176,7 +270,7 @@ static void posePanel() {
         if (accentButton(holdName(h), A.poseHold == h, {0, 0})) { A.poseHold = h; poseView(); }
     }
     ImGui::Dummy({0, 4 * CFG.uiScale});
-    if (section("Body", true)) {
+    if (section("Body", !A.animEdit)) {
         BodyHold& b = P.hold[A.poseHold];
         if (!b.set) b = holdOf(A.design, A.poseHold);
         BodyHold was = b;
@@ -191,12 +285,13 @@ static void posePanel() {
         if (ImGui::IsItemDeactivatedAfterEdit()) commit();
         if (ImGui::Button("Reset this hold", {-1, 0})) { b = BodyHold(); b = holdOf(A.design, A.poseHold); b.set = false; commit(); poseView(); }
     }
-    if (section("Hands and shoulder", true)) {
+    if (section("Hands and shoulder", !A.animEdit)) {
         muted("Drag a green dot to move it onto any part, and the dot at the end of its line to turn it. All three holds share them.");
         handControls("Firing hand", P.firing, "firing", "The hand on the trigger.");
         handControls("Support hand", P.support, "support", "The other hand. Off: held with one hand.");
         handControls("Stock in the shoulder", P.butt, "butt", "Where the gun beds into the shoulder (a stock's butt). Off: nothing touches the shoulder.");
     }
+    animSection();
     PoseReport R = poseReport();
     if (R.rightShort > 0.5) ImGui::TextColored(colBad(), "The firing arm can't reach: %s short.", fmtQ(Q::Length, R.rightShort, 0).c_str());
     if (R.leftShort > 0.5) ImGui::TextColored(colBad(), "The support arm can't reach: %s short.", fmtQ(Q::Length, R.leftShort, 0).c_str());

@@ -13,6 +13,40 @@
 
 Ray mouseRay();  // (view.cpp)
 
+// The pose as shown: the hold's hands, or an animation's where it has got to (playing on the gun, or on the
+// timeline being edited). The butt and the body always stay as posed.
+Pose viewPose() {
+    Pose P = A.design.pose;
+    if (A.S && sim::animPlaying(*A.S)) {
+        AnimHands h = sim::animHandsNow(*A.S);
+        P.firing = h.firing; P.support = h.support;
+    } else if (A.posing && A.animEdit) {
+        auto it = A.design.anims.find(A.animSlot);
+        if (it != A.design.anims.end()) { AnimHands h = animAt(A.design, it->second, A.animT); P.firing = h.firing; P.support = h.support; }
+    }
+    return P;
+}
+int animKeyAt(const Animation& a, double t) {   // the key at this moment on the timeline, or -1
+    for (int i = 0; i < (int)a.keys.size(); i++) if (std::fabs(a.keys[i].t - t) < 0.03) return i;
+    return -1;
+}
+// The hand that dragging edits: the hold's, or (editing an animation) the key's at the timeline's moment, made there
+// from where the hands are then if there's no key yet. 0 firing, 1 support, 2 butt.
+HandHold* editHand(int which) {
+    auto& P = A.design.pose;
+    if (which == 2 || !A.animEdit) return which == 0 ? &P.firing : which == 1 ? &P.support : &P.butt;
+    Animation& a = A.design.anims[A.animSlot];
+    int k = animKeyAt(a, A.animT);
+    if (k < 0) {
+        AnimHands h = animAt(A.design, a, A.animT);
+        AnimKey nk; nk.t = A.animT; nk.firing = h.firing; nk.support = h.support; nk.gripF = h.gripF; nk.gripS = h.gripS;
+        auto pos = std::upper_bound(a.keys.begin(), a.keys.end(), nk, [](const AnimKey& x, const AnimKey& y) { return x.t < y.t; });
+        k = (int)(pos - a.keys.begin());
+        a.keys.insert(pos, nk);
+    }
+    return which == 0 ? &a.keys[k].firing : &a.keys[k].support;
+}
+
 // ---------------------------------------------------------------- the body
 // Body frame, millimetres: forward, up, right, from the aiming (right) eye. A grown man, roughly.
 namespace {
@@ -136,7 +170,7 @@ void poseView() {
 }
 
 void poseFocusHand(int hand) {
-    const Pose& P = A.design.pose;
+    const Pose P = viewPose();
     HandGeo g = handGeo(hand == 0 ? P.firing : P.support, hand == 0 ? 1 : -1);
     if (!g.on) return;
     A.poseHand = hand;
@@ -167,7 +201,7 @@ static Arm armTo(const Frame& F, const HandGeo& g, bool right) {
 PoseReport poseReport() {
     PoseReport R;
     Frame F = bodyFrame();
-    const Pose& P = A.design.pose;
+    const Pose P = viewPose();
     R.rightShort = armTo(F, handGeo(P.firing, 1), true).shortBy;
     R.leftShort = armTo(F, handGeo(P.support, -1), false).shortBy;
     if (P.butt.on) {
@@ -180,7 +214,7 @@ PoseReport poseReport() {
 
 void drawPoseBody() {
     Frame F = bodyFrame();
-    const Pose& P = A.design.pose;
+    const Pose P = viewPose();
     // head, neck, shoulders, chest
     drawSphereLit(bp(F, -82, 15, -32), 86 * U, BODY);
     capsule(bp(F, -95, -80, -32), bp(F, -120, -175, -32), 52 * U, BODY);
@@ -217,7 +251,8 @@ std::vector<PH> handles;
 }
 void drawPoseOverlay() {
     handles.clear();
-    const Pose& P = A.design.pose;
+    if (A.S && sim::animPlaying(*A.S)) return;   // playing on the gun: nothing to grab
+    const Pose P = viewPose();
     Vector2 m = GetMousePosition();
     auto dot = [&](Vector2 s, int id, Color c, const char* label) {
         bool hot = Vector2Distance(s, m) < 10 || A.poseDrag == id;
@@ -260,6 +295,7 @@ void drawPoseOverlay() {
 
 void poseInput(bool overUI) {
     auto& P = A.design.pose;
+    if (A.S && sim::animPlaying(*A.S)) return;   // playing on the gun
     if (A.poseDrag < 0) {
         if (overUI || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return;
         Vector2 m = GetMousePosition();
@@ -272,7 +308,7 @@ void poseInput(bool overUI) {
     }
     if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { A.poseDrag = -1; commit(); return; }
     if (A.poseDrag >= 20) {  // curl the picked digit: up opens it, down closes it
-        HandHold& h = A.poseHand == 0 ? P.firing : P.support;
+        HandHold& h = *editHand(A.poseHand == 0 ? 0 : 1);
         if (!h.digitsSet) { digitsOf(h, A.poseHand == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
         DigitPose& d = h.digits[A.poseDrag - 20];
         float dy = GetMouseDelta().y;
@@ -298,7 +334,7 @@ void poseInput(bool overUI) {
         h.eye.x += g.x / U; h.eye.y -= g.y / U;
         return;
     }
-    HandHold& h = A.poseDrag < 2 ? P.firing : A.poseDrag < 4 ? P.support : P.butt;
+    HandHold& h = *editHand(A.poseDrag < 2 ? 0 : A.poseDrag < 4 ? 1 : 2);
     Vector3 p;
     if (!onPlane((float)partZ(h.part) * U, p)) return;
     Vector3 q = Vector3Transform(p, inv);

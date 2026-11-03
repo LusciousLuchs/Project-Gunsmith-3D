@@ -55,6 +55,11 @@ struct App {
     double zDrag = 0, zDragLast = 0;     // depth dragged so far (Z lock), mm
     bool posing = false;                 // the bench's pose editor (app/pose.cpp)
     int poseHold = 0;                    // which hold is being posed (HOLD_AIM ...)
+    // recorded animations (Pose > Animations): editing one, which slot, the moment on its timeline shown, and a
+    // preview running (hands only, no physics)
+    bool animEdit = false, animPreview = false;
+    std::string animSlot = "reload";
+    double animT = 0;
     int poseDrag = -1;                   // the pose handle being dragged
     int poseHand = 0, poseDigit = DIGIT_INDEX;  // the hand whose fingers are shown (0 firing, 1 support, -1 none) and the digit picked                // the Face and Muzzle tools place this further chamber's points (-1: the first chamber)
     Sel sel;

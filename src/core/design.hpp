@@ -1,5 +1,6 @@
 // Gunsmith3D - design data (what the user draws). Units: millimetres, side elevation, y points down.
 #pragma once
+#include <map>
 #include <string>
 #include <vector>
 
@@ -254,11 +255,29 @@ struct BodyHold {
 };
 enum { HOLD_AIM, HOLD_HIP, HOLD_LOWERED, HOLD_COUNT };
 struct Pose { HandHold firing, support, butt; BodyHold hold[HOLD_COUNT]; };
+// A recorded hand animation (inspecting, reloading, working a control): keys on a timeline, each where both hands
+// are then. The hands start and end in the aiming hold and move smoothly through the keys. From a key that grips,
+// that hand holds the part it's on and pulls it along (through the physics) until a later key lets go. A key can
+// also drop the magazine or put a fresh one in. A slot with no keys isn't animated: the plain action happens instead.
+struct AnimKey {
+    double t = 0;                        // seconds from the start
+    HandHold firing, support;
+    bool gripF = false, gripS = false;   // from here, the hand holds its part and moves it
+    std::string event;                   // "" | "dropmag" (the magazine is let go) | "freshmag" (a new one goes in)
+};
+struct Animation { std::vector<AnimKey> keys; };   // kept in time order
+struct AnimHands { HandHold firing, support; bool gripF = false, gripS = false; };
 const char* holdName(int h);
 const char* holdKey(int h);
 double defaultHandAngle(const std::string& which, const std::string& style = "");   // firing, support, butt
 std::string heldWith(const struct Design& d);  // "one hand", "two hands", or "" with no firing hand placed
 BodyHold holdOf(const struct Design& d, int h); // the hold as posed, or one worked out from the gun
+// animations: the slots a gun has (the fixed ones, then one per control other than the trigger), their names, how
+// long one runs (its last key, then back to the hold), and where the hands are at a moment of it
+std::vector<std::string> animSlots(const struct Design& d);
+std::string animSlotName(const struct Design& d, const std::string& slot);
+double animLength(const Animation& a);
+AnimHands animAt(const struct Design& d, const Animation& a, double t);
 struct Design {
     std::string name = "Untitled action";
     double speed = 0.02;                 // slow-motion speed for shots
@@ -267,6 +286,7 @@ struct Design {
     std::vector<JointDef> joints;
     BreechDef breech;
     Pose pose;                           // how it's held (nothing placed in older blueprints)
+    std::map<std::string, Animation> anims;   // by slot: "inspect", "reload", "reload_empty", "clear_jam", "control:<part id>"
     // where the blueprint came from (filled in when loading; saving always writes the current version)
     int format = 1;                      // blueprint format number (GUNSMITH_BLUEPRINT_FORMAT when saved)
     std::string savedWith;               // app version that saved it, "" for blueprints older than versioning

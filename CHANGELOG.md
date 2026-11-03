@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.7-alpha
+
+### Hand animations (Test bench > Pose > Animations)
+- **Record animations with keyframes:** *Reload*, *Reload (empty)*, *Inspect*, *Clear a jam*, and one for each control (a magazine catch, a safety, any lever or button). Tick *Edit an animation*, pick one, move the time slider and drag a hand: a key is made there. The hands start and end in the aiming hold and move smoothly through your keys (a curve through the points, not straight jumps); their fingers blend from key to key.
+- **Hands work the real gun:** tick *grips its part* on a key and from there that hand holds the part it's on (a slide, a bolt handle, a catch) and moves it through the physics, until a later key lets go. So an animation can only do what the gun really allows: a slide pulled back too short won't chamber a round.
+- **Magazine moments:** a key can *drop* the magazine or put a *fresh one in*, so a reload works without animating the magazine itself.
+- **Preview** plays the hands alone; **Play on the gun** runs it for real. On the bench, **R** plays your *Reload* (or *Reload (empty)* when the gun is empty) and a control's key plays its animation. Anything not animated just happens, as before: nobody has to animate anything.
+- Tested: a reload on the blowback pistol (drop the empty magazine, fresh one in, the support hand racks the slide) leaves it loaded and firing.
+
 ## 0.2.6-alpha
 
 ### Fixes

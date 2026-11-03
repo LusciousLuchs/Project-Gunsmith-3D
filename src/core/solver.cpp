@@ -844,6 +844,7 @@ Body* placeSpawned(Sim& S, Body* slot, const Body& b) {
 }
 void retireBody(Sim& S, Body& b) {
     if (S.hand.on && S.hand.b == &b) S.hand.on = false;
+    for (auto& h : S.animHand) if (h.on && h.b == &b) h.on = false;
     if (b.mag && b.mag->top == &b) b.mag->top = nullptr;
     if (Joint* J = magwell(S); J && J->A == &b) { J->A = nullptr; J->attached = false; J->latched = false; }
     b.gone = true; b.fixed = true; b.loose = false; b.staged = false; b.rs = RS::None; b.mag = nullptr; b.top = nullptr;
@@ -1118,17 +1119,19 @@ void substep(Sim& S) {
         double lam = std::min(d / (wgt + alpha / (H * H)), p.force * H * H);
         solve(b, S.world, w, {w.x + p.dx * d, w.y + p.dy * d}, p.dx, p.dy, lam * wgt);
     }
-    // hand: a stiff grip that can push or pull with at most handStrength newtons
-    if (S.hand.on && S.hand.b && !S.hand.b->fixed) {
-        Body& b = *S.hand.b;
-        V2 p = wpt(b, S.hand.l);
-        double dx = S.hand.t.x - p.x, dy = S.hand.t.y - p.y, L = std::hypot(dx, dy);
+    // hands: a stiff grip that can push or pull with at most handStrength newtons (the mouse's, and an animation's two)
+    for (Sim::Hand* hp : {&S.hand, &S.animHand[0], &S.animHand[1]}) {
+        const Sim::Hand& hd = *hp;
+        if (!hd.on || !hd.b || hd.b->fixed || hd.b->gone) continue;
+        Body& b = *hd.b;
+        V2 p = wpt(b, hd.l);
+        double dx = hd.t.x - p.x, dy = hd.t.y - p.y, L = std::hypot(dx, dy);
         if (L > 1e-9) {
             Body& rb = b.root ? *b.root : b;
             double nx = dx / L, ny = dy / L, rx = p.x - rb.x, ry = p.y - rb.y, cr = rx * ny - ry * nx;
             double w = rb.invM + rb.invI * cr * cr, alpha = 1.0 / 30000.0;  // grip stiffness 30 kN/m
             double lam = std::min(L / (w + alpha / (H * H)), S.handStrength * H * H);
-            solve(b, S.world, p, S.hand.t, nx, ny, lam * w);
+            solve(b, S.world, p, hd.t, nx, ny, lam * w);
         }
     }
     for (auto& b : S.bodies) if (b.rollParent) reshapeRolled(b);
@@ -1342,10 +1345,56 @@ void substep(Sim& S) {
     }
 }
 
+// ---------- recorded animations: the hands move through the keys; a gripping hand holds its part and pulls it
+bool playAnim(Sim& S, const std::string& slot) {
+    auto it = S.design.anims.find(slot);
+    if (it == S.design.anims.end() || it->second.keys.empty()) return false;
+    S.animSlot = slot; S.animT = 0; S.animKeysDone = 0;
+    for (auto& h : S.animHand) h.on = false;
+    return true;
+}
+bool animPlaying(const Sim& S) { return S.animT >= 0; }
+AnimHands animHandsNow(const Sim& S) {
+    auto it = S.design.anims.find(S.animSlot);
+    if (S.animT < 0 || it == S.design.anims.end()) { AnimHands o; o.firing = S.design.pose.firing; o.support = S.design.pose.support; return o; }
+    return animAt(S.design, it->second, S.animT);
+}
+static void animTick(Sim& S) {
+    if (S.animT < 0) return;
+    auto it = S.design.anims.find(S.animSlot);
+    if (it == S.design.anims.end()) { S.animT = -1; return; }
+    const Animation& a = it->second;
+    S.animT += H;
+    while (S.animKeysDone < a.keys.size() && a.keys[S.animKeysDone].t <= S.animT) {   // a key passed: its event
+        const std::string& ev = a.keys[S.animKeysDone].event;
+        Joint* J = magwell(S);
+        if (ev == "dropmag") dropMagazine(S);
+        else if (ev == "freshmag" && J) {
+            if (J->A) quickReload(S); else spawnMagazine(S, {0, 0}, true);
+        }
+        S.animKeysDone++;
+    }
+    if (S.animT > animLength(a)) { S.animT = -1; for (auto& h : S.animHand) h.on = false; return; }
+    AnimHands hs = animAt(S.design, a, S.animT);
+    for (int k = 0; k < 2; k++) {
+        const HandHold& h = k == 0 ? hs.firing : hs.support;
+        bool grip = (k == 0 ? hs.gripF : hs.gripS) && h.on;
+        Sim::Hand& hd = S.animHand[k];
+        V2 target{h.at.x / 1000, h.at.y / 1000};
+        if (!grip) { hd.on = false; continue; }
+        if (!hd.on) {   // taking hold: of the part it's on, where the hand is
+            Body* b = nullptr;
+            for (auto& x : S.bodies) if (!x.gone && x.id == h.part) { b = &x; break; }
+            if (!b || b->fixed) continue;   // (a fixed part: nothing to move, the hand just rests on it)
+            hd.on = true; hd.b = b; hd.l = lpt(*b, target);
+        }
+        hd.t = target;
+    }
+}
 int run(Sim& S, double dt, int maxSteps) {
     int n = (int)std::lround(dt / H);
     if (maxSteps > 0) n = std::min(n, maxSteps);
-    for (int i = 0; i < n; i++) substep(S);
+    for (int i = 0; i < n; i++) { animTick(S); substep(S); }
     return n;
 }
 

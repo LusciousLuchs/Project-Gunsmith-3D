@@ -95,13 +95,25 @@ void handleKeys() {
         bool fire = (kb && actDown(Act::Fire)) || A.fireBtnHeld, mrel = (kb && actDown(Act::MagRelease)) || A.releaseBtnHeld;
         A.S->trigger = fire;
         sim::setKey(*A.S, "fire", fire);
+        // a control with a recorded animation: its key plays the animation (the hand works it) instead of pushing it
+        bool held[5] = {mrel, kb && actDown(Act::Control1), kb && actDown(Act::Control2), kb && actDown(Act::Control3), kb && actDown(Act::Control4)};
+        bool pressed[5] = {kb && actPressed(Act::MagRelease), kb && actPressed(Act::Control1), kb && actPressed(Act::Control2), kb && actPressed(Act::Control3), kb && actPressed(Act::Control4)};
+        const char* keyName[5] = {"magrelease", "k1", "k2", "k3", "k4"};
+        for (int k = 0; k < 5; k++)
+            for (auto& b : A.design.bodies) {
+                if (b.ctrl == "none" || b.key != keyName[k]) continue;
+                auto it = A.design.anims.find("control:" + b.id);
+                if (it == A.design.anims.end() || it->second.keys.empty()) continue;
+                if (pressed[k] && !sim::animPlaying(*A.S)) { A.S->design.anims = A.design.anims; sim::playAnim(*A.S, "control:" + b.id); }
+                held[k] = false;   // the hand does it
+            }
         // with a real catch button in the design, the key presses the button rather than releasing by magic
-        if (sim::hasControl(*A.S, "magrelease")) { sim::setKey(*A.S, "magrelease", mrel); A.S->magRelease = false; }
-        else A.S->magRelease = mrel;
-        sim::setKey(*A.S, "k1", kb && actDown(Act::Control1));
-        sim::setKey(*A.S, "k2", kb && actDown(Act::Control2));
-        sim::setKey(*A.S, "k3", kb && actDown(Act::Control3));
-        sim::setKey(*A.S, "k4", kb && actDown(Act::Control4));
+        if (sim::hasControl(*A.S, "magrelease")) { sim::setKey(*A.S, "magrelease", held[0]); A.S->magRelease = false; }
+        else A.S->magRelease = held[0];
+        sim::setKey(*A.S, "k1", held[1]);
+        sim::setKey(*A.S, "k2", held[2]);
+        sim::setKey(*A.S, "k3", held[3]);
+        sim::setKey(*A.S, "k4", held[4]);
         A.S->handStrength = A.handN;
     }
     if (!kb) return;
@@ -124,7 +136,13 @@ void handleKeys() {
     if (actPressed(Act::XRay) && !dragging) A.xray = !A.xray;
     if (actPressed(Act::Cutaway)) A.cutaway = !A.cutaway;
     if (A.mode == Mode::Test) {
-        if (actPressed(Act::Reload) && A.S) { sim::quickReload(*A.S); toast("Reloaded."); }
+        if (actPressed(Act::Reload) && A.S && !sim::animPlaying(*A.S)) {   // your reload animation, or the plain swap
+            sim::Body* m = sim::seatedMag(*A.S);
+            bool empty = !A.S->chambered && (!m || m->rounds == 0);
+            A.S->design.anims = A.design.anims;
+            if ((empty && sim::playAnim(*A.S, "reload_empty")) || sim::playAnim(*A.S, "reload")) toast("Reloading (your animation).");
+            else { sim::quickReload(*A.S); toast("Reloaded."); }
+        }
         if (actPressed(Act::NewMag)) spawnSpareMag();
         if (actPressed(Act::LooseRound)) spawnBenchRound();
         if (actPressed(Act::FillMags)) topUpMagazines();

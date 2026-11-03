@@ -1459,6 +1459,39 @@ static void magazinePositions() {
     R = sim::runReliability(up, o);
     CHECK(R.fired == 20 && R.jams <= 2, "and runs 20 rounds (the odd case falls back in through the port, now underneath)");
 }
+static void handAnimations() {
+    std::printf("handAnimations\n");
+    Design d = loadPreset("blowback");
+    d.breech.loaded = false;   // the magazine is in, the chamber empty: racking the slide must chamber a round
+    auto key = [](double t, V2 at, bool grip) {
+        AnimKey k; k.t = t;
+        k.support.on = true; k.support.part = "slide"; k.support.at = at; k.support.angle = 90; k.gripS = grip;
+        return k;
+    };
+    Animation rack;
+    rack.keys = {key(0.25, {30, 14}, true), key(0.45, {-8, 14}, true), key(0.5, {-8, 14}, false)};   // grip, pull back, let go
+    d.anims["clear_jam"] = rack;
+    Design back; designFromJson(designToJson(d), back);
+    CHECK(back.anims.count("clear_jam") && back.anims["clear_jam"].keys.size() == 3 && back.anims["clear_jam"].keys[0].gripS, "an animation is saved with the gun");
+    AnimHands mid = animAt(d, rack, 0.35);
+    CHECK(mid.support.on && mid.support.at.x < 30 && mid.support.at.x > -8 && mid.gripS, "between keys the hand is on its way, still gripping");
+    AnimHands a0 = animAt(d, rack, 0.3), a1 = animAt(d, rack, 0.4);
+    CHECK(a1.support.at.x < a0.support.at.x, "and moving the way the keys go");
+    auto S = sim::build(d);
+    sim::run(*S, 0.3);
+    CHECK(!S->chambered, "it starts with the chamber empty");
+    CHECK(!sim::playAnim(*S, "inspect") && sim::playAnim(*S, "clear_jam"), "an empty slot doesn't play; a recorded one does");
+    double furthest = 0;
+    for (int i = 0; i < 160 && sim::animPlaying(*S); i++) {
+        sim::run(*S, 0.005);
+        for (auto& b : S->bodies) if (b.id == "slide") furthest = std::max(furthest, (b.x0 - b.x) * 1000);
+    }
+    sim::run(*S, 0.3);
+    CHECK(furthest > 25, "the gripping hand pulled the slide back through the physics");
+    CHECK(S->chambered, "and racking it that way chambered a round");
+    Design old; designFromJson(designToJson(loadPreset("pump")), old);
+    CHECK(old.anims.empty(), "older guns have no animations: the plain actions happen");
+}
 static void benchBugs() {
     std::printf("Playtest bugs (0.2.1)\n");
     {   // the bench used to run out of room after about 200 reloads: no new magazine, the gun empty
@@ -1511,6 +1544,7 @@ int main() {
     liveMirrors();
     springBuckling();
     magazinePositions();
+    handAnimations();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

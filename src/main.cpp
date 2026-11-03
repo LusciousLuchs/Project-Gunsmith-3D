@@ -155,6 +155,10 @@ int main(int argc, char** argv) {
     }
     if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
     if (testArg || !demo.empty()) setMode(Mode::Test);
+    if (poseArg >= 0 && std::getenv("GUNSMITH_ANIM")) {   // (screenshots) "slot seconds": the animation editor at that moment
+        char slot[64] = {0}; double t = 0;
+        if (std::sscanf(std::getenv("GUNSMITH_ANIM"), "%63s %lf", slot, &t) >= 1) { A.animEdit = true; A.animSlot = slot; A.animT = t; }
+    }
     if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); if (std::getenv("GUNSMITH_POSEHAND")) poseFocusHand(std::atoi(std::getenv("GUNSMITH_POSEHAND"))); }
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
@@ -261,7 +265,7 @@ int main(int argc, char** argv) {
         ClearBackground(Color{30, 34, 41, 255});
         drawBackdrop(0, TOOLBAR_H, (float)A.vw, (float)A.vh);
         beginViewport3D();
-        if (A.posing) {  // the gun at this hold's tilt, and the mannequin holding it
+        if (A.posing || (A.S && sim::animPlaying(*A.S))) {  // the gun at this hold's tilt, and the mannequin holding it
             rlPushMatrix(); rlMultMatrixf(MatrixToFloat(poseGunMatrix())); drawScene(); rlPopMatrix();
             drawPoseBody();
         } else drawScene();

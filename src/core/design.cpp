@@ -938,6 +938,22 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.set) P[holdKey(h)] = {{"eye", v2j(b.eye)}, {"eyeZ", b.eyeZ}, {"yaw", b.yaw}, {"tilt", b.tilt}};
         }
         if (!P.empty()) o["pose"] = P;
+        json An = json::object();
+        for (auto& [slot, a] : d.anims) {
+            if (a.keys.empty()) continue;
+            json ks = json::array();
+            for (auto& k : a.keys) {
+                json jk{{"t", k.t}};
+                if (k.firing.on) jk["firing"] = hand(k.firing);
+                if (k.support.on) jk["support"] = hand(k.support);
+                if (k.gripF) jk["gripF"] = true;
+                if (k.gripS) jk["gripS"] = true;
+                if (!k.event.empty()) jk["event"] = k.event;
+                ks.push_back(jk);
+            }
+            An[slot] = ks;
+        }
+        if (!An.empty()) o["anims"] = An;
     }
     return pretty ? o.dump(2) : o.dump();
 }
@@ -1181,7 +1197,25 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             if (jh.contains("eye")) b.eye = j2v(jh["eye"]);
             b.eyeZ = opt<double>(jh, "eyeZ", 0.0); b.yaw = opt<double>(jh, "yaw", 0.0); b.tilt = opt<double>(jh, "tilt", 0.0);
         }
-    } else if (o.contains("grips") && o["grips"].is_array()) {  // grip markers (dev22-23): the first of each kind
+    }
+    if (o.contains("anims") && o["anims"].is_object())
+        for (auto& [slot, ks] : o["anims"].items()) {
+            if (!ks.is_array()) continue;
+            Animation a;
+            for (auto& jk : ks) {
+                if (!jk.is_object()) continue;
+                AnimKey k;
+                k.t = std::max(0.0, opt<double>(jk, "t", 0.0));
+                if (jk.contains("firing")) readHand(jk["firing"], k.firing, "firing");
+                if (jk.contains("support")) readHand(jk["support"], k.support, "support");
+                k.gripF = opt<bool>(jk, "gripF", false); k.gripS = opt<bool>(jk, "gripS", false);
+                k.event = opt<std::string>(jk, "event", "");
+                a.keys.push_back(k);
+            }
+            std::stable_sort(a.keys.begin(), a.keys.end(), [](const AnimKey& x, const AnimKey& y) { return x.t < y.t; });
+            if (!a.keys.empty()) d.anims[slot] = a;
+        }
+    if (!(o.contains("pose") && o["pose"].is_object()) && o.contains("grips") && o["grips"].is_array()) {  // grip markers (dev22-23): the first of each kind
         for (auto& jg : o["grips"]) {
             if (!jg.is_object()) continue;
             std::string k = opt<std::string>(jg, "kind", "firing");

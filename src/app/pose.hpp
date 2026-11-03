@@ -21,4 +21,7 @@ void drawPoseOverlay();          // handles and labels
 void poseInput(bool overUI);
 PoseReport poseReport();
 void poseDefaultHands();
+struct Pose; struct Animation; struct HandHold;
+Pose viewPose();                 // the pose as shown: the hold, or an animation where it has got to
+int animKeyAt(const Animation& a, double t);   // the key at this moment on the timeline, or -1
 void poseFocusHand(int hand);   // close up on a hand (0 firing, 1 support)         // put any missing firing hand where a hand would most likely go
