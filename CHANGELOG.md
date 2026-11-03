@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.11-alpha
+
+### A real thumb
+- **The thumb is built like a real one:** its first bone starts down by the wrist, beside the index finger's, and lies in the ball of the thumb; only its two short bones stand free. Before, it came out of the palm as three equal pieces, like a long fifth finger.
+- **It turns the way a thumb does:** its nail faces sideways and it curls across the palm toward the little finger, so it closes against the fingers instead of folding down like them. *Spread* opens it out into an L.
+- The ball of the thumb is fat at the wrist and narrows to its knuckle, with a web of skin to the index finger.
+- **Holding a pistol grip,** the thumb now wraps round to the far side of the frame, above the fingers, as on a real grip, instead of lying along the near side like a long finger.
+- In the finger panel, the thumb's joints are named *Root (by the wrist)*, *Knuckle* and *Tip joint*.
+- Hands you posed before keep their bends; the thumb just looks and curls like a thumb now.
+
 ## 0.2.10-alpha
 
 ### Shaping parts from any view

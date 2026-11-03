@@ -236,9 +236,24 @@ void drawPoseBody() {
         capsule(a.s, a.e, 46 * U, c);
         capsule(a.e, a.w, 38 * U, c);
         if (g.on) {
+            const HandBone *thumb = nullptr, *palmIndex = nullptr;
             for (auto& b : g.bones) {
                 bool picked = A.poseHand == side && b.digit == A.poseDigit && b.digit >= 0;
-                capsule(handPt(g.f, b.a), handPt(g.f, b.b), (float)b.radius * U, picked ? Color{240, 196, 150, 255} : SKIN);
+                Color col = picked ? Color{240, 196, 150, 255} : SKIN;
+                if (b.digit == DIGIT_THUMB && b.seg == 0) {   // the ball of the thumb: fat at the wrist, narrowing to its knuckle
+                    thumb = &b;
+                    HV m{(b.a.x + b.b.x) / 2, (b.a.y + b.b.y) / 2, (b.a.z + b.b.z) / 2};
+                    capsule(handPt(g.f, b.a), handPt(g.f, m), (float)b.radius * U, col);
+                    capsule(handPt(g.f, m), handPt(g.f, b.b), (float)(b.radius * 0.8) * U, col);
+                    continue;
+                }
+                if (b.name == "palm_index") palmIndex = &b;
+                capsule(handPt(g.f, b.a), handPt(g.f, b.b), (float)b.radius * U, col);
+            }
+            if (thumb && palmIndex) {   // the web of skin between the thumb and the index finger
+                auto lerp = [](HV a, HV b, double t) { return HV{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t}; };
+                for (double t : {0.35, 0.7})
+                    capsule(handPt(g.f, lerp(thumb->a, thumb->b, t)), handPt(g.f, lerp(palmIndex->a, palmIndex->b, 0.25 + 0.5 * t)), 9 * U, SKIN);
             }
         } else drawSphereLit(a.w, 45 * U, SKIN);
     }

@@ -155,6 +155,7 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
             }
             DigitPose& dp = h.digits[std::clamp(A.poseDigit, 0, DIGIT_COUNT - 1)];
             const char* jn[3] = {"Base joint", "Middle joint", "Tip joint"};
+            if (A.poseDigit == DIGIT_THUMB) { jn[0] = "Root (by the wrist)"; jn[1] = "Knuckle"; }
             for (int k = 0; k < 3; k++) { pNum(jn[k], dp.bend[k], 1, "%.0f\xc2\xb0", "+ curls it toward the palm."); dp.bend[k] = std::clamp(dp.bend[k], -25.0, 110.0); }
             pNum("Spread", dp.spread, 1, "%.0f\xc2\xb0", A.poseDigit == DIGIT_THUMB ? "+ swings the thumb away from the palm." : "+ swings it toward the little finger.");
             dp.spread = std::clamp(dp.spread, -40.0, 60.0);

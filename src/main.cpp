@@ -159,7 +159,8 @@ int main(int argc, char** argv) {
         char slot[64] = {0}; double t = 0;
         if (std::sscanf(std::getenv("GUNSMITH_ANIM"), "%63s %lf", slot, &t) >= 1) { A.animEdit = true; A.animSlot = slot; A.animT = t; }
     }
-    if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); if (std::getenv("GUNSMITH_POSEHAND")) poseFocusHand(std::atoi(std::getenv("GUNSMITH_POSEHAND"))); }
+    if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); if (std::getenv("GUNSMITH_POSEHAND")) poseFocusHand(std::atoi(std::getenv("GUNSMITH_POSEHAND")));
+        if (const char* c = std::getenv("GUNSMITH_POSECAM")) std::sscanf(c, "%f %f %f", &A.yaw, &A.pitch, &A.dist); }   // (screenshots) "yaw pitch dist" round the hand
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();
