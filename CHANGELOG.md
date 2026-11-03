@@ -15,7 +15,8 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - **Hands work the real gun:** tick *grips its part* on a key and from there that hand holds the part it's on (a slide, a bolt handle, a catch) and moves it through the physics, until a later key lets go. So an animation can only do what the gun really allows: a slide pulled back too short won't chamber a round.
 - **Magazine moments:** a key can *drop* the magazine or put a *fresh one in*, so a reload works without animating the magazine itself.
 - **Preview** plays the hands alone; **Play on the gun** runs it for real. On the bench, **R** plays your *Reload* (or *Reload (empty)* when the gun is empty) and a control's key plays its animation. Anything not animated just happens, as before: nobody has to animate anything.
-- Tested: a reload on the blowback pistol (drop the empty magazine, fresh one in, the support hand racks the slide) leaves it loaded and firing.
+- Tested: a reload on the blowback pistol (drop the empty magazine, fresh one in, the support hand racks the slide) leaves it loaded and firing, whether the gun was empty or still loaded.
+- Fixed on the way: a live round racked out slowly by hand used to drop onto the magazine's top round and shove it down into the magazine, so the slide closed on nothing (a failure to feed). It now lands on it, as empty cases already did.
 
 ## 0.2.6-alpha
 

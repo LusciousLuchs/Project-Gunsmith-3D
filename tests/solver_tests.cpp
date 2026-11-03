@@ -1489,6 +1489,18 @@ static void handAnimations() {
     sim::run(*S, 0.3);
     CHECK(furthest > 25, "the gripping hand pulled the slide back through the physics");
     CHECK(S->chambered, "and racking it that way chambered a round");
+    // racking a loaded gun by hand: the live round comes out and falls through the action without knocking the next
+    // one down into the magazine, so the slide still picks it up
+    Design ld = loadPreset("blowback");
+    ld.anims["clear_jam"] = rack;
+    auto L = sim::build(ld);
+    sim::run(*L, 0.3);
+    sim::playAnim(*L, "clear_jam");
+    while (sim::animPlaying(*L)) sim::run(*L, 0.01);
+    sim::run(*L, 0.4);
+    int out = 0;
+    for (auto& b : L->bodies) if (b.isRound && !b.isCase && !b.gone && b.rs == sim::RS::Loose) out++;
+    CHECK(out == 1 && L->chambered && L->malf == sim::Malf::None, "racking a loaded gun by hand throws the live round out and chambers the next");
     Design old; designFromJson(designToJson(loadPreset("pump")), old);
     CHECK(old.anims.empty(), "older guns have no animations: the plain actions happen");
 }

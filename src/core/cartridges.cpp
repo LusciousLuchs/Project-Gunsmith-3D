@@ -421,7 +421,7 @@ static void partContacts(Sim& S, Body& r, const Body* ignore = nullptr) {  // a 
         if (&P == &r || &P == ignore || !solidPart(S, P)) continue;
         // the top round under the lips is solid to a loose empty case (the spring holds it up); a round being fed
         // over it gives way to it instead
-        if (P.rs == RS::Presented && !(r.isCase && r.rs == RS::Free)) continue;
+        if (P.rs == RS::Presented && !((r.isCase || r.thrown) && r.rs == RS::Free)) continue;
         if (P.isRound) bbox(P);
         if (std::fabs(P.z - r.z) >= P.zh + r.zh) continue;
         if (P.bb[0] > r.bb[2] || r.bb[0] > P.bb[2] || P.bb[1] > r.bb[3] || r.bb[1] > P.bb[3]) continue;
@@ -445,7 +445,7 @@ static bool presentedContacts(Sim& S, Body& r, V2 f, V2 n, double stripped) {
     const Cartridge& c = S.design.breech.cart;
     for (auto& P : S.bodies) {
         if (&P == &r || !solidPart(S, P) || std::fabs(P.z - r.z) >= P.zh + r.zh) continue;
-        if (P.isCase && P.rs == RS::Free) continue;  // a loose empty case lands on it rather than pushing it down
+        if ((P.isCase || P.thrown) && P.rs == RS::Free) continue;  // a loose case (or a racked-out round) lands on it rather than pushing it down
         if (P.isRound) bbox(P);
         if (P.bb[0] > r.bb[2] || r.bb[0] > P.bb[2] || P.bb[1] > r.bb[3] || r.bb[1] > P.bb[3]) continue;
         for (auto& s : r.samples) {
@@ -705,6 +705,7 @@ static void chamberStep(Sim& S, bool main) {
                 double swing = std::remainder(b.a - ang, 2 * 3.14159265358979323846);
                 if (std::fabs(swing) > 18 * D2R && !b.inChamber) {  // knocked round off the claw: out it goes, sideways
                     setState(b, RS::Free);
+                    b.thrown = true;
                     // the ejector really spins it about the vertical and out to the side; drawn flat we only see the
                     // pitch, so hand most of the throw over to sideways motion
                     double dx = b.x - b.px, dy = b.y - b.py;  // velocities come from the positions after this

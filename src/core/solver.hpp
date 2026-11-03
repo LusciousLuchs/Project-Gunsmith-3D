@@ -72,6 +72,8 @@ struct Body {
     bool inChamber = false;              // its nose went into the chamber mouth straight: the chamber now guides it
     int slot = 0;                        // which chamber it belongs to (several chambers: see Sim::chambers)
     bool wasOut = false;                 // has been clear of the chamber (so going back in means seating it)
+    bool thrown = false;                 // knocked off the extractor (a case, or a live round racked out): it falls through
+                                         // the action and lands on what's below rather than pushing it
     double vz = 0;                       // sideways speed (m/s), for cases leaving through the ejection port
     Body* mag = nullptr;                 // presented: the magazine holding it
     V2 lipsL, feedL;                     // presented: where its head starts and the feed direction, in the magazine's frame
