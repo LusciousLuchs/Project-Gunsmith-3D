@@ -16,6 +16,7 @@
 #include "app/scene.hpp"
 #include "app/mapedit.hpp"
 #include "ui/ui.hpp"
+#include "app/range.hpp"
 #include "version.hpp"
 #include "imgui.h"
 #include "rlImGui.h"
@@ -42,6 +43,7 @@ int main(int argc, char** argv) {
     bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
     int introArg = 0;
     bool solidArg = false;
+    std::string rangeArg;
     int settingsPage = 0;
     bool useSettings = false;
     std::string mapArg; bool walkArg = false;
@@ -78,7 +80,8 @@ int main(int argc, char** argv) {
         else if (a == "--cart") cartArg = next();
         else if (a == "--reltest") relArg = std::atoi(next().c_str());
         else if (a == "--menu") menuArg = true;
-        else if (a == "--solid") solidArg = true;            // (screenshots) every part solid (the x-ray view off)
+        else if (a == "--solid") solidArg = true;
+        else if (a == "--range") rangeArg = next();          // (screenshots) the firing range with an example gun            // (screenshots) every part solid (the x-ray view off)
         else if (a == "--intro") introArg = 1;              // (screenshots) the launch splash
         else if (a == "--eula") introArg = 2;               // (screenshots) the agreement screen
         else if (a == "--usesettings") useSettings = true;  // (screenshots) honour the settings file            // (screenshots) stay on the main menu
@@ -182,9 +185,10 @@ int main(int argc, char** argv) {
         if (walkArg) meWalk(false);
     }
     if (tutListArg) A.showTutorials = true;
+    if (!rangeArg.empty()) enterRange(loadPreset(rangeArg), gmap::builtinRange());
     // a normal launch: the studio's splash, then the agreement until it's agreed to (screenshot runs skip them)
     if (introArg == 2) introForceEula();
-    else if (introArg == 1 || (!frames && !direct && mapArg.empty() && !tutListArg && tutArg <= 0 && !settingsArg)) introStart(false);
+    else if (introArg == 1 || (!frames && !direct && mapArg.empty() && !tutListArg && tutArg <= 0 && !settingsArg && rangeArg.empty())) introStart(false);
     if (tutArg > 0) startTutorial(tutArg - 1);
 
     int frame = 0;
@@ -209,6 +213,23 @@ int main(int argc, char** argv) {
         updateCamera();
         A.dist = keepDist;
 
+        if (A.screen == Screen::Range) {
+            bool modal = A.showPause || A.showSettings || A.showTutorials;
+            rangeUpdate(dt, modal);
+            BeginDrawing();
+            ClearBackground(Color{30, 34, 41, 255});
+            rangeRender();
+            rangeHud();
+            rlImGuiBegin();
+            if (A.showTutorials) tutorialsWindow();
+            else if (modal) pauseMenu();
+            toastOverlay();
+            rlImGuiEnd();
+            EndDrawing();
+            frame++;
+            if (frames && frame >= frames) { if (!shotPath.empty()) TakeScreenshot(shotPath.c_str()); break; }
+            continue;
+        }
         if (A.screen == Screen::MapEditor) {
             bool modal = A.showPause || A.showSettings || A.showTutorials;
             mapEditorUpdate(dt, modal);

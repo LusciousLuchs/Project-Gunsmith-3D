@@ -654,14 +654,17 @@ static void drawWorkbench() {
     drawCyl(P(gx1 + 230, ty, zm + 20), P(gx1 + 230, ty - 90, zm + 20), 26 * U, Color{176, 60, 48, 255});
     drawCyl(P(gx1 + 230, ty - 90, zm + 20), P(gx1 + 230, ty - 100, zm + 20), 9 * U, grey);
 }
-void drawScene() {
+static void drawSceneImpl(bool gunOnly);
+void drawScene() { drawSceneImpl(false); }
+void drawGunOnly() { drawSceneImpl(true); }   // (the firing range: just the gun, every part solid)
+static void drawSceneImpl(bool gunOnly) {
     auto& D = A.design;
     ensureMeshes();
     float py = plateY();
     SceneLook look = sceneLook();
-    setFog(A.showcase ? Color{16, 18, 22, 255} : look.fog);
+    if (!gunOnly) setFog(A.showcase ? Color{16, 18, 22, 255} : look.fog);
     bool building = A.mode == Mode::Build && !A.showcase;
-    if (!A.showcase && !A.posing) {
+    if (!A.showcase && !A.posing && !gunOnly) {
         // the bench always has a floor and a stand; the designer shows them only in the classic studio look
         if (!building || look.studs) {
             if (look.studs) DrawMesh(G.plate, G.plateMat, MatrixTranslate(A.target.x, py, 0));
@@ -669,16 +672,16 @@ void drawScene() {
             drawStands(py);
         }
     }
-    if (building && CFG.workbench && !A.showcase) drawWorkbench();
+    if (building && CFG.workbench && !A.showcase && !gunOnly) drawWorkbench();
     // drafting board behind the part plane
-    if (building) {
+    if (building && !gunOnly) {
         float back = 0;
         for (size_t i = 0; i < D.bodies.size(); i++) back = std::min(back, bodyZ((int)i) - bodyDepth(D.bodies[i]) / 2);
         drawBoard(back - 0.6f);
     }
     auto list = renderList();
     auto isGhost = [&](const RB& r) {
-        if (A.showcase) return false;  // on the menu it looks like a finished gun
+        if (A.showcase || gunOnly) return false;  // on the menu it looks like a finished gun
         const BodyDef& d = D.bodies[r.tmpl];
         if (building && A.sel.kind == 1 && A.sel.idx == r.tmpl && !d.magazine) return false;   // a selected magazine stays see-through: its rounds show
         if (A.cutaway && d.z - d.thick / 2 > 0.5) return true;  // wholly on the near side: cut away to show the inside

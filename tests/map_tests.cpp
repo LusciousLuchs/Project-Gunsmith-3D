@@ -64,7 +64,7 @@ void mapTests(int& failures) {
     std::printf("Maps: files\n");
     Map rng = builtinRange();
     Map back;
-    CHECK(mapFromJson(mapToJson(rng), back) && back.brushes.size() == rng.brushes.size() && back.ents.size() == 1, "a map saves and loads");
+    CHECK(mapFromJson(mapToJson(rng), back) && back.brushes.size() == rng.brushes.size() && back.ents.size() == rng.ents.size() && back.ents.back().type == "player_start", "a map saves and loads (its player start and paper targets too)");
     CHECK(back.brushes[0].faces[0].mat == rng.brushes[0].faces[0].mat, "materials survive by name");
     CHECK(!mapFromJson("{\"format\":\"something else\"}", back), "files that aren't maps are refused");
 

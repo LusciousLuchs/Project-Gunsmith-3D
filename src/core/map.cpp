@@ -445,6 +445,8 @@ Map builtinRange() {
         box({x, 0, z - 0.4}, {x + 0.08, 1.1, z - 0.33}, planks);
         box({x, 0, z + 0.33}, {x + 0.08, 1.1, z + 0.4}, planks);
         box({x - 0.01, 1.0, z - 0.45}, {x + 0.02, 1.9, z + 0.45}, ply);
+        Entity t; t.type = "target_paper"; t.pos = {x - 0.01, 1.45, z}; t.yaw = 180;   // a paper target on the board, facing the firing line
+        m.ents.push_back(t);
     }
     for (int k = -4; k <= 4; k++) {
         double z = k * 2.4, x = k % 2 == 0 ? 50 : 75;

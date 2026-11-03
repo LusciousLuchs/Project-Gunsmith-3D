@@ -20,7 +20,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
-enum class Screen { Menu, Workshop, MapEditor };  // the main menu, the designer / test bench, or the map editor
+enum class Screen { Menu, Workshop, MapEditor, Range };  // the main menu, the designer / test bench, the map editor, or the firing range
 enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Count };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction
@@ -31,7 +31,7 @@ struct Puff { Vector3 p, v; float r, life, max; };
 struct App {
     Screen screen = Screen::Menu;
     bool benchOnly = false;              // came in through Test Bench on the menu: no designer
-    bool showSettings = false, showPause = false, showBenchPicker = false, showTutorials = false;
+    bool showSettings = false, showPause = false, showBenchPicker = false, showTutorials = false, showRangePicker = false;
     int tutLesson = -1, tutStep = 0;     // the tutorial in progress (-1: none) and its step
     std::unique_ptr<Design> stash;       // the sandbox design, kept aside while another gun is on the bench
     bool saveDue = false; double lastSave = 0;

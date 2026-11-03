@@ -7,6 +7,8 @@
 #include "app/settings.hpp"
 #include "app/view.hpp"
 #include "ui/ui.hpp"
+#include "app/range.hpp"
+#include "map.hpp"
 #include "version.hpp"
 #include "imgui.h"
 
@@ -22,6 +24,7 @@
 namespace fs = std::filesystem;
 
 static float S() { return CFG.uiScale; }
+static const char* DISCORD_URL = "https://discord.gg/nHpYEKRjdn";   // the community server (a permanent invite)
 
 // A big text-only menu entry: dim until hovered, then bright with a short amber bar beside it.
 static bool menuItem(const char* label, bool enabled = true, const char* note = nullptr) {
@@ -61,6 +64,7 @@ void mainMenu() {
     if (A.showSettings) { settingsWindow(); return; }
     if (A.showBenchPicker) { benchPicker(); return; }
     if (A.showTutorials) { tutorialsWindow(); return; }
+    if (A.showRangePicker) { rangePicker(); return; }
     ImGui::SetNextWindowPos({0, 0});
     ImGui::SetNextWindowSize({(float)GetScreenWidth(), (float)GetScreenHeight()});
     ImGui::SetNextWindowBgAlpha(0);
@@ -78,10 +82,11 @@ void mainMenu() {
     if (menuItem("Tutorials", true, tutorialsDoneCount() == 0 ? "start here" : nullptr)) A.showTutorials = true;
     menuItem("Career", false, "coming later");
     if (menuItem("Sandbox")) enterWorkshop(false);
-    menuItem("Firing range", false, "coming soon");
+    if (menuItem("Firing range")) A.showRangePicker = true;
     if (menuItem("Map editor")) enterMapEditor();
     if (menuItem("Test bench")) A.showBenchPicker = true;
     if (menuItem("Settings")) A.showSettings = true;
+    if (menuItem("Discord", true, "join the community")) OpenURL(DISCORD_URL);
     if (menuItem("Quit")) A.quit = true;
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, GetScreenHeight() - 34 * S()});
@@ -106,6 +111,70 @@ void pauseMenu() {
     if (ImGui::Button(A.benchOnly ? "Leave the bench" : "Main menu", bw)) { uiTick(); backToMenu(); }
     if (A.screen == Screen::MapEditor) ImGui::TextDisabled("Your map is autosaved.");
     if (ImGui::Button("Quit to desktop", bw)) A.quit = true;
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------- firing range: which gun, which map
+void rangePicker() {
+    dimBackground(0.35f);
+    centerNext(520 * S(), 560 * S());
+    ImGui::Begin("##range", nullptr, PLAIN);
+    ImGui::PushFont(gFontBold, 20.0f);
+    ImGui::TextUnformatted("Firing range");
+    ImGui::PopFont();
+    ImGui::TextDisabled("Choose where to shoot, then the gun to take.");
+    ImGui::Dummy({0, 4 * S()});
+    // the map: the practice range, the one in the map editor, or a saved map
+    static int mapPick = 0;
+    std::vector<fs::path> maps;
+    if (fs::exists(MAPS_DIR))
+        for (auto& e : fs::directory_iterator(MAPS_DIR))
+            if (e.path().extension() == ".gsmap" && e.path().filename().string()[0] != '.') maps.push_back(e.path());
+    std::sort(maps.begin(), maps.end());
+    std::vector<std::string> names = {"Practice range", "Your map (in the map editor)"};
+    for (auto& m : maps) names.push_back(m.stem().string());
+    mapPick = std::clamp(mapPick, 0, (int)names.size() - 1);
+    ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Where"); ImGui::SameLine(90 * S()); ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##map", names[mapPick].c_str())) {
+        for (int i = 0; i < (int)names.size(); i++) if (ImGui::Selectable(names[i].c_str(), i == mapPick)) mapPick = i;
+        ImGui::EndCombo();
+    }
+    auto go = [&](const Design& d) {
+        gmap::Map m = gmap::builtinRange();
+        auto readMap = [&](const std::string& path) {
+            std::ifstream in(path); std::stringstream ss; ss << in.rdbuf();
+            gmap::Map mm;
+            if (in && gmap::mapFromJson(ss.str(), mm)) { m = mm; return true; }
+            return false;
+        };
+        if (mapPick == 1 && !readMap(std::string(MAPS_DIR) + "/.autosave.gsmap")) toast("No map in the map editor yet: off to the practice range.");
+        if (mapPick >= 2 && !readMap(maps[mapPick - 2].string())) toast("That map couldn't be read: off to the practice range.");
+        uiTick();
+        enterRange(d, m);
+    };
+    ImGui::BeginChild("##list", {0, -44 * S()});
+    ImGui::SeparatorText("Your sandbox design");
+    if (ImGui::Selectable((A.design.name + "##cur").c_str())) go(A.design);
+    ImGui::SeparatorText("Examples");
+    for (auto& p : presetList()) {
+        if (std::string(p.key) == "blank") continue;
+        if (ImGui::Selectable(p.label)) go(loadPreset(p.key));
+    }
+    std::vector<fs::path> files;
+    if (fs::exists(GUNS_DIR))
+        for (auto& e : fs::directory_iterator(GUNS_DIR)) if (e.path().extension() == ".json") files.push_back(e.path());
+    std::sort(files.begin(), files.end());
+    ImGui::SeparatorText("Your blueprints");
+    if (files.empty()) ImGui::TextDisabled("None saved yet. Save one from the Sandbox.");
+    for (auto& f : files) {
+        if (!ImGui::Selectable(f.stem().string().c_str())) continue;
+        std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
+        Design d;
+        if (designFromJson(ss.str(), d)) go(d);
+        else toast("That blueprint couldn't be read.");
+    }
+    ImGui::EndChild();
+    if (ImGui::Button("Back", {120 * S(), 32 * S()}) || IsKeyPressed(KEY_ESCAPE)) { uiTick(); A.showRangePicker = false; }
     ImGui::End();
 }
 

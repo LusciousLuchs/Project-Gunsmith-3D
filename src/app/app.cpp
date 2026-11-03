@@ -1,5 +1,6 @@
 // Gunsmith3D - Shared app state, small helpers, undo, modes.
 #include "app/app.hpp"
+#include "app/range.hpp"
 #include "app/mapedit.hpp"
 #include "app/settings.hpp"
 #include "app/view.hpp"
@@ -143,12 +144,13 @@ void enterBenchWith(const Design& d) {
 }
 void backToMenu() {
     if (A.screen == Screen::MapEditor) leaveMapEditor();
+    if (A.screen == Screen::Range) leaveRange();
     resetSim(); A.mode = Mode::Build;
     if (A.stash) { A.design = *A.stash; A.stash.reset(); A.lastSnap = designToJson(A.design); }
     if (A.saveDue && CFG.autosave != AutosaveEvery::Off) save();
     A.screen = Screen::Menu;
     A.benchOnly = false;
-    A.showPause = A.showSettings = A.showBenchPicker = false;
+    A.showPause = A.showSettings = A.showBenchPicker = A.showRangePicker = false;
     A.sel = {};
     fitView();
 }

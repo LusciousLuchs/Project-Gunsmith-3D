@@ -258,7 +258,8 @@ int fillMagazines(Sim& S);                                 // top up every magaz
 // has touched for `magLife` seconds; and keep at most `maxLoose` magazines lying out, clearing the oldest first (never one
 // in the gun or in the hand). Real time, so slow motion doesn't keep them about. Returns how many were removed.
 int tidy(Sim& S, double dt, double caseLife = 10, double magLife = 20, int maxLoose = 6);
-int looseMagazines(Sim& S);                                // magazines lying out of the gun (not held)
+int looseMagazines(Sim& S);
+void retireBody(Sim& S, Body& b);                          // take a spawned or loose body away (its room is reused)                                // magazines lying out of the gun (not held)
 bool handLoad(Sim& S);                                     // drop a round straight into an open chamber (shortcut)
 // loose rounds: physical cartridges. Hold one in the open action, in line with the bore and in front of the
 // breech face, and it drops into place; closing the breech (or pushing it by hand) seats it in the chamber.
