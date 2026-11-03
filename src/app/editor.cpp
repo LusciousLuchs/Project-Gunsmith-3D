@@ -1,5 +1,6 @@
 // Gunsmith3D - Build mode: editing operations and the drawing tools.
 #include "app/app.hpp"
+#include "app/settings.hpp"
 #include "carve.hpp"
 #include "app/carvetool.hpp"
 #include "app/gfx.hpp"
@@ -347,7 +348,19 @@ void buildInput(bool overUI) {
         bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         if (auto* h = handleAt(m)) {
             Handle hh = *h;
-            A.dragKind = 1; A.dragH = hh; A.dragMoved = false;
+            // a joint's handles (a pin, a track and its slot, a spring's ends, a magazine well) and the breech face
+            // and muzzle: the first click only selects; press again on it to drag it
+            if (hh.kind >= 1 && hh.kind <= 4 && hh.i >= 0 && !(A.sel.kind == 2 && A.sel.idx == hh.i)) {
+                A.sel = {2, hh.i, -1}; A.selVs.clear(); A.armedKind = -1; A.dragKind = 0;
+                toast("Selected. Drag it to move it.");
+                return;
+            }
+            if ((hh.kind == 5 || hh.kind == 6) && !(A.armedKind == hh.kind && A.armedI == hh.i)) {
+                A.armedKind = hh.kind; A.armedI = hh.i; A.dragKind = 0;
+                toast(hh.kind == 5 ? "Breech face picked. Drag it to move it." : "Muzzle picked. Drag it to move it.");
+                return;
+            }
+            A.dragKind = 1; A.dragH = hh; A.dragMoved = false; A.dragPress = m; A.dragLive = false;
             if (hh.kind == 0 || hh.kind == 7) {
                 auto& d = A.design.bodies[hh.i];
                 fixShape(d);
@@ -388,8 +401,9 @@ void buildInput(bool overUI) {
                     if (hits[k].body == A.sel.idx || std::find(grp.begin(), grp.end(), hits[k].body) != grp.end()) pos = (int)k;
                 for (size_t k = 0; k < hits.size(); k++) if (hits[k].body == A.sel.idx) pos = (int)k;  // (itself, if it's there)
             }
+            A.armedKind = -1;
             if (pos >= 0) {
-                A.dragKind = 2; A.dragStart = w; A.dragLast = {0, 0}; A.dragMoved = false;
+                A.dragKind = 2; A.dragStart = w; A.dragLast = {0, 0}; A.dragMoved = false; A.dragPress = m; A.dragLive = false;
                 A.pressNext = hits.size() > 1 ? hits[(pos + 1) % hits.size()].body : -1;
             } else {
                 A.sel = {1, hits[0].body, -1}; A.selVs.clear(); A.selCarve = -1;
@@ -399,7 +413,7 @@ void buildInput(bool overUI) {
             return;
         }
         // empty space: box-select vertices of the selected part (a plain click deselects)
-        A.boxing = true; A.boxStart = m;
+        A.boxing = true; A.boxStart = m; A.armedKind = -1;
         return;
     }
     if (A.boxing && !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
@@ -500,7 +514,10 @@ void buildInput(bool overUI) {
         return;
     }
     if (A.dragKind == 1 || A.dragKind == 2) {
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        // a click that wobbles a little isn't a drag: nothing moves until the mouse has gone a few pixels
+        if (!A.dragLive && Vector2Distance(m, A.dragPress) >= 5 * CFG.uiScale) A.dragLive = true;
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !A.dragLive) {}
+        else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
             // X, Y or Z while dragging: keep to one axis (press it again to free it). Z moves a part in depth.
             for (auto [key, ax] : {std::pair{KEY_X, 1}, std::pair{KEY_Y, 2}, std::pair{KEY_Z, 3}})
                 if (IsKeyPressed(key)) {

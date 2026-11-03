@@ -118,7 +118,7 @@ The panel on the right has four tabs:
 - **Firing:** breech and barrel, cartridge, feeding and firing.
 - **File:** save, open, and start from an example.
 
-Drag a number sideways to scrub it, or click it without dragging to type an exact value. Sliders take a double-click (or Ctrl+click) to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
+In the view, click anything (a part, a spring end, a track, a pin, the breech face or muzzle) to select it, then drag it to move it: the first click never moves anything. Drag a number sideways to scrub it, or click it without dragging to type an exact value. Sliders take a double-click (or Ctrl+click) to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
 
 ## Building blocks
 

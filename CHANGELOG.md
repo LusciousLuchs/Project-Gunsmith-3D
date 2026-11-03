@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.13-alpha
+
+### No more moving things by accident (designer)
+- **Click to select, then drag to move,** for everything: parts (as before), and now spring ends, tracks and their slot points, pins, magazine wells, and the breech face and muzzle markers. The first click only picks it (a breech face or muzzle gets a yellow ring); press on it again and drag to move it.
+- **Faces tool:** the first click on a part selects it; then drag its faces or corners.
+- **A small dead zone:** a press only becomes a drag once the mouse has moved a few pixels, so a click with a slight wobble never nudges a part, corner, face or handle.
+
 ## 0.2.12-alpha
 
 ### A more mobile hand (Test bench > Pose)

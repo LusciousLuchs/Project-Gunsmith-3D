@@ -3,6 +3,7 @@
 // near or far face grows a new piece, welded on, that you pull out to any depth).
 #include "app/faces.hpp"
 #include "app/app.hpp"
+#include "app/settings.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
 #include "carve.hpp"
@@ -145,7 +146,7 @@ void apply() {
 
 void begin(const App::FacePick& f, bool follow, bool extrude) {
     BodyDef& d0 = A.design.bodies[f.body];
-    A.faceDrag = f; A.faceDragging = true; A.faceFollow = follow; A.faceExtruded = false;
+    A.faceDrag = f; A.faceDragging = true; A.faceFollow = follow; A.faceExtruded = false; A.faceLive = false;
     A.faceStart = GetMousePosition();
     if (extrude && f.kind == 0) {   // a side wall: two new corners where the edge was, drawn out as a new wall
         BodyDef& d = d0;
@@ -269,7 +270,11 @@ void cornerApply() {
 void facesInput(bool overUI) {
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     if (A.cornerDragging) {
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { cornerApply(); return; }
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+            if (!A.faceLive && Vector2Distance(GetMousePosition(), A.faceStart) >= 5 * CFG.uiScale) A.faceLive = true;
+            if (A.faceLive) cornerApply();
+            return;
+        }
         A.cornerDragging = false;
         commit();
         return;
@@ -292,7 +297,7 @@ void facesInput(bool overUI) {
             BodyDef& d = A.design.bodies[A.sel.idx];
             fixShape(d);
             ensureDepth(d);
-            A.cornerDrag = A.cornerHover; A.cornerDragging = true; A.cornerZDrag = 0;
+            A.cornerDrag = A.cornerHover; A.cornerDragging = true; A.cornerZDrag = 0; A.faceStart = GetMousePosition(); A.faceLive = false;
             const auto& c = A.cornerDrag;
             A.cornerOrigZ = (c.far ? d.depthZf : d.depthZn)[c.idx];
             Vector3 v = mouseRay().direction;   // the plane to drag in: the one the view looks at most
@@ -303,7 +308,9 @@ void facesInput(bool overUI) {
         if (A.cornerHover.body >= 0) { A.faceHover = {}; return; }
     }
     if (A.faceDragging) {
-        apply();
+        // a click that wobbles a little isn't a push: nothing moves until the mouse has gone a few pixels
+        if (!A.faceFollow && !A.faceLive && Vector2Distance(GetMousePosition(), A.faceStart) >= 5 * CFG.uiScale) A.faceLive = true;
+        if (A.faceFollow || A.faceLive) apply();
         bool cancel = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_ESCAPE);
         if (cancel) { finish(false); return; }
         if (A.faceFollow ? IsMouseButtonPressed(MOUSE_BUTTON_LEFT) : !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) finish(true);
@@ -312,7 +319,14 @@ void facesInput(bool overUI) {
     A.faceHover = overUI ? App::FacePick{} : pick(mouseRay(), A.tool == Tool::Faces ? -1 : (A.sel.kind == 1 ? A.sel.idx : -2));
     if (A.faceHover.body < 0) return;
     if (IsKeyPressed(KEY_E) && !ImGui::GetIO().WantCaptureKeyboard) { begin(A.faceHover, true, true); return; }
-    if (A.tool == Tool::Faces && !overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) begin(A.faceHover, false, shift);
+    if (A.tool == Tool::Faces && !overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (!(A.sel.kind == 1 && A.sel.idx == A.faceHover.body)) {   // the first click picks the part; then drag its faces
+            A.sel = {1, A.faceHover.body, -1}; A.selVs.clear();
+            toast("Selected. Now drag one of its faces, or its corners.");
+            return;
+        }
+        begin(A.faceHover, false, shift);
+    }
 }
 
 void drawFaces() {

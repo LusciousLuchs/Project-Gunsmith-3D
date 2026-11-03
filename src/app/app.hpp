@@ -81,6 +81,7 @@ struct App {
     struct FacePick { int body = -1, kind = 0, edge = -1; Vector3 at{}; };
     FacePick faceHover, faceDrag;
     bool faceDragging = false, faceFollow = false, faceExtruded = false;   // follow: E pressed, finish with a click
+    bool faceLive = false;               // a face or corner drag has gone past the few-pixel dead zone
     std::vector<V2> faceOrig; double faceOrigZ = 0, faceOrigThick = 0; std::vector<CarveDef> faceOrigCarves;
     Vector2 faceStart{};
     // the selected part's corners in 3D (Faces tool): one on the near face and one on the far face for each, dragged on
@@ -99,6 +100,9 @@ struct App {
     Handle dragH{};
     V2 dragStart{}, dragLast{};
     bool dragMoved = false;
+    Vector2 dragPress{};                 // where the mouse went down: nothing moves until it has gone a few pixels (dragLive)
+    bool dragLive = false;
+    int armedKind = -1, armedI = -2;     // the breech face or muzzle handle clicked once: a second press drags it
     Vector2 pressPos{};
     float lastClickT = -1; Vector2 lastClickPos{};
     std::vector<Handle> handles;
