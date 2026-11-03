@@ -289,7 +289,7 @@ void drawPoseOverlay() {
         dot(toScreen(gunPt(h.at, z)), k * 2, c, names[k]);
         dot(b, k * 2 + 1, c, nullptr);
     }
-    // the picked hand's fingertips: click one to pick it, drag up or down to curl it
+    // the picked hand's fingertips: drag one and it follows the mouse (Shift: just curl it)
     if (A.poseHand >= 0) {
         HandGeo g = handGeo(A.poseHand == 0 ? P.firing : P.support, A.poseHand == 0 ? 1 : -1);
         if (g.on)
@@ -300,7 +300,7 @@ void drawPoseOverlay() {
                     Color c = picked ? Color{255, 205, 60, 255} : Color{240, 196, 150, 255};
                     bool hot = Vector2Distance(s, m) < 8 || A.poseDrag == 20 + b.digit;
                     DrawCircleV(s, hot || picked ? 5.f : 3.5f, c);
-                    if (hot) viewText(digitName(b.digit), s.x + 8, s.y - 16 * CFG.uiScale, 11, c);
+                    if (hot) viewText(TextFormat("%s: drag it anywhere (Shift: curl)", digitName(b.digit)), s.x + 8, s.y - 16 * CFG.uiScale, 11, c);
                     handles.push_back({s, 20 + b.digit});
                 }
     }
@@ -322,13 +322,40 @@ void poseInput(bool overUI) {
         return;
     }
     if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { A.poseDrag = -1; commit(); return; }
-    if (A.poseDrag >= 20) {  // curl the picked digit: up opens it, down closes it
+    if (A.poseDrag >= 20) {
+        int side = A.poseHand == 0 ? 1 : -1, digit = A.poseDrag - 20;
         HandHold& h = *editHand(A.poseHand == 0 ? 0 : 1);
         if (!h.digitsSet) { digitsOf(h, A.poseHand == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
-        DigitPose& d = h.digits[A.poseDrag - 20];
-        float dy = GetMouseDelta().y;
-        const double share[3] = {0.35, 0.4, 0.25};
-        for (int s = 0; s < 3; s++) d.bend[s] = std::clamp(d.bend[s] + dy * share[s] * 1.2, -25.0, 110.0);
+        DigitPose& d = h.digits[digit];
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {   // Shift: just curl it, up opens, down closes
+            float dy = GetMouseDelta().y;
+            const double share[3] = {0.35, 0.4, 0.25};
+            for (int s = 0; s < 3; s++) d.bend[s] += dy * share[s] * 1.2;
+            clampDigit(digit, d);
+            return;
+        }
+        // the tip follows the mouse: along the mouse's line of sight, at the tip's present depth if it can reach that,
+        // or else the nearest depth it can reach (so dragging over the palm brings the thumb onto the palm)
+        HandGeo g = handGeo(h, side);
+        if (!g.on) return;
+        Vector3 o = handPt(g.f, {0, 0, 0});   // handPt is affine: origin plus three columns
+        Vector3 cx = Vector3Subtract(handPt(g.f, {1, 0, 0}), o), cy = Vector3Subtract(handPt(g.f, {0, 1, 0}), o), cz = Vector3Subtract(handPt(g.f, {0, 0, 1}), o);
+        Matrix Mi = MatrixInvert(Matrix{cx.x, cy.x, cz.x, o.x, cx.y, cy.y, cz.y, o.y, cx.z, cy.z, cz.z, o.z, 0, 0, 0, 1});
+        Ray r = mouseRay();
+        Vector3 ro = Vector3Transform(r.position, Mi), rd = Vector3Normalize(Vector3Subtract(Vector3Transform(Vector3Add(r.position, r.direction), Mi), ro));
+        HV tip = digitTip(h.digits, digit), root{};
+        double reach = 0;
+        for (auto& b : g.bones) if (b.digit == digit) { if (b.seg == 0) root = b.a; reach += std::sqrt((b.b.x - b.a.x) * (b.b.x - b.a.x) + (b.b.y - b.a.y) * (b.b.y - b.a.y) + (b.b.z - b.a.z) * (b.b.z - b.a.z)); }
+        reach *= 0.95;
+        auto along = [&](HV p) { return (p.x - ro.x) * rd.x + (p.y - ro.y) * rd.y + (p.z - ro.z) * rd.z; };
+        double t = along(tip), tr = along(root);
+        Vector3 c = Vector3Add(ro, Vector3Scale(rd, (float)tr));
+        double off2 = (c.x - root.x) * (c.x - root.x) + (c.y - root.y) * (c.y - root.y) + (c.z - root.z) * (c.z - root.z);
+        if (off2 < reach * reach) { double hw = std::sqrt(reach * reach - off2); t = std::clamp(t, tr - hw, tr + hw); }
+        else t = tr;
+        if (t <= 0) return;
+        Vector3 hp = Vector3Add(ro, Vector3Scale(rd, (float)t));
+        reachDigit(h.digits, digit, {hp.x, hp.y, hp.z});
         return;
     }
     Ray r = mouseRay();

@@ -72,6 +72,7 @@ HandHold handAt(const HandHold& base, const std::vector<AnimKey>& keys, bool fir
         for (int d = 0; d < DIGIT_COUNT; d++) {
             for (int s = 0; s < 3; s++) out.digits[d].bend[s] = da[d].bend[s] + (db[d].bend[s] - da[d].bend[s]) * u;
             out.digits[d].spread = da[d].spread + (db[d].spread - da[d].spread) * u;
+            out.digits[d].oppose = da[d].oppose + (db[d].oppose - da[d].oppose) * u;
         }
     }
     if (u > 0.5) out.part = b.part;

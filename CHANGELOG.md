@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.12-alpha
+
+### A more mobile hand (Test bench > Pose)
+- **Drag a fingertip anywhere** and the digit follows the mouse: all its joints move together to get the tip there, within what a real hand can do. Dragging over the palm brings the thumb down onto the palm; drag it onto a fingertip to make an "OK" sign. **Shift-drag** still just curls it, as before.
+- **The thumb swings across the palm** (new *Across the palm* setting under Fingers): it comes round in front of the palm and turns as it goes, so its pad meets the fingers' pads. Tested: the thumb can touch the tip of every finger, the little finger's too.
+- **Real joint ranges:** each joint stops where a real one does. A finger's base joint bends from -25 to 95 degrees, its middle joint from 0 to 110. The thumb's root goes from -20 to 55 and its knuckle from -15 to 70. Its spread goes from -20 to 70, and it swings up to 100 across the palm. The fields in the panel keep to these ranges too.
+- Animations blend the thumb's swing from key to key. Hands posed before keep their pose: they just have no swing across the palm.
+
 ## 0.2.11-alpha
 
 ### A real thumb

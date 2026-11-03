@@ -244,6 +244,7 @@ enum { DIGIT_THUMB, DIGIT_INDEX, DIGIT_MIDDLE, DIGIT_RING, DIGIT_PINKY, DIGIT_CO
 struct DigitPose {
     double bend[3] = {0, 0, 0};   // degrees at each joint from the base: + curls toward the palm
     double spread = 0;            // degrees sideways at the base (+ toward the little finger; the thumb: away from the palm)
+    double oppose = 0;            // the thumb only: degrees it swings round in front of the palm to meet the fingers
 };
 struct HandHold {
     bool digitsSet = false;        // false: a preset that suits the hand (core/hand.cpp)

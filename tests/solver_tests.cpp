@@ -1587,6 +1587,56 @@ static void depthShaping() {
     CHECK(front < 35 && rear > 60, "a part at the front stops on the tall face; at the back it clears the low one");
 }
 
+static void handMobility() {
+    std::printf("handMobility\n");
+    DigitPose dg[DIGIT_COUNT];
+    HandHold h; applyHandPreset(h, "support", "open");
+    for (int d = 0; d < DIGIT_COUNT; d++) dg[d] = h.digits[d];
+    auto dist = [](HV a, HV b) { return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z)); };
+    {   // the thumb's root sits by the wrist, and only its two phalanges stand free
+        auto bones = handBones(dg);
+        HV root{}, knuckle{};
+        for (auto& b : bones) if (b.name == "thumb_01") { root = b.a; knuckle = b.b; }
+        CHECK(root.x < -25 && knuckle.x < 15, "the thumb's first bone runs from by the wrist to about the middle of the palm");
+    }
+    {   // opposition: the thumb's tip can meet each fingertip, the little finger's too
+        int met = 0;
+        for (int f = DIGIT_INDEX; f <= DIGIT_PINKY; f++) {
+            DigitPose p[DIGIT_COUNT]; for (int d = 0; d < DIGIT_COUNT; d++) p[d] = dg[d];
+            p[f].bend[0] = 60; p[f].bend[1] = 70; p[f].bend[2] = 35;   // the finger curls to meet it
+            double left = reachDigit(p, DIGIT_THUMB, digitTip(p, f), 80);
+            std::printf("    thumb to %s: %.1f mm left, across the palm %.0f\n", digitName(f), left, p[DIGIT_THUMB].oppose);
+            if (left < 15) met++;   // the pads touch (they are about 17 mm across together)
+        }
+        CHECK(met == 4, "the thumb reaches every fingertip");
+    }
+    {   // reaching stays within what a hand can do, and a far-off target just gets as near as it can
+        DigitPose p[DIGIT_COUNT]; for (int d = 0; d < DIGIT_COUNT; d++) p[d] = dg[d];
+        reachDigit(p, DIGIT_INDEX, {300, 300, 300});
+        double lo[5], hi[5]; digitLimits(DIGIT_INDEX, lo, hi);
+        bool inside = p[DIGIT_INDEX].spread >= lo[0] - 1e-9 && p[DIGIT_INDEX].spread <= hi[0] + 1e-9;
+        for (int k = 0; k < 3; k++) inside &= p[DIGIT_INDEX].bend[k] >= lo[k + 1] - 1e-9 && p[DIGIT_INDEX].bend[k] <= hi[k + 1] + 1e-9;
+        CHECK(inside && p[DIGIT_INDEX].oppose == 0, "joints stay within their limits; only the thumb swings across the palm");
+        DigitPose q[DIGIT_COUNT]; for (int d = 0; d < DIGIT_COUNT; d++) q[d] = dg[d];
+        HV tip = digitTip(q, DIGIT_MIDDLE);
+        double before = q[DIGIT_MIDDLE].bend[0];
+        reachDigit(q, DIGIT_MIDDLE, tip);
+        CHECK(std::fabs(q[DIGIT_MIDDLE].bend[0] - before) < 1e-9, "reaching where it already is moves nothing");
+        q[DIGIT_THUMB].oppose = 45; reachDigit(q, DIGIT_MIDDLE, {tip.x - 10, tip.y + 15, tip.z});
+        CHECK(dist(digitTip(q, DIGIT_MIDDLE), {tip.x - 10, tip.y + 15, tip.z}) < 1, "a fingertip goes where it's dragged");
+    }
+    {   // the swing across the palm saves; older hands load with none
+        Design d = loadPreset("blowback");
+        applyHandPreset(d.pose.firing, "firing", "grip");
+        d.pose.firing.digits[DIGIT_THUMB].oppose = 37;
+        Design back; designFromJson(designToJson(d), back);
+        CHECK(std::fabs(back.pose.firing.digits[DIGIT_THUMB].oppose - 37) < 1e-9, "the thumb's swing across the palm is saved");
+        std::string js = designToJson(d);
+        size_t at = js.find("37");
+        CHECK(at != std::string::npos, "(written)");
+    }
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1623,6 +1673,7 @@ int main() {
     magazinePositions();
     handAnimations();
     depthShaping();
+    handMobility();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

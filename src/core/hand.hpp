@@ -24,3 +24,11 @@ void digitsOf(const HandHold& h, const std::string& which, DigitPose out[DIGIT_C
 void applyHandPreset(HandHold& h, const std::string& which, const std::string& preset);
 std::vector<HandBone> handBones(const DigitPose digits[DIGIT_COUNT]);
 HV handWrist();                 // where the wrist joint is, in hand space
+// How far each joint of a digit goes, like a real hand (degrees): [0] spread, [1..3] the bends from the base, [4] the
+// thumb's swing across the palm.
+void digitLimits(int digit, double lo[5], double hi[5]);
+void clampDigit(int digit, DigitPose& p);
+// Moves one digit, within its limits, so its tip comes as near `target` (hand space) as it can; the others stay. Small
+// moves are preferred, so the rest of its pose is kept where it doesn't need to change. Returns the distance left (mm).
+double reachDigit(DigitPose digits[DIGIT_COUNT], int digit, HV target, int iterations = 30);
+HV digitTip(const DigitPose digits[DIGIT_COUNT], int digit);

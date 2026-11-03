@@ -81,6 +81,10 @@ std::vector<HandBone> handBones(const DigitPose digits[DIGIT_COUNT]) {
             HV ka = norm(cross(dir, away));
             dir = rotate(dir, ka, P.spread * D2R_);
             curl = rotate(curl, ka, P.spread * D2R_);
+            // opposition: the whole thumb swings round the palm's long axis, from beside the index finger to in front
+            // of the palm, turning as it goes so its pad comes to face the fingers' pads
+            dir = rotate(dir, {1, 0, 0}, P.oppose * D2R_);
+            curl = rotate(curl, {1, 0, 0}, P.oppose * D2R_);
             k = norm(cross(dir, curl));
             up = mul(curl, -1);
         } else {
@@ -100,4 +104,75 @@ std::vector<HandBone> handBones(const DigitPose digits[DIGIT_COUNT]) {
         }
     }
     return out;
+}
+
+void digitLimits(int digit, double lo[5], double hi[5]) {
+    if (digit == DIGIT_THUMB) {   // spread, root, knuckle, tip, across the palm
+        const double l[5] = {-20, -20, -15, -25, 0}, h[5] = {70, 55, 70, 85, 100};
+        for (int i = 0; i < 5; i++) lo[i] = l[i], hi[i] = h[i];
+    } else {
+        const double l[5] = {-25, -25, 0, -10, 0}, h[5] = {25, 95, 110, 90, 0};
+        for (int i = 0; i < 5; i++) lo[i] = l[i], hi[i] = h[i];
+    }
+}
+namespace {
+double* param(DigitPose& p, int i) { return i == 0 ? &p.spread : i == 4 ? &p.oppose : &p.bend[i - 1]; }
+}
+void clampDigit(int digit, DigitPose& p) {
+    double lo[5], hi[5];
+    digitLimits(digit, lo, hi);
+    for (int i = 0; i < 5; i++) { double* v = param(p, i); *v = std::fmin(hi[i], std::fmax(lo[i], *v)); }
+}
+HV digitTip(const DigitPose digits[DIGIT_COUNT], int digit) {
+    for (auto& b : handBones(digits)) if (b.digit == digit && b.seg == 2) return b.b;
+    return {};
+}
+double reachDigit(DigitPose digits[DIGIT_COUNT], int digit, HV target, int iterations) {
+    if (digit < 0 || digit >= DIGIT_COUNT) return 0;
+    double lo[5], hi[5];
+    digitLimits(digit, lo, hi);
+    int np = digit == DIGIT_THUMB ? 5 : 4;
+    DigitPose& P = digits[digit];
+    // how readily each joint moves: the base joints carry most of a reach, the tip joint follows
+    const double weight[5] = {0.7, 1.0, 0.9, 0.6, 1.6};
+    auto err = [&]() { HV t = digitTip(digits, digit); return HV{target.x - t.x, target.y - t.y, target.z - t.z}; };
+    HV e = err();
+    for (int it = 0; it < iterations; it++) {
+        double left = std::sqrt(dot(e, e));
+        if (left < 0.2) break;
+        double J[3][5] = {};
+        for (int i = 0; i < np; i++) {   // how the tip moves for a small turn of each joint (mm per degree)
+            double* v = param(P, i), keep = *v, h = *v + 0.5 > hi[i] ? -0.5 : 0.5;
+            HV t0 = digitTip(digits, digit);
+            *v = keep + h;
+            HV t1 = digitTip(digits, digit);
+            *v = keep;
+            J[0][i] = (t1.x - t0.x) / h * weight[i]; J[1][i] = (t1.y - t0.y) / h * weight[i]; J[2][i] = (t1.z - t0.z) / h * weight[i];
+        }
+        // damped least squares: step = W J^T (J J^T + l^2 I)^-1 e
+        double A[3][3], lam2 = 0.25;
+        for (int r = 0; r < 3; r++)
+            for (int c = 0; c < 3; c++) { A[r][c] = r == c ? lam2 : 0; for (int i = 0; i < np; i++) A[r][c] += J[r][i] * J[c][i]; }
+        double det = A[0][0] * (A[1][1] * A[2][2] - A[1][2] * A[2][1]) - A[0][1] * (A[1][0] * A[2][2] - A[1][2] * A[2][0]) +
+                     A[0][2] * (A[1][0] * A[2][1] - A[1][1] * A[2][0]);
+        if (std::fabs(det) < 1e-12) break;
+        double I[3][3] = {
+            {(A[1][1] * A[2][2] - A[1][2] * A[2][1]) / det, (A[0][2] * A[2][1] - A[0][1] * A[2][2]) / det, (A[0][1] * A[1][2] - A[0][2] * A[1][1]) / det},
+            {(A[1][2] * A[2][0] - A[1][0] * A[2][2]) / det, (A[0][0] * A[2][2] - A[0][2] * A[2][0]) / det, (A[0][2] * A[1][0] - A[0][0] * A[1][2]) / det},
+            {(A[1][0] * A[2][1] - A[1][1] * A[2][0]) / det, (A[0][1] * A[2][0] - A[0][0] * A[2][1]) / det, (A[0][0] * A[1][1] - A[0][1] * A[1][0]) / det}};
+        double y[3] = {I[0][0] * e.x + I[0][1] * e.y + I[0][2] * e.z, I[1][0] * e.x + I[1][1] * e.y + I[1][2] * e.z, I[2][0] * e.x + I[2][1] * e.y + I[2][2] * e.z};
+        DigitPose before = P;
+        double steps[5] = {};
+        for (int i = 0; i < np; i++)
+            steps[i] = std::fmax(-10.0, std::fmin(10.0, (J[0][i] * y[0] + J[1][i] * y[1] + J[2][i] * y[2]) * weight[i]));
+        bool better = false;
+        for (double scale = 1; scale > 0.06 && !better; scale *= 0.5) {   // a shorter step if the full one overshoots
+            P = before;
+            for (int i = 0; i < np; i++) { double* v = param(P, i); *v = std::fmin(hi[i], std::fmax(lo[i], *v + steps[i] * scale)); }
+            HV e2 = err();
+            if (dot(e2, e2) < dot(e, e)) { e = e2; better = true; }
+        }
+        if (!better) { P = before; break; }   // no better: stop where it was nearest
+    }
+    return std::sqrt(dot(e, e));
 }

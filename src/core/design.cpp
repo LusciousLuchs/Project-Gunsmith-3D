@@ -941,7 +941,7 @@ std::string designToJson(const Design& d, bool pretty) {
             json o{{"part", h.part}, {"at", v2j(h.at)}, {"angle", h.angle}};
             if (h.digitsSet) {
                 json a = json::array();
-                for (auto& d : h.digits) a.push_back({d.bend[0], d.bend[1], d.bend[2], d.spread});
+                for (auto& d : h.digits) a.push_back({d.bend[0], d.bend[1], d.bend[2], d.spread, d.oppose});
                 o["digits"] = a;
             }
             return o;
@@ -1206,6 +1206,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 if (!q.is_array() || q.size() < 4) { h.digitsSet = false; break; }
                 for (int s = 0; s < 3; s++) h.digits[k].bend[s] = q[s].get<double>();
                 h.digits[k].spread = q[3].get<double>();
+                h.digits[k].oppose = q.size() > 4 ? q[4].get<double>() : 0.0;
             }
         }
     };

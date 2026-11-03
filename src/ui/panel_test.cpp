@@ -143,7 +143,7 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
             A.poseHand = hand;  // (its fingertips show in the view)
             if (ImGui::Button("Zoom to this hand", {-1, 0})) poseFocusHand(hand);
             if (!h.digitsSet) { digitsOf(h, which, h.digits); h.digitsSet = true; }
-            prop("Preset", "A starting point for the whole hand. Then pick a digit (here, or its fingertip in the view) and bend it.");
+            prop("Preset", "A starting point for the whole hand. Then drag any fingertip in the view where you want it (the joints follow, within what a real hand can do; Shift-drag just curls it), or pick a digit here and set its joints.");
             if (ImGui::BeginCombo("##preset", "Choose...")) {
                 const char* n = handPresets();
                 for (int i = 0; *n; i++, n += std::strlen(n) + 1) if (ImGui::Selectable(n)) { applyHandPreset(h, which, handPresetId(i)); commit(); }
@@ -156,9 +156,11 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
             DigitPose& dp = h.digits[std::clamp(A.poseDigit, 0, DIGIT_COUNT - 1)];
             const char* jn[3] = {"Base joint", "Middle joint", "Tip joint"};
             if (A.poseDigit == DIGIT_THUMB) { jn[0] = "Root (by the wrist)"; jn[1] = "Knuckle"; }
-            for (int k = 0; k < 3; k++) { pNum(jn[k], dp.bend[k], 1, "%.0f\xc2\xb0", "+ curls it toward the palm."); dp.bend[k] = std::clamp(dp.bend[k], -25.0, 110.0); }
-            pNum("Spread", dp.spread, 1, "%.0f\xc2\xb0", A.poseDigit == DIGIT_THUMB ? "+ swings the thumb away from the palm." : "+ swings it toward the little finger.");
-            dp.spread = std::clamp(dp.spread, -40.0, 60.0);
+            for (int k = 0; k < 3; k++) pNum(jn[k], dp.bend[k], 1, "%.0f\xc2\xb0", "+ curls it toward the palm.");
+            pNum("Spread", dp.spread, 1, "%.0f\xc2\xb0", A.poseDigit == DIGIT_THUMB ? "+ opens the thumb out from the index finger, into an L." : "+ swings it toward the little finger.");
+            if (A.poseDigit == DIGIT_THUMB)
+                pNum("Across the palm", dp.oppose, 1, "%.0f\xc2\xb0", "Swings the thumb round in front of the palm, turning it so its pad meets the fingers' pads (to touch the little finger, about 80).");
+            clampDigit(std::clamp(A.poseDigit, 0, DIGIT_COUNT - 1), dp);
             if (ImGui::IsItemDeactivatedAfterEdit()) commit();
             ImGui::TreePop();
         }
