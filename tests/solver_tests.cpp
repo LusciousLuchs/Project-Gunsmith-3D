@@ -1686,6 +1686,32 @@ static void engravings() {
     CHECK(mirrorImage(c).marks.empty(), "a copy on the other side of the gun starts without engravings");
 }
 
+static void poseAndGunMoves() {
+    std::printf("poseAndGunMoves\n");
+    Design d = loadPreset("boltaction");
+    // the shoulder pocket: kept with the gun, and older blueprints keep the old place
+    d.pose.hold[HOLD_AIM] = holdOf(d, HOLD_AIM); d.pose.hold[HOLD_AIM].set = true;
+    d.pose.hold[HOLD_AIM].pocket[0] = -70; d.pose.hold[HOLD_AIM].pocket[1] = -150;
+    Design back; designFromJson(designToJson(d), back);
+    CHECK(std::fabs(back.pose.hold[HOLD_AIM].pocket[0] + 70) < 1e-9 && std::fabs(back.pose.hold[HOLD_AIM].pocket[1] + 150) < 1e-9, "a moved shoulder pocket is saved");
+    BodyHold def;
+    CHECK(def.pocket[0] == -90 && def.pocket[1] == -120 && def.pocket[2] == 25, "an unmoved pocket is where it always was");
+    // the gun moved in an animation: saved, eased in from the hold and back to it
+    Animation a;
+    AnimKey k; k.t = 1.0; k.firing = d.pose.firing; k.support = d.pose.support; k.gun[1] = 80; k.gun[4] = -40;
+    a.keys = {k};
+    AnimKey k2 = k; k2.t = 5.0; k2.gun[1] = 60;
+    a.keys.push_back(k2);
+    d.anims["inspect"] = a;
+    designFromJson(designToJson(d), back);
+    CHECK(back.anims.count("inspect") && back.anims["inspect"].keys.size() == 2 && std::fabs(back.anims["inspect"].keys[0].gun[4] + 40) < 1e-9, "the gun's place at a key is saved");
+    CHECK(animLength(a) > 5.0, "an animation can run past 2 seconds");
+    AnimHands h0 = animAt(d, a, 0), h1 = animAt(d, a, 1.0), hh = animAt(d, a, 0.5), he = animAt(d, a, animLength(a));
+    CHECK(!gunMoved(h0.gun) && !gunMoved(he.gun), "it starts and ends in the hold");
+    CHECK(std::fabs(h1.gun[1] - 80) < 1e-6 && hh.gun[1] > 5 && hh.gun[1] < 80, "it passes through the key, on its way between");
+    Animation ins = defaultInspect(d);
+    CHECK(!ins.keys.empty() && gunMoved(ins.keys[0].gun), "a gun with no inspect animation is still looked over");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -1758,6 +1784,7 @@ int main() {
     handMobility();
     engravings();
     controlButtons();
+    poseAndGunMoves();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

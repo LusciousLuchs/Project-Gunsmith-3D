@@ -279,6 +279,8 @@ struct BodyHold {
     double eyeZ = 0;       // across the gun, mm: + is the gun's right side
     double yaw = 0;        // the body turned against the gun, degrees (+ = to its right)
     double tilt = 0;       // the muzzle lowered against the body, degrees
+    // the shoulder pocket, where a stock's butt beds in: forward, up and right of the aiming eye, mm (body frame)
+    double pocket[3] = {-90, -120, 25};
 };
 enum { HOLD_AIM, HOLD_HIP, HOLD_LOWERED, HOLD_COUNT };
 struct Pose { HandHold firing, support, butt; BodyHold hold[HOLD_COUNT]; };
@@ -293,9 +295,13 @@ struct AnimKey {
     std::string event;                   // "" | "dropmag" (the magazine is let go) | "freshmag" (a new one goes in)
     double turn = -1;                    // a gripped part that turns (a bolt): how far it's turned from closed, degrees
                                          // (-1: the hand doesn't turn it)
+    // the gun moved from the hold (brought up to look at it, tipped to see the port): forward, up, toward the gun's
+    // right (mm), then raised muzzle, turned right, rolled right (degrees), about the firing hand. All 0: where the hold has it.
+    double gun[6] = {0, 0, 0, 0, 0, 0};
 };
 struct Animation { std::vector<AnimKey> keys; };   // kept in time order
-struct AnimHands { HandHold firing, support; bool gripF = false, gripS = false; double turn = -1; };
+struct AnimHands { HandHold firing, support; bool gripF = false, gripS = false; double turn = -1; double gun[6] = {0, 0, 0, 0, 0, 0}; };
+bool gunMoved(const double g[6]);
 const char* holdName(int h);
 const char* holdKey(int h);
 double defaultHandAngle(const std::string& which, const std::string& style = "");   // firing, support, butt
@@ -307,6 +313,7 @@ std::vector<std::string> animSlots(const struct Design& d);
 std::string animSlotName(const struct Design& d, const std::string& slot);
 double animLength(const Animation& a);
 AnimHands animAt(const struct Design& d, const Animation& a, double t);
+Animation defaultInspect(const struct Design& d);   // a plain look over the gun (it's brought up and turned), for a gun with no "inspect"
 struct Design {
     std::string name = "Untitled action";
     double speed = 0.02;                 // slow-motion speed for shots

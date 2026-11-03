@@ -976,7 +976,12 @@ std::string designToJson(const Design& d, bool pretty) {
         if (d.pose.butt.on) P["butt"] = hand(d.pose.butt);
         for (int h = 0; h < HOLD_COUNT; h++) {
             const BodyHold& b = d.pose.hold[h];
-            if (b.set) P[holdKey(h)] = {{"eye", v2j(b.eye)}, {"eyeZ", b.eyeZ}, {"yaw", b.yaw}, {"tilt", b.tilt}};
+            if (b.set) {
+                P[holdKey(h)] = {{"eye", v2j(b.eye)}, {"eyeZ", b.eyeZ}, {"yaw", b.yaw}, {"tilt", b.tilt}};
+                const BodyHold def;
+                if (b.pocket[0] != def.pocket[0] || b.pocket[1] != def.pocket[1] || b.pocket[2] != def.pocket[2])
+                    P[holdKey(h)]["pocket"] = {b.pocket[0], b.pocket[1], b.pocket[2]};
+            }
         }
         if (!P.empty()) o["pose"] = P;
         json An = json::object();
@@ -991,6 +996,7 @@ std::string designToJson(const Design& d, bool pretty) {
                 if (k.gripS) jk["gripS"] = true;
                 if (!k.event.empty()) jk["event"] = k.event;
                 if (k.turn >= 0) jk["turn"] = k.turn;
+                if (gunMoved(k.gun)) jk["gun"] = {k.gun[0], k.gun[1], k.gun[2], k.gun[3], k.gun[4], k.gun[5]};
                 ks.push_back(jk);
             }
             An[slot] = ks;
@@ -1261,6 +1267,8 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.set = true;
             if (jh.contains("eye")) b.eye = j2v(jh["eye"]);
             b.eyeZ = opt<double>(jh, "eyeZ", 0.0); b.yaw = opt<double>(jh, "yaw", 0.0); b.tilt = opt<double>(jh, "tilt", 0.0);
+            if (jh.contains("pocket") && jh["pocket"].is_array() && jh["pocket"].size() == 3)
+                for (int q = 0; q < 3; q++) b.pocket[q] = jh["pocket"][q].get<double>();
         }
     }
     if (o.contains("anims") && o["anims"].is_object())
@@ -1276,6 +1284,8 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 k.gripF = opt<bool>(jk, "gripF", false); k.gripS = opt<bool>(jk, "gripS", false);
                 k.event = opt<std::string>(jk, "event", "");
                 k.turn = opt<double>(jk, "turn", -1.0);
+                if (jk.contains("gun") && jk["gun"].is_array() && jk["gun"].size() == 6)
+                    for (int q = 0; q < 6; q++) k.gun[q] = jk["gun"][q].get<double>();
                 a.keys.push_back(k);
             }
             std::stable_sort(a.keys.begin(), a.keys.end(), [](const AnimKey& x, const AnimKey& y) { return x.t < y.t; });

@@ -21,7 +21,11 @@ void drawPoseOverlay();          // handles and labels
 void poseInput(bool overUI);
 PoseReport poseReport();
 void poseDefaultHands();
+void poseBedShoulder();          // move the current hold's shoulder pocket onto the butt
+bool viewGun(double g[6]);       // the gun moved by an animation (playing, or on the timeline being edited)
+Matrix gunMoveMatrix(const double g[6], Vector3 pivot);
 struct Pose; struct Animation; struct HandHold;
 Pose viewPose();                 // the pose as shown: the hold, or an animation where it has got to
 int animKeyAt(const Animation& a, double t);   // the key at this moment on the timeline, or -1
+HandHold* editHand(int which);   // the hand dragging edits (making an animation key at the timeline's moment if needed)
 void poseFocusHand(int hand);   // close up on a hand (0 firing, 1 support)         // put any missing firing hand where a hand would most likely go

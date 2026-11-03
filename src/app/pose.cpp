@@ -26,6 +26,25 @@ Pose viewPose() {
     }
     return P;
 }
+// the gun as an animation moves it from the hold (playing on the gun, or on the timeline being edited); false: not moved
+bool viewGun(double g[6]) {
+    for (int q = 0; q < 6; q++) g[q] = 0;
+    AnimHands h;
+    if (A.S && sim::animPlaying(*A.S)) h = sim::animHandsNow(*A.S);
+    else if (A.posing && A.animEdit) {
+        auto it = A.design.anims.find(A.animSlot);
+        if (it == A.design.anims.end()) return false;
+        h = animAt(A.design, it->second, A.animT);
+    } else return false;
+    for (int q = 0; q < 6; q++) g[q] = h.gun[q];
+    return gunMoved(g);
+}
+// the move as a matrix in the gun's drawing frame: turned about `pivot` (drawing units), then shifted
+Matrix gunMoveMatrix(const double g[6], Vector3 pivot) {
+    Matrix R = MatrixMultiply(MatrixMultiply(MatrixRotateX((float)(g[5] * DEG2RAD)), MatrixRotateZ((float)(g[3] * DEG2RAD))), MatrixRotateY((float)(-g[4] * DEG2RAD)));
+    return MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixTranslate(-pivot.x, -pivot.y, -pivot.z), R), MatrixTranslate(pivot.x, pivot.y, pivot.z)),
+                          MatrixTranslate((float)g[0] * U, (float)g[1] * U, (float)g[2] * U));
+}
 int animKeyAt(const Animation& a, double t) {   // the key at this moment on the timeline, or -1
     for (int i = 0; i < (int)a.keys.size(); i++) if (std::fabs(a.keys[i].t - t) < 0.03) return i;
     return -1;
@@ -40,6 +59,7 @@ HandHold* editHand(int which) {
     if (k < 0) {
         AnimHands h = animAt(A.design, a, A.animT);
         AnimKey nk; nk.t = A.animT; nk.firing = h.firing; nk.support = h.support; nk.gripF = h.gripF; nk.gripS = h.gripS;
+        for (int q = 0; q < 6; q++) nk.gun[q] = h.gun[q];
         auto pos = std::upper_bound(a.keys.begin(), a.keys.end(), nk, [](const AnimKey& x, const AnimKey& y) { return x.t < y.t; });
         k = (int)(pos - a.keys.begin());
         a.keys.insert(pos, nk);
@@ -52,7 +72,7 @@ HandHold* editHand(int which) {
 namespace {
 constexpr double UPPER_ARM = 320, FOREARM = 290;
 struct Frame { Vector3 o, f, u, r; };
-const Color SKIN{212, 168, 138, 255}, BODY{140, 146, 156, 255}, STRAIN{224, 92, 78, 255};
+const Color SKIN{212, 168, 138, 255}, SHIRT{72, 86, 78, 255}, MUFF{44, 48, 52, 255}, MUFF2{196, 120, 46, 255}, STRAIN{224, 92, 78, 255};
 
 BodyHold cur() { return holdOf(A.design, A.poseHold); }
 BodyHold& editable() {
@@ -69,6 +89,7 @@ Frame bodyFrame() {
 Vector3 bp(const Frame& F, double f, double u, double r) {
     return Vector3Add(F.o, Vector3Scale(Vector3Add(Vector3Add(Vector3Scale(F.f, (float)f), Vector3Scale(F.u, (float)u)), Vector3Scale(F.r, (float)r)), U));
 }
+Vector3 pocketPt(const Frame& F) { BodyHold h = cur(); return bp(F, h.pocket[0], h.pocket[1], h.pocket[2]); }
 Vector3 gunPt(V2 mm, double zmm) { return Vector3Transform(W3(mm, (float)zmm * U), poseGunMatrix()); }
 double partZ(const std::string& id) { int i = A.design.bodyIndex(id); return i >= 0 ? A.design.bodies[i].z : 0; }
 
@@ -138,15 +159,104 @@ HandGeo handGeo(const HandHold& h, int side) {
     return g;
 }
 void capsule(Vector3 a, Vector3 b, float r, Color c) { drawCyl(a, b, r, c); drawSphereLit(a, r, c); drawSphereLit(b, r, c); }
+
+// ---- the mannequin's shapes: smooth tubes through rings (each a rounded-square section: a half-width across, a
+// half-depth front to back), in millimetres. Built once.
+struct Ring { float y, cx, a, b; };   // height (or length along a limb, 0..1), forward offset, half-width, half-depth
+Mesh loft(const std::vector<Ring>& R, float p, int seg = 28, bool caps = true) {
+    int n = (int)R.size();
+    std::vector<Vector3> P((size_t)n * seg);
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < seg; j++) {
+            float th = 2 * PI * j / seg, c = std::cos(th), s = std::sin(th);
+            float x = R[i].b * (c < 0 ? -1 : 1) * std::pow(std::fabs(c), 2 / p), z = R[i].a * (s < 0 ? -1 : 1) * std::pow(std::fabs(s), 2 / p);
+            P[(size_t)i * seg + j] = {R[i].cx + x, R[i].y, z};
+        }
+    auto at = [&](int i, int j) { return P[(size_t)std::clamp(i, 0, n - 1) * seg + ((j % seg) + seg) % seg]; };
+    auto nrm = [&](int i, int j) {
+        Vector3 t1 = Vector3Subtract(at(i, j + 1), at(i, j - 1)), t2 = Vector3Subtract(at(i + 1, j), at(i - 1, j));
+        Vector3 nn = Vector3Normalize(Vector3CrossProduct(t1, t2));
+        Vector3 out = Vector3Subtract(at(i, j), Vector3{R[i].cx, R[i].y, 0});
+        return Vector3DotProduct(nn, out) < 0 ? Vector3Negate(nn) : nn;
+    };
+    struct Vtx { Vector3 p, n; };
+    std::vector<Vtx> V;
+    auto tri = [&](Vtx a, Vtx b, Vtx c) {   // wound so the face looks outward
+        Vector3 f = Vector3CrossProduct(Vector3Subtract(b.p, a.p), Vector3Subtract(c.p, a.p));
+        if (Vector3DotProduct(f, Vector3Add(Vector3Add(a.n, b.n), c.n)) < 0) std::swap(b, c);
+        V.push_back(a); V.push_back(b); V.push_back(c);
+    };
+    for (int i = 0; i + 1 < n; i++)
+        for (int j = 0; j < seg; j++) {
+            Vtx a{at(i, j), nrm(i, j)}, b{at(i, j + 1), nrm(i, j + 1)}, c{at(i + 1, j + 1), nrm(i + 1, j + 1)}, d{at(i + 1, j), nrm(i + 1, j)};
+            tri(a, b, c); tri(a, c, d);
+        }
+    for (int e = 0; e < (caps ? 2 : 0); e++) {   // flat caps at both ends
+        int i = e ? n - 1 : 0;
+        Vector3 cn{0, e ? 1.f : -1.f, 0};
+        Vtx m{{R[i].cx, R[i].y, 0}, cn};
+        for (int j = 0; j < seg; j++) tri(m, Vtx{at(i, j), cn}, Vtx{at(i, j + 1), cn});
+    }
+    Mesh m{};
+    m.vertexCount = (int)V.size(); m.triangleCount = m.vertexCount / 3;
+    m.vertices = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.normals = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.texcoords = (float*)MemAlloc(m.vertexCount * 2 * sizeof(float));
+    for (int k = 0; k < m.vertexCount; k++) {
+        m.vertices[k * 3] = V[k].p.x; m.vertices[k * 3 + 1] = V[k].p.y; m.vertices[k * 3 + 2] = V[k].p.z;
+        m.normals[k * 3] = V[k].n.x; m.normals[k * 3 + 1] = V[k].n.y; m.normals[k * 3 + 2] = V[k].n.z;
+        m.texcoords[k * 2] = 0; m.texcoords[k * 2 + 1] = 0;
+    }
+    UploadMesh(&m, false);
+    return m;
+}
+struct Shapes { bool ok = false; Mesh torso, upper, sleeve, fore, neck; };
+Shapes& shapes() {
+    static Shapes S;
+    if (S.ok) return S;
+    // the torso, from the base of the neck down to the hips, centred across under the head (body frame: x forward, y up)
+    S.torso = loft({{-150, -105, 58, 52}, {-182, -118, 118, 74}, {-212, -128, 165, 98}, {-250, -132, 178, 116}, {-330, -128, 168, 121},
+                    {-420, -134, 150, 108}, {-500, -141, 137, 98}, {-575, -147, 148, 103}, {-645, -150, 152, 100}, {-672, -150, 140, 88}}, 2.6f, 36);
+    // limbs: 0..1 along their length, round
+    S.upper = loft({{0, 0, 50, 50}, {0.15f, 0, 52, 52}, {0.4f, 0, 46, 46}, {0.7f, 0, 40, 40}, {1, 0, 35, 35}, {1.07f, 0, 30, 30}, {1.11f, 0, 18, 18}}, 2, 28, true);
+    S.sleeve = loft({{-0.02f, 0, 58, 58}, {0.3f, 0, 55, 55}, {0.55f, 0, 51, 51}}, 2);
+    S.fore = loft({{-0.11f, 0, 18, 18}, {-0.07f, 0, 30, 30}, {0, 0, 35, 35}, {0.2f, 0, 40, 40}, {0.5f, 0, 35, 35}, {0.85f, 0, 28, 28}, {1, 0, 25, 25}}, 2, 28, true);
+    S.neck = loft({{0, 0, 50, 46}, {0.6f, 0, 52, 48}, {1, 0, 60, 54}}, 2);
+    S.ok = true;
+    return S;
+}
+// a limb shape from a to b (its rings round, so any turn about its length will do)
+void limb(const Mesh& m, Vector3 a, Vector3 b, Color c) {
+    Vector3 d = Vector3Subtract(b, a);
+    float len = Vector3Length(d);
+    if (len < 1e-6f) return;
+    Vector3 y = Vector3Scale(d, 1 / len), ref = std::fabs(y.y) < 0.9f ? Vector3{0, 1, 0} : Vector3{1, 0, 0};
+    Vector3 x = Vector3Normalize(Vector3CrossProduct(ref, y)), z = Vector3CrossProduct(x, y);
+    drawMesh(m, Matrix{x.x * U, d.x, z.x * U, a.x, x.y * U, d.y, z.y * U, a.y, x.z * U, d.z, z.z * U, a.z, 0, 0, 0, 1}, c);
+}
 }  // namespace
 
 Matrix poseGunMatrix() {  // the muzzle drops about the butt (in the shoulder), or the firing hand, or the eye
     BodyHold h = cur();
     const Pose& P = A.design.pose;
     Vector3 e = P.butt.on ? W3(P.butt.at, (float)partZ(P.butt.part) * U) : P.firing.on ? W3(P.firing.at, (float)partZ(P.firing.part) * U) : eyeWorld(h);
-    return MatrixMultiply(MatrixMultiply(MatrixTranslate(-e.x, -e.y, -e.z), MatrixRotateZ((float)(-h.tilt * DEG2RAD))), MatrixTranslate(e.x, e.y, e.z));
+    Matrix M = MatrixMultiply(MatrixMultiply(MatrixTranslate(-e.x, -e.y, -e.z), MatrixRotateZ((float)(-h.tilt * DEG2RAD))), MatrixTranslate(e.x, e.y, e.z));
+    double g[6];
+    if (viewGun(g)) {   // an animation moving the gun: about the firing hand where it's held in the hold
+        Vector3 pv = P.firing.on ? W3(P.firing.at, (float)partZ(P.firing.part) * U) : e;
+        M = MatrixMultiply(M, gunMoveMatrix(g, Vector3Transform(pv, M)));
+    }
+    return M;
 }
 
+void poseBedShoulder() {   // the shoulder pocket moved onto the butt, the eye staying where it is
+    const Pose& P = A.design.pose;
+    if (!P.butt.on) return;
+    BodyHold& h = editable();
+    Frame F = bodyFrame();
+    Vector3 d = Vector3Subtract(gunPt(P.butt.at, partZ(P.butt.part)), F.o);
+    h.pocket[0] = Vector3DotProduct(d, F.f) / U; h.pocket[1] = Vector3DotProduct(d, F.u) / U; h.pocket[2] = Vector3DotProduct(d, F.r) / U;
+}
 void poseDefaultHands() {
     auto& P = A.design.pose;
     if (P.firing.on) return;
@@ -205,7 +315,7 @@ PoseReport poseReport() {
     R.rightShort = armTo(F, handGeo(P.firing, 1), true).shortBy;
     R.leftShort = armTo(F, handGeo(P.support, -1), false).shortBy;
     if (P.butt.on) {
-        Vector3 pocket = bp(F, -90, -120, 25), b = gunPt(P.butt.at, partZ(P.butt.part));
+        Vector3 pocket = pocketPt(F), b = gunPt(P.butt.at, partZ(P.butt.part));
         R.buttOff = Vector3Distance(pocket, b) / U;
         R.buttIn = R.buttOff < 60;
     }
@@ -215,26 +325,58 @@ PoseReport poseReport() {
 void drawPoseBody() {
     Frame F = bodyFrame();
     const Pose P = viewPose();
-    // head, neck, shoulders, chest
-    drawSphereLit(bp(F, -82, 15, -32), 86 * U, BODY);
-    capsule(bp(F, -95, -80, -32), bp(F, -120, -175, -32), 52 * U, BODY);
+    Shapes& SH = shapes();
+    // the body's own frame (mm): forward, up, right from the aiming eye; the middle of the body is 32 mm left of it
+    Matrix BM{F.f.x * U, F.u.x * U, F.r.x * U, F.o.x, F.f.y * U, F.u.y * U, F.r.y * U, F.o.y, F.f.z * U, F.u.z * U, F.r.z * U, F.o.z, 0, 0, 0, 1};
+    auto at = [&](float f, float u, float r) { return MatrixMultiply(MatrixTranslate(f, u, r), BM); };
+    // torso in a shirt, the neck, the head (eyes, nose), ear defenders on a band over the top
+    drawMesh(SH.torso, at(0, 0, -32), SHIRT);
+    limb(SH.neck, bp(F, -86, -45, -32), bp(F, -112, -165, -32), SKIN);
+    drawMesh(G.sphere, MatrixMultiply(MatrixScale(88, 110, 76), at(-90, 4, -32)), SKIN);
+    capsule(bp(F, -9, -24, -32), bp(F, 9, -44, -32), 10 * U, SKIN);                       // the nose
+    drawSphereLit(bp(F, -5, 0, -64), 6 * U, Color{60, 50, 46, 255});                       // the other eye
+    for (int s = 0; s < 2; s++) {
+        float r = s ? 46.f : -110.f, out = s ? 22.f : -22.f;
+        drawCyl(bp(F, -98, -8, r), bp(F, -98, -8, r + out), 44 * U, MUFF);
+        drawCyl(bp(F, -98, -8, r + out * 0.4f), bp(F, -98, -8, r + out * 1.05f), 38 * U, MUFF2);
+    }
+    for (int k = 0; k < 8; k++) {   // the headband, over the top of the head
+        float a0 = PI * k / 8, a1 = PI * (k + 1) / 8;
+        Vector3 p0 = bp(F, -98, 6 + 120 * std::sin(a0), -32 + 98 * std::cos(a0)), p1 = bp(F, -98, 6 + 120 * std::sin(a1), -32 + 98 * std::cos(a1));
+        capsule(p0, p1, 8 * U, MUFF);
+    }
     Vector3 sR = bp(F, -140, -215, 153), sL = bp(F, -140, -215, -217);
-    capsule(sR, sL, 62 * U, BODY);
-    capsule(bp(F, -150, -240, 50), bp(F, -150, -560, 40), 105 * U, BODY);
-    capsule(bp(F, -150, -240, -114), bp(F, -150, -560, -104), 105 * U, BODY);
     // the shoulder pocket, where a butt beds in
     if (P.butt.on) {
         PoseReport R = poseReport();
-        drawSphereLit(bp(F, -90, -120, 25), 30 * U, R.buttIn ? Color{110, 230, 140, 255} : Color{232, 161, 58, 255}, 0.5f);
+        drawSphereLit(pocketPt(F), 30 * U, R.buttIn ? Color{110, 230, 140, 255} : Color{232, 161, 58, 255}, 0.5f);
+    }
+    // the line of sight: from the aiming eye, straight along the bore, far out past the muzzle, to line the sights up on
+    {
+        BodyHold h = cur();
+        const auto& br = A.design.breech;
+        V2 dir{1, 0};
+        if (br.on && br.hasFace && br.hasMuzzle) {
+            double dx = br.muzzle.x - br.face.x, dy = br.muzzle.y - br.face.y, l = std::hypot(dx, dy);
+            if (l > 1) dir = {dx / l, dy / l};
+        }
+        Vector3 e = eyeWorld(h);
+        Matrix M = poseGunMatrix();   // the eye looks along the gun as the hold (and an animation) turns it
+        Vector3 d = Vector3Normalize(Vector3Subtract(Vector3Transform(W3({h.eye.x + dir.x * 100, h.eye.y + dir.y * 100}, (float)h.eyeZ * U), M), Vector3Transform(e, M)));
+        drawSphereLit(e, 4 * U, Color{255, 80, 70, 255});
+        drawCyl(Vector3Add(e, Vector3Scale(d, 8 * U)), Vector3Add(e, Vector3Scale(d, 6000 * U)), 0.8f * U, Color{255, 80, 70, 255});
+        DrawLine3D(e, Vector3Add(e, Vector3Scale(d, 6000 * U)), Color{255, 80, 70, 255});
     }
     // arms and hands
     for (int side = 0; side < 2; side++) {
         bool right = side == 0;
         HandGeo g = handGeo(right ? P.firing : P.support, right ? 1 : -1);
         Arm a = armTo(F, g, right);
-        Color c = a.shortBy > 0.5 ? STRAIN : BODY;
-        capsule(a.s, a.e, 46 * U, c);
-        capsule(a.e, a.w, 38 * U, c);
+        bool strain = a.shortBy > 0.5;
+        drawSphereLit(a.s, 54 * U, strain ? STRAIN : SHIRT);   // the shoulder
+        limb(SH.upper, a.s, a.e, strain ? STRAIN : SKIN);
+        limb(SH.sleeve, a.s, a.e, strain ? STRAIN : SHIRT);
+        limb(SH.fore, a.e, a.w, strain ? STRAIN : SKIN);
         if (g.on) {
             const HandBone *thumb = nullptr, *palmIndex = nullptr;
             for (auto& b : g.bones) {
@@ -305,7 +447,15 @@ void drawPoseOverlay() {
                 }
     }
     Frame F = bodyFrame();
-    dot(toScreen(bp(F, -75, 110, -32)), 6, Color{232, 161, 58, 255}, "Drag to move the body");
+    dot(toScreen(bp(F, -90, 140, -32)), 6, Color{232, 161, 58, 255}, "Drag to move the body");
+    if (P.butt.on) dot(toScreen(pocketPt(F)), 7, Color{232, 161, 58, 255}, "Shoulder");
+    {   // name the line of sight, a little way out past the eye
+        BodyHold h = cur();
+        Vector3 e = eyeWorld(h), far = Vector3Transform(W3({h.eye.x + 450, h.eye.y}, (float)h.eyeZ * U), poseGunMatrix());
+        (void)e;
+        Vector2 s = toScreen(far);
+        viewText("Line of sight", s.x + 6, s.y - 18 * CFG.uiScale, 11, Color{255, 120, 110, 255});
+    }
 }
 
 void poseInput(bool overUI) {
@@ -375,6 +525,19 @@ void poseInput(bool overUI) {
         return true;
     };
     Matrix inv = MatrixInvert(poseGunMatrix());
+    if (A.poseDrag == 7) {  // the shoulder pocket: across the body's side, the eye staying put
+        BodyHold& h = editable();
+        Frame F = bodyFrame();
+        Vector3 c = pocketPt(F);
+        float den = Vector3DotProduct(r.direction, F.r);
+        if (std::fabs(den) < 1e-6f) return;
+        float t = Vector3DotProduct(Vector3Subtract(c, r.position), F.r) / den;
+        if (t < 0) return;
+        Vector3 d = Vector3Subtract(Vector3Add(r.position, Vector3Scale(r.direction, t)), F.o);
+        h.pocket[0] = Vector3DotProduct(d, F.f) / U;
+        h.pocket[1] = Vector3DotProduct(d, F.u) / U;
+        return;
+    }
     if (A.poseDrag == 6) {  // the body: the eye follows the cursor across the gun's side
         BodyHold& h = editable();
         Vector3 p;

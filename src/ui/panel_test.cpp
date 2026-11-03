@@ -11,6 +11,7 @@
 
 #include <cstring>
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <cstdio>
 #include <mutex>
@@ -194,7 +195,8 @@ static void animSection() {
     }
     tutAnchor("anim:slot");
     Animation& an = D.anims[A.animSlot];
-    double len = animLength(an), span = std::max(2.0, len + 0.5);
+    static std::map<std::string, double> spans;   // how long each timeline is shown (it grows with its keys)
+    double len = animLength(an), span = std::max({2.0, len + 0.5, spans[A.animSlot]});
     if (an.keys.empty()) muted("Not animated yet: on the bench the plain action happens. Move the time slider, then drag a hand: a key is made there. The hands start and end in the aiming hold.");
     else muted(TextFormat("%d %s, %.2f s long. Move the slider and drag a hand to add a key; drag one at a key to change it.", (int)an.keys.size(), an.keys.size() == 1 ? "key" : "keys", len));
     // the timeline, with the keys marked on it
@@ -212,6 +214,12 @@ static void animSection() {
             dl->AddTriangleFilled({x, b.y - 2}, {x - 4, b.y + 5}, {x + 4, b.y + 5}, here ? IM_COL32(255, 205, 60, 255) : IM_COL32(110, 230, 140, 255));
         }
         ImGui::Dummy({0, 6 * CFG.uiScale});
+    }
+    {
+        double s = span;
+        if (pNum("Timeline", s, 0.1, "%.1f s", "How long the timeline is. Make it longer for a longer animation (up to 60 s).\nIt never gets shorter than its last key.")) {
+            spans[A.animSlot] = std::clamp(s, 0.5, 60.0);
+        }
     }
     float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
     if (ImGui::Button("< Key", {w3, 0})) { for (int i = (int)an.keys.size() - 1; i >= 0; i--) if (an.keys[i].t < A.animT - 0.031) { A.animT = an.keys[i].t; break; } A.animPreview = false; }
@@ -259,9 +267,27 @@ static void animSection() {
         prop("Magazine", "What happens to the magazine as the hands reach this key.\nDrop: it's let go and falls out (or slides out sideways).\nFresh one in: a full magazine goes into the well.");
         if (ImGui::Combo("##aev", &ev, "Nothing\0Drop it\0Fresh one in\0")) { kk.event = ev == 1 ? "dropmag" : ev == 2 ? "freshmag" : ""; edit = true; }
         tutAnchor("anim:mag");
+        // the gun itself at this key: lifted to look at, tipped to see into the port
+        if (ImGui::TreeNodeEx("The gun at this key", ImGuiTreeNodeFlags_DefaultOpen)) {
+            muted("Moves the whole gun from where the hold has it, about the firing hand. Both hands go with it.");
+            bool g = false;
+            g |= pNumU("Forward", kk.gun[0], 1, Q::Length, -1, "+ away from you.", SIGNED);
+            g |= pNumU("Up", kk.gun[1], 1, Q::Length, -1, "+ up.", SIGNED);
+            g |= pNumU("Right", kk.gun[2], 1, Q::Length, -1, "+ toward the gun's right side.", SIGNED);
+            g |= pNum("Muzzle up", kk.gun[3], 1, "%.0f\xc2\xb0", "+ raises the muzzle.");
+            g |= pNum("Turn", kk.gun[4], 1, "%.0f\xc2\xb0", "+ swings the muzzle to the right.");
+            g |= pNum("Roll", kk.gun[5], 1, "%.0f\xc2\xb0", "+ rolls the top of the gun to the right (to look into a port on the left, roll it right).");
+            static bool gunDirty = false;   // saved (for undo) once the field is let go
+            if (g) gunDirty = true;
+            if (gunDirty && !ImGui::IsAnyItemActive()) { gunDirty = false; edit = true; }
+            if (gunMoved(kk.gun) && ImGui::Button("Back to the hold##gun", {-1, 0})) { for (double& v : kk.gun) v = 0; edit = true; }
+            ImGui::TreePop();
+        }
         if (edit) commit();
         if (ImGui::Button("Delete this key", {-1, 0})) { an.keys.erase(an.keys.begin() + ki); commit(); }
     }
+    if (ki < 0 && ImGui::Button("Add a key here", {-1, 0})) { editHand(0); commit(); }
+    if (ki < 0 && tipHover()) ImGui::SetTooltip("A key at this moment, with the hands and the gun where they are now.\nThen move the gun or drag a hand.");
     if (!an.keys.empty()) {
         ImGui::Dummy({0, 2 * CFG.uiScale});
         if (ImGui::Button("Clear this animation", {-1, 0})) ImGui::OpenPopup("##aclear");
@@ -296,8 +322,16 @@ static void posePanel() {
         pNumU("Eye Z", b.eyeZ, 2, Q::Length, -1, "Across the gun: + is the gun's right side.", SIGNED);
         pNum("Body turned", b.yaw, 1, "%.0f\xc2\xb0", "The body turned against the gun (+ to the right). Rifle shooters stand bladed.");
         pNum("Muzzle down", b.tilt, 1, "%.0f\xc2\xb0", "The gun tipped against the body: about 35 for a lowered gun, 0 when aiming.");
+        if (P.butt.on) {
+            pNumU("Shoulder forward", b.pocket[0], 2, Q::Length, -1, "Where the butt beds into the shoulder, from the eye: + forward. Or drag the orange Shoulder dot.", SIGNED);
+            double down = -b.pocket[1];
+            if (pNumU("Shoulder down", down, 2, Q::Length, -1, "How far below the eye the shoulder pocket is.", SIGNED)) b.pocket[1] = -down;
+            pNumU("Shoulder across", b.pocket[2], 2, Q::Length, -1, "Across the body from the eye: + toward the right.", SIGNED);
+        }
         if (std::memcmp(&was, &b, sizeof b) != 0 || !was.set) { b.set = true; }
         if (ImGui::IsItemDeactivatedAfterEdit()) commit();
+        if (P.butt.on && ImGui::Button("Put the shoulder on the butt", {-1, 0})) { poseBedShoulder(); commit(); }
+        if (P.butt.on && tipHover()) ImGui::SetTooltip("Moves the shoulder pocket to wherever the butt is now. The eye stays where it is,\nso line the eye up with the sights first.");
         if (ImGui::Button("Reset this hold", {-1, 0})) { b = BodyHold(); b = holdOf(A.design, A.poseHold); b.set = false; commit(); poseView(); }
     }
     if (section("Hands and shoulder", !A.animEdit)) {

@@ -6,6 +6,7 @@
 // swings more slowly, and one held in one hand kicks more than one in the shoulder.
 #include "app/range.hpp"
 #include "app/app.hpp"
+#include "app/pose.hpp"
 #include "app/audio.hpp"
 #include "app/bench.hpp"
 #include "app/fonts.hpp"
@@ -108,6 +109,16 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
     float s = 1.0f / (1000 * U);   // drawing units -> metres
     V3 at = eye - fw * R.kickBack;
     R.G = MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixTranslate(-pe.x, -pe.y, -pe.z), MatrixScale(s, s, s)), Rm), MatrixTranslate((float)at.x, (float)at.y, (float)at.z));
+    // an animation moving the gun (inspecting it, a reload that tips it): about the firing hand
+    if (A.S && sim::animPlaying(*A.S)) {
+        AnimHands h = sim::animHandsNow(*A.S);
+        if (gunMoved(h.gun)) {
+            const auto& P = D.pose;
+            int fi = P.firing.on ? D.bodyIndex(P.firing.part) : -1;
+            Vector3 pv = P.firing.on ? W3(P.firing.at, fi >= 0 ? (float)(D.bodies[fi].z * U) : 0.f) : pe;
+            R.G = MatrixMultiply(gunMoveMatrix(h.gun, pv), R.G);
+        }
+    }
 }
 V3 gunToMap(V2 mm, float zDraw) { return vr(Vector3Transform(W3(mm, zDraw), R.G)); }
 
@@ -249,6 +260,8 @@ void enterRange(const Design& gun, const gmap::Map& map) {
         R.sightY = top - (R.twoHands ? 32 : 7);   // about where sights would put the eye over the gun
         int ci = A.design.bodyIndex(br.chamber);
         R.boreZ = ci >= 0 ? A.design.bodies[ci].z : 0;
+        const BodyHold& aimH = A.design.pose.hold[HOLD_AIM];
+        if (aimH.set) { R.sightY = aimH.eye.y; R.boreZ = aimH.eyeZ; }   // posed: the eye exactly where the player put it
         double h = std::max(0.0, (br.face.y - R.sightY) / 1000.0), zd = R.twoHands ? 100.0 : 25.0, v = std::max(50.0, br.cart.velocity);
         R.zero = std::atan(h / zd) + 0.5 * 9.81 * (zd / v) * (zd / v) / zd;
     }
@@ -312,6 +325,10 @@ void rangeUpdate(float dt, bool modal) {
         sim::setKey(S, "fire", trig);
         if (actPressed(Act::Reload)) reload();
         if (actPressed(Act::WorkAction)) workAction();
+        if (actPressed(Act::Inspect) && !sim::animPlaying(S)) {   // the player's own inspect animation, or a plain look over it
+            S.design.anims = A.design.anims;
+            if (!sim::playAnim(S, "inspect")) { S.design.anims["auto:inspect"] = defaultInspect(A.design); sim::playAnim(S, "auto:inspect"); }
+        }
         // the magazine catch and your controls, as on the bench
         bool held[5] = {actDown(Act::MagRelease), actDown(Act::Control1), actDown(Act::Control2), actDown(Act::Control3), actDown(Act::Control4)};
         if (sim::hasControl(S, "magrelease")) { sim::setKey(S, "magrelease", held[0]); S.magRelease = false; }
@@ -450,7 +467,7 @@ void rangeHud() {
         viewText(R.lastHit.c_str(), cx - tw / 2, cy + 40, 18, Color{255, 220, 120, (unsigned char)(255 * a)});
     }
     if (CFG.hints) {
-        const char* help = "Left mouse fires, right mouse aims.  R reloads, B works the action.  WASD to walk.  Esc for the menu.";
+        const char* help = "Left mouse fires, right mouse aims.  R reloads, B works the action, I inspects.  WASD to walk.  Esc for the menu.";
         float hw = viewTextWidth(help, 13);
         DrawRectangleRounded({cx - hw / 2 - 12, 14, hw + 24, 24}, 0.4f, 6, Color{20, 23, 28, 150});
         viewText(help, cx - hw / 2, 19, 13, Color{235, 238, 242, 230});

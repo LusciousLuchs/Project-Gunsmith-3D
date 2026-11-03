@@ -431,7 +431,7 @@ static const std::vector<Lesson>& lessons() {
         Step("Grip a part", "Put the support hand on the slide at a key and tick its grips its part. From that key the hand holds the slide and moves it, through the physics, until a later key lets go. So a slide pulled back too short really won't chamber a round.").check(newGrip, "Tick grips its part").at("anim:grip"),
         Step("Magazine moments", "A key can drop the magazine or put a fresh one in, so a reload works without animating the magazine itself.").check(newEvent, "Set a key's Magazine").at("anim:mag"),
         Step("Play it", "Preview plays the hands alone. Play on the gun runs it for real, and the animation waits for the gun: a hand gripping a slide that's still moving waits for it.").check(animPlayed, "Play on the gun").at("anim:play"),
-        Step("Using them", "On the bench, R plays your Reload and B works the action (your Work the action animation, or one made from your parts). Start from the automatic one gives you a working start to change. They play at the firing range too."),
+        Step("Using them", "On the bench, R plays your Reload and B works the action (your Work the action animation, or one made from your parts). Start from the automatic one gives you a working start to change. They play at the firing range too, and I plays Inspect there (with none, the gun is simply looked over). A key can also move the whole gun (The gun at this key): lift it, turn it, roll it to see into the port."),
     }},
     {"reliability", "Reliability testing", "Fire hundreds of rounds and see how often it jams.", "blowback", {
         Step("Run it", "This fires your gun over and over in the background, clearing jams like a shooter would.").at("bench:reliability").bench(),

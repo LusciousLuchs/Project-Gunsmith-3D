@@ -145,6 +145,11 @@ void handleKeys() {
         }
         if (actPressed(Act::NewMag)) spawnSpareMag();
         if (actPressed(Act::WorkAction)) workAction();
+        if (actPressed(Act::Inspect) && A.S) {
+            A.S->design.anims = A.design.anims;
+            if (sim::playAnim(*A.S, "inspect")) { A.running = true; toast("Inspecting (your animation)."); }
+            else toast("No inspect animation yet: make one in Pose > Animations. On the range, I looks the gun over anyway.");
+        }
         if (actPressed(Act::LooseRound)) spawnBenchRound();
         if (actPressed(Act::FillMags)) topUpMagazines();
         if (actPressed(Act::Pause)) A.running = !A.running;

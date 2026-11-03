@@ -50,6 +50,7 @@ static const ActInfo ACTS[(int)Act::Count] = {
     {"mapfocus", "Focus on the selection", "Map editor", KEY_F, false},
     {"fillmags", "Top up magazines", "Test bench", KEY_T, false},
     {"work", "Work the action (bolt, slide, lever)", "Test bench", KEY_B, false},
+    {"inspect", "Inspect the gun", "Test bench", KEY_I, false},
 };
 
 const ActInfo& actInfo(Act a) { return ACTS[(int)a]; }

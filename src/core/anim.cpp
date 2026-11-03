@@ -25,8 +25,9 @@ std::string animSlotName(const Design& d, const std::string& slot) {
     return slot;
 }
 
+bool gunMoved(const double g[6]) { for (int q = 0; q < 6; q++) if (std::fabs(g[q]) > 1e-9) return true; return false; }
 static const double BACK = 0.4;   // seconds to return to the hold after the last key
-double animLength(const Animation& a) { return a.keys.empty() ? 0 : a.keys.back().t + BACK; }
+double animLength(const Animation& a) { return a.keys.empty() ? 0 : a.keys.back().t + (gunMoved(a.keys.back().gun) ? 0.7 : BACK); }
 
 namespace {
 struct Pt { double t; const HandHold* h; };
@@ -80,6 +81,19 @@ HandHold handAt(const HandHold& base, const std::vector<AnimKey>& keys, bool fir
 }
 }  // namespace
 
+Animation defaultInspect(const Design& d) {
+    // brought in and up, turned to show its right side, then rolled over to show the left, then back to the hold
+    static const double K[][7] = {{0.45, -70, 70, -70, 8, -30, 0}, {1.3, -90, 80, -70, 6, -45, -15},
+                                  {2.0, -90, 80, -60, 6, 25, 40}, {2.7, -80, 75, -60, 10, 30, 45}};
+    Animation a;
+    for (auto& k : K) {
+        AnimKey key;
+        key.t = k[0]; key.firing = d.pose.firing; key.support = d.pose.support;
+        for (int q = 0; q < 6; q++) key.gun[q] = k[q + 1];
+        a.keys.push_back(key);
+    }
+    return a;
+}
 AnimHands animAt(const Design& d, const Animation& a, double t) {
     AnimHands o;
     o.firing = d.pose.firing; o.support = d.pose.support;
@@ -102,5 +116,23 @@ AnimHands animAt(const Design& d, const Animation& a, double t) {
         }
     }
     if (!(o.gripF || o.gripS)) o.turn = -1;
+    // the gun: from the hold, through every key (a curve, like the hands), back to the hold
+    {
+        std::vector<double> times{0};
+        for (auto& k : a.keys) times.push_back(k.t);
+        times.push_back(end);
+        size_t i = 0;
+        while (i + 2 < times.size() && t >= times[i + 1]) i++;
+        static const double zero[6] = {0, 0, 0, 0, 0, 0};
+        auto g = [&](size_t k) -> const double* { return k == 0 || k + 1 == times.size() ? zero : a.keys[k - 1].gun; };
+        double t0 = times[i], t1 = times[i + 1], h = std::max(1e-6, t1 - t0), u = std::clamp((t - t0) / h, 0.0, 1.0);
+        double u2 = u * u, u3 = u2 * u;
+        for (int q = 0; q < 6; q++) {
+            double p0 = g(i)[q], p1 = g(i + 1)[q];
+            double m0 = i > 0 ? (p1 - g(i - 1)[q]) / std::max(1e-6, t1 - times[i - 1]) * h : 0;
+            double m1 = i + 2 < times.size() ? (g(i + 2)[q] - p0) / std::max(1e-6, times[i + 2] - t0) * h : 0;
+            o.gun[q] = (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
+        }
+    }
     return o;
 }

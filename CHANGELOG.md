@@ -8,6 +8,35 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.5-alpha
+
+### A better mannequin
+- **The Pose mannequin is rebuilt:** a shaped torso in a shirt, a head with a nose and ear defenders, a neck, and arms that taper like real arms (short sleeves, bare forearms) instead of grey tubes and balls.
+
+### Lining up the sights
+- **A long red line of sight** runs from the aiming eye straight along the gun, far out past the muzzle. Move the body (or the hands) until it passes over your sights.
+- **On the firing range, aiming now puts your eye exactly where you posed it** in the Aim hold, so sights you lined up in Pose line up on the range too. (Unposed guns still look just over the top of the gun.)
+
+### Moving the shoulder
+- **The shoulder pocket moves:** with *Stock in the shoulder* on, drag the orange **Shoulder** dot, or set *Shoulder forward / down / across* in the Body section. Each hold (aim, hip, lowered) has its own.
+- **Put the shoulder on the butt** moves the pocket onto the butt wherever it is, keeping the eye where it is: line the eye up with the sights first, then press it.
+
+### Animations
+- **Longer than 2 seconds:** set **Timeline** under the time slider (up to 60 s).
+- **Move the gun itself in an animation:** each key has *The gun at this key*: forward, up, right, muzzle up, turn and roll, about the firing hand. The hands go with it, and the gun eases back to the hold at the end. Use it to lift a gun to look at it, or tip it to see into the port during a reload.
+- **Add a key here** makes a key at the slider's moment without dragging a hand.
+- **Inspect (I):** on the firing range, I plays your Inspect animation, or, with none, a plain look over the gun (brought up, turned, rolled to show the other side). On the bench, I plays your Inspect animation. Rebindable in Settings.
+
+### Barrels
+- **Dragging barrel corners is smooth again:** while you edit, a barrel shows without its bore and cuts and rebuilds them 0.6 s after you stop (a rebuild took about 50 ms every frame; it now takes 0.1 ms while dragging).
+- **The bore sits in the middle of the barrel** (it was slightly off centre).
+- **Rifling turns:** set how many *Turns* the rifling makes along the barrel. The panel says whether that spins the bullet fast enough: good, marginal, or too slow (it tumbles). On the range, a bullet spun too slowly goes wide and slows down; a marginal one groups wider; shot from a rifled barrel spreads more.
+- Rifling is drawn as spiral grooves down the bore, and a chambered round points down the bore.
+- Carving along a round part's axis snaps onto the axis.
+
+### Fixes
+- **Hand-loading a held-open single shot** (the 9 mm carbine): loading a round with the bolt held open no longer flicks it straight out again. R loads it, then your bolt release (1) closes the bolt and it fires.
+
 ## 0.3.4-alpha
 
 ### Buttons and levers you bind to keys

@@ -129,9 +129,9 @@ In the view, click anything (a part, a corner, an edge, a spring end, a track po
 
 Pick where to shoot (the practice range, your map editor's map, or a saved map) and the gun to take. The gun in your hands is the same simulation as the test bench, so it feeds, extracts and jams for real.
 
-- Left mouse fires, right mouse aims. R reloads (racking a round in if it was empty), B works the action, M and your control keys work as on the bench.
+- Left mouse fires, right mouse aims. R reloads (racking a round in if it was empty), B works the action, I inspects the gun (your Inspect animation, or a plain look over it), M and your control keys work as on the bench.
 - WASD to walk, Shift to sprint, C to crouch, Z to go prone, Q and E to lean, Esc for the menu.
-- Aiming puts your eye where your pose has it, looking over the top of the gun. Guns are sighted in at 25 m in one hand, 100 m in the shoulder.
+- Aiming puts your eye exactly where you posed it in the Aim hold (Pose shows a red line of sight from that eye to line the sights up on); an unposed gun is looked at just over its top. Guns are sighted in at 25 m in one hand, 100 m in the shoulder.
 - Bullets and pellets fly from the muzzle with gravity and air drag and mark where they land. Paper targets score rings; steel plates ring.
 - Recoil comes from the cartridge's push against the gun's weight; heavy guns come up and swing more slowly.
 
