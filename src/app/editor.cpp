@@ -5,6 +5,7 @@
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
+#include "app/faces.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -127,7 +128,7 @@ void deleteSel() {
 void duplicateSel() {
     if (A.sel.kind != 1 || A.sel.idx >= (int)A.design.bodies.size()) return;
     BodyDef c = A.design.bodies[A.sel.idx];
-    c.id = uid(); c.name += " copy"; c.magazine = false; c.weld.clear();  // a copy is a part on its own
+    c.id = uid(); c.name += " copy"; c.magazine = false; c.weld.clear(); c.mirror.clear();  // a copy is a part on its own
     for (auto& p : c.pts) { p.x += 10; p.y += 10; }
     carve::moveCarves(c, 10, 10);
     if (c.ctrl != "none") { c.ctrlPt.x += 10; c.ctrlPt.y += 10; }
@@ -216,6 +217,8 @@ void buildInput(bool overUI) {
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
     if (A.tool == Tool::Carve || A.carveDrag) { carveInput(overUI); return; }
+    if (A.tool == Tool::Faces || A.faceDragging) { facesInput(overUI); return; }
+    if (A.tool == Tool::Select && A.sel.kind == 1 && A.dragKind == 0 && IsKeyPressed(KEY_E)) { facesInput(overUI); if (A.faceDragging) return; }
     Vector2 m = GetMousePosition();
     V2 w = snapMM(mouseMM(0));
     if (!overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
@@ -423,12 +426,14 @@ void buildInput(bool overUI) {
         if (std::hypot(w.x - a.x, w.y - a.y) < 1) { A.tool = Tool::Select; return; }
         auto& D = A.design;
         if (A.tool == Tool::Mirror && A.sel.kind == 1) {
-            BodyDef c = D.bodies[A.sel.idx];
-            mirrorBody(c, a, w);
+            BodyDef& src = D.bodies[A.sel.idx];
+            std::string tag = "m-" + uid();
+            src.mirror = tag; src.mirrorKind = "line"; src.mirrorA = a; src.mirrorB = w;
+            BodyDef c = mirrorImage(src);
             c.id = uid(); c.name += " (mirror)"; c.magazine = false; c.weld.clear();
             D.bodies.push_back(c);
             A.sel = {1, (int)D.bodies.size() - 1, -1}; A.selVs.clear();
-            commit(); toast("Mirrored copy added.");
+            commit(); toast("Mirrored copy added. It's live: change either and the other follows (Unlink in its panel to stop that).");
         } else if (A.tool == Tool::Knife) {
             std::vector<int> targets;
             if (A.sel.kind == 1) targets.push_back(A.sel.idx);

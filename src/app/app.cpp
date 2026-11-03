@@ -49,6 +49,12 @@ void autosaveTick() {
     if (CFG.autosave == AutosaveEvery::Change || (every > 0 && GetTime() - A.lastSave >= every)) save();
 }
 void commit() {
+    bool mirrored = false;
+    for (auto& b : A.design.bodies) if (!b.mirror.empty()) { mirrored = true; break; }
+    if (mirrored) {   // live mirrors: whichever side changed, the other follows
+        Design prev;
+        if (designFromJson(A.lastSnap, prev)) syncMirrors(A.design, &prev, A.sel.kind == 1 ? A.sel.idx : -1);
+    }
     syncBarrels(A.design);  // barrels set the firing system's chambers and muzzles
     A.hist.push_back(A.lastSnap);
     if (A.hist.size() > 120) A.hist.erase(A.hist.begin());
@@ -80,7 +86,10 @@ void toast(const std::string& t) { A.toast = t; A.toastT = 2.5f + t.size() / 40.
 float bodyDepth(const BodyDef& b) { return (float)std::max(1.0, b.thick) * U; }
 float bodyBias(int i) { return i * 0.004f; }
 float bodyZ(int i) { return (float)A.design.bodies[i].z * U + bodyBias(i); }                       // centre in depth
-float bodyFront(int i) { return bodyZ(i) + bodyDepth(A.design.bodies[i]) / 2; }                    // near face
+float bodyFront(int i) {   // the face toward you: handles sit on it, so a part can be shaped from either side
+    float c = bodyZ(i), h = bodyDepth(A.design.bodies[i]) / 2;
+    return A.cam.position.z >= c ? c + h : c - h;
+}
 std::string bname(const std::string& id) {
     if (id.empty() || id == "world") return "Ground";
     int i = A.design.bodyIndex(id);
@@ -201,7 +210,12 @@ const char* TOOL_HINT[] = {
     "Drag a line across a part to cut it into pieces.",
     "Drag the mirror axis. A mirrored copy of the selected part appears across it.",
     "Click along the inside of the magazine, starting where rounds are fed from. Enter (or a double-click) finishes.",
-    "Click a part's surface to cut into it there, or drag to size the cut. It goes straight in from that face: turn the view to cut from any side. Shape and depth are in the panel."};
+    "Click a part's surface to cut into it there, or drag to size the cut. It goes straight in from that face: turn the view to cut from any side. Shape and depth are in the panel.",
+    "",   // (grip markers: replaced by Pose on the test bench)
+    "Drag from the breech end to the muzzle. Its cartridge, rifling and length are in its panel.",
+    "Drag between two points to measure the length, how far across and up, and the angle. Snaps to corners and joints.",
+    "Point at any face of a part (front, back, top, bottom, ends) and drag to push or pull it. E extrudes the face: move the mouse to draw it out, click to finish. Shift-drag extrudes too. Right-click or Esc cancels."};
+static_assert(sizeof(TOOL_HINT) / sizeof(TOOL_HINT[0]) == (size_t)Tool::Count, "a hint for every tool");
 void setTool(Tool t) {
     if (A.mode == Mode::Test) setMode(Mode::Build);
     A.tool = t; A.drafting = false; A.draft.clear(); A.draftHasF = false;

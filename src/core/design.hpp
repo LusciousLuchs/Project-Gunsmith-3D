@@ -144,6 +144,12 @@ struct BodyDef {
     std::vector<double> bulge;           // edge i (pts[i] -> pts[i+1]) bows outward by this much (mm, negative = inward)
     std::vector<CarveDef> carves;        // cut out of the shape in 3D, in order
     std::string weld;                    // welded: every part with the same tag is one solid piece ("" = on its own)
+    // A live mirror: two parts with the same tag are kept as mirror images of each other; edit either and the other
+    // follows (shape, cuts, depth, thickness, tilt, look). "depth": across the gun (the far side's matching part);
+    // "line": across the side-view line a-b. "" = not mirrored.
+    std::string mirror;
+    std::string mirrorKind = "depth";
+    V2 mirrorA, mirrorB;
     bool round = false;                  // turned: the outline spun about its long middle line (barrels, rods, bolts);
                                          // its thickness is then its width across
     int roundSides = 0;                  // 0 = a circle; 3+ = that many flats (4 = the square bar it was drawn as, 8 = octagon)
@@ -274,9 +280,15 @@ std::vector<V2> circlePts(V2 c, double r, std::vector<double>* bulge);
 
 // Editing operations (Sprocket-style shaping).
 std::vector<BodyDef> splitBody(const BodyDef& b, V2 a, V2 c);   // knife cut along segment a-c; returns the pieces (1 if no cut)
-void mirrorBody(BodyDef& b, V2 a, V2 c);                         // reflect across the line through a and c
+void mirrorBody(BodyDef& b, V2 a, V2 c);
+BodyDef mirrorImage(const BodyDef& src);                            // src reflected by its mirror link (shape and look)
+bool mirrorMatches(const BodyDef& src, const BodyDef& other);       // other already is src's mirror image
+int mirrorPartner(const Design& d, int bodyIndex);                  // the other part of its live mirror, or -1
+// Keeps live mirrors in step. With `prev`: the part of each pair that changed since then is copied to the other (if
+// both changed, `prefer` when it's in the pair). Without: `prefer` is copied to its partner. Returns parts updated.
+int syncMirrors(Design& d, const Design* prev = nullptr, int prefer = -1);                         // reflect across the line through a and c
 void flipBody(BodyDef& b, bool horizontal);                      // flip about its own centre
-constexpr int MAX_CORNERS = 32;                                  // corners a part can be given (older blueprints may have more)
+constexpr int MAX_CORNERS = 1024;                                 // corners a part can be given (older blueprints may have more)
 int subdivideBody(BodyDef& b);                                   // add a vertex in the middle of every edge, longest first, up to
                                                                  // MAX_CORNERS; returns how many were added
 void simplifyBody(BodyDef& b, int maxCorners = MAX_CORNERS);

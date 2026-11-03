@@ -79,7 +79,12 @@ void handleViewportInput() {
     if (A.dragKind == 4 || A.dragKind == 5) return;
     if (A.mode == Mode::Test && A.posing) poseInput(overUI);
     else if (A.mode == Mode::Test) testInput(overUI);
-    else buildInput(overUI);
+    else {
+        buildInput(overUI);
+        // a live mirror follows the selected part as it's edited, not only when you let go
+        if (A.sel.kind == 1 && A.sel.idx < (int)A.design.bodies.size() && mirrorPartner(A.design, A.sel.idx) >= 0)
+            syncMirrors(A.design, nullptr, A.sel.idx);
+    }
 }
 
 void handleKeys() {

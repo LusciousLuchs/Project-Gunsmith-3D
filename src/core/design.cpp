@@ -790,6 +790,10 @@ std::string designToJson(const Design& d, bool pretty) {
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
         if (!b.weld.empty()) jb["weld"] = b.weld;
+        if (!b.mirror.empty()) {
+            jb["mirror"] = b.mirror; jb["mirrorKind"] = b.mirrorKind;
+            if (b.mirrorKind == "line") { jb["mirrorA"] = v2j(b.mirrorA); jb["mirrorB"] = v2j(b.mirrorB); }
+        }
         if (!b.texture.empty()) { jb["texture"] = b.texture; jb["texScale"] = b.texScale; }
         if (b.round) {
             jb["round"] = true;
@@ -940,6 +944,10 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
         b.weld = opt<std::string>(jb, "weld", "");
+        b.mirror = opt<std::string>(jb, "mirror", "");
+        b.mirrorKind = opt<std::string>(jb, "mirrorKind", "depth");
+        if (jb.contains("mirrorA")) b.mirrorA = j2v(jb["mirrorA"]);
+        if (jb.contains("mirrorB")) b.mirrorB = j2v(jb["mirrorB"]);
         b.round = opt<bool>(jb, "round", false);
         b.texture = opt<std::string>(jb, "texture", "");
         b.texScale = std::clamp(opt<double>(jb, "texScale", 40.0), 1.0, 5000.0);

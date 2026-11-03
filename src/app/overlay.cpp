@@ -1,5 +1,6 @@
 // Gunsmith3D - 2D overlay drawn over the 3D view: handles, joints, labels.
 #include "app/app.hpp"
+#include "app/faces.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -17,6 +18,7 @@
 #include <string>
 
 void drawOverlay() {
+    drawFaces();
     auto& D = A.design;
     A.handles.clear();
     Vector2 m = GetMousePosition();

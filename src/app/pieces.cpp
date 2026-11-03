@@ -43,7 +43,11 @@ bool insertPiece(const std::string& text, double dx, double dy) {
     std::map<std::string, std::string> nid, ntag;
     std::set<std::string> names;
     for (auto& b : D.bodies) names.insert(b.name);
+    std::map<std::string, int> mirrorCount;
+    for (auto& b : sub.bodies) if (!b.mirror.empty()) mirrorCount[b.mirror]++;
     for (auto& b : sub.bodies) {
+        if (!b.mirror.empty() && mirrorCount[b.mirror] != 2) b.mirror.clear();   // half a pair is just a part
+        if (!b.mirror.empty() && !ntag.count("mirror:" + b.mirror)) ntag["mirror:" + b.mirror] = "m-" + uid();
         nid[b.id] = uid();
         if (!b.weld.empty() && !ntag.count(b.weld)) ntag[b.weld] = "w-" + uid();
     }
@@ -51,6 +55,7 @@ bool insertPiece(const std::string& text, double dx, double dy) {
     for (auto b : sub.bodies) {
         b.id = nid[b.id];
         if (!b.weld.empty()) b.weld = ntag[b.weld];
+        if (!b.mirror.empty()) b.mirror = ntag["mirror:" + b.mirror];
         for (auto& p : b.pts) { p.x += dx; p.y += dy; }
         for (auto& p : b.roundPath) { p.x += dx; p.y += dy; }
         carve::moveCarves(b, dx, dy);

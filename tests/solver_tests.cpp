@@ -561,11 +561,15 @@ static void edgeSplitting() {
     for (int k = 0; k < 10; k++) subdivideBody(e);
     CHECK((int)e.pts.size() == MAX_CORNERS && std::fabs(outlineArea(e) - 800) < 1e-6, "splitting over and over stops at the corner limit, with the shape unchanged");
     CHECK(splitEdge(e, 0) == -1 && subdivideBody(e) == 0 && (int)e.pts.size() == MAX_CORNERS, "a part at the limit takes no more corners");
-    BodyDef f; f.pts = {{0, 0}, {60, 0}, {60, 2}, {0, 2}}; fixShape(f);
-    for (int k = 0; k < 4; k++) subdivideBody(f);
+    // one long edge on top, the bottom already in many small pieces: two corners' room left
+    BodyDef f; f.pts = {{0, 0}, {60, 0}, {60, 2}};
+    int bottom = MAX_CORNERS - 5;
+    for (int k = 1; k < bottom; k++) f.pts.push_back({60 - 60.0 * k / bottom, 2});
+    f.pts.push_back({0, 2}); fixShape(f);
+    subdivideBody(f);
     double longest = 0;
     for (size_t i = 0; i < f.pts.size(); i++) { V2 p = f.pts[i], q = f.pts[(i + 1) % f.pts.size()]; longest = std::max(longest, std::hypot(q.x - p.x, q.y - p.y)); }
-    CHECK((int)f.pts.size() == MAX_CORNERS && longest < 8, "when they can't all be split, the longest edges are split first");
+    CHECK((int)f.pts.size() == MAX_CORNERS && longest < 31, "when they can't all be split, the longest edges are split first");
     BodyDef g; g.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; fixShape(g);
     g.pts.clear();  // an old blueprint's part with far too many corners: a rectangle with a corner every 1 mm
     for (int x = 0; x < 40; x++) g.pts.push_back({(double)x, 0});
@@ -1378,6 +1382,40 @@ static void shapeTools() {
     BodyDef one = a;
     CHECK(chamferCorners(one, 5, {2}) == 1 && one.pts.size() == 5, "only the selected corner is chamfered");
 }
+static void liveMirrors() {
+    std::printf("liveMirrors\n");
+    Design d;
+    BodyDef a; a.id = "a"; a.name = "Grip panel"; a.pts = {{0, 0}, {30, 0}, {30, 60}, {0, 60}}; a.z = 8; a.thick = 3; fixShape(a);
+    CarveDef c; c.at = {15, 30}; c.atZ = 1.5; c.dz = -1; a.carves.push_back(c);
+    a.mirror = "m1"; a.mirrorKind = "depth";
+    BodyDef b = mirrorImage(a); b.id = "b"; b.name = "Grip panel (other side)";
+    d.bodies = {a, b};
+    CHECK(std::fabs(d.bodies[1].z + 8) < 1e-9 && std::fabs(d.bodies[1].carves[0].atZ + 1.5) < 1e-9, "the other side sits across the gun, its cut from the far face");
+    CHECK(mirrorPartner(d, 0) == 1 && mirrorPartner(d, 1) == 0, "each finds its partner");
+    Design prev = d;
+    d.bodies[0].pts[2] = {40, 70}; d.bodies[0].thick = 4;
+    CHECK(syncMirrors(d, &prev) == 1 && std::fabs(d.bodies[1].pts[2].x - 40) < 1e-9 && std::fabs(d.bodies[1].thick - 4) < 1e-9, "changing one side changes the other");
+    prev = d;
+    d.bodies[1].pts[0] = {-5, -5};
+    CHECK(syncMirrors(d, &prev) == 1 && std::fabs(d.bodies[0].pts[0].x + 5) < 1e-9 && std::fabs(d.bodies[0].z - 8) < 1e-9, "and the other way round");
+    prev = d;
+    d.bodies[1].fixed = true;
+    CHECK(syncMirrors(d, &prev) == 0 && !d.bodies[0].fixed, "how a part moves isn't mirrored");
+    Design back; designFromJson(designToJson(d), back);
+    CHECK(mirrorPartner(back, 0) == 1 && back.bodies[0].mirrorKind == "depth", "the link is saved");
+    // across a line in the side view
+    Design e;
+    BodyDef l; l.id = "l"; l.pts = {{10, 0}, {20, 0}, {20, 10}}; fixShape(l);
+    l.mirror = "m2"; l.mirrorKind = "line"; l.mirrorA = {0, 0}; l.mirrorB = {0, 1};
+    BodyDef r = mirrorImage(l); r.id = "r";
+    e.bodies = {l, r};
+    CHECK(std::fabs(e.bodies[1].pts[0].x + 20) < 1e-9, "a line mirror reflects across the line");
+    e.bodies[0].pts[1] = {25, 0};
+    CHECK(syncMirrors(e, nullptr, 0) == 1 && std::fabs(e.bodies[1].pts[1].x + 25) < 1e-9 && std::fabs(e.bodies[1].pts[0].x + 20) < 1e-9, "and follows the selected side");
+    Design old; designFromJson(designToJson(loadPreset("blowback")), old);
+    bool none = true; for (auto& x : old.bodies) none &= x.mirror.empty();
+    CHECK(none, "older designs have no mirrors");
+}
 static void benchBugs() {
     std::printf("Playtest bugs (0.2.1)\n");
     {   // the bench used to run out of room after about 200 reloads: no new magazine, the gun empty
@@ -1427,6 +1465,7 @@ int main() {
     barrelsAndTilt();
     benchBugs();
     shapeTools();
+    liveMirrors();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

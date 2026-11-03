@@ -368,16 +368,34 @@ static void inspectPart(BodyDef& b) {
                 ImGui::EndPopup();
             }
         }
-        if (ImGui::Button("Copy to the other side", {-1, 0})) {
-            BodyDef cpy = b;
-            cpy.id = uid(); cpy.name += " (other side)"; cpy.z = -b.z; cpy.magazine = false; cpy.weld.clear();
-            carve::flipCarvesZ(cpy);
+        int partner = mirrorPartner(D, D.bodyIndex(b.id));
+        if (partner >= 0) {   // a live mirror
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextColored(colAccent(), "%s", ICON_FA_LEFT_RIGHT);
+            ImGui::SameLine();
+            ImGui::TextWrapped("Mirrored with %s%s", D.bodies[partner].name.c_str(), b.mirrorKind == "line" ? "" : " (the other side)");
+            if (tipHover()) ImGui::SetTooltip("Change either one and the other follows: shape, cuts, depth, thickness, tilt and look.\nHow each moves and what it's joined to stay its own.");
+            float w2m = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+            if (ImGui::Button("Select the other", {w2m, 0})) { A.sel = {1, partner, -1}; A.selVs.clear(); A.selCarve = -1; return; }
+            ImGui::SameLine();
+            if (ImGui::Button("Unlink", {w2m, 0})) {
+                D.bodies[partner].mirror.clear(); b.mirror.clear();
+                commit(); toast("Unlinked: the two are separate parts now.");
+                return;
+            }
+            if (tipHover()) ImGui::SetTooltip("Stops the mirroring, so each side can be shaped on its own.");
+        } else if (ImGui::Button("Copy to the other side", {-1, 0})) {
+            std::string tag = "m-" + uid();
+            b.mirror = tag; b.mirrorKind = "depth";
+            BodyDef cpy = mirrorImage(b);
+            cpy.id = uid(); cpy.name += " (other side)"; cpy.magazine = false; cpy.weld.clear();
             D.bodies.push_back(cpy);
             A.sel = {1, (int)D.bodies.size() - 1, -1};
             commit();
+            toast("Made the matching part on the other side. It's a live mirror: change either one and the other follows.");
             return;
         }
-        if (tipHover()) ImGui::SetTooltip("Makes the matching part on the far side of the gun: side walls, rails, grip panels.");
+        if (partner < 0 && tipHover()) ImGui::SetTooltip("Makes the matching part on the far side of the gun (side walls, rails, grip panels),\nkept as a live mirror: change either one and the other follows.");
         if (combineSection(b)) return;   // parts went away: this frame's references are stale
     }
 

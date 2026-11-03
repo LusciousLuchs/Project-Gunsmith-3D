@@ -12,14 +12,14 @@ Bugs and ideas from playtesters, kept here so nothing gets lost. Newest at the t
 
 What's there already is noted; the rest is new work.
 
-- **Extrude**: exists for edges (Shift-drag an edge's diamond). Could add extruding a whole face in depth.
+- [x] **Extrude**: Shift-drag an edge's diamond; the Faces tool and E extrude any face, Sprocket-style (0.2.3).
 - [x] **Bevel**: corners can be rounded (Round corners) or cut flat (Chamfer, 0.2.2); front and back edges softened (Smoothness). Still new: a flat bevel on the front and back edges.
 - [x] **Boolean**: Merge, Keep overlap and Cut away between two parts (0.2.2). Carve still makes cuts partway in and holes.
-- [x] **Mirror and asymmetry**: the Mirror tool and *Copy to the other side*. A live mirror (one side follows the other) was considered and dropped by the owner.
+- [x] **Mirror and asymmetry**: the Mirror tool and *Copy to the other side* make live mirrors, with Unlink for asymmetry (0.2.3).
 - [x] **Coordinates**: X, Y, Z for corners, cuts, and now a whole part's position (0.2.2). Could add them for joints.
 - [x] **Merge**: Weld makes parts move as one; Merge makes two parts one outline (0.2.2).
 - [x] **Measurements**: the workbench ruler, and the Measure tool (0.2.2).
-- **Thickness**: exists per part. Could add changing it by dragging in the view.
+- [x] **Thickness**: per part, and by dragging the front or back face with the Faces tool (0.2.3).
 - [x] **Copy**: Duplicate (Ctrl+D), and Ctrl+C / Ctrl+V between designs (0.2.2).
 - [x] **Merge different parts**: see Merge.
 - [x] **Save parts across guns** (like Sprocket's structures): *Save to my parts* and **Parts** in the top bar (0.2.2).

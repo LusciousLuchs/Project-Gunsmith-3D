@@ -474,15 +474,73 @@ static std::vector<V2> hull(std::vector<V2> p) {
 }
 // Contact points along the outline: about 40 round a small part (a sear nose has millimetre faces),
 // never further apart than 2.5 mm on big ones.
+static constexpr double CONTACT_REACH = 0.005;   // deeper than this (m) a point isn't pushed out (see contacts)
+static void buildAccel(Body& b) {
+    b.acc = Body::Accel{};
+    const size_t n = b.lp.size();
+    if (n < 48) return;   // few edges: checking them all is quicker
+    double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (auto& p : b.lp) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); y1 = std::max(y1, p.y); }
+    auto& A = b.acc;
+    const double R = CONTACT_REACH;
+    A.x0 = x0 - R; A.y0 = y0 - R;
+    double w = x1 - x0 + 2 * R, h = y1 - y0 + 2 * R;
+    A.cell = std::max({0.001, w / 96, h / 96});
+    A.gw = std::max(1, (int)std::ceil(w / A.cell)); A.gh = std::max(1, (int)std::ceil(h / A.cell));
+    A.near.assign((size_t)A.gw * A.gh, {});
+    A.close.assign((size_t)A.gw * A.gh, {});
+    A.tight = 0.0005;
+    A.nb = std::clamp((int)n / 4, 8, 1024);
+    A.band = std::max(1e-6, (y1 - y0) / A.nb);
+    A.bands.assign(A.nb, {});
+    for (size_t i = 0; i < n; i++) {
+        V2 p = b.lp[i], q = b.lp[(i + 1) % n];
+        int c0 = std::clamp((int)std::floor((std::min(p.x, q.x) - R - A.x0) / A.cell), 0, A.gw - 1);
+        int c1 = std::clamp((int)std::floor((std::max(p.x, q.x) + R - A.x0) / A.cell), 0, A.gw - 1);
+        int r0 = std::clamp((int)std::floor((std::min(p.y, q.y) - R - A.y0) / A.cell), 0, A.gh - 1);
+        int r1 = std::clamp((int)std::floor((std::max(p.y, q.y) + R - A.y0) / A.cell), 0, A.gh - 1);
+        for (int r = r0; r <= r1; r++)
+            for (int c = c0; c <= c1; c++) A.near[(size_t)r * A.gw + c].push_back((int)i);
+        const double T = A.tight;
+        c0 = std::clamp((int)std::floor((std::min(p.x, q.x) - T - A.x0) / A.cell), 0, A.gw - 1);
+        c1 = std::clamp((int)std::floor((std::max(p.x, q.x) + T - A.x0) / A.cell), 0, A.gw - 1);
+        r0 = std::clamp((int)std::floor((std::min(p.y, q.y) - T - A.y0) / A.cell), 0, A.gh - 1);
+        r1 = std::clamp((int)std::floor((std::max(p.y, q.y) + T - A.y0) / A.cell), 0, A.gh - 1);
+        for (int r = r0; r <= r1; r++)
+            for (int c = c0; c <= c1; c++) A.close[(size_t)r * A.gw + c].push_back((int)i);
+        int b0 = std::clamp((int)std::floor((std::min(p.y, q.y) - y0) / A.band), 0, A.nb - 1);
+        int b1 = std::clamp((int)std::floor((std::max(p.y, q.y) - y0) / A.band), 0, A.nb - 1);
+        for (int k = b0; k <= b1; k++) A.bands[k].push_back((int)i);
+    }
+    A.y0band = y0;
+    A.lb[0] = x0; A.lb[1] = y0; A.lb[2] = x1; A.lb[3] = y1;
+    A.n = n;
+}
 void resample(Body& b) {
+    buildAccel(b);
     double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (auto& p : b.lp) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); y1 = std::max(y1, p.y); }
     double step = std::clamp(std::max(x1 - x0, y1 - y0) / 20, 0.0004, 0.0025);
     b.samples.clear();
-    for (size_t i = 0; i < b.lp.size(); i++) {
-        V2 p = b.lp[i], q = b.lp[(i + 1) % b.lp.size()];
+    // parts drawn with more corners than the old limit (32): a corner that barely bends gets no point of its own
+    // unless the last one is a step away, so a finely drawn curve costs no more than a coarse one. (Not rounds and
+    // cases, made on the bench as "round#..." and "case#...": their outlines come from the cartridge and stay as they were.)
+    const bool thin = b.d && b.d->pts.size() > 32 && b.d->id.find('#') == std::string::npos;
+    const size_t N = b.lp.size();
+    V2 last{1e9, 1e9};
+    for (size_t i = 0; i < N; i++) {
+        V2 p = b.lp[i], q = b.lp[(i + 1) % N];
         int n = std::max(1, (int)std::ceil(std::hypot(q.x - p.x, q.y - p.y) / step));
-        for (int k = 0; k < n; k++) b.samples.push_back({p.x + (q.x - p.x) * k / n, p.y + (q.y - p.y) * k / n});
+        for (int k = 0; k < n; k++) {
+            V2 s{p.x + (q.x - p.x) * k / n, p.y + (q.y - p.y) * k / n};
+            if (thin && k == 0) {
+                V2 o = b.lp[(i + N - 1) % N];
+                double ax = p.x - o.x, ay = p.y - o.y, bx = q.x - p.x, by = q.y - p.y, la = std::hypot(ax, ay), lb = std::hypot(bx, by);
+                double turn = la > 0 && lb > 0 ? std::fabs(std::atan2(ax * by - ay * bx, ax * bx + ay * by)) : 1;
+                if (turn < 0.1 && std::hypot(s.x - last.x, s.y - last.y) < step) continue;   // under about 6 degrees
+            }
+            b.samples.push_back(s); last = s;
+        }
     }
     if (b.cav.empty()) return;
     // carved: the outline only where it wasn't cut away, plus the walls of the cuts where they are in the part
@@ -532,6 +590,15 @@ static void reshapeRolled(Body& b) {
 // ---------- contacts ----------
 void bbox(Body& b) {
     double x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9, c = std::cos(b.a), s = std::sin(b.a);
+    if (b.acc.n && b.acc.n == b.lp.size()) {   // many corners: the turned box round the outline (a little larger, which is fine)
+        const double* L = b.acc.lb;
+        for (V2 l : {V2{L[0], L[1]}, V2{L[2], L[1]}, V2{L[2], L[3]}, V2{L[0], L[3]}}) {
+            double x = b.x + c * l.x - s * l.y, y = b.y + s * l.x + c * l.y;
+            x0 = std::min(x0, x); x1 = std::max(x1, x); y0 = std::min(y0, y); y1 = std::max(y1, y);
+        }
+        b.bb[0] = x0; b.bb[1] = y0; b.bb[2] = x1; b.bb[3] = y1;
+        return;
+    }
     for (auto& l : b.lp) {
         double x = b.x + c * l.x - s * l.y, y = b.y + s * l.x + c * l.y;
         x0 = std::min(x0, x); x1 = std::max(x1, x); y0 = std::min(y0, y); y1 = std::max(y1, y);
@@ -544,6 +611,7 @@ void contacts(Body& A, Body& B, double mu) {  // push B's boundary samples out o
     double lx0 = 1e9, ly0 = 1e9, lx1 = -1e9, ly1 = -1e9;
     for (auto& q : A.lp) { lx0 = std::min(lx0, q.x); lx1 = std::max(lx1, q.x); ly0 = std::min(ly0, q.y); ly1 = std::max(ly1, q.y); }
     const size_t n = A.lp.size();
+    const bool fast = A.acc.n == n && n > 0;
     double cB = std::cos(B.a), sB = std::sin(B.a), cA = std::cos(A.a), sA = std::sin(A.a);
     for (auto& s : B.samples) {
         V2 w{B.x + cB * s.x - sB * s.y, B.y + sB * s.x + cB * s.y};
@@ -551,22 +619,54 @@ void contacts(Body& A, Body& B, double mu) {  // push B's boundary samples out o
         double dx = w.x - A.x, dy = w.y - A.y;
         V2 l{cA * dx + sA * dy, -sA * dx + cA * dy};
         if (l.x < lx0 || l.x > lx1 || l.y < ly0 || l.y > ly1) continue;
-        if (!inPoly(l.x, l.y, A.lp)) continue;
-        double best = 1e18; V2 bq;
-        if (A.cav.empty()) {
-            for (size_t i = 0; i < n; i++) {
-                double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < n ? i + 1 : 0], &d2);
-                if (d2 < best) { best = d2; bq = q; }
+        const std::vector<int>* cand = nullptr; int cell = 0;   // many corners: only the edges that can be within reach
+        if (fast) {
+            int c = std::clamp((int)std::floor((l.x - A.acc.x0) / A.acc.cell), 0, A.acc.gw - 1);
+            int r = std::clamp((int)std::floor((l.y - A.acc.y0) / A.acc.cell), 0, A.acc.gh - 1);
+            cell = r * A.acc.gw + c;
+            cand = &A.acc.near[(size_t)cell];
+            if (cand->empty()) continue;   // nothing within reach: too deep inside to push, or outside
+            // inside? the same crossing test as inPoly, over the edges that cross this point's band
+            int k = std::clamp((int)std::floor((l.y - A.acc.y0band) / A.acc.band), 0, A.acc.nb - 1);
+            bool in = false;
+            for (int i : A.acc.bands[k]) {
+                const V2 &pi = A.lp[i], &pj = A.lp[i + 1 < (int)n ? i + 1 : 0];
+                if (((pi.y > l.y) != (pj.y > l.y)) && l.x < (pj.x - pi.x) * (l.y - pi.y) / (pj.y - pi.y) + pi.x) in = !in;
             }
+            if (!in) continue;
+        } else if (!inPoly(l.x, l.y, A.lp)) continue;
+        double best = 1e18; V2 bq;
+        auto eachEdge = [&](auto&& f) {
+            if (cand) for (int i : *cand) f((size_t)i);
+            else for (size_t i = 0; i < n; i++) f(i);
+        };
+        if (A.cav.empty()) {
+            if (cand) {   // shallow first: an edge found within `tight` means the nearest one is among those within it
+                for (int i : A.acc.close[(size_t)cell]) {
+                    double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < (int)n ? i + 1 : 0], &d2);
+                    if (d2 < best) { best = d2; bq = q; }
+                }
+                if (best > A.acc.tight * A.acc.tight) {
+                    best = 1e18;
+                    for (int i : *cand) {
+                        double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < (int)n ? i + 1 : 0], &d2);
+                        if (d2 < best) { best = d2; bq = q; }
+                    }
+                }
+            } else
+                for (size_t i = 0; i < n; i++) {
+                    double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < n ? i + 1 : 0], &d2);
+                    if (d2 < best) { best = d2; bq = q; }
+                }
         } else {  // carved: inside the outline but in a cut is empty space; the cut walls are surfaces too
             bool hollow = false;
             for (auto& c : A.cav) if (carve::inConvex(c, l)) { hollow = true; break; }
             if (hollow) continue;
             auto inCut = [&](V2 q) { for (auto& c : A.cav) if (carve::inConvex(c, q)) return true; return false; };
-            for (size_t i = 0; i < n; i++) {
+            eachEdge([&](size_t i) {
                 double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < n ? i + 1 : 0], &d2);
                 if (d2 < best && !inCut(q)) { best = d2; bq = q; }
-            }
+            });
             for (auto& c : A.cav)
                 for (size_t i = 0; i < c.size(); i++) {
                     double d2; V2 q = closestOnSeg(l, c[i], c[(i + 1) % c.size()], &d2);
@@ -574,7 +674,7 @@ void contacts(Body& A, Body& B, double mu) {  // push B's boundary samples out o
                 }
         }
         double d = std::sqrt(best);
-        if (d < 1e-7 || d > 0.005) continue;
+        if (d < 1e-7 || d > CONTACT_REACH) continue;
         V2 qw{A.x + cA * bq.x - sA * bq.y, A.y + sA * bq.x + cA * bq.y};
         double nx = (qw.x - w.x) / d, ny = (qw.y - w.y) / d;
         solveContact(B, A, w, qw, nx, ny, d);

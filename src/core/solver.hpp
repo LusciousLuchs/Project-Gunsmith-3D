@@ -27,6 +27,18 @@ struct Body {
     double m = 0, I = 0, invM = 0, invI = 0, Ir = 0, invIr = 0, rmin = 0, rmax = 0;
     double damp = 0;
     std::vector<V2> lp, samples;          // local polygon and boundary samples (m)
+    // parts with many corners: which edges can be near a point (a grid over the part) and which edges cross each
+    // horizontal band (for inside tests), so a contact looks at a few edges instead of all of them. Built by resample.
+    struct Accel {
+        size_t n = 0;                     // lp.size() it was built for (0 = none)
+        double x0 = 0, y0 = 0, cell = 1, band = 1, y0band = 0;
+        double lb[4] = {0, 0, 0, 0};      // the outline's own box (local)
+        int gw = 0, gh = 0, nb = 0;
+        std::vector<std::vector<int>> near; // per grid cell: edges within the contact reach of some point in it
+        std::vector<std::vector<int>> close; // per grid cell: edges within `tight` of some point in it (shallow contacts)
+        double tight = 0;
+        std::vector<std::vector<int>> bands;
+    } acc;
     std::vector<std::vector<V2>> cav;     // carved parts: cuts through this slice (local, m, convex). Empty for most parts
     bool slice = false;                  // one of the extra depth slices of a carved part (the part itself is the main slice)
     double fx = 0, fy = 0, tq = 0, tr = 0, px = 0, py = 0, pa = 0, pr = 0;

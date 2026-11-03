@@ -8,6 +8,18 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.3-alpha
+
+### Designer
+- **Faces tool** (on the left, top of Shape): point at any face of any part, from any side (front, back, top, bottom, the ends) and it lights up. Drag to push or pull it: a side wall moves out or in, the front or back face makes the part thicker or thinner. An arrow shows which way is out; a face that looks straight at you comes out as you move the mouse up.
+- **Extrude, like Sprocket:** point at a face and press **E**, move the mouse to draw it out, click to finish (right-click or Esc cancels). A side wall (top, bottom, an end) gets two new corners and grows a step. The front or back face grows a new piece out of it, welded on, as deep as you pull it: reshape its outline afterwards for bosses, ribs and steps. E also works in the Select tool on the selected part, and Shift-drag extrudes in the Faces tool.
+- **Handles from either side:** corners and edge handles now sit on whichever face is toward you, so a part can be shaped from behind as well as from the front.
+- **Live mirror:** *Copy to the other side* and the Mirror tool now make a linked pair. Change either one and the other follows as you drag: shape, cuts, depth, thickness, tilt and look (how each moves and what it's joined to stay its own). The part's panel shows its partner, *Select the other*, and *Unlink*.
+- **Up to 1024 corners a part** (was 32). The physics now only looks at the edges near each touching point, so detailed parts cost little: a frame or slide drawn with 1024 corners runs as fast as before, and even every slide and frame part of a pistol at 1024 corners runs about 2x slower rather than 57x. The examples behave exactly as before.
+
+### Fixes
+- The hint line at the bottom of the designer read past the end of its list with the Barrel and Measure tools: it could show garbage or crash. Every tool has its hint now.
+
 ## 0.2.2-alpha
 
 Playtester bugs fixed, and the first batch of editor ideas from playtesting.

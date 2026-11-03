@@ -13,4 +13,4 @@ void finishTrack();
 void makeMagwell(const BodyDef& b);
 void buildInput(bool overUI);
 bool splitReady();          // false if the last edge split was a moment ago (hammering can't pile up corners)
-void cornerLimitToast();    // "a part can have at most 32 corners"
+void cornerLimitToast();    // "a part can have at most MAX_CORNERS corners"

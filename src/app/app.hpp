@@ -21,7 +21,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor };  // the main menu, the designer / test bench, or the map editor
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Count };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; };
@@ -72,6 +72,12 @@ struct App {
     bool carveThrough = false;
     int selCarve = -1;                   // with a part selected: one of its carves
     bool carveDrag = false; int carveBody = -1; Vector3 carveP{}, carveN{};  // pressed on this surface point (world)
+    // Faces: a face of a part under the mouse (kind 0 a side wall, `edge` its edge; 1 the near face (+Z); 2 the far face)
+    struct FacePick { int body = -1, kind = 0, edge = -1; Vector3 at{}; };
+    FacePick faceHover, faceDrag;
+    bool faceDragging = false, faceFollow = false, faceExtruded = false;   // follow: E pressed, finish with a click
+    std::vector<V2> faceOrig; double faceOrigZ = 0, faceOrigThick = 0; std::vector<CarveDef> faceOrigCarves;
+    Vector2 faceStart{};
     // drafting
     bool drafting = false;
     std::vector<V2> draft;
