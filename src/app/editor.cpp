@@ -348,41 +348,45 @@ void buildInput(bool overUI) {
         bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
         if (auto* h = handleAt(m)) {
             Handle hh = *h;
-            // a joint's handles (a pin, a track and its slot, a spring's ends, a magazine well) and the breech face
-            // and muzzle: the first click only selects; press again on it to drag it
-            if (hh.kind >= 1 && hh.kind <= 4 && hh.i >= 0 && !(A.sel.kind == 2 && A.sel.idx == hh.i)) {
-                A.sel = {2, hh.i, -1}; A.selVs.clear(); A.armedKind = -1; A.dragKind = 0;
-                toast("Selected. Drag it to move it.");
+            // everything is picked with one press and moved with the next, so a point can be selected without moving it:
+            // a corner or edge of the selected part (its own selection), and any other handle (a joint's point, the
+            // breech face or muzzle, a magazine's round path point), which also selects its joint
+            bool own = hh.kind == 0 || hh.kind == 7;
+            if (own) {
+                auto& d = A.design.bodies[hh.i];
+                int n = (int)d.pts.size();
+                bool picked = hh.kind == 0 ? std::find(A.selVs.begin(), A.selVs.end(), hh.v) != A.selVs.end()
+                                           : A.sel.v == -1 && A.selVs.size() == 2 && std::find(A.selVs.begin(), A.selVs.end(), hh.v) != A.selVs.end() &&
+                                                 std::find(A.selVs.begin(), A.selVs.end(), (hh.v + 1) % n) != A.selVs.end();
+                if (hh.kind == 0 && shift) {   // Shift-click adds a corner to the selection, or takes it out
+                    auto it = std::find(A.selVs.begin(), A.selVs.end(), hh.v);
+                    if (it != A.selVs.end()) A.selVs.erase(it); else A.selVs.push_back(hh.v);
+                    A.sel.v = hh.v; A.dragKind = 0;
+                    return;
+                }
+                if (!picked) {
+                    if (hh.kind == 0) { A.selVs = {hh.v}; A.sel.v = hh.v; }
+                    else { A.selVs = {hh.v, (hh.v + 1) % n}; A.sel.v = -1; }
+                    A.armedKind = -1; A.dragKind = 0;
+                    return;
+                }
+            } else if (!(A.armedKind == hh.kind && A.armedI == hh.i && A.armedV == hh.v)) {
+                A.armedKind = hh.kind; A.armedI = hh.i; A.armedV = hh.v; A.dragKind = 0;
+                if (hh.kind >= 1 && hh.kind <= 4 && hh.i >= 0) { A.sel = {2, hh.i, -1}; A.selVs.clear(); }
                 return;
             }
-            if ((hh.kind == 5 || hh.kind == 6) && !(A.armedKind == hh.kind && A.armedI == hh.i)) {
-                A.armedKind = hh.kind; A.armedI = hh.i; A.dragKind = 0;
-                toast(hh.kind == 5 ? "Breech face picked. Drag it to move it." : "Muzzle picked. Drag it to move it.");
-                return;
-            }
-            A.dragKind = 1; A.dragH = hh; A.dragMoved = false; A.dragPress = m; A.dragLive = false;
+            A.dragKind = 1; A.dragH = hh; A.dragMoved = false; A.dragPress = m; A.dragLive = false; A.dragExtrude = false;
             if (hh.kind == 0 || hh.kind == 7) {
                 auto& d = A.design.bodies[hh.i];
                 fixShape(d);
                 float z = bodyFront(hh.i);
                 if (hh.kind == 0) {
-                    auto it = std::find(A.selVs.begin(), A.selVs.end(), hh.v);
-                    if (shift) { if (it != A.selVs.end()) A.selVs.erase(it); else A.selVs.push_back(hh.v); A.dragKind = 0; }
-                    else if (it == A.selVs.end()) A.selVs = {hh.v};
                     A.sel.v = hh.v;
                 } else {
                     int n = (int)d.pts.size(), v = hh.v;
                     if (shift && n + 2 > MAX_CORNERS) { cornerLimitToast(); shift = false; }  // too many corners: just move the edge
-                    if (shift) {  // extrude: duplicate the edge's two vertices and drag the copies
-                        V2 a = d.pts[v], b = d.pts[(v + 1) % n];
-                        int at = v + 1;
-                        d.pts.insert(d.pts.begin() + at, {a, b});
-                        d.rad.insert(d.rad.begin() + at, {0.0, 0.0});
-                        d.bulge.insert(d.bulge.begin() + at, {0.0, 0.0});
-                        d.bulge[v] = 0;
-                        A.selVs = {at, at + 1};
-                        A.dragMoved = true;
-                    } else A.selVs = {v, (v + 1) % n};
+                    A.selVs = {v, (v + 1) % n};
+                    A.dragExtrude = shift;   // extrude: the edge's two corners are copied once the drag really starts
                     A.sel.v = -1;
                 }
                 A.dragOrig = d.pts;
@@ -515,7 +519,26 @@ void buildInput(bool overUI) {
     }
     if (A.dragKind == 1 || A.dragKind == 2) {
         // a click that wobbles a little isn't a drag: nothing moves until the mouse has gone a few pixels
-        if (!A.dragLive && Vector2Distance(m, A.dragPress) >= 5 * CFG.uiScale) A.dragLive = true;
+        if (!A.dragLive && Vector2Distance(m, A.dragPress) >= 5 * CFG.uiScale) {
+            A.dragLive = true;
+            if (A.dragKind == 1 && A.dragExtrude && A.dragH.kind == 7 && A.dragH.i < (int)A.design.bodies.size()) {
+                // Shift-drag on an edge: duplicate its two corners and drag the copies, pulling out a new step
+                auto& d = A.design.bodies[A.dragH.i];
+                int n = (int)d.pts.size(), v = A.dragH.v;
+                if (v < n) {
+                    V2 a = d.pts[v], b = d.pts[(v + 1) % n];
+                    int at = v + 1;
+                    d.pts.insert(d.pts.begin() + at, {a, b});
+                    d.rad.insert(d.rad.begin() + at, {0.0, 0.0});
+                    d.bulge.insert(d.bulge.begin() + at, {0.0, 0.0});
+                    d.bulge[v] = 0;
+                    A.selVs = {at, at + 1};
+                    A.dragOrig = d.pts;
+                    A.dragMoved = true;
+                }
+            }
+            A.dragExtrude = false;
+        }
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !A.dragLive) {}
         else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
             // X, Y or Z while dragging: keep to one axis (press it again to free it). Z moves a part in depth.

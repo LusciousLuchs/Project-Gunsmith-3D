@@ -270,7 +270,7 @@ void drawPoseOverlay() {
     const Pose P = viewPose();
     Vector2 m = GetMousePosition();
     auto dot = [&](Vector2 s, int id, Color c, const char* label) {
-        bool hot = Vector2Distance(s, m) < 10 || A.poseDrag == id;
+        bool hot = Vector2Distance(s, m) < 10 || A.poseDrag == id || A.posePicked == id;
         DrawCircleV(s, hot ? 7.f : 5.f, Color{20, 24, 32, 230});
         DrawCircleLinesV(s, hot ? 7.f : 5.f, c);
         if (label) viewText(label, s.x + 10, s.y - 18 * CFG.uiScale, 12, c);
@@ -298,9 +298,9 @@ void drawPoseOverlay() {
                     Vector2 s = toScreen(handPt(g.f, b.b));
                     bool picked = b.digit == A.poseDigit;
                     Color c = picked ? Color{255, 205, 60, 255} : Color{240, 196, 150, 255};
-                    bool hot = Vector2Distance(s, m) < 8 || A.poseDrag == 20 + b.digit;
+                    bool hot = Vector2Distance(s, m) < 8 || A.poseDrag == 20 + b.digit || A.posePicked == 20 + b.digit;
                     DrawCircleV(s, hot || picked ? 5.f : 3.5f, c);
-                    if (hot) viewText(TextFormat("%s: drag it anywhere (Shift: curl)", digitName(b.digit)), s.x + 8, s.y - 16 * CFG.uiScale, 11, c);
+                    if (hot) viewText(TextFormat(A.posePicked == 20 + b.digit ? "%s: drag it anywhere (Shift: curl)" : "%s: click to pick it, then drag", digitName(b.digit)), s.x + 8, s.y - 16 * CFG.uiScale, 11, c);
                     handles.push_back({s, 20 + b.digit});
                 }
     }
@@ -315,13 +315,21 @@ void poseInput(bool overUI) {
         if (overUI || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return;
         Vector2 m = GetMousePosition();
         float best = 12;
-        for (auto& h : handles) { float d = Vector2Distance(h.s, m); if (d < best) { best = d; A.poseDrag = h.id; } }
-        if (A.poseDrag == 0) A.poseHand = 0;
-        if (A.poseDrag == 2) A.poseHand = 1;
-        if (A.poseDrag >= 20) A.poseDigit = A.poseDrag - 20;
+        int id = -1;
+        for (auto& h : handles) { float d = Vector2Distance(h.s, m); if (d < best) { best = d; id = h.id; } }
+        if (id == 0) A.poseHand = 0;
+        if (id == 2) A.poseHand = 1;
+        if (id >= 20) A.poseDigit = id - 20;
+        // the first click picks a dot; press on it again to drag it, so picking never moves anything
+        if (id < 0 || id != A.posePicked) { A.posePicked = id; return; }
+        A.poseDrag = id; A.posePress = m; A.poseLive = false;
         return;
     }
-    if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { A.poseDrag = -1; commit(); return; }
+    if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { if (A.poseLive) commit(); A.poseDrag = -1; return; }
+    if (!A.poseLive) {   // a few pixels before anything moves
+        if (Vector2Distance(GetMousePosition(), A.posePress) < 5 * CFG.uiScale) return;
+        A.poseLive = true;
+    }
     if (A.poseDrag >= 20) {
         int side = A.poseHand == 0 ? 1 : -1, digit = A.poseDrag - 20;
         HandHold& h = *editHand(A.poseHand == 0 ? 0 : 1);

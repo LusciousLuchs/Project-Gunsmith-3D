@@ -293,7 +293,13 @@ void facesInput(bool overUI) {
                 if (score < best) { best = score; A.cornerHover = {A.sel.idx, cd.idx, cd.far}; }
             }
         }
+        if (A.cornerPicked && !(A.sel.kind == 1 && A.sel.idx == A.cornerDrag.body)) A.cornerPicked = false;
         if (A.cornerHover.body >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            const auto& hv = A.cornerHover;
+            if (!(A.cornerPicked && A.cornerDrag.body == hv.body && A.cornerDrag.idx == hv.idx && A.cornerDrag.far == hv.far)) {
+                A.cornerDrag = hv; A.cornerPicked = true; A.facePicked = {};   // picked: its X, Y, Z show in the panel
+                return;
+            }
             BodyDef& d = A.design.bodies[A.sel.idx];
             fixShape(d);
             ensureDepth(d);
@@ -320,9 +326,14 @@ void facesInput(bool overUI) {
     if (A.faceHover.body < 0) return;
     if (IsKeyPressed(KEY_E) && !ImGui::GetIO().WantCaptureKeyboard) { begin(A.faceHover, true, true); return; }
     if (A.tool == Tool::Faces && !overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        if (!(A.sel.kind == 1 && A.sel.idx == A.faceHover.body)) {   // the first click picks the part; then drag its faces
-            A.sel = {1, A.faceHover.body, -1}; A.selVs.clear();
-            toast("Selected. Now drag one of its faces, or its corners.");
+        if (!(A.sel.kind == 1 && A.sel.idx == A.faceHover.body)) {   // the first click picks the part; then a face
+            A.sel = {1, A.faceHover.body, -1}; A.selVs.clear(); A.facePicked = {}; A.cornerPicked = false;
+            toast("Selected. Now click one of its faces or corners to pick it, and drag it.");
+            return;
+        }
+        const auto& fp = A.facePicked;
+        if (!(fp.body == A.faceHover.body && fp.kind == A.faceHover.kind && fp.edge == A.faceHover.edge)) {
+            A.facePicked = A.faceHover; A.cornerPicked = false;
             return;
         }
         begin(A.faceHover, false, shift);
@@ -336,13 +347,13 @@ void drawFaces() {
         for (size_t k = 0; k + 1 < dots.size(); k += 2) DrawLineEx(dots[k].s, dots[k + 1].s, 1.2f, Color{255, 205, 60, 110});
         for (auto& cd : dots) {
             bool hot = A.cornerHover.body >= 0 && A.cornerHover.idx == cd.idx && A.cornerHover.far == cd.far;
-            bool dragged = A.cornerDragging && A.cornerDrag.idx == cd.idx && A.cornerDrag.far == cd.far;
+            bool dragged = (A.cornerDragging || A.cornerPicked) && A.cornerDrag.idx == cd.idx && A.cornerDrag.far == cd.far;
             float r = hot || dragged ? 6.f : 4.f;
             Color c = cd.far ? Color{110, 200, 255, 255} : Color{255, 205, 60, 255};
             if (cd.far) { DrawCircleV(cd.s, r, Color{20, 24, 32, 220}); DrawCircleLinesV(cd.s, r, c); }
             else { DrawRectangleRec({cd.s.x - r, cd.s.y - r, 2 * r, 2 * r}, Color{20, 24, 32, 220}); DrawRectangleLinesEx({cd.s.x - r, cd.s.y - r, 2 * r, 2 * r}, 1.5f, c); }
             if (hot && !A.cornerDragging) {
-                const char* t = cd.far ? "Back corner: drag it (from the top or the front too)" : "Front corner: drag it (from the top or the front too)";
+                const char* t = cd.far ? "Back corner: click to pick it, then drag it" : "Front corner: click to pick it, then drag it";
                 DrawText(t, (int)cd.s.x + 10, (int)cd.s.y - 22, 14, c);
             }
         }
@@ -359,7 +370,7 @@ void drawFaces() {
             }
         }
     }
-    const App::FacePick& f = A.faceDragging ? A.faceDrag : A.faceHover;
+    const App::FacePick& f = A.faceDragging ? A.faceDrag : A.faceHover.body >= 0 ? A.faceHover : A.facePicked;
     if (f.body < 0 || f.body >= (int)A.design.bodies.size()) return;
     if (!A.faceDragging && A.tool != Tool::Faces) return;   // (the Select tool shows it only while E is extruding)
     const BodyDef& d = A.design.bodies[f.body];

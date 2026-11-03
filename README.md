@@ -118,13 +118,13 @@ The panel on the right has four tabs:
 - **Firing:** breech and barrel, cartridge, feeding and firing.
 - **File:** save, open, and start from an example.
 
-In the view, click anything (a part, a spring end, a track, a pin, the breech face or muzzle) to select it, then drag it to move it: the first click never moves anything. Drag a number sideways to scrub it, or click it without dragging to type an exact value. Sliders take a double-click (or Ctrl+click) to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
+In the view, click anything (a part, a corner, an edge, a spring end, a track point, a pin, the breech face or muzzle, a face, a hand in Pose) to pick it, then drag it to move it: the first click never moves anything. Drag a number sideways to scrub it, or click it without dragging to type an exact value. Sliders take a double-click (or Ctrl+click) to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
 
 ## Building blocks
 
 **Parts** are drawn in side elevation and extruded to their thickness. The editor works like Sprocket's: start from a Rect, Circle or Polygon and shape it.
-- *Vertices* (squares): drag to move. Shift-click or box-drag to pick several and move them together, or type an exact X/Y. Double-click an edge to add one.
-- *Edges* (diamonds), up to 32 corners per part: drag to move the whole edge, or Shift-drag to extrude it into a new step, like pulling out a rail or a lug. Right-click or double-click a diamond to split that edge in half (on its curve, if it's bowed); *Split edge* in the Shape section does the same for the selected edge.
+- *Vertices* (squares): click one to pick it (its X/Y show in the panel), then drag it to move it. Shift-click or box-drag to pick several and move them together, or type an exact X/Y. Double-click an edge to add one.
+- *Edges* (diamonds), up to 32 corners per part: click one to pick it, then drag to move the whole edge, or Shift-drag to extrude it into a new step, like pulling out a rail or a lug. Right-click or double-click a diamond to split that edge in half (on its curve, if it's bowed); *Split edge* in the Shape section does the same for the selected edge.
 - *Knife*: drag a line across a part to cut it into separate parts. Delete the offcut to carve a notch, or keep both halves: cut a frame block into a frame and a slide, for example. With nothing selected, it cuts every part the line crosses. Curves and rounded corners survive the cut.
 - *Mirror*: drag an axis to make a reflected copy of the selected part. *Flip H / Flip V* flip a part in place, *Duplicate* copies it, *Split all edges* adds a vertex mid-way along every edge for finer shaping.
 - *Curves*: select a vertex to round that corner or bow the next edge outward or inward, or round every corner at once.
@@ -267,7 +267,7 @@ Maps are built the way early-2000s shooters were (Radiant, the idTech editor beh
 - **Drawing:** pick a shape tool and drag on the ground, or on top of another brush, to draw its footprint. The height comes from the box in the top bar. Ramps and stairs climb away from where you're looking.
 - **Selecting and editing:**
   - Click a brush to select it. Shift adds to the selection, Ctrl+click picks a single face.
-  - Drag a brush to move it, or Alt+drag to move it up and down. Drag the little squares on its faces to resize.
+  - Click a brush to select it, then drag it to move it, or Alt+drag to move it up and down. Drag the little squares on its faces to resize.
   - Arrow keys and Page Up/Down nudge by one grid step.
 - **Clip:** click two points on a face to cut along that line. Green shows what stays and red what goes. Tab keeps the other side, Enter cuts, Shift+Enter splits in two. This is how you make angled walls and roofs.
 - **Make hollow (H):** turns a block into walls around its inside, which is the quickest way to make a room.

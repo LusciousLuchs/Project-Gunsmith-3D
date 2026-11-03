@@ -74,8 +74,8 @@ void drawOverlay() {
         { Vector2 s = toScreen(W3(c.face, frontZ(c.breech.empty() ? br.breech : c.breech))); if (!fromBarrels) A.handles.push_back({s, 5, (int)k, -1}); label(s, ("Breech face " + n).c_str(), Color{255, 122, 89, 255}); }
         if (c.hasMuzzle) { Vector2 s = toScreen(W3(c.muzzle, frontZ(c.chamber))); if (!fromBarrels) A.handles.push_back({s, 6, (int)k, -1}); label(s, ("Muzzle " + n).c_str(), Color{255, 122, 89, 255}); }
     }
-    for (auto& h : A.handles)   // the breech face or muzzle picked: a second press drags it
-        if ((h.kind == 5 || h.kind == 6) && h.kind == A.armedKind && h.i == A.armedI) DrawCircleLinesV(h.s, 9, Color{255, 205, 60, 255});
+    for (auto& h : A.handles)   // the handle picked: a second press drags it
+        if (h.kind != 0 && h.kind != 7 && h.kind == A.armedKind && h.i == A.armedI && h.v == A.armedV) DrawCircleLinesV(h.s, 9, Color{255, 205, 60, 255});
     if (A.axisLock && (A.dragKind == 1 || A.dragKind == 2)) {  // which way a drag is held to
         static const char* what[] = {"", "X: side to side only", "Y: up and down only", "Z: depth only (move the mouse up and down)"};
         Color lc = A.axisLock == 1 ? Color{235, 90, 80, 255} : A.axisLock == 2 ? Color{110, 220, 120, 255} : Color{90, 150, 240, 255};

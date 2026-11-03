@@ -61,6 +61,9 @@ struct App {
     std::string animSlot = "reload";
     double animT = 0;
     int poseDrag = -1;                   // the pose handle being dragged
+    int posePicked = -1;                 // the Pose dot clicked once: a second press drags it
+    Vector2 posePress{};
+    bool poseLive = false;
     int poseHand = 0, poseDigit = DIGIT_INDEX;  // the hand whose fingers are shown (0 firing, 1 support, -1 none) and the digit picked                // the Face and Muzzle tools place this further chamber's points (-1: the first chamber)
     Sel sel;
     bool snapOn = true, xray = true, sound = true, cutaway = false;  // cutaway: near-side parts drawn see-through
@@ -79,9 +82,10 @@ struct App {
     bool carveDrag = false; int carveBody = -1; Vector3 carveP{}, carveN{};  // pressed on this surface point (world)
     // Faces: a face of a part under the mouse (kind 0 a side wall, `edge` its edge; 1 the near face (+Z); 2 the far face)
     struct FacePick { int body = -1, kind = 0, edge = -1; Vector3 at{}; };
-    FacePick faceHover, faceDrag;
+    FacePick faceHover, faceDrag, facePicked;   // facePicked: clicked once, a second press drags it
     bool faceDragging = false, faceFollow = false, faceExtruded = false;   // follow: E pressed, finish with a click
-    bool faceLive = false;               // a face or corner drag has gone past the few-pixel dead zone
+    bool faceLive = false;
+    bool cornerPicked = false;           // cornerDrag was clicked once: a second press drags it               // a face or corner drag has gone past the few-pixel dead zone
     std::vector<V2> faceOrig; double faceOrigZ = 0, faceOrigThick = 0; std::vector<CarveDef> faceOrigCarves;
     Vector2 faceStart{};
     // the selected part's corners in 3D (Faces tool): one on the near face and one on the far face for each, dragged on
@@ -102,7 +106,8 @@ struct App {
     bool dragMoved = false;
     Vector2 dragPress{};                 // where the mouse went down: nothing moves until it has gone a few pixels (dragLive)
     bool dragLive = false;
-    int armedKind = -1, armedI = -2;     // the breech face or muzzle handle clicked once: a second press drags it
+    bool dragExtrude = false;            // a Shift-drag on an edge: extrude it once the drag starts
+    int armedKind = -1, armedI = -2, armedV = -2;   // the handle (a joint's point, the breech face or muzzle, a round path point) picked once: a second press drags it
     Vector2 pressPos{};
     float lastClickT = -1; Vector2 lastClickPos{};
     std::vector<Handle> handles;

@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.14-alpha
+
+### Pick first, then move: everywhere
+- **Every point needs a click before it moves:** a part's corners and edges, a joint's points (spring ends, track and slot points, pins, magazine well points), a magazine's round path points, the breech face and muzzle. The first click only picks it (it shows highlighted, and its numbers show in the panel); press on it again and drag to move it. Shift-click still adds corners to the selection.
+- **Faces tool:** click a part, then click a face or corner to pick it, then drag it.
+- **Pose mode:** the hand, butt and body dots and the fingertips are picked with one click and dragged with the next.
+- **Map editor:** click a brush or a thing to select it, then drag it; a face's square is picked before it resizes.
+- Shift-dragging an edge to pull out a step now only adds its new corners once the mouse really moves.
+
 ## 0.2.13-alpha
 
 ### No more moving things by accident (designer)

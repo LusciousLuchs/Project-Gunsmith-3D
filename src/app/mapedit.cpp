@@ -505,7 +505,11 @@ static void toolInput() {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && mouseInView()) {
         switch (ME.tool) {
         case MTool::Select: {
+            // the first click picks (a brush, a thing, a face's square); press on it again to drag it
+            static int pickedFace = -1;
             int fh = faceHandleAt(m);
+            if (fh >= 0 && fh != pickedFace) { pickedFace = fh; ME.status = "Face picked: drag it to resize."; break; }
+            if (fh < 0) pickedFace = -1;
             if (fh >= 0) {
                 beginDrag(Drag::Face);
                 dragFace = fh; dragOrig = {ME.map.brushes[ME.sel[0]]};
@@ -514,6 +518,7 @@ static void toolInput() {
             double te; int e = entityUnderMouse(&te);
             gmap::Hit h = gmap::rayMap(ME.map, o, d, 5000);
             if (e >= 0 && (h.brush < 0 || te < h.t)) {
+                if (ME.ent != e) { ME.sel.clear(); ME.face = -1; ME.ent = e; break; }
                 ME.sel.clear(); ME.face = -1; ME.ent = e;
                 beginDrag(Drag::MoveEnt);
                 dragEntOrig = ME.map.ents[e].pos;
@@ -529,7 +534,7 @@ static void toolInput() {
                 ME.face = -1;
                 break;
             }
-            if (!isSel(h.brush)) { ME.sel = {h.brush}; }
+            if (!isSel(h.brush)) { ME.sel = {h.brush}; ME.face = -1; break; }
             ME.face = -1;
             beginDrag(Drag::Move);
             dragHit = o + d * h.t; dragVertical = alt;
@@ -573,7 +578,7 @@ static void toolInput() {
     }
 
     if (drag != Drag::None && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-        bool moved = Vector2Distance(m, dragMouse0) > 3;
+        bool moved = Vector2Distance(m, dragMouse0) > 5;
         if (drag == Drag::Move || drag == Drag::MoveEnt) {
             V3 p;
             bool ok;
