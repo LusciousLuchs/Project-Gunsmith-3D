@@ -953,6 +953,7 @@ bool handLoad(Sim& S) {
     double need = std::min(S.design.breech.feed, S.design.breech.roundLen * 0.6);
     if (breechGap(S) < need) return false;
     S.chambered = true;
+    S.gripped = false;   // dropped in by hand: the extractor takes hold of it when the breech closes
     return true;
 }
 void setKey(Sim& S, const std::string& key, bool down) {
@@ -1261,7 +1262,7 @@ void substep(Sim& S) {
         double gap = breechGap(S), feed = br.feed;
         if (gap < 1 && (S.chambered || S.spent)) S.gripped = true;  // the extractor takes hold when the breech closes on it
         if (gap > feed && !S.physicalFeed) {  // simplified feeding: rounds jump from magazine to chamber
-            if (S.spent) { S.spent = false; S.events.push_back({Ev::Eject, S.t}); }
+            if (S.spent) { S.spent = false; S.gripped = false; S.events.push_back({Ev::Eject, S.t}); }   // the case is out: the extractor holds nothing now
             if (S.chambered && S.gripped) {  // opening a loaded action pulls the live round out and throws it clear
                 S.chambered = false; S.gripped = false;
                 V2 f = wpt(*S.BR, S.faceB);

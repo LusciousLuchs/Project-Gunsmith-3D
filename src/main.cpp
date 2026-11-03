@@ -185,7 +185,12 @@ int main(int argc, char** argv) {
         if (walkArg) meWalk(false);
     }
     if (tutListArg) A.showTutorials = true;
-    if (!rangeArg.empty()) enterRange(loadPreset(rangeArg), gmap::builtinRange());
+    if (!rangeArg.empty()) {   // an example's key, or a blueprint file
+        Design rd = loadPreset(rangeArg);
+        std::ifstream rin(rangeArg);
+        if (rin) { std::stringstream ss; ss << rin.rdbuf(); designFromJson(ss.str(), rd); }
+        enterRange(rd, gmap::builtinRange());
+    }
     // a normal launch: the studio's splash, then the agreement until it's agreed to (screenshot runs skip them)
     if (introArg == 2) introForceEula();
     else if (introArg == 1 || (!frames && !direct && mapArg.empty() && !tutListArg && tutArg <= 0 && !settingsArg && rangeArg.empty())) introStart(false);
