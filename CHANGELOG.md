@@ -8,6 +8,17 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.9-alpha
+
+### Parts shaped in depth (Faces tool)
+- **A different shape on the front and the back of a part:** with the Faces tool, the selected part shows its corners on both faces: **squares** on the front face, **circles** on the back. Drag one on its own and only that face changes shape; the sides between the faces follow as flat slopes. So a block can be tall at the front and low at the back, a grip can taper, a slide can be bevelled along its top.
+- **Hold Z** while dragging a corner to move it in depth (deeper or shallower) instead of up, down, forward and back.
+- The **Shape** section of the panel shows the dragged corner's X, Y and Z to type exact numbers, and **Straight through again** undoes all of it.
+- **It's real in the physics:** the part collides by its true shape at every depth. Tested: a part pushed at a block that's tall at the front and low at the back stops against it at the front, and passes over it at the back.
+- Adding or removing corners keeps the shape; turning the part turns it; mirrors across the gun swap its front and back.
+- Limits: on a shaped part corners are sharp and edges straight (rounded corners come back when you make it straight again; *Chamfer* still works). Tilted and round (turned) parts can't be shaped this way yet. An older version of the game opens such a part straight through.
+- The example guns behave exactly as before (same results to the last digit; each fires 20 of 20 with no jams).
+
 ## 0.2.8-alpha
 
 ### Working the action

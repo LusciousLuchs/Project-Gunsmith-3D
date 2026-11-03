@@ -582,8 +582,19 @@ void mirrorBody(BodyDef& b, V2 a, V2 c) {
         rad[j] = b.rad[n - 1 - j];
         bulge[j] = b.bulge[(2 * n - 2 - j) % n];
     }
+    if (depthShaped(b)) {   // the far face, and the depths, go with their corners
+        V2 o0 = refl({0, 0});
+        std::vector<V2> off(n); std::vector<double> zn(n), zf(n);
+        for (size_t j = 0; j < n; j++) {
+            V2 e = refl(b.depthOff[n - 1 - j]);
+            off[j] = {e.x - o0.x, e.y - o0.y};
+            zn[j] = b.depthZn[n - 1 - j]; zf[j] = b.depthZf[n - 1 - j];
+        }
+        b.depthOff = off; b.depthZn = zn; b.depthZf = zf;
+    }
     for (auto& p : pts) { p.x = std::round(p.x * 100) / 100; p.y = std::round(p.y * 100) / 100; }
     b.pts = pts; b.rad = rad; b.bulge = bulge;
+    if (!b.depthRef.empty()) b.depthRef = b.pts;
     if (b.ctrl != "none") {
         b.ctrlPt = refl(b.ctrlPt);
         V2 d0{std::cos(b.ctrlDir * PI_ / 180), std::sin(b.ctrlDir * PI_ / 180)}, o = refl({0, 0}), e = refl(d0);
@@ -822,6 +833,11 @@ std::string designToJson(const Design& d, bool pretty) {
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
         if (!b.weld.empty()) jb["weld"] = b.weld;
+        if (depthShaped(b)) {
+            json a = json::array();
+            for (size_t i = 0; i < b.pts.size(); i++) a.push_back({b.depthOff[i].x, b.depthOff[i].y, b.depthZn[i], b.depthZf[i]});
+            jb["depth"] = a;
+        }
         if (!b.mirror.empty()) {
             jb["mirror"] = b.mirror; jb["mirrorKind"] = b.mirrorKind;
             if (b.mirrorKind == "line") { jb["mirrorA"] = v2j(b.mirrorA); jb["mirrorB"] = v2j(b.mirrorB); }
@@ -1070,6 +1086,14 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.ctrlDir = opt<double>(c, "dir", 180); b.ctrlForce = opt<double>(c, "force", 25);
         }
         if (jb.contains("pts")) for (auto& p : jb["pts"]) b.pts.push_back(j2v(p));
+        if (jb.contains("depth") && jb["depth"].is_array() && jb["depth"].size() == b.pts.size()) {
+            for (auto& q : jb["depth"]) {
+                if (!q.is_array() || q.size() < 4) { b.depthOff.clear(); b.depthZn.clear(); b.depthZf.clear(); break; }
+                b.depthOff.push_back({q[0].get<double>(), q[1].get<double>()});
+                b.depthZn.push_back(q[2].get<double>()); b.depthZf.push_back(q[3].get<double>());
+            }
+            b.depthRef = b.pts;
+        }
         if (jb.contains("rad") && jb["rad"].is_array()) for (auto& r : jb["rad"]) b.rad.push_back(r.get<double>());
         if (jb.contains("bulge") && jb["bulge"].is_array()) for (auto& r : jb["bulge"]) b.bulge.push_back(r.get<double>());
         fixShape(b);

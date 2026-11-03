@@ -67,6 +67,7 @@ static void ensureMeshes() {
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
+        if (depthShaped(d)) for (size_t q = 0; q < d.pts.size(); q++) k << 'D' << d.depthOff[q].x << ' ' << d.depthOff[q].y << ' ' << d.depthZn[q] << ' ' << d.depthZf[q];
         if (d.barrel.on) k << 'B' << d.barrel.cart.caseLen << ' ' << d.barrel.cart.headDia() << ' ' << d.barrel.cart.bulletDia << ' ' << d.barrel.rifled << d.barrel.grooves << d.barrel.muzzleEnd;
         for (auto& c : d.carves) k << 'c' << c.shape << c.at.x << ' ' << c.at.y << ' ' << c.atZ << ' ' << c.dx << ' ' << c.dy << ' ' << c.dz << ' ' << c.spin << ' ' << c.w << ' ' << c.h << ' ' << c.depth;
         std::string key = k.str();
@@ -81,7 +82,8 @@ static void ensureMeshes() {
             std::vector<char> sm;
             std::vector<V2> S = carve::roundShape(d, 48, &sm);
             A.meshes[i].mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
-        } else A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
+        } else if (depthShaped(d)) A.meshes[i].mesh = depthMesh(d, c);   // shaped in depth: corners on both faces
+        else A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
         std::vector<CarveDef> cuts = d.carves;
         V2 rear, muz;
         if (barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
@@ -153,6 +155,18 @@ float plateY() { return -(float)groundLevelMM(A.design) * U; }
 static void drawOutline(int i, Matrix M, Color c) {
     const BodyDef& d = A.design.bodies[i];
     V2 cen = centroidOf(d);
+    if (depthShaped(d) && !d.round) {   // shaped in depth: its own corners on each face, and the edges between them
+        std::vector<P3d> N, F;
+        depthRings(d, N, F);
+        size_t n = N.size();
+        auto at = [&](const P3d& p) { return Vector3Transform({(float)(p.x - cen.x) * U, -(float)(p.y - cen.y) * U, (float)(p.z - d.z) * U}, M); };
+        for (size_t k = 0; k < n; k++) {
+            DrawLine3D(at(N[k]), at(N[(k + 1) % n]), c);
+            DrawLine3D(at(F[k]), at(F[(k + 1) % n]), c);
+            DrawLine3D(at(N[k]), at(F[k]), c);
+        }
+        return;
+    }
     auto o = outlineOf(d);
     float h = d.round ? 0.f : bodyDepth(d) / 2 + 0.003f;  // a round part: its silhouette, on its middle line
     size_t n = o.size();

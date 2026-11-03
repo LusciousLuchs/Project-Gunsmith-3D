@@ -45,6 +45,8 @@ void rotateBody(int i, V2 c, double deg) {
     double a = deg * 3.14159265358979 / 180, cs = std::cos(a), sn = std::sin(a);
     auto rot = [&](V2& p) { double x = p.x - c.x, y = p.y - c.y; p = {c.x + x * cs - y * sn, c.y + x * sn + y * cs}; };
     for (auto& p : d.pts) rot(p);
+    for (auto& o : d.depthOff) { double x = o.x, y = o.y; o = {x * cs - y * sn, x * sn + y * cs}; }   // (the far face turns with it)
+    if (!d.depthRef.empty()) d.depthRef = d.pts;
     for (auto& p : d.roundPath) rot(p);
     for (auto& cv : d.carves) {
         rot(cv.at);

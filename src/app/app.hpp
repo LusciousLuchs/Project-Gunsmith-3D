@@ -83,6 +83,12 @@ struct App {
     bool faceDragging = false, faceFollow = false, faceExtruded = false;   // follow: E pressed, finish with a click
     std::vector<V2> faceOrig; double faceOrigZ = 0, faceOrigThick = 0; std::vector<CarveDef> faceOrigCarves;
     Vector2 faceStart{};
+    // the selected part's corners in 3D (Faces tool): one on the near face and one on the far face for each, dragged on
+    // their own to shape the part in depth
+    struct CornerPick { int body = -1, idx = -1; bool far = false; };
+    CornerPick cornerHover, cornerDrag;
+    bool cornerDragging = false;
+    double cornerOrigX = 0, cornerOrigY = 0, cornerOrigZ = 0, cornerZDrag = 0;
     // drafting
     bool drafting = false;
     std::vector<V2> draft;

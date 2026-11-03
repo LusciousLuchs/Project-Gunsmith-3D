@@ -1546,6 +1546,47 @@ static void benchBugs() {
     }
 }
 
+static void depthShaping() {
+    std::printf("depthShaping\n");
+    // a block whose back face is a lower, shorter shape than its front
+    BodyDef w; w.id = "w"; w.name = "Wedge"; w.layer = "A"; w.fixed = true;
+    w.pts = {{50, 0}, {60, 0}, {60, 40}, {50, 40}}; w.thick = 10; fixShape(w);
+    CHECK(!depthShaped(w), "a part is straight through until a back corner is moved");
+    w.depthOff = {{0, 0}, {0, 0}, {0, -30}, {0, -30}}; w.depthZn = {0, 0, 0, 0}; w.depthZf = {0, 0, 0, 0}; w.depthRef = w.pts;
+    CHECK(depthShaped(w), "moving a back corner shapes it in depth");
+    auto top = [](const std::vector<std::vector<V2>>& s) { double t = -1e9; for (auto& o : s) for (auto& p : o) t = std::max(t, p.y); return t; };
+    CHECK(std::fabs(top(depthSection(w, 4.99)) - 40) < 0.1 && std::fabs(top(depthSection(w, -4.99)) - 10) < 0.1 &&
+          std::fabs(top(depthSection(w, 0)) - 25) < 1e-6, "its cross-section changes evenly from the front face to the back");
+    auto sl = carve::slices(w);
+    CHECK(sl.size() >= 3 && std::fabs(top(sl.front().outlines) - top(sl.back().outlines)) > 15, "the physics sees it as slabs, each its own shape");
+    Design back; Design d; d.bodies = {w};
+    CHECK(designFromJson(designToJson(d), back) && back.bodies[0].depthOff.size() == 4 && std::fabs(back.bodies[0].depthOff[2].y + 30) < 1e-9,
+          "the shape in depth is saved");
+    {   // adding a corner keeps the shape: the new corner's offsets come from its neighbours
+        BodyDef x = w; x.pts.insert(x.pts.begin() + 3, V2{55, 40}); normalizeDepth(x);
+        CHECK(x.depthOff.size() == 5 && std::fabs(x.depthOff[3].y + 30) < 1e-6 && std::fabs(x.depthOff[2].y + 30) < 1e-6, "adding a corner keeps the shape");
+        BodyDef y = w; y.depthOff.assign(4, {0, 0}); normalizeDepth(y);
+        CHECK(!depthShaped(y) && y.depthOff.empty(), "put back straight, it's a plain part again");
+    }
+    {   // the mirror across the gun swaps its front and back faces
+        BodyDef m = w; m.mirrorKind = "depth"; BodyDef img = mirrorImage(m);
+        CHECK(std::fabs(top(depthSection(img, 4.99)) - 10) < 0.1 && std::fabs(top(depthSection(img, -4.99)) - 40) < 0.1, "the mirror image is shaped the other way round");
+    }
+    // a slider pushed at the wedge: at the front it hits the tall face, at the back it passes over the low one
+    auto push = [&](double z) {
+        BodyDef s; s.id = "s"; s.name = "Slider"; s.layer = "A"; s.pts = {{0, 20}, {20, 20}, {20, 30}, {0, 30}}; s.thick = 2; s.z = z; fixShape(s);
+        Design e; e.bodies = {w, s};
+        auto S = sim::build(e);
+        sim::Body* B = S->find("s");
+        S->hand = {true, B, {0, 0}, {B->x + 0.08, B->y}};
+        sim::run(*S, 0.4);
+        return (B->x - B->x0) * 1000;
+    };
+    double front = push(4), rear = push(-4);
+    std::printf("    slider travel: front %.1f mm, back %.1f mm\n", front, rear);
+    CHECK(front < 35 && rear > 60, "a part at the front stops on the tall face; at the back it clears the low one");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1581,6 +1622,7 @@ int main() {
     springBuckling();
     magazinePositions();
     handAnimations();
+    depthShaping();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

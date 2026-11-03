@@ -212,7 +212,8 @@ std::vector<std::vector<V2>> tiltSection(const BodyDef& b, double z) {
 }
 
 std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
-    if (b.carves.empty() && !b.round && !tilted(b)) return {};
+    const bool shaped = depthShaped(b) && !b.round && !tilted(b);
+    if (b.carves.empty() && !b.round && !tilted(b) && !shaped) return {};
     if (tilted(b) && !b.round) {  // even slabs through the depth the tilted part spans (its carves show, but don't collide yet)
         double z0, z1;
         tiltDepth(b, z0, z1);
@@ -242,6 +243,20 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
         }
         return cav;
     };
+    if (shaped) {   // shaped in depth: even slabs through all it spans, each its outline at that depth (less any cuts there)
+        double z0, z1;
+        depthSpan(b, z0, z1);
+        int n = std::clamp((int)std::ceil((z1 - z0) / 1.0), 3, std::max(3, maxSlices));
+        std::vector<Slice> out;
+        for (int k = 0; k < n; k++) {
+            Slice sl; sl.z0 = z0 + (z1 - z0) * k / n; sl.z1 = z0 + (z1 - z0) * (k + 1) / n;
+            double zm = (sl.z0 + sl.z1) / 2;
+            sl.outlines = depthSection(b, zm);
+            sl.cav = cutsAt(zm);
+            if (!sl.outlines.empty()) out.push_back(sl);
+        }
+        return out;
+    }
     std::vector<double> br = {zA, zB};
     if (b.round) {  // a round part changes all the way through: even slabs
         int n = std::clamp((int)std::ceil(t / 1.5), 4, 10);

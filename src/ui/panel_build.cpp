@@ -451,6 +451,31 @@ static void inspectPart(BodyDef& b) {
             } else if (nc == MAX_CORNERS) ImGui::TextColored(colWarn(), "%d of %d corners: the most a part can have.", nc, MAX_CORNERS);
             else muted("%d of %d corners.", nc, MAX_CORNERS);
         }
+        if (depthShaped(b)) {   // corners placed on each face (the Faces tool)
+            muted("Shaped in depth: its front and back faces have their own corners. Edges are straight and corners sharp (Chamfer softens them).");
+            auto& cp = A.cornerDrag;
+            if (cp.body == D.bodyIndex(b.id) && cp.idx >= 0 && cp.idx < (int)b.pts.size()) {   // the corner last dragged
+                std::vector<P3d> N, F; depthRings(b, N, F);
+                const P3d& p = cp.far ? F[cp.idx] : N[cp.idx];
+                heading(cp.far ? "Back corner" : "Front corner");
+                double x = p.x, y = -p.y, z = p.z, x0 = x, y0 = y, z0 = z;
+                pNumU("X##dc", x, 0.5, Q::Length, lenDec(), "Along the gun: + toward the muzzle.", SIGNED);
+                pNumU("Y##dc", y, 0.5, Q::Length, lenDec(), "Up and down: + is up.", SIGNED);
+                pNumU("Z##dc", z, 0.5, Q::Length, lenDec(), "Across the gun: + is the gun's right side.", SIGNED);
+                if (x != x0 || y != y0 || z != z0) {
+                    int i = cp.idx;
+                    double base = cp.far ? b.z - std::max(0.5, b.thick) / 2 : b.z + std::max(0.5, b.thick) / 2;
+                    if (cp.far) { b.depthOff[i] = {x - b.pts[i].x, -y - b.pts[i].y}; b.depthZf[i] = z - base; }
+                    else {
+                        V2 farP{b.pts[i].x + b.depthOff[i].x, b.pts[i].y + b.depthOff[i].y};
+                        b.pts[i] = {x, -y}; b.depthOff[i] = {farP.x - x, farP.y + y}; b.depthZn[i] = z - base; b.depthRef = b.pts;
+                    }
+                    editedAny = true;
+                }
+            }
+            if (ImGui::Button("Straight through again", {-1, 0})) { b.depthOff.clear(); b.depthZn.clear(); b.depthZf.clear(); b.depthRef.clear(); editedAny = true; }
+            if (tipHover()) ImGui::SetTooltip("Puts the back face's corners right behind the front face's again: one outline, straight through.");
+        } else if (!b.round && !carve::tilted(b)) muted("Shape it in depth with the Faces tool: drag a corner on the front or back face on its own.");
         if (ImGui::Button("Flip H", {w2, 0})) { flipBody(b, true); editedAny = true; }
         ImGui::SameLine(); if (ImGui::Button("Flip V", {w2, 0})) { flipBody(b, false); editedAny = true; }
         static double allR = 2;

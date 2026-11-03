@@ -120,7 +120,7 @@ void drawOverlay() {
         DrawCircleV(h.s, hot ? 6.f : 4.f, Color{20, 24, 32, 220});
         DrawCircleLinesV(h.s, hot ? 6.f : 4.f, c);
     }
-    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) {
+    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && A.tool != Tool::Faces) {   // (the Faces tool shows corners on both faces itself)
         auto& d = D.bodies[A.sel.idx];
         float z = bodyFront(A.sel.idx);
         for (size_t v = 0; v < d.pts.size(); v++) {

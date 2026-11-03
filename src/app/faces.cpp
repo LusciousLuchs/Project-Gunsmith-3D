@@ -35,6 +35,13 @@ Vector3 worldNormal(const BodyDef& d, const App::FacePick& f) {
 }
 float nearZ(int i) { return bodyZ(i) + bodyDepth(A.design.bodies[i]) / 2; }
 float farZ(int i) { return bodyZ(i) - bodyDepth(A.design.bodies[i]) / 2; }
+// a corner of a part shaped in depth, in the world (its own depth, plus the part's small drawing offset)
+Vector3 ringW(int i, const P3d& p) { return W3({p.x, p.y}, (float)(p.z * U) + bodyBias(i)); }
+void ensureDepth(BodyDef& d) {   // start shaping it in depth: every corner where it is now
+    if (depthShaped(d)) return;
+    size_t n = d.pts.size();
+    d.depthOff.assign(n, V2{0, 0}); d.depthZn.assign(n, 0.0); d.depthZf.assign(n, 0.0); d.depthRef = d.pts;
+}
 
 // the nearest face under the ray; only parts in `only` when it's set
 App::FacePick pick(Ray r, int only = -1) {
@@ -44,6 +51,19 @@ App::FacePick pick(Ray r, int only = -1) {
         if (only >= 0 && i != only) continue;
         const BodyDef& d = A.design.bodies[i];
         if (!editable(d)) continue;
+        if (depthShaped(d)) {   // its faces are pieces between the corners: test each triangle
+            std::vector<P3d> v; std::vector<int> tri, tag;
+            depthTriangles(d, v, tri, &tag);
+            for (size_t t = 0; t < tri.size(); t += 3) {
+                Vector3 a = ringW(i, v[tri[t]]), b = ringW(i, v[tri[t + 1]]), c = ringW(i, v[tri[t + 2]]);
+                RayCollision rc = GetRayCollisionTriangle(r, a, c, b);   // (world y is up: the winding turns round)
+                if (!rc.hit) rc = GetRayCollisionTriangle(r, a, b, c);
+                if (!rc.hit || rc.distance >= bt) continue;
+                int g = tag[t / 3];
+                bt = rc.distance; best = {i, g == -1 ? 1 : g == -2 ? 2 : 0, g >= 0 ? g : -1, rc.point};
+            }
+            continue;
+        }
         float z1 = nearZ(i), z0 = farZ(i);
         auto outline = outlineOf(d);
         for (int k : {1, 2}) {   // the near and far faces, from the side they face
@@ -147,6 +167,7 @@ void begin(const App::FacePick& f, bool follow, bool extrude) {
         if (d0.weld.empty()) d0.weld = "w-" + uid();
         c.id = uid(); c.name = d0.name + " (extruded)"; c.weld = d0.weld;
         c.carves.clear(); c.mirror.clear(); c.magazine = false; c.magFixed = false; c.gen.on = false; c.barrel.on = false;
+        c.depthOff.clear(); c.depthZn.clear(); c.depthZf.clear(); c.depthRef.clear();   // (a plain slab, whatever shape the face had)
         c.mass = 0; c.ctrl = "none";
         double face = f.kind == 1 ? d0.z + d0.thick / 2 : d0.z - d0.thick / 2;
         c.thick = 0.5; c.z = face + (f.kind == 1 ? 0.25 : -0.25);
@@ -181,8 +202,83 @@ void finish(bool keep) {
 
 bool facesActive() { return A.faceDragging; }
 
+namespace {
+// the selected part's corners on both faces, on the screen
+struct CornerDot { Vector2 s; int idx; bool far; };
+std::vector<CornerDot> cornerDots() {
+    std::vector<CornerDot> out;
+    if (A.tool != Tool::Faces || A.sel.kind != 1 || A.sel.idx < 0 || A.sel.idx >= (int)A.design.bodies.size()) return out;
+    const BodyDef& d = A.design.bodies[A.sel.idx];
+    if (!editable(d)) return out;
+    std::vector<P3d> N, F;
+    depthRings(d, N, F);
+    for (size_t k = 0; k < N.size(); k++) {
+        out.push_back({toScreen(ringW(A.sel.idx, N[k])), (int)k, false});
+        out.push_back({toScreen(ringW(A.sel.idx, F[k])), (int)k, true});
+    }
+    return out;
+}
+void cornerApply() {
+    auto& c = A.cornerDrag;
+    if (c.body < 0 || c.body >= (int)A.design.bodies.size()) return;
+    BodyDef& d = A.design.bodies[c.body];
+    if (!depthShaped(d) || c.idx >= (int)d.pts.size()) return;
+    bool zKey = IsKeyDown(KEY_Z);
+    if (zKey) {   // in depth: the mouse's up and down
+        float perPx = (A.ortho ? A.orthoH : A.dist * 2 * std::tan(20 * DEG2RAD)) / std::max(1, A.vh) / U;
+        A.cornerZDrag -= GetMouseDelta().y * perPx;
+        double z = snapv(A.cornerZDrag, A.snapOn);
+        (c.far ? d.depthZf : d.depthZn)[c.idx] = A.cornerOrigZ + z;
+        return;
+    }
+    // across the side view, at its own depth
+    std::vector<P3d> N, F;
+    depthRings(d, N, F);
+    const P3d& p = c.far ? F[c.idx] : N[c.idx];
+    Ray r = mouseRay();
+    float zw = (float)(p.z * U) + bodyBias(c.body);
+    if (std::fabs(r.direction.z) < 0.05f) return;   // looking along the face: no sure point
+    float t = (zw - r.position.z) / r.direction.z;
+    if (t <= 0) return;
+    V2 mm = toMM(Vector3Add(r.position, Vector3Scale(r.direction, t)));
+    mm = {snapv(mm.x, A.snapOn), snapv(mm.y, A.snapOn)};
+    if (c.far) d.depthOff[c.idx] = {mm.x - d.pts[c.idx].x, mm.y - d.pts[c.idx].y};
+    else {   // the near corner moves; its far partner stays where it is
+        V2 farP{d.pts[c.idx].x + d.depthOff[c.idx].x, d.pts[c.idx].y + d.depthOff[c.idx].y};
+        d.pts[c.idx] = mm;
+        d.depthOff[c.idx] = {farP.x - mm.x, farP.y - mm.y};
+        d.depthRef = d.pts;
+    }
+}
+}  // namespace
+
 void facesInput(bool overUI) {
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    if (A.cornerDragging) {
+        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { cornerApply(); return; }
+        A.cornerDragging = false;
+        commit();
+        return;
+    }
+    A.cornerHover = {};
+    if (!overUI && !A.faceDragging) {   // the selected part's corners come first: they sit on its faces
+        Vector2 m = GetMousePosition();
+        float best = 8;
+        for (auto& cd : cornerDots()) {
+            float dd = Vector2Distance(cd.s, m);
+            if (dd < best) { best = dd; A.cornerHover = {A.sel.idx, cd.idx, cd.far}; }
+        }
+        if (A.cornerHover.body >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            BodyDef& d = A.design.bodies[A.sel.idx];
+            fixShape(d);
+            ensureDepth(d);
+            A.cornerDrag = A.cornerHover; A.cornerDragging = true; A.cornerZDrag = 0;
+            const auto& c = A.cornerDrag;
+            A.cornerOrigZ = (c.far ? d.depthZf : d.depthZn)[c.idx];
+            return;
+        }
+        if (A.cornerHover.body >= 0) { A.faceHover = {}; return; }
+    }
     if (A.faceDragging) {
         apply();
         bool cancel = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_ESCAPE);
@@ -198,23 +294,58 @@ void facesInput(bool overUI) {
 
 void drawFaces() {
     if (A.mode != Mode::Build) return;
+    {   // the selected part's corners on both faces, joined front to back
+        auto dots = cornerDots();
+        for (size_t k = 0; k + 1 < dots.size(); k += 2) DrawLineEx(dots[k].s, dots[k + 1].s, 1.2f, Color{255, 205, 60, 110});
+        for (auto& cd : dots) {
+            bool hot = A.cornerHover.body >= 0 && A.cornerHover.idx == cd.idx && A.cornerHover.far == cd.far;
+            bool dragged = A.cornerDragging && A.cornerDrag.idx == cd.idx && A.cornerDrag.far == cd.far;
+            float r = hot || dragged ? 6.f : 4.f;
+            Color c = cd.far ? Color{110, 200, 255, 255} : Color{255, 205, 60, 255};
+            if (cd.far) { DrawCircleV(cd.s, r, Color{20, 24, 32, 220}); DrawCircleLinesV(cd.s, r, c); }
+            else { DrawRectangleRec({cd.s.x - r, cd.s.y - r, 2 * r, 2 * r}, Color{20, 24, 32, 220}); DrawRectangleLinesEx({cd.s.x - r, cd.s.y - r, 2 * r, 2 * r}, 1.5f, c); }
+            if (hot && !A.cornerDragging) {
+                const char* t = cd.far ? "Back corner: drag (Z: in depth)" : "Front corner: drag (Z: in depth)";
+                DrawText(t, (int)cd.s.x + 10, (int)cd.s.y - 22, 14, c);
+            }
+        }
+        if (A.cornerDragging) {
+            const BodyDef& d = A.design.bodies[A.cornerDrag.body];
+            if (depthShaped(d) && A.cornerDrag.idx < (int)d.pts.size()) {
+                std::vector<P3d> N, F; depthRings(d, N, F);
+                const P3d& p = A.cornerDrag.far ? F[A.cornerDrag.idx] : N[A.cornerDrag.idx];
+                std::string t = TextFormat("X %.1f  Y %.1f  Z %.1f mm", p.x, -p.y, p.z);
+                Vector2 m = GetMousePosition();
+                int tw = MeasureText(t.c_str(), 16) + 10;
+                DrawRectangle((int)m.x - tw - 12, (int)m.y - 34, tw, 22, Color{20, 24, 32, 220});
+                DrawText(t.c_str(), (int)m.x - tw - 7, (int)m.y - 31, 16, Color{255, 205, 60, 255});
+            }
+        }
+    }
     const App::FacePick& f = A.faceDragging ? A.faceDrag : A.faceHover;
     if (f.body < 0 || f.body >= (int)A.design.bodies.size()) return;
     if (!A.faceDragging && A.tool != Tool::Faces) return;   // (the Select tool shows it only while E is extruding)
     const BodyDef& d = A.design.bodies[f.body];
     Color fill{255, 205, 60, 70}, line{255, 205, 60, 255};
+    std::vector<P3d> RN, RF;
+    depthRings(d, RN, RF);
     if (f.kind == 0) {
         int n = (int)d.pts.size();
-        if (f.edge < 0 || f.edge >= n) return;
-        V2 a = d.pts[f.edge], b = d.pts[(f.edge + 1) % n];
-        Vector2 q[4] = {toScreen(W3(a, nearZ(f.body))), toScreen(W3(b, nearZ(f.body))), toScreen(W3(b, farZ(f.body))), toScreen(W3(a, farZ(f.body)))};
+        if (f.edge < 0 || f.edge >= n || (int)RN.size() != n) return;
+        int e2 = (f.edge + 1) % n;
+        Vector2 q[4] = {toScreen(ringW(f.body, RN[f.edge])), toScreen(ringW(f.body, RN[e2])), toScreen(ringW(f.body, RF[e2])), toScreen(ringW(f.body, RF[f.edge]))};
         DrawTriangle(q[0], q[1], q[2], fill); DrawTriangle(q[0], q[2], q[1], fill);
         DrawTriangle(q[0], q[2], q[3], fill); DrawTriangle(q[0], q[3], q[2], fill);
         for (int k = 0; k < 4; k++) DrawLineEx(q[k], q[(k + 1) % 4], 2, line);
     } else {
-        float z = f.kind == 1 ? nearZ(f.body) : farZ(f.body);
-        auto o = outlineOf(d);
-        for (size_t k = 0; k < o.size(); k++) DrawLineEx(toScreen(W3(o[k], z)), toScreen(W3(o[(k + 1) % o.size()], z)), 2.5f, line);
+        if (depthShaped(d)) {   // its corners on that face
+            const auto& R = f.kind == 1 ? RN : RF;
+            for (size_t k = 0; k < R.size(); k++) DrawLineEx(toScreen(ringW(f.body, R[k])), toScreen(ringW(f.body, R[(k + 1) % R.size()])), 2.5f, line);
+        } else {
+            float z = f.kind == 1 ? nearZ(f.body) : farZ(f.body);
+            auto o = outlineOf(d);
+            for (size_t k = 0; k < o.size(); k++) DrawLineEx(toScreen(W3(o[k], z)), toScreen(W3(o[(k + 1) % o.size()], z)), 2.5f, line);
+        }
     }
     {   // an arrow out of the face: the way to move the mouse to pull it out
         Vector2 v = outOnScreen(f), s0 = toScreen(f.at);

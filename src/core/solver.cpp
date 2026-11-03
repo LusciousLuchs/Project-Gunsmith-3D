@@ -201,7 +201,7 @@ std::unique_ptr<Sim> build(const Design& design) {
     for (auto& d : s.design.bodies) {
         Body b;
         if (!makeBody(d, b)) continue;
-        if ((d.carves.empty() && !d.round && !carve::tilted(d)) || d.rollOn || d.magazine) { s.bodies.push_back(b); continue; }
+        if ((d.carves.empty() && !d.round && !carve::tilted(d) && !depthShaped(d)) || d.rollOn || d.magazine) { s.bodies.push_back(b); continue; }
         // carved: one body per depth slice, welded into one part. The thickest-in-material slice keeps the part's id.
         std::vector<Body> sl;
         double vol = 0;

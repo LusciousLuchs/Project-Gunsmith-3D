@@ -14,6 +14,7 @@ bool sameCarve(const CarveDef& a, const CarveDef& b) {
 // what a mirror carries over: the shape and the look; how it moves, joins and feeds stays each part's own
 void copyLook(const BodyDef& from, BodyDef& to) {
     to.pts = from.pts; to.rad = from.rad; to.bulge = from.bulge; to.carves = from.carves;
+    to.depthOff = from.depthOff; to.depthZn = from.depthZn; to.depthZf = from.depthZf; to.depthRef = from.depthRef;
     to.z = from.z; to.thick = from.thick; to.tiltX = from.tiltX; to.tiltY = from.tiltY;
     to.color = from.color; to.texture = from.texture; to.texScale = from.texScale; to.smooth = from.smooth;
     to.round = from.round; to.roundSides = from.roundSides; to.roundTurn = from.roundTurn; to.roundSweep = from.roundSweep;
@@ -27,6 +28,9 @@ bool sameLook(const BodyDef& a, const BodyDef& b) {
         if (!near(i < a.bulge.size() ? a.bulge[i] : 0, i < b.bulge.size() ? b.bulge[i] : 0)) return false;
     }
     for (size_t i = 0; i < a.carves.size(); i++) if (!sameCarve(a.carves[i], b.carves[i])) return false;
+    if (a.depthOff.size() != b.depthOff.size()) return false;
+    for (size_t i = 0; i < a.depthOff.size(); i++)
+        if (!sameV(a.depthOff[i], b.depthOff[i]) || !near(a.depthZn[i], b.depthZn[i]) || !near(a.depthZf[i], b.depthZf[i])) return false;
     return near(a.z, b.z) && near(a.thick, b.thick) && near(a.tiltX, b.tiltX) && near(a.tiltY, b.tiltY) && a.color == b.color &&
            a.texture == b.texture && near(a.texScale, b.texScale) && near(a.smooth, b.smooth) && a.round == b.round &&
            a.roundSides == b.roundSides && near(a.roundTurn, b.roundTurn) && near(a.roundSweep, b.roundSweep) &&
@@ -43,6 +47,17 @@ BodyDef mirrorImage(const BodyDef& src) {
         c.z = -c.z;
         carve::flipCarvesZ(c);
         c.tiltX = -c.tiltX; c.tiltY = -c.tiltY;
+        if (depthShaped(c)) {   // shaped in depth: its near and far faces change places
+            size_t n = c.pts.size();
+            for (size_t i = 0; i < n; i++) {
+                V2 far{c.pts[i].x + c.depthOff[i].x, c.pts[i].y + c.depthOff[i].y};
+                double zn = c.depthZn[i], zf = c.depthZf[i];
+                c.depthOff[i] = {c.pts[i].x - far.x, c.pts[i].y - far.y};
+                c.pts[i] = far;
+                c.depthZn[i] = -zf; c.depthZf[i] = -zn;
+            }
+            c.depthRef = c.pts;
+        }
     }
     return c;
 }

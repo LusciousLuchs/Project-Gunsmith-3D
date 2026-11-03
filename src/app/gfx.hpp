@@ -30,6 +30,10 @@ void drawBox(Vector3 center, Vector3 size, Color c, Matrix rot = MatrixIdentity(
 void drawCyl(Vector3 a, Vector3 b, float r, Color c, float alpha = 1.f, const Mesh* mesh = nullptr);
 void drawSphereLit(Vector3 p, float r, Color c, float alpha = 1.f);
 Mesh extrude(const std::vector<V2>& localMM, float depth, float roundMM = 0);
+// A part shaped in depth (BodyDef::depthOff): its solid, flat-shaded, in the mesh frame (centred on c and the part's
+// depth, y up)
+struct BodyDef;
+Mesh depthMesh(const BodyDef& d, V2 c);
 Mesh latheMesh(const std::vector<V2>& st, V2 o, V2 dir, const std::vector<V2>& S, const std::vector<char>& smooth);  // a round (turned) part
 Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutters);  // base minus the cutters (mm, mesh frame)
 void initGfx();

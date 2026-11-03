@@ -146,6 +146,13 @@ struct BodyDef {
     std::vector<double> rad;             // corner radius at each vertex (mm)
     std::vector<double> bulge;           // edge i (pts[i] -> pts[i+1]) bows outward by this much (mm, negative = inward)
     std::vector<CarveDef> carves;        // cut out of the shape in 3D, in order
+    // Shaped in depth (empty: straight through, as drawn). Each corner has a point on the near face and one on the far
+    // face: the near one is pts[i] at depth z + thick/2 + depthZn[i]; the far one is pts[i] + depthOff[i] at depth
+    // z - thick/2 + depthZf[i]. The faces between are flat pieces between those points. depthRef: the outline these
+    // were set for (so they can follow when corners are added or removed). Corners shaped this way are sharp.
+    std::vector<V2> depthOff;
+    std::vector<double> depthZn, depthZf;
+    std::vector<V2> depthRef;
     std::string weld;                    // welded: every part with the same tag is one solid piece ("" = on its own)
     // A live mirror: two parts with the same tag are kept as mirror images of each other; edit either and the other
     // follows (shape, cuts, depth, thickness, tilt, look). "depth": across the gun (the far side's matching part);
@@ -325,6 +332,18 @@ void simplifyBody(BodyDef& b, int maxCorners = MAX_CORNERS);
 // standard's formula (EN 13906-1) for ends seated flat, from its free length and mean coil diameter. A spring
 // short for its width never buckles (returns a huge number).
 double bucklingSqueeze(double freeLen, double coilDia, double wire);
+// Shaped in depth (see BodyDef::depthOff): whether a part is, keeping it in step after its outline changed (call after
+// edits), its corners on the near and far faces (x, y, z in mm), how deep it reaches, and its outline where the plane
+// at depth z cuts it (one or more pieces)
+struct P3d { double x, y, z; };
+bool depthShaped(const BodyDef& b);
+void normalizeDepth(BodyDef& b);
+void depthRings(const BodyDef& b, std::vector<P3d>& nearR, std::vector<P3d>& farR);
+void depthSpan(const BodyDef& b, double& z0, double& z1);
+std::vector<std::vector<V2>> depthSection(const BodyDef& b, double z);
+std::vector<int> triangulateOutline(const std::vector<V2>& p);   // ear clipping, any winding: index triples
+// the solid as triangles (outward, x y z mm): near face, far face, then two per side wall (tag: -1 near, -2 far, else the edge)
+void depthTriangles(const BodyDef& b, std::vector<P3d>& v, std::vector<int>& tri, std::vector<int>* tag = nullptr);
 bool combineOutlines(const BodyDef& a, const BodyDef& b, int op, std::vector<V2>& out, std::string* why = nullptr,
                      std::vector<double>* rad = nullptr);   // given: rounded corners that survive keep their rounding
 // Cuts corners off flat (a chamfer, or bevel in side view), each `size` mm back along both edges; `which` empty = all
