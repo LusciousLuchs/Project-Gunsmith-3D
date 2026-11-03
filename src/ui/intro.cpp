@@ -3,6 +3,7 @@
 #include "ui/ui.hpp"
 #include "app/settings.hpp"
 #include "raylib.h"
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -56,6 +57,34 @@ void splash(float dt) {
     if (t >= FADE_IN + HOLD + FADE_OUT) { t = 0; phase = agreed() ? Phase::Off : Phase::Eula; }
 }
 
+bool heading(const std::string& l, bool first) {   // the title, and short numbered lines with no full stop ("4.2 Sharing")
+    if (first) return true;
+    if (l.empty() || l.size() > 70 || l.back() == '.' || l.back() == ':') return false;
+    size_t i = 0;
+    while (i < l.size() && (std::isdigit((unsigned char)l[i]) || l[i] == '.')) i++;
+    return (i > 0 && i < l.size() && l[i] == ' ') || l == "Acknowledgment";
+}
+void agreementText() {   // the agreement, laid out: headings in bold, bullets, and "⸻" lines as dividers
+    const std::string text = EULA_TEXT;
+    size_t at = 0;
+    bool first = true;
+    while (at <= text.size()) {
+        size_t nl = text.find('\n', at);
+        if (nl == std::string::npos) nl = text.size();
+        std::string l = text.substr(at, nl - at);
+        at = nl + 1;
+        if (l.empty()) { ImGui::Dummy({0, 4 * S()}); continue; }
+        if (l == "\u2E3B") { ImGui::Dummy({0, 2 * S()}); ImGui::Separator(); ImGui::Dummy({0, 2 * S()}); continue; }
+        if (l.size() > 2 && l[0] == '*' && l[1] == ' ') { ImGui::Bullet(); ImGui::TextWrapped("%s", l.c_str() + 2); continue; }
+        if (heading(l, first)) {
+            ImGui::PushFont(gFontBold, first ? 20.0f : 16.0f);
+            ImGui::TextWrapped("%s", l.c_str());
+            ImGui::PopFont();
+        } else ImGui::TextWrapped("%s", l.c_str());
+        first = false;
+    }
+}
+
 void eula() {
     static bool tick = false;
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
@@ -71,7 +100,7 @@ void eula() {
     float foot = ImGui::GetFrameHeightWithSpacing() * 2 + 18 * S();
     ImGui::BeginChild("##text", {0, -foot}, ImGuiChildFlags_Borders);
     ImGui::PushTextWrapPos(0);
-    ImGui::TextUnformatted(EULA_TEXT);
+    agreementText();
     ImGui::PopTextWrapPos();
     ImGui::EndChild();
     ImGui::Dummy({0, 4 * S()});

@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.17-alpha
+
+- **The license agreement is now the real one** (*Gunsmith3D – Build and Shoot*, The One Armed Bandit, effective November 3, 2026), word for word. On screen its section headings are bold, its lists have bullets and its dividers are lines. It's also in *EULA.txt* next to the game.
+- Players who already agreed to the earlier placeholder aren't asked again.
+
 ## 0.2.16-alpha
 
 - **The license agreement is asked only once:** after a player agrees, they're never asked again, even when the agreement's text changes in a later version.
