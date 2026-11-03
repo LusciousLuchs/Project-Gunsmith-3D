@@ -91,7 +91,7 @@ void stepSim(float dt) {
     bool slow = CFG.slowOnShot && S.shots > 0 && (S.t - S.fireT) * 1000 < CFG.slowWindowMs;
     double speed = slow ? CFG.slowSpeed : CFG.benchSpeed;
     sim::run(S, dt * speed, 1200);
-    sim::tidy(S, dt);   // real seconds: spent cases go after 10 s on the bench, empty dropped magazines after 30 s alone
+    sim::tidy(S, dt, 10, CFG.magLife, CFG.maxLooseMags);   // real seconds: spent cases go after 10 s, magazines left alone after magLife; at most maxLooseMags lie out
     for (auto& e : S.events) {
         auto& br = A.design.breech;
         if (e.kind == sim::Ev::Bang) {

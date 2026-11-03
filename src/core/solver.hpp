@@ -90,7 +90,8 @@ struct Body {
                                          // it comes into the chamber at an angle sideways
     double zVis = 0;                     // ...and where it's drawn, easing to the centre. It collides as if centred: the example
                                          // actions are built only as wide as a single stack (a wider action would make this real)
-    double idle = 0;                     // seconds (real time) lying untouched: spent cases and empty magazines are tidied away
+    double idle = 0;                     // seconds (real time) lying untouched: spent cases and dropped magazines are tidied away
+    int born = 0;                        // spawned copies: the order they came in (the oldest goes first when there are too many)
 };
 
 enum class JT { Pin, Weld, Track, Spring, Cam, Lug, Latch, Magwell };
@@ -253,9 +254,11 @@ bool animPlaying(const Sim& S);
 AnimHands animHandsNow(const Sim& S);                      // where the hands are now (the pose's hold when none plays)
 bool magLoadPoint(const Sim& S, const Body& M, V2& w);     // where to hold a round to push it into this magazine (m)
 int fillMagazines(Sim& S);                                 // top up every magazine (seated and on the bench); rounds added
-// Remove spent cases that have lain on the bench `caseLife` seconds, and dropped empty magazines nobody has touched
-// for `magLife` seconds. Real time, so slow motion doesn't keep them about. Returns how many were removed.
-int tidy(Sim& S, double dt, double caseLife = 10, double magLife = 30);
+// Remove spent cases that have lain on the bench `caseLife` seconds, and magazines out of the gun (full or empty) nobody
+// has touched for `magLife` seconds; and keep at most `maxLoose` magazines lying out, clearing the oldest first (never one
+// in the gun or in the hand). Real time, so slow motion doesn't keep them about. Returns how many were removed.
+int tidy(Sim& S, double dt, double caseLife = 10, double magLife = 20, int maxLoose = 6);
+int looseMagazines(Sim& S);                                // magazines lying out of the gun (not held)
 bool handLoad(Sim& S);                                     // drop a round straight into an open chamber (shortcut)
 // loose rounds: physical cartridges. Hold one in the open action, in line with the bore and in front of the
 // breech face, and it drops into place; closing the breech (or pushing it by hand) seats it in the chamber.

@@ -53,6 +53,8 @@ void loadSettings() {
         CFG.slowWindowMs = std::clamp(g("slowWindowMs", d.slowWindowMs), 10.f, 1000.f);
         CFG.benchSpeed = std::clamp(g("benchSpeed", d.benchSpeed), 0.01f, 1.f);
         CFG.relRounds = std::clamp(g("relRounds", d.relRounds), 5, 1000);
+        CFG.maxLooseMags = std::clamp(g("maxLooseMags", d.maxLooseMags), 1, 20);
+        CFG.magLife = std::clamp(g("magLife", d.magLife), 5.f, 600.f);
         CFG.mouseSens = std::clamp(g("mouseSens", d.mouseSens), 0.05f, 10.f);
         CFG.invertMouse = g("invertMouse", d.invertMouse);
         CFG.fov = std::clamp(g("fov", d.fov), 50.f, 110.f);
@@ -74,7 +76,7 @@ void saveSettings() {
         {"colorblind", CFG.colorblind}, {"snap", CFG.snap}, {"autosave", (int)CFG.autosave},
         {"orbitMiddle", CFG.orbitMiddle}, {"zoomSpeed", CFG.zoomSpeed}, {"invertZoom", CFG.invertZoom},
         {"slowOnShot", CFG.slowOnShot}, {"slowSpeed", CFG.slowSpeed}, {"slowWindowMs", CFG.slowWindowMs},
-        {"benchSpeed", CFG.benchSpeed}, {"relRounds", CFG.relRounds},
+        {"benchSpeed", CFG.benchSpeed}, {"relRounds", CFG.relRounds}, {"maxLooseMags", CFG.maxLooseMags}, {"magLife", CFG.magLife},
         {"mouseSens", CFG.mouseSens}, {"invertMouse", CFG.invertMouse}, {"fov", CFG.fov}, {"keys", CFG.keys}, {"tutorialsDone", CFG.tutorialsDone}, {"eulaAgreed", CFG.eulaAgreed}};
     std::ofstream(settingsFile()) << j.dump(2);
 }

@@ -861,7 +861,18 @@ int fillMagazines(Sim& S) {
     }
     return added;
 }
-int tidy(Sim& S, double dt, double caseLife, double magLife) {
+namespace {
+bool lyingMag(Sim& S, const Body& b, const Joint* J) {   // a magazine out of the gun, not in the hand
+    return !b.gone && b.isMag && b.loose && !(J && J->A == &b) && !b.top && !(S.hand.on && S.hand.b == &b);
+}
+}  // namespace
+int looseMagazines(Sim& S) {
+    Joint* J = magwell(S);
+    int n = 0;
+    for (auto& b : S.bodies) if (lyingMag(S, b, J)) n++;
+    return n;
+}
+int tidy(Sim& S, double dt, double caseLife, double magLife, int maxLoose) {
     int n = 0;
     Joint* J = magwell(S);
     for (auto& b : S.bodies) {
@@ -870,10 +881,16 @@ int tidy(Sim& S, double dt, double caseLife, double magLife) {
         if (b.isCase && b.rs == RS::Loose) {  // a fired case lying clear of the gun
             b.idle = held ? 0 : b.idle + dt;
             if (b.idle > caseLife) { retireBody(S, b); n++; }
-        } else if (b.isMag && b.loose && !(J && J->A == &b)) {  // a magazine out of the gun: only once it's empty and left alone
-            b.idle = (held || b.rounds > 0 || b.top) ? 0 : b.idle + dt;
+        } else if (b.isMag && b.loose && !(J && J->A == &b)) {  // a magazine out of the gun, full or empty, left alone
+            b.idle = (held || b.top) ? 0 : b.idle + dt;
             if (b.idle > magLife) { retireBody(S, b); n++; }
         } else b.idle = 0;
+    }
+    for (int left = looseMagazines(S); left > std::max(0, maxLoose); left--) {   // too many lying out: the oldest goes
+        Body* old = nullptr;
+        for (auto& b : S.bodies) if (lyingMag(S, b, J) && (!old || b.born < old->born)) old = &b;
+        if (!old) break;
+        retireBody(S, *old); n++;
     }
     return n;
 }
@@ -890,6 +907,8 @@ Body* spawnMagazine(Sim& S, V2 c, bool seat) {
     b.loose = true;
     b.x = c.x / 1000; b.y = c.y / 1000; b.px = b.x; b.py = b.y; b.pa = b.a;
     Body* nb = placeSpawned(S, slot, b);
+    nb->born = S.spawned;
+    nb->idle = 0;
     Joint* J = magwell(S);
     if (seat && J && !J->A) {
         Body& B = *J->B;

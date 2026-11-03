@@ -309,6 +309,14 @@ void benchPage() {
     int ri = 1;
     for (int i = 0; i < 4; i++) if (CFG.relRounds == rr[i]) ri = i;
     if (ImGui::Combo("##rr", &ri, "25\0" "50\0" "100\0" "200\0")) { CFG.relRounds = rr[ri]; dirty = true; }
+    ImGui::SeparatorText("Spare magazines");
+    row("Most lying out", "How many magazines can lie on the bench at once. A new one past this clears away the oldest. Fewer keeps the bench quick.");
+    dirty |= ImGui::SliderInt("##ml", &CFG.maxLooseMags, 1, 20); typeable();
+    row("Cleared after", "A magazine out of the gun that nobody touches for this long is cleared away, full or empty.");
+    static const float ls[] = {10, 20, 30, 60, 120};
+    int li = 1;
+    for (int i = 0; i < 5; i++) if (std::fabs(CFG.magLife - ls[i]) < 0.5f) li = i;
+    if (ImGui::Combo("##mlife", &li, "10 seconds\0" "20 seconds\0" "30 seconds\0" "1 minute\0" "2 minutes\0")) { CFG.magLife = ls[li]; dirty = true; }
 }
 
 void controlsPage() {

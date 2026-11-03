@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.18-alpha
+
+### Spare magazines don't pile up
+- **At most 6 magazines lie out on the bench at once.** A new one past that clears away the oldest one lying out, never the one in the gun or in your hand.
+- **Magazines left alone are cleared away:** a magazine out of the gun that nobody touches for 20 seconds goes, full or empty. Before, only empty ones went (after 30 seconds), so full spares piled up for good. Picking one up starts its time again.
+- Both are in **Settings > Test bench > Spare magazines** (1 to 20 lying out; 10 seconds to 2 minutes).
+- Measured: every magazine lying out adds physics work each frame. On the blowback pistol it takes 4.8 ms a frame with 6 spares, 6.1 ms with 30 and 8.3 ms with 60, before drawing them.
+
 ## 0.2.17-alpha
 
 - **The license agreement is now the real one** (*Gunsmith3D – Build and Shoot*, The One Armed Bandit, effective November 3, 2026), word for word. On screen its section headings are bold, its lists have bullets and its dividers are lines. It's also in *EULA.txt* next to the game.

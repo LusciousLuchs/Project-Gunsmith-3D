@@ -679,17 +679,29 @@ static void benchHousekeeping() {
         S->hand.on = false;
     }
     CHECK(M->rounds == 3, "three rounds pushed in one at a time");
-    sim::tidy(*S, 31);
-    CHECK(!M->gone, "a magazine with rounds in it is never tidied away");
-    M->rounds = 0;
-    sim::tidy(*S, 20);
-    CHECK(!M->gone, "an empty magazine stays for 30 seconds");
+    sim::tidy(*S, 15, 10, 30);
+    CHECK(!M->gone, "a dropped magazine stays until its time is up");
     S->hand.on = true; S->hand.b = M; S->hand.l = {0, 0}; S->hand.t = {M->x, M->y};
-    sim::tidy(*S, 20);
-    CHECK(!M->gone, "picking it up starts the 30 seconds again");
+    sim::tidy(*S, 20, 10, 30);
+    CHECK(!M->gone, "picking it up starts its time again");
     S->hand.on = false;
-    sim::tidy(*S, 31);
-    CHECK(M->gone, "an empty magazine left alone for 30 seconds is removed");
+    sim::tidy(*S, 31, 10, 30);
+    CHECK(M->gone, "a magazine left alone (with rounds in it too) is cleared away");
+    {   // at most so many lie out: a new one clears away the oldest, never the one in the hand
+        int first = S->spawned;
+        sim::Body* held = nullptr;
+        for (int k = 0; k < 10; k++) {
+            sim::Body* m = sim::spawnMagazine(*S, {80.0 + 45 * k, 60}, false);
+            if (k == 0) held = m;
+        }
+        S->hand.on = true; S->hand.b = held; S->hand.l = {0, 0}; S->hand.t = {held->x, held->y};
+        sim::tidy(*S, 0, 10, 30, 6);
+        int oldest = 1 << 30; for (auto& b : S->bodies) if (b.isMag && b.loose && !b.gone && &b != held) oldest = std::min(oldest, b.born);
+        CHECK(sim::looseMagazines(*S) == 6 && !held->gone && oldest == first + 5, "at most 6 lie out: the oldest went first, the held one stays");
+        S->hand.on = false;
+        sim::run(*S, 0.05);
+        CHECK(sim::seatedMag(*S) || sim::magwell(*S), "(the gun is untouched)");
+    }
     // spent cases
     auto P = sim::build(loadPreset("blowback"));
     sim::run(*P, 0.003);

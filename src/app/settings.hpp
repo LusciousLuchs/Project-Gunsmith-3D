@@ -46,6 +46,8 @@ struct Settings {
     float slowWindowMs = 150;
     float benchSpeed = 1.0f;
     int relRounds = 50;
+    int maxLooseMags = 6;                // magazines lying out on the bench at once (the oldest is cleared away)
+    float magLife = 20;                  // seconds a magazine out of the gun lies untouched before it's cleared away
     // first person
     float mouseSens = 1.0f;              // 1 = 0.12 degrees per pixel
     bool invertMouse = false;

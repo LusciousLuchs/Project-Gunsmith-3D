@@ -190,9 +190,12 @@ void spawnSpareMag() {
     double ymax = -1e9;
     for (auto& p : outlineOf(*A.S->magTmpl)) ymax = std::max(ymax, p.y);
     double drop = groundLevelMM(A.design) - ymax - 1.5;
-    int n = 0;
-    for (auto& b : A.S->bodies) if (b.isMag && b.loose) n++;
-    if (!sim::spawnMagazine(*A.S, {ex.x + 70 + 45 * (n % 5), c.y + drop}, false)) toast("Too many magazines on the bench. Restart to clear them.");
+    int n = sim::looseMagazines(*A.S);
+    if (!sim::spawnMagazine(*A.S, {ex.x + 70 + 45 * (n % 5), c.y + drop}, false)) { toast("No room for another magazine on the bench."); return; }
+    if (n >= CFG.maxLooseMags) {   // over the limit: the oldest one lying out goes now
+        sim::tidy(*A.S, 0, 1e9, 1e9, CFG.maxLooseMags);
+        toast(TextFormat("At most %d magazines lie out at once: the oldest was cleared away (Settings > Test bench).", CFG.maxLooseMags));
+    }
 }
 
 const char* TOOL_HINT[] = {
