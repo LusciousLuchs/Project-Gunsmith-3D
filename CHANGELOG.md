@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.3-alpha
+
+- **Fixed: the pause menu on the firing range.** Its buttons couldn't be clicked: while paused, the mouse was put back in the middle of the screen every frame, so every click landed there. Now Esc opens the menu and every button works: Resume, Tutorials, Settings, **Leave the range** (it says so now, instead of "Main menu") and Quit.
+- Esc closes the pause menu again (anywhere in the game, the same press can no longer open and close it at once).
+- Clicking Resume no longer fires the gun, and the view doesn't jump when the mouse is taken back for aiming.
+
 ## 0.3.2-alpha
 
 ### Thickness corner by corner

@@ -253,12 +253,21 @@ void leaveRange() {
 }
 
 void rangeUpdate(float dt, bool modal) {
-    if (modal) { EnableCursor(); return; }
-    if (IsCursorHidden() == false) DisableCursor();
-    if (IsKeyPressed(KEY_ESCAPE)) { A.showPause = true; EnableCursor(); return; }
+    static bool holdFire = false, skipLook = false;
+    if (modal) {   // paused: the mouse is free for the menu (once: freeing it also puts it in the middle), the trigger let go
+        if (IsCursorHidden()) EnableCursor();
+        if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); }
+        holdFire = true; skipLook = true;
+        return;
+    }
+    if (!IsCursorHidden()) { DisableCursor(); skipLook = true; }
+    if (IsKeyPressed(KEY_ESCAPE)) { A.showPause = true; return; }   // (the mouse is freed next frame, once)
+    // back from the menu: the click on Resume isn't a shot, and the mouse coming back to the middle isn't a turn
+    if (holdFire && !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) holdFire = false;
     R.t += dt;
     // looking
-    Vector2 md = GetMouseDelta();
+    Vector2 md = skipLook ? Vector2{0, 0} : GetMouseDelta();
+    skipLook = false;
     double sens = 0.0021 * CFG.mouseSens * (1 - 0.45 * R.aim);
     R.pl.yaw += md.x * sens;
     R.pl.pitch = std::clamp(R.pl.pitch - md.y * sens * (CFG.invertMouse ? -1 : 1), -1.5, 1.5);
@@ -287,8 +296,8 @@ void rangeUpdate(float dt, bool modal) {
     // the gun: the trigger is the left mouse button; R reloads, B works the action
     if (A.S) {
         auto& S = *A.S;
-        bool trig = IsMouseButtonDown(MOUSE_BUTTON_LEFT);
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) S.pressed = true;   // (as on the bench: a fresh pull of the trigger)
+        bool trig = IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !holdFire;
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !holdFire) S.pressed = true;   // (as on the bench: a fresh pull of the trigger)
         S.trigger = trig;
         sim::setKey(S, "fire", trig);
         if (actPressed(Act::Reload)) reload();

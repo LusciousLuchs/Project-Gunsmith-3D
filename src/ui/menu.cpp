@@ -105,10 +105,11 @@ void pauseMenu() {
     ImGui::PopFont();
     ImGui::Dummy({0, 6 * S()});
     ImVec2 bw{-1, 34 * S()};
-    if (ImGui::Button("Resume", bw) || IsKeyPressed(KEY_ESCAPE)) { uiTick(); A.showPause = false; }
+    // (Escape closes it only if it was already open when this frame began: the press that opened it isn't a second press)
+    if (ImGui::Button("Resume", bw) || (IsKeyPressed(KEY_ESCAPE) && A.modalAtFrameStart)) { uiTick(); A.showPause = false; }
     if (ImGui::Button("Tutorials", bw)) { uiTick(); A.showPause = false; A.showTutorials = true; }
     if (ImGui::Button("Settings", bw)) { uiTick(); A.showSettings = true; }
-    if (ImGui::Button(A.benchOnly ? "Leave the bench" : "Main menu", bw)) { uiTick(); backToMenu(); }
+    if (ImGui::Button(A.screen == Screen::Range ? "Leave the range" : A.benchOnly ? "Leave the bench" : "Main menu", bw)) { uiTick(); backToMenu(); }
     if (A.screen == Screen::MapEditor) ImGui::TextDisabled("Your map is autosaved.");
     if (ImGui::Button("Quit to desktop", bw)) A.quit = true;
     ImGui::End();
