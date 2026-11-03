@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.1-alpha
+
+- **The OAB Foundry logo** is now the launch splash: the studio's own logo on black, fading in and out over about three seconds and drawing slightly closer as it does. A key or a click still skips it.
+
 ## 0.3.0-alpha
 
 ### The firing range

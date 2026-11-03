@@ -6,10 +6,12 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstddef>
 #include <cstdio>
 #include <string>
 
 namespace {
+#include "logo_oab.inc"
 const char* EULA_TEXT =
 #include "eula.inc"
     ;
@@ -46,16 +48,35 @@ void splash(float dt) {
     float a = t < FADE_IN ? t / FADE_IN : t < FADE_IN + HOLD ? 1.f : 1.f - (t - FADE_IN - HOLD) / FADE_OUT;
     a = std::fmax(0.f, std::fmin(1.f, a));
     a = a * a * (3 - 2 * a);   // eased
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight(), cx = W / 2, cy = H / 2;
-    float big = std::fmin(64.f * S(), W / 14.f), small = big * 0.42f;
-    ImU32 white = IM_COL32(236, 238, 242, (int)(255 * a)), gold = IM_COL32(232, 161, 58, (int)(255 * a)), dim = IM_COL32(150, 156, 168, (int)(255 * a));
-    // the studio: OAB Foundry
-    big *= 1.5f; small = big * 0.3f;
-    spaced(dl, gFontBold, big, cx, cy - big * 0.95f, "OAB", big * 0.18f, white);
-    float lw = big * 3.0f;
-    dl->AddRectFilled({cx - lw / 2, cy + big * 0.28f}, {cx + lw / 2, cy + big * 0.28f + std::fmax(2.f, 2 * S())}, gold);
-    spaced(dl, gFontBold, small, cx, cy + big * 0.45f, "FOUNDRY", small * 0.9f, dim);
+    // the studio's logo, on black, coming up slowly as it fades in and out
+    static Texture2D logo{};
+    static bool tried = false;
+    if (!tried) {
+        tried = true;
+        Image img = LoadImageFromMemory(".jpg", OAB_LOGO_JPG, (int)sizeof(OAB_LOGO_JPG));
+        if (img.data) {
+            logo = LoadTextureFromImage(img);
+            UnloadImage(img);
+            GenTextureMipmaps(&logo);
+            SetTextureFilter(logo, TEXTURE_FILTER_TRILINEAR);
+        }
+    }
+    ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, {W, H}, IM_COL32(0, 0, 0, 255));
+    if (logo.id) {
+        float grow = 1.0f + 0.03f * std::fmin(1.f, t / (FADE_IN + HOLD + FADE_OUT));
+        float lw = std::fmin(W * 0.62f, H * 0.62f * logo.width / logo.height) * grow, lh = lw * logo.height / logo.width;
+        ImGui::GetBackgroundDrawList()->AddImage((ImTextureID)(intptr_t)logo.id, {cx - lw / 2, cy - lh / 2}, {cx + lw / 2, cy + lh / 2},
+                                                {0, 0}, {1, 1}, IM_COL32(255, 255, 255, (int)(255 * a)));
+    } else {   // (no picture: the name in letters)
+        ImDrawList* dl = ImGui::GetForegroundDrawList();
+        float big = std::fmin(96.f * S(), W / 9.f), small = big * 0.3f;
+        ImU32 white = IM_COL32(236, 238, 242, (int)(255 * a)), gold = IM_COL32(232, 161, 58, (int)(255 * a)), dim = IM_COL32(150, 156, 168, (int)(255 * a));
+        spaced(dl, gFontBold, big, cx, cy - big * 0.95f, "OAB", big * 0.18f, white);
+        float lw = big * 3.0f;
+        dl->AddRectFilled({cx - lw / 2, cy + big * 0.28f}, {cx + lw / 2, cy + big * 0.28f + std::fmax(2.f, 2 * S())}, gold);
+        spaced(dl, gFontBold, small, cx, cy + big * 0.45f, "FOUNDRY", small * 0.9f, dim);
+    }
     if (t >= FADE_IN + HOLD + FADE_OUT) { t = 0; phase = agreed() ? Phase::Off : Phase::Eula; }
 }
 
