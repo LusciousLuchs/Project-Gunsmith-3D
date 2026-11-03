@@ -5,6 +5,7 @@
 #include "carve.hpp"
 #include "hand.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <memory>
@@ -1685,6 +1686,39 @@ static void engravings() {
     CHECK(mirrorImage(c).marks.empty(), "a copy on the other side of the gun starts without engravings");
 }
 
+static void controlButtons() {
+    std::printf("controlButtons\n");
+    // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
+    auto make = [](double dir) {
+        Design d;
+        BodyDef f; f.id = "frame"; f.name = "Frame"; f.fixed = true; f.layer = "B"; f.pts = {{-50, -50}, {50, -50}, {50, 50}, {-50, 50}}; fixShape(f);
+        BodyDef b; b.id = "btn"; b.name = "Bolt release"; b.layer = "A"; b.pts = {{0, 0}, {10, 0}, {10, 6}, {0, 6}}; b.thick = 4; fixShape(b);
+        b.ctrl = "button"; b.key = "k1"; b.ctrlPt = {5, 3}; b.ctrlDir = dir; b.ctrlForce = 25;
+        JointDef j; j.type = "track"; j.a = "btn"; j.b = "frame"; j.p = {5, 3}; j.path = {{5, 3}, {9, 3}}; j.lockRot = true;
+        d.bodies = {f, b}; d.joints = {j};
+        return d;
+    };
+    double td = 0;
+    Design d0 = make(180);
+    CHECK(trackDirection(d0, "btn", td) && std::fabs(td) < 1e-9, "a button's track tells which way it's pushed (forward here)");
+    auto press = [](const Design& d) {
+        auto S = sim::build(d);
+        sim::run(*S, 0.05);
+        sim::Body* B = S->find("btn");
+        double x0 = B->x;
+        sim::setKey(*S, "k1", true);
+        sim::run(*S, 0.4);
+        double moved = (B->x - x0) * 1000;
+        double held = 0, along = 0;
+        for (auto& p : S->pushers) if (p.key == "k1") { held = p.heldT; along = p.moved * 1000; }
+        return std::array<double, 3>{moved, held, along};
+    };
+    auto wrong = press(d0), right = press(make(td));
+    std::printf("    pushed back: moved %.2f mm; pushed along its track: moved %.2f mm\n", wrong[0], right[0]);
+    CHECK(std::fabs(wrong[0]) < 0.3 && wrong[1] > 0.35 && wrong[2] < 0.3, "pushed a way it can't go, the key does nothing (and the game can tell)");
+    CHECK(right[0] > 3.5, "pushed along its track, the key slides it all the way");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1723,6 +1757,7 @@ int main() {
     depthShaping();
     handMobility();
     engravings();
+    controlButtons();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

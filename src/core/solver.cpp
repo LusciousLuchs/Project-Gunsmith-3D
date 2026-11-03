@@ -1125,9 +1125,10 @@ void substep(Sim& S) {
     for (auto& p : S.pushers) {
         Body& b = *p.b;
         V2 w = wpt(b, p.l);
-        if (!p.on) { p.wasOn = false; continue; }
-        if (!p.wasOn) { p.wasOn = true; p.anchor = w; p.ext = 0; }
+        if (!p.on) { p.wasOn = false; p.heldT = 0; p.moved = 0; p.stuckTold = false; continue; }
+        if (!p.wasOn) { p.wasOn = true; p.anchor = w; p.ext = 0; p.heldT = 0; p.moved = 0; }
         double done = (w.x - p.anchor.x) * p.dx + (w.y - p.anchor.y) * p.dy;
+        p.heldT += H; p.moved = std::max(p.moved, done);
         p.ext = std::min(p.ext + 0.25 * H, std::max(done, 0.0) + 0.0015);  // a blocked finger stops just past where it is
         double d = p.ext - done;
         if (d <= 0) continue;  // a finger only pushes

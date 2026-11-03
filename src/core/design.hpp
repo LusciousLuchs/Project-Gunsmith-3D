@@ -351,6 +351,9 @@ double bucklingSqueeze(double freeLen, double coilDia, double wire);
 // Engravings (see MarkDef): keep them on their part when it's moved, turned, flipped or mirrored as a whole, or made
 // thicker or moved in depth (call after edits; cheap when there are none). Reshaping the outline leaves them where they are.
 void followMarks(BodyDef& b);
+// The way a part's track lets it slide from where it sits (degrees, as BodyDef::ctrlDir: 0 forward, 90 down), if it has
+// one: a button's natural push direction.
+bool trackDirection(const Design& d, const std::string& partId, double& deg);
 // A mark as lines to draw (design mm), each point with its surface direction: text is spelt out in a single-stroke
 // lettering (capitals, figures and common signs; small letters are written as capitals).
 struct MarkPt { P3d p, n; };

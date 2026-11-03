@@ -184,3 +184,21 @@ void followMarks(BodyDef& b) {
     }
     b.markRef = b.pts; b.markRefZ = b.z; b.markRefThick = b.thick;
 }
+
+bool trackDirection(const Design& d, const std::string& partId, double& deg) {
+    for (auto& j : d.joints) {
+        if (j.type != "track" || j.a != partId || j.path.size() < 2) continue;
+        // the end of the slot farther from where the part's point sits is the way it can go
+        const V2& a = j.path.front(); const V2& b = j.path.back();
+        double da = std::hypot(a.x - j.p.x, a.y - j.p.y), db = std::hypot(b.x - j.p.x, b.y - j.p.y);
+        V2 to = db >= da ? b : a;
+        double dx = to.x - j.p.x, dy = to.y - j.p.y;
+        if (std::hypot(dx, dy) < 1e-6) { dx = b.x - a.x; dy = b.y - a.y; }
+        if (std::hypot(dx, dy) < 1e-6) continue;
+        deg = std::atan2(dy, dx) * 180 / 3.14159265358979323846;
+        if (deg < 0) deg += 360;
+        deg = std::round(deg);
+        return true;
+    }
+    return false;
+}

@@ -130,6 +130,8 @@ struct Pusher {
     bool wasOn = false;
     V2 anchor;              // where the control point was when the press began (world, m)
     double ext = 0;         // how far the finger has pressed along the push direction (m)
+    double heldT = 0, moved = 0;   // this press: how long (s), and the furthest it has gone along the push (m)
+    bool stuckTold = false;        // (the app has said this press isn't moving it)
 };
 
 enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction, MagLoaded, ClipOut };  // MagLoaded: a round pushed into a magazine  // EjectLive: an unfired round thrown out

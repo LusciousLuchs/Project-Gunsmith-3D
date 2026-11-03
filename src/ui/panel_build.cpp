@@ -651,7 +651,11 @@ static void inspectPart(BodyDef& b) {
             b.ctrl = kinds[ki]; editedAny = true;
             if (ki > 0 && b.ctrlPt.x == 0 && b.ctrlPt.y == 0) b.ctrlPt = centroidOf(b);
             if (ki == 3 && b.key == "none") b.key = "fire";
+            double td;
+            if (ki == 1 && trackDirection(A.design, b.id, td)) b.ctrlDir = td;   // a button: pushed the way its track goes
         }
+        if (b.ctrl != "none" && b.fixed)
+            ImGui::TextColored(colWarn(), "This part is Fixed, so it can't move when pressed. Untick Fixed and join it with a track or pin.");
         if (b.ctrl == "handle") muted("Drag it on the bench to work the action. The reliability test pulls it all the way back along its track and pushes it home.");
         if (b.ctrl != "none" && b.ctrl != "handle") {
             const char* keys[] = {"none", "fire", "magrelease", "k1", "k2", "k3", "k4"};
@@ -665,7 +669,18 @@ static void inspectPart(BodyDef& b) {
                 for (int i = 0; i < 7; i++) if (ImGui::Selectable(names[i], kk == i)) { b.key = keys[i]; editedAny = true; }
                 ImGui::EndCombo();
             }
-            pNum("Push direction", b.ctrlDir, 15, "%.0f\xc2\xb0", "0 forward, 90 down, 180 back.");
+            {
+                double dir = std::fmod(std::fmod(b.ctrlDir, 360) + 360, 360);
+                const char* way = dir < 22.5 || dir >= 337.5 ? "forward" : dir < 67.5 ? "forward and down" : dir < 112.5 ? "down" : dir < 157.5 ? "back and down"
+                                : dir < 202.5 ? "back" : dir < 247.5 ? "back and up" : dir < 292.5 ? "up" : "forward and up";
+                pNum("Push direction", b.ctrlDir, 15, TextFormat("%%.0f\xc2\xb0 (%s)", way),
+                     "Which way the finger pushes: 0 forward (toward the muzzle), 90 down, 180 back, 270 up.\nThe arrow on the part in the view shows it. It has to be a way the part can move.");
+                double td;
+                if (trackDirection(A.design, b.id, td) && std::fabs(std::remainder(td - b.ctrlDir, 360.0)) > 1) {
+                    if (ImGui::Button(TextFormat("Push along its track (%.0f\xc2\xb0)", td), {-1, 0})) { b.ctrlDir = td; editedAny = true; }
+                    if (tipHover()) ImGui::SetTooltip("Points the push the way this part's track lets it slide.");
+                }
+            }
             pNumU("Finger force", b.ctrlForce, 1, Q::Force);
             if (ImGui::Button("Place the push point", {-1, 0})) A.tool = Tool::CtrlPt;
             muted("Join it with a pin (levers, triggers) or a track (buttons), and give it a spring to return.");

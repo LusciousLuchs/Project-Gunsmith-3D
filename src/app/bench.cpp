@@ -91,6 +91,13 @@ void stepSim(float dt) {
     bool slow = CFG.slowOnShot && S.shots > 0 && (S.t - S.fireT) * 1000 < CFG.slowWindowMs;
     double speed = slow ? CFG.slowSpeed : CFG.benchSpeed;
     sim::run(S, dt * speed, 1200);
+    for (auto& p : S.pushers)   // a control held down that doesn't move: say why it might be
+        if (p.on && !p.stuckTold && p.heldT > 0.35 && p.moved < 0.0003 && p.key != "fire" && p.b && p.b->d) {
+            p.stuckTold = true;
+            const BodyDef& d = *p.b->d;
+            double dir = std::fmod(std::fmod(d.ctrlDir, 360) + 360, 360);
+            toast((d.name.empty() ? d.id : d.name) + TextFormat(" is pressed but doesn't move. Its push direction is %.0f degrees; check that it can move that way (the arrow on it in the designer), and that a stop, catch or strong spring isn't holding it.", dir));
+        }
     sim::tidy(S, dt, 10, CFG.magLife, CFG.maxLooseMags);   // real seconds: spent cases go after 10 s, magazines left alone after magLife; at most maxLooseMags lie out
     for (auto& e : S.events) {
         auto& br = A.design.breech;

@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.4-alpha
+
+### Buttons and levers you bind to keys
+- **Why a control could do nothing:** every control is pushed one way, its *Push direction*, and it started at 180 degrees (backward), like pulling a trigger. A button that slides down (a bolt or slide release, a magazine catch) can't move backward, so holding its key did nothing.
+- **A button now points the way its track goes:** make a part a Button and, if it already has a track, its push direction is set along it. Under Push direction, *Push along its track* does the same at any time.
+- **Push direction says which way, in words** (90 degrees *down*, 180 *back*, and so on), and its tip explains it. The arrow on the part in the designer shows it too.
+- **The bench tells you when a pressed control won't move:** hold its key and if it hasn't moved after a moment, a message names the part and its push direction, and suggests what may hold it (a stop, a catch or a spring stronger than the finger force).
+- A control on a **Fixed** part now gets a warning: fixed parts can't move when pressed.
+- Tested: a button on a forward track, pushed backward, moves 0.2 mm; pushed along its track it slides the full 4 mm.
+
 ## 0.3.3-alpha
 
 - **Fixed: the pause menu on the firing range.** Its buttons couldn't be clicked: while paused, the mouse was put back in the middle of the screen every frame, so every click landed there. Now Esc opens the menu and every button works: Resume, Tutorials, Settings, **Leave the range** (it says so now, instead of "Main menu") and Quit.
