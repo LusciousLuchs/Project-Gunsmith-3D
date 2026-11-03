@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.6-alpha
+
+### Fixes
+- **Bullets and cases were see-through.** Rounds were drawn inside out: only their inside surfaces showed, so from most angles you looked straight into a hollow bullet. They're solid now (cartridges, cases and shotgun shells).
+
 ## 0.2.5-alpha
 
 ### Magazines anywhere

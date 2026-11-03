@@ -229,7 +229,8 @@ static Mesh lathe(const std::vector<V2>& prof) {
         double nx = l > 0 ? -dr / l : 0, nr = l > 0 ? dx / l : 1;
         for (int i = 0; i < N; i++) {
             double t0 = 2 * PI * i / N, t1 = 2 * PI * (i + 1) / N;
-            V2 q[6][2] = {{a, {t0, 0}}, {b, {t0, 0}}, {b, {t1, 0}}, {a, {t0, 0}}, {b, {t1, 0}}, {a, {t1, 0}}};
+            // wound so the outside faces out (the other way round, only the inside was drawn: rounds looked hollow)
+            V2 q[6][2] = {{a, {t0, 0}}, {b, {t1, 0}}, {b, {t0, 0}}, {a, {t0, 0}}, {a, {t1, 0}}, {b, {t1, 0}}};
             for (auto& v : q) {
                 double th = v[1].x;
                 m.vertices[k * 3] = (float)(v[0].x * U); m.vertices[k * 3 + 1] = (float)(v[0].y * std::cos(th) * U); m.vertices[k * 3 + 2] = (float)(v[0].y * std::sin(th) * U);
