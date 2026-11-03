@@ -13,6 +13,7 @@
 #include <map>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -73,7 +74,15 @@ static void ensureMeshes() {
         if (d.barrel.on) k << 'B' << d.barrel.cart.caseLen << ' ' << d.barrel.cart.headDia() << ' ' << d.barrel.cart.bulletDia << ' ' << d.barrel.rifled << d.barrel.grooves << d.barrel.muzzleEnd;
         for (auto& c : d.carves) k << 'c' << c.shape << c.at.x << ' ' << c.at.y << ' ' << c.atZ << ' ' << c.dx << ' ' << c.dy << ' ' << c.dz << ' ' << c.spin << ' ' << c.w << ' ' << c.h << ' ' << c.depth;
         std::string key = k.str();
-        if (A.meshes[i].ok && A.meshes[i].key == key) continue;
+        // while a part is being changed (dragged, typed) its cuts (carves, a barrel's bore and chamber) are left out, and
+        // made once it has been still for a moment: cutting the solid every frame is what makes dragging slow
+        const double SETTLE = 0.6;
+        double now = GetTime();
+        bool hasCuts = !d.carves.empty() || d.barrel.on;
+        if (A.meshes[i].ok && A.meshes[i].key == key) {
+            if (!(A.meshes[i].rough && now - A.meshes[i].changedAt >= SETTLE)) continue;   // (rough and settled: cut it now)
+        } else if (A.meshes[i].ok) A.meshes[i].changedAt = now;
+        bool rough = hasCuts && A.meshes[i].ok && now - A.meshes[i].changedAt < SETTLE && A.mode == Mode::Build;
         if (A.meshes[i].ok) UnloadMesh(A.meshes[i].mesh);
         V2 c = centroidOf(d);
         std::vector<V2> local;
@@ -86,9 +95,9 @@ static void ensureMeshes() {
             A.meshes[i].mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
         } else if (depthShaped(d)) A.meshes[i].mesh = depthMesh(d, c);   // shaped in depth: corners on both faces
         else A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
-        std::vector<CarveDef> cuts = d.carves;
+        std::vector<CarveDef> cuts = rough ? std::vector<CarveDef>{} : d.carves;
         V2 rear, muz;
-        if (barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
+        if (!rough && barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
             // chamber's walls are the cartridge physics' business, not the solid's)
             const Cartridge& ct = d.barrel.cart;
             double L = std::hypot(muz.x - rear.x, muz.y - rear.y);
@@ -98,14 +107,7 @@ static void ensureMeshes() {
             cuts.push_back(ch);
             CarveDef bo = ch; bo.at = muz; bo.dx = -u.x; bo.dy = -u.y; bo.w = bo.h = ct.bulletDia; bo.depth = std::max(1.0, L - ct.caseLen + 0.5);
             cuts.push_back(bo);
-            if (d.barrel.rifled)
-                for (int g = 0; g < d.barrel.grooves; g++) {
-                    double th = 2 * PI * g / d.barrel.grooves, r = ct.bulletDia / 2;
-                    CarveDef gr = bo; gr.shape = "rect";
-                    gr.at = {muz.x + n.x * r * std::cos(th), muz.y + n.y * r * std::cos(th)}; gr.atZ = r * std::sin(th);
-                    gr.w = PI * ct.bulletDia / (2.0 * d.barrel.grooves); gr.h = 1.0; gr.spin = th * 180 / PI;
-                    cuts.push_back(gr);
-                }
+            // (the rifling is drawn as a spiral along the bore: see drawRifling)
         }
         if (!cuts.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
             std::vector<std::vector<csg::Poly>> cut;
@@ -151,6 +153,36 @@ static void ensureMeshes() {
         }
         A.meshes[i].key = key;
         A.meshes[i].ok = true;
+        A.meshes[i].rough = rough;
+    }
+}
+// A barrel's rifling: its grooves as lines spiralling down the bore, one turn per twist length, from the chamber's
+// mouth to the muzzle. (Drawn rather than cut: a spiral cut would be slow, and only the eye sees it.)
+static void drawRifling(int tmpl, Matrix M) {
+    const BodyDef& d = A.design.bodies[tmpl];
+    V2 rear, muz;
+    if (!d.barrel.on || !d.barrel.rifled || !barrelEnds(d, rear, muz)) return;
+    const Cartridge& ct = d.barrel.cart;
+    double L = std::hypot(muz.x - rear.x, muz.y - rear.y);
+    if (L <= ct.caseLen + 1) return;
+    V2 u{(muz.x - rear.x) / L, (muz.y - rear.y) / L}, c = centroidOf(d);
+    auto local = [&](double s, double ang, double r) {   // a point s mm from the breech end, at angle ang round the bore, radius r
+        V2 p{rear.x + u.x * s, rear.y + u.y * s};
+        V2 nI{-u.y, u.x};                                 // across the bore in the side view
+        double cy = std::cos(ang) * r, cz = std::sin(ang) * r;
+        return Vector3{(float)((p.x + nI.x * cy - c.x) * U), (float)(-(p.y + nI.y * cy - c.y) * U), (float)(cz * U)};
+    };
+    double r = ct.bulletDia / 2 * 0.985, twist = std::max(20.0, d.barrel.twist);
+    int steps = (int)std::clamp((L - ct.caseLen) / 2.0, 8.0, 400.0);
+    Color col{28, 30, 34, 255};
+    for (int g = 0; g < d.barrel.grooves; g++) {
+        double a0 = 2 * PI * g / d.barrel.grooves;
+        for (int k = 0; k < steps; k++) {
+            double s0 = ct.caseLen + (L - ct.caseLen) * k / steps, s1 = ct.caseLen + (L - ct.caseLen) * (k + 1) / steps;
+            Vector3 p0 = Vector3Transform(local(s0, a0 + 2 * PI * (s0 - ct.caseLen) / twist, r), M);
+            Vector3 p1 = Vector3Transform(local(s1, a0 + 2 * PI * (s1 - ct.caseLen) / twist, r), M);
+            DrawLine3D(p0, p1, col);
+        }
     }
 }
 float plateY() { return -(float)groundLevelMM(A.design) * U; }
@@ -319,8 +351,10 @@ static void drawCartridgeAt(Vector3 o, Vector3 dir, bool caseOnly = false, float
     }
     setSpecular(0.3f);
 }
-static void drawCartridge(const std::string& bodyId, V2 face, float zc, bool caseOnly = false, const Cartridge* cart = nullptr) {
-    V2 f = curMM(bodyId, face), ax = curMM(bodyId, {face.x + 1, face.y});
+static void drawCartridge(const std::string& bodyId, V2 face, float zc, bool caseOnly = false, const Cartridge* cart = nullptr, const V2* muzzle = nullptr) {
+    V2 to{face.x + 1, face.y};   // along the bore: toward the muzzle when there is one (a barrel can point any way)
+    if (muzzle) { double dx = muzzle->x - face.x, dy = muzzle->y - face.y, l = std::hypot(dx, dy); if (l > 1) to = {face.x + dx / l, face.y + dy / l}; }
+    V2 f = curMM(bodyId, face), ax = curMM(bodyId, to);
     Vector3 o = W3(f, zc), dir = Vector3Normalize(Vector3Subtract(W3(ax, zc), o));
     drawCartridgeAt(o, dir, caseOnly, 1.f, cart);
 }
@@ -699,6 +733,7 @@ static void drawSceneImpl(bool gunOnly) {
         else drawMesh(A.meshes[r.tmpl].mesh, r.M, c);
     }
     for (auto& r : list) if (!isGhost(r)) drawMarks(r.tmpl, r.M);   // engravings, on the parts they're cut into
+    for (auto& r : list) drawRifling(r.tmpl, r.M);
     drawEngravePreview();
     // rotating-bolt lugs and handles
     for (auto& r : list) {
@@ -806,18 +841,20 @@ static void drawSceneImpl(bool gunOnly) {
     auto& br = D.breech;
     if (br.on && br.hasFace) {
         if (A.S) {
-            if (A.S->chambered) drawCartridge(br.chamber, br.face, 0);
-            if (A.S->inTransit) drawCartridge(br.breech, br.face, 0);
-            if (A.S->spent && A.S->physicalFeed) drawCartridge(br.chamber, br.face, 0, true);  // empty case still in the chamber
-        } else if (br.loaded) drawCartridge(br.chamber, br.face, 0);
+            const V2* mz = br.hasMuzzle ? &br.muzzle : nullptr;
+            if (A.S->chambered) drawCartridge(br.chamber, br.face, 0, false, nullptr, mz);
+            if (A.S->inTransit) drawCartridge(br.breech, br.face, 0, false, nullptr, mz);
+            if (A.S->spent && A.S->physicalFeed) drawCartridge(br.chamber, br.face, 0, true, nullptr, mz);  // empty case still in the chamber
+        } else if (br.loaded) drawCartridge(br.chamber, br.face, 0, false, nullptr, br.hasMuzzle ? &br.muzzle : nullptr);
         for (size_t k = 0; k < br.more.size(); k++) {  // the further chambers (the simulation keeps chamber 0 swapped in between steps)
             auto& c = br.more[k];
             if (A.S && k + 1 < A.S->chambers.size()) {
                 auto& st = A.S->chambers[k + 1];
                 const Cartridge* cc = c.ownCart ? &c.cart : nullptr;
-                if (st.chambered) drawCartridge(c.chamber, c.face, 0, false, cc);
-                if (st.spent && A.S->physicalFeed) drawCartridge(c.chamber, c.face, 0, true, cc);
-            } else if (!A.S && c.loaded) drawCartridge(c.chamber, c.face, 0, false, c.ownCart ? &c.cart : nullptr);
+                const V2* mz = c.hasMuzzle ? &c.muzzle : nullptr;
+                if (st.chambered) drawCartridge(c.chamber, c.face, 0, false, cc, mz);
+                if (st.spent && A.S->physicalFeed) drawCartridge(c.chamber, c.face, 0, true, cc, mz);
+            } else if (!A.S && c.loaded) drawCartridge(c.chamber, c.face, 0, false, c.ownCart ? &c.cart : nullptr, c.hasMuzzle ? &c.muzzle : nullptr);
         }
     }
     for (auto& s : A.shells) drawCartridgeAt(Vector3Subtract(s.p, Vector3Scale(s.dir, s.len / 2)), s.dir, true);

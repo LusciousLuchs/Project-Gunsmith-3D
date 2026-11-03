@@ -41,6 +41,12 @@ RoundAxis roundAxis(const BodyDef& b) {
     if (b.roundAxis == 0) th = 0;                                     // level, front to back (most parts)
     else if (b.roundAxis == 1) th = PI_R / 2;                         // upright
     ax.dir = {std::cos(th), std::sin(th)};
+    if (b.barrel.on) {   // a barrel: its bore runs down the middle of its outline (not its centre of area, which a
+        double v0 = 1e9, v1 = -1e9;   // thicker chamber end or an uneven edit pulls to one side)
+        for (auto& p : o) { double v = ax.dir.x * (p.y - ax.o.y) - ax.dir.y * (p.x - ax.o.x); v0 = std::min(v0, v); v1 = std::max(v1, v); }
+        double mid = (v0 + v1) / 2;
+        ax.o = {ax.o.x - ax.dir.y * mid, ax.o.y + ax.dir.x * mid};
+    }
     for (auto& p : o) ax.R = std::max(ax.R, std::fabs(ax.dir.x * (p.y - ax.o.y) - ax.dir.y * (p.x - ax.o.x)));
     return ax;
 }

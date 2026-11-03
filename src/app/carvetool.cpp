@@ -48,6 +48,21 @@ static CarveDef carveAt(int i, Vector3 p, Vector3 n) {
     auto r3 = [](double& v) { if (std::fabs(v) < 1e-4) v = 0; };
     r3(c.dx); r3(c.dy); r3(c.dz);
     c.depth = A.carveThrough ? 0 : A.carveDepth;
+    // into the end of a round part (a barrel, a rod), close to its middle: right on its centre line, so a bore lines up
+    const BodyDef& d = A.design.bodies[i];
+    if (d.round) {
+        carve::RoundAxis ax = carve::roundAxis(d);
+        double l = std::sqrt(c.dx * c.dx + c.dy * c.dy + c.dz * c.dz);
+        if (l > 0 && std::fabs((c.dx * ax.dir.x + c.dy * ax.dir.y) / l) > 0.95) {
+            double s = (c.at.x - ax.o.x) * ax.dir.x + (c.at.y - ax.o.y) * ax.dir.y;
+            V2 onAxis{ax.o.x + ax.dir.x * s, ax.o.y + ax.dir.y * s};
+            double off = std::hypot(std::hypot(c.at.x - onAxis.x, c.at.y - onAxis.y), c.atZ);
+            if (off < std::max(1.5, ax.R * 0.35)) {
+                double sgn = c.dx * ax.dir.x + c.dy * ax.dir.y > 0 ? 1 : -1;   // straight down the axis, the way it was going in
+                c.at = onAxis; c.atZ = 0; c.dx = ax.dir.x * sgn; c.dy = ax.dir.y * sgn; c.dz = 0;
+            }
+        }
+    }
     return c;
 }
 

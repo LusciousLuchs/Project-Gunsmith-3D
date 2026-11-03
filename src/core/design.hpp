@@ -45,7 +45,11 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly = false);  //
 // at the tip (a hollow point). Empty for "auto", which keeps the original shape.
 std::vector<V2> bulletShape(const Cartridge& c);
 double bulletBase(const Cartridge& c);                     // where the bullet's base sits, mm from the head
-double bulletShapeMass(const Cartridge& c);                // grams of jacketed lead in that shape
+double bulletShapeMass(const Cartridge& c);
+double bulletLength(const Cartridge& c);                   // mm, base to tip
+// How well a barrel's rifling spins this bullet to keep it point first (the Miller rule): about 1.4 and up is stable,
+// 1 to 1.4 marginal, under 1 it tumbles. A smoothbore gives 0 (a bullet isn't spun at all).
+double spinStability(const Cartridge& c, double twistMM, bool rifled);                // grams of jacketed lead in that shape
 double ballisticCoefficient(const Cartridge& c);           // G1, estimated from the shape and weight
 const char* noseStyles();                                  // "\0"-separated names for the shapes, in nose-id order
 const char* noseId(int i);

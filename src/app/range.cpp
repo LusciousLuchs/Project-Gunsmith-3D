@@ -126,6 +126,16 @@ void fireBullets(int chamber) {
     double cd = cart.shot() ? 0.47 : 0.30;
     double k = 0.5 * 1.2 * cd * 3.14159 * dia * dia / 4 / std::max(1e-4, mass);
     float spread = n > 1 ? 0.025f : 0.0008f;   // pellets open into a pattern; a bullet goes nearly where it's pointed
+    // the barrel's rifling: a bullet spun too slowly (or not at all) tumbles, goes wide and slows; shot spreads more if spun
+    if (ci >= 0 && A.design.bodies[ci].barrel.on) {
+        const BarrelDef& bd = A.design.bodies[ci].barrel;
+        if (cart.shot()) { if (bd.rifled) spread *= 1.6f; }
+        else if (!(cart.kind == "shotshell" && !bd.rifled)) {
+            double sg = spinStability(cart, bd.twist, bd.rifled);
+            if (sg < 1.0) { spread *= 25; k *= 3; }                       // tumbling: sideways through the air
+            else if (sg < 1.4) spread *= 1 + (float)((1.4 - sg) / 0.4 * 3);   // marginal: groups open up
+        }
+    }
     V3 side = gmap::norm(gmap::cross(dir, {0, 1, 0})), upv = gmap::cross(side, dir);
     for (int i = 0; i < n; i++) {
         V3 d = gmap::norm(dir + side * rnd(spread) + upv * rnd(spread));

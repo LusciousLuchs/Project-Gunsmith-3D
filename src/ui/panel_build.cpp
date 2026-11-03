@@ -630,8 +630,24 @@ static void inspectPart(BodyDef& b) {
         if (R.rifled) {
             double inches = R.twist / 25.4;
             if (pNum("Twist", inches, 0.5, "1 turn in %.1f\"", "How far the bullet travels down the bore for one turn of the rifling. Faster twists (fewer inches) suit longer, heavier bullets.")) R.twist = std::clamp(inches, 2.0, 80.0) * 25.4;
+            V2 r0, m0;
+            double rifled = barrelEnds(b, r0, m0) ? std::max(0.0, std::hypot(m0.x - r0.x, m0.y - r0.y) - R.cart.caseLen) : 0;
+            double turns = rifled / std::max(1.0, R.twist);
+            if (pNum("Turns", turns, 0.05, "%.2f along the bore", "How many times the rifling goes round from the chamber to the muzzle. Setting it sets the twist to match this barrel's length.") && turns > 0.01 && rifled > 1)
+                R.twist = std::clamp(rifled / turns, 2.0 * 25.4, 80.0 * 25.4);
             double g = R.grooves;
             if (pNum("Grooves", g, 1, "%.0f")) R.grooves = std::clamp((int)std::lround(g), 2, 16);
+        }
+        {   // what it does to the bullet: spun fast enough, it flies point first
+            double sg = spinStability(R.cart, R.twist, R.rifled);
+            bool shot = R.cart.shot();
+            if (shot) muted(R.rifled ? "Shot comes out of a rifled bore spinning, and spreads wider." : "Shot from a smooth bore: the usual pattern.");
+            else if (R.cart.kind == "shotshell" && !R.rifled) muted("A slug from a smooth bore: made for it, it flies straight enough.");
+            else if (!R.rifled) ImGui::TextColored(colBad(), "A bullet from a smooth bore isn't spun: it tumbles and goes wide.");
+            else if (sg >= 1.4) ImGui::TextColored(colGood(), "Spins the bullet well (stability %.1f): it flies point first.", sg);
+            else if (sg >= 1.0) ImGui::TextColored(colWarn(), "Spins the bullet only just enough (stability %.2f): groups open up. A faster twist steadies it.", sg);
+            else ImGui::TextColored(colBad(), "Too slow for this bullet (stability %.2f): it tumbles and goes wide. Use a faster twist.", sg);
+            if (tipHover()) ImGui::SetTooltip("From the bullet's weight, width and length and its speed (the Miller rule).\nAbout 1.4 and up flies point first; under 1 it tumbles. On the firing range it changes how far shots spread.");
         }
         float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
         if (ImGui::Button("Swap breech and muzzle", {w2, 0})) { R.muzzleEnd = -R.muzzleEnd; editedAny = true; }

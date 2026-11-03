@@ -130,6 +130,16 @@ std::vector<V2> bulletShape(const Cartridge& c) {
     }
     return p;
 }
+double bulletLength(const Cartridge& c) { return std::max(c.bulletDia * 0.6, c.oal - bulletBase(c)); }
+double spinStability(const Cartridge& c, double twistMM, bool rifled) {
+    if (!rifled || twistMM <= 0) return 0;
+    // the Miller rule, in its own units: grains, inches, calibers, with the speed correction
+    double m = c.bulletMass * 15.4324, d = c.bulletDia / 25.4;
+    if (d <= 0 || m <= 0) return 0;
+    double t = (twistMM / 25.4) / d, l = (bulletLength(c) / 25.4) / d;
+    double sg = 30.0 * m / (t * t * d * d * d * l * (1 + l * l));
+    return sg * std::cbrt(std::max(100.0, c.velocity * 3.28084) / 2800.0);
+}
 double bulletShapeMass(const Cartridge& c) {
     auto p = bulletShape(c);
     if (p.size() < 2) return c.bulletMass;

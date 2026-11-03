@@ -24,7 +24,7 @@ enum class Screen { Menu, Workshop, MapEditor, Range };  // the main menu, the d
 enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Count };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction
-struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; };
+struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; bool rough = false; double changedAt = -1e9; };   // rough: built without its cuts while being edited
 struct Shell { Vector3 p, v, dir; float spin, life, len, r; Vector3 axisSpin; };
 struct Puff { Vector3 p, v; float r, life, max; };
 
