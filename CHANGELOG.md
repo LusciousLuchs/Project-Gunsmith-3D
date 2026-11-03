@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.2-alpha
+
+### Thickness corner by corner
+- **Give any corner its own thickness:** select a part, pick a corner (or several, with Shift-click or a box), and set **Thickness here** in the Shape section. The part tapers evenly from corner to corner, so different thicknesses make wedges, tapers and stranger shapes.
+- **Across** moves the middle of the picked corners sideways across the gun, to lean or bend a part in depth.
+- It's real in the physics: parts collide by the tapered shape. Tested: a corner thinned to 4 mm on a 20 mm block narrows the part toward it, front and back.
+- It works with the corner dragging in the Faces tool (it's the same shaping in depth), and *Straight through again* puts the part back to one thickness. Not for round or tilted parts; edges between corners stay straight.
+
 ## 0.3.1-alpha
 
 - **The OAB Foundry logo** is now the launch splash: the studio's own logo on black, fading in and out over about three seconds and drawing slightly closer as it does. A key or a click still skips it.

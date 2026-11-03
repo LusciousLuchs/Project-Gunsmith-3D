@@ -1584,6 +1584,13 @@ static void depthShaping() {
         BodyDef m = w; m.mirrorKind = "depth"; BodyDef img = mirrorImage(m);
         CHECK(std::fabs(top(depthSection(img, 4.99)) - 10) < 0.1 && std::fabs(top(depthSection(img, -4.99)) - 40) < 0.1, "the mirror image is shaped the other way round");
     }
+    {   // thickness corner by corner: one corner only 4 mm thick (the rest 20), so the part tapers toward it
+        BodyDef t; t.pts = {{0, 0}, {100, 0}, {100, 40}, {0, 40}}; t.thick = 20; fixShape(t);
+        t.depthOff.assign(4, V2{0, 0}); t.depthZn = {0, -8, 0, 0}; t.depthZf = {0, 8, 0, 0}; t.depthRef = t.pts;
+        auto area = [](const std::vector<std::vector<V2>>& sec) { double a = 0; for (auto& o : sec) for (size_t i = 0; i < o.size(); i++) { auto& u = o[i]; auto& v = o[(i + 1) % o.size()]; a += u.x * v.y - v.x * u.y; } return std::fabs(a / 2); };
+        double mid = area(depthSection(t, 0)), outer = area(depthSection(t, 8));
+        CHECK(std::fabs(mid - 4000) < 1 && outer < mid * 0.85, "a corner given its own thickness: the part tapers to it, and the physics sees the taper");
+    }
     // a slider pushed at the wedge: at the front it hits the tall face, at the back it passes over the low one
     auto push = [&](double z) {
         BodyDef s; s.id = "s"; s.name = "Slider"; s.layer = "A"; s.pts = {{0, 20}, {20, 20}, {20, 30}, {0, 30}}; s.thick = 2; s.z = z; fixShape(s);

@@ -491,6 +491,39 @@ static void inspectPart(BodyDef& b) {
             } else if (nc == MAX_CORNERS) ImGui::TextColored(colWarn(), "%d of %d corners: the most a part can have.", nc, MAX_CORNERS);
             else muted("%d of %d corners.", nc, MAX_CORNERS);
         }
+        // thickness corner by corner: the picked corners' own thickness, and where their middle sits across the gun
+        if (!A.selVs.empty() && !b.round && !carve::tilted(b)) {
+            int n = (int)b.pts.size();
+            int c0 = -1;
+            for (int v : A.selVs) if (v >= 0 && v < n) { c0 = v; break; }
+            if (c0 >= 0) {
+                bool shaped = depthShaped(b);
+                double half = std::max(0.5, b.thick) / 2;
+                double zn = shaped ? b.depthZn[c0] : 0, zf = shaped ? b.depthZf[c0] : 0;
+                double th = (b.z + half + zn) - (b.z - half + zf), mid = b.z + (zn + zf) / 2;
+                double th0 = th, mid0 = mid;
+                heading(A.selVs.size() > 1 ? TextFormat("The %d picked corners", (int)A.selVs.size()) : "This corner");
+                pNumU("Thickness here", th, 0.5, Q::Length, lenDec(), "How thick the part is at this corner. Between corners it tapers evenly, so different thicknesses\n"
+                      "at different corners make wedges, tapers and odd shapes. The physics uses the real shape.");
+                pNumU("Across##cmid", mid, 0.5, Q::Length, lenDec(), "Where the middle of the part sits across the gun at this corner (+ is the gun's right side).\n"
+                      "Move it to bend or lean the part in depth.", SIGNED);
+                th = std::max(0.1, th);
+                if (th != th0 || mid != mid0) {
+                    if (!shaped) { b.depthOff.assign(n, V2{0, 0}); b.depthZn.assign(n, 0.0); b.depthZf.assign(n, 0.0); b.depthRef = b.pts; }
+                    for (int v : A.selVs) {
+                        if (v < 0 || v >= n) continue;
+                        double vzn = b.depthZn[v], vzf = b.depthZf[v];
+                        double vth = (half * 2 + vzn - vzf), vmid = b.z + (vzn + vzf) / 2;
+                        if (th != th0) vth = th;            // every picked corner gets the thickness typed
+                        if (mid != mid0) vmid += mid - mid0;   // and moves across by the same amount
+                        b.depthZn[v] = vmid + vth / 2 - (b.z + half);
+                        b.depthZf[v] = vmid - vth / 2 - (b.z - half);
+                    }
+                    editedAny = true;
+                }
+            }
+        } else if (A.selVs.empty() && !b.round && !carve::tilted(b) && b.pts.size() >= 3)
+            muted("Pick a corner (or several) to give it its own thickness.");
         if (depthShaped(b)) {   // corners placed on each face (the Faces tool)
             muted("Shaped in depth: its front and back faces have their own corners. Edges are straight and corners sharp (Chamfer softens them).");
             auto& cp = A.cornerDrag;
