@@ -1649,6 +1649,35 @@ static void handMobility() {
     }
 }
 
+static void engravings() {
+    std::printf("engravings\n");
+    BodyDef b; b.id = "s"; b.name = "Slide"; b.pts = {{0, 0}, {100, 0}, {100, 30}, {0, 30}}; b.thick = 20; b.z = 0; fixShape(b);
+    MarkDef line; line.pts = {{10, 10, 10}, {40, 12, 10}}; line.n = {{0, 0, 1}, {0, 0, 1}};
+    MarkDef text; text.pts = {{70, 15, 10}}; text.n = {{0, 0, 1}}; text.text = "CAL. 9MM"; text.size = 4; text.right = textRightFor({0, 0, 1}, 0);
+    b.marks = {line, text}; followMarks(b);
+    double w = 0;
+    auto st = strokeText("CAL. 9MM", 4, &w);
+    CHECK(st.size() == 8 && w > 20 && w < 50, "text is spelt out in strokes, about as wide as it should be");
+    CHECK(std::fabs(text.right.x - 1) < 1e-9 && std::fabs(textRightFor({0, 0, -1}, 0).x + 1) < 1e-9, "text reads left to right on the near side, and on the far side seen from there");
+    Design d; d.bodies = {b};
+    Design back;
+    CHECK(designFromJson(designToJson(d), back) && back.bodies[0].marks.size() == 2 && back.bodies[0].marks[1].text == "CAL. 9MM" &&
+          std::fabs(back.bodies[0].marks[0].pts[1].x - 40) < 1e-9, "engravings are saved");
+    BodyDef m = b;
+    for (auto& p : m.pts) { p.x += 25; p.y -= 5; }
+    followMarks(m);
+    CHECK(std::fabs(m.marks[0].pts[0].x - 35) < 1e-9 && std::fabs(m.marks[0].pts[0].y - 5) < 1e-9, "moving the part takes its engravings along");
+    BodyDef f = b; flipBody(f, true); followMarks(f);
+    double cx = 50;   // flipped about its middle: a mark 40 mm in from the left is now 40 mm in from the right
+    CHECK(std::fabs(f.marks[0].pts[0].x - (2 * cx - 10)) < 1e-6, "flipping the part flips its engravings");
+    BodyDef r = b; r.pts[2].x = 140; followMarks(r);
+    CHECK(std::fabs(r.marks[0].pts[0].x - 10) < 1e-9, "reshaping the outline leaves engravings where they are");
+    BodyDef t2 = b; t2.thick = 30; followMarks(t2);
+    CHECK(std::fabs(t2.marks[0].pts[0].z - 15) < 1e-9, "made thicker, its near face moves out and the engravings stay on it");
+    BodyDef c = b; c.mirrorKind = "depth";
+    CHECK(mirrorImage(c).marks.empty(), "a copy on the other side of the gun starts without engravings");
+}
+
 int main() {
     tilting();
     longRecoil();
@@ -1686,6 +1715,7 @@ int main() {
     handAnimations();
     depthShaping();
     handMobility();
+    engravings();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

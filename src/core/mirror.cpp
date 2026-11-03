@@ -45,6 +45,7 @@ BodyDef mirrorImage(const BodyDef& src) {
         mirrorBody(c, src.mirrorA, src.mirrorB);
     } else {   // across the gun: the same outline on the far side, its cuts and lean turned round
         c.z = -c.z;
+        c.marks.clear();   // engravings are each side's own (text copied across would read backwards)
         carve::flipCarvesZ(c);
         c.tiltX = -c.tiltX; c.tiltY = -c.tiltY;
         if (depthShaped(c)) {   // shaped in depth: its near and far faces change places

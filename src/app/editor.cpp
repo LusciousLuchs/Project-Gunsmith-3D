@@ -3,6 +3,7 @@
 #include "app/settings.hpp"
 #include "carve.hpp"
 #include "app/carvetool.hpp"
+#include "app/engrave.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -220,6 +221,7 @@ void buildInput(bool overUI) {
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
     if (A.tool == Tool::Carve || A.carveDrag) { carveInput(overUI); return; }
+    if (A.tool == Tool::Engrave || A.engraving) { engraveInput(overUI); return; }
     if (A.tool == Tool::Faces || A.faceDragging) { facesInput(overUI); return; }
     if (A.tool == Tool::Select && A.sel.kind == 1 && A.dragKind == 0 && IsKeyPressed(KEY_E)) { facesInput(overUI); if (A.faceDragging) return; }
     Vector2 m = GetMousePosition();

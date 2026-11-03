@@ -10,6 +10,8 @@
 
 namespace fs = std::filesystem;
 
+#include "app/builtin_textures.inc"
+
 static std::vector<std::string> FILES;
 static std::map<std::string, Texture2D> CACHE;
 
@@ -29,11 +31,23 @@ void scanUserTextures() {
     for (auto& f : FILES) gmap::materialIndex("user:" + f);  // so map blocks can use them too
 }
 const std::vector<std::string>& userTextureFiles() { return FILES; }
+const std::vector<BuiltinTexture>& builtinTextures() {
+    static std::vector<BuiltinTexture> list;
+    if (list.empty()) for (auto& b : BUILTIN_TEX) list.push_back({std::string("builtin:") + b.id, b.name, b.scale});
+    return list;
+}
+std::string textureName(const std::string& file) {
+    for (auto& b : builtinTextures()) if (b.file == file) return b.name;
+    return file;
+}
 
 Texture2D userTexture(const std::string& file) {
     auto it = CACHE.find(file);
     if (it != CACHE.end()) return it->second;
-    Image img = LoadImage((fs::path(TEXTURES_DIR) / file).string().c_str());
+    Image img{};
+    if (file.rfind("builtin:", 0) == 0) {   // one of the game's own, from inside the game
+        for (auto& b : BUILTIN_TEX) if (file.substr(8) == b.id) img = LoadImageFromMemory(".jpg", b.data, b.size);
+    } else img = LoadImage((fs::path(TEXTURES_DIR) / file).string().c_str());
     if (!img.data) img = GenImageChecked(64, 64, 8, 8, Color{220, 60, 200, 255}, Color{30, 30, 30, 255});  // missing: loud on purpose
     int big = std::max(img.width, img.height);
     if (big > 2048) ImageResize(&img, img.width * 2048 / big, img.height * 2048 / big);  // plenty, and kind to the graphics card

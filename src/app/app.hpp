@@ -21,7 +21,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor };  // the main menu, the designer / test bench, or the map editor
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Count };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Count };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; };
@@ -80,6 +80,11 @@ struct App {
     bool carveThrough = false;
     int selCarve = -1;                   // with a part selected: one of its carves
     bool carveDrag = false; int carveBody = -1; Vector3 carveP{}, carveN{};  // pressed on this surface point (world)
+    // the Engrave tool: draw lines or write text on a part's surface (looks only)
+    int engraveMode = 0;                 // 0 draw, 1 text, 2 erase
+    double engraveWidth = 0.4, engraveSize = 4, engraveTurn = 0;
+    std::string engraveColor = "#dcd8d0", engraveText = "CAL. 9MM";
+    bool engraving = false; int engraveBody = -1; MarkDef engraveCur;   // a line being drawn
     // Faces: a face of a part under the mouse (kind 0 a side wall, `edge` its edge; 1 the near face (+Z); 2 the far face)
     struct FacePick { int body = -1, kind = 0, edge = -1; Vector3 at{}; };
     FacePick faceHover, faceDrag, facePicked;   // facePicked: clicked once, a second press drags it

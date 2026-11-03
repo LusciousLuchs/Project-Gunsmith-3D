@@ -41,6 +41,7 @@ int main(int argc, char** argv) {
     int relArg = 0;
     bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
     int introArg = 0;
+    bool solidArg = false;
     int settingsPage = 0;
     bool useSettings = false;
     std::string mapArg; bool walkArg = false;
@@ -77,6 +78,7 @@ int main(int argc, char** argv) {
         else if (a == "--cart") cartArg = next();
         else if (a == "--reltest") relArg = std::atoi(next().c_str());
         else if (a == "--menu") menuArg = true;
+        else if (a == "--solid") solidArg = true;            // (screenshots) every part solid (the x-ray view off)
         else if (a == "--intro") introArg = 1;              // (screenshots) the launch splash
         else if (a == "--eula") introArg = 2;               // (screenshots) the agreement screen
         else if (a == "--usesettings") useSettings = true;  // (screenshots) honour the settings file            // (screenshots) stay on the main menu
@@ -145,6 +147,7 @@ int main(int argc, char** argv) {
     if (sideArg) sideView();
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
     if (carveTool) A.tool = Tool::Carve;
+    if (solidArg) A.xray = false;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
     if (const char* z = std::getenv("GUNSMITH_ZOOM")) {  // (screenshots) "x y dist": look at a design point (mm) from close by
         double zx = 0, zy = 0, zd = 300; std::sscanf(z, "%lf %lf %lf", &zx, &zy, &zd);

@@ -6,6 +6,7 @@
 #include "carve.hpp"
 #include "app/usertex.hpp"
 #include "app/scene.hpp"
+#include "app/engrave.hpp"
 #include "rlgl.h"
 
 #include <algorithm>
@@ -62,6 +63,7 @@ static void ensureMeshes() {
     A.meshes.resize(D.bodies.size());
     for (size_t i = 0; i < D.bodies.size(); i++) {
         auto& d = D.bodies[i];
+        if (!A.S) followMarks(d);   // engravings go with a part being moved, turned or flipped as a whole
         std::ostringstream k;
         k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis << 'T' << d.texture << ' ' << d.texScale << 'X' << d.tiltX << 'Y' << d.tiltY;
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
@@ -693,6 +695,8 @@ void drawScene() {
         if (!D.bodies[r.tmpl].texture.empty()) drawMeshTex(A.meshes[r.tmpl].mesh, r.M, c, userTexture(D.bodies[r.tmpl].texture));
         else drawMesh(A.meshes[r.tmpl].mesh, r.M, c);
     }
+    for (auto& r : list) if (!isGhost(r)) drawMarks(r.tmpl, r.M);   // engravings, on the parts they're cut into
+    drawEngravePreview();
     // rotating-bolt lugs and handles
     for (auto& r : list) {
         auto& d = D.bodies[r.tmpl];

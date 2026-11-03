@@ -57,8 +57,19 @@ void typeable() {
 bool texturePicker(std::string& file) {
     bool ch = false;
     const auto& files = userTextureFiles();
-    if (ImGui::BeginCombo("##tex", file.empty() ? "Plain (just the colour)" : file.c_str())) {
+    std::string shown = textureName(file);
+    if (ImGui::BeginCombo("##tex", file.empty() ? "Plain (just the colour)" : shown.c_str())) {
         if (ImGui::Selectable("Plain (just the colour)", file.empty())) { file.clear(); ch = true; }
+        ImGui::SeparatorText("Gun finishes");
+        for (auto& b : builtinTextures()) {
+            Texture2D t = userTexture(b.file);
+            ImGui::PushID(b.file.c_str());
+            rlImGuiImageSize(&t, (int)(18 * CFG.uiScale), (int)(18 * CFG.uiScale));
+            ImGui::SameLine();
+            if (ImGui::Selectable(b.name.c_str(), b.file == file)) { file = b.file; ch = true; }
+            ImGui::PopID();
+        }
+        if (!files.empty()) ImGui::SeparatorText("Your pictures");
         for (auto& f : files) {
             Texture2D t = userTexture(f);
             ImGui::PushID(f.c_str());

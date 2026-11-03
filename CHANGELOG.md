@@ -8,6 +8,20 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.20-alpha
+
+### Gun finishes
+- **Three real gun finishes are built into the game:** *Stained wood*, *Black polymer (stippled)* and *Blued steel*. They're always in a part's **Surface** list under *Gun finishes*, above your own pictures. They were made from samples of real firearm finishes, and their edges are blended so they repeat without a seam.
+- Picking one sets the part's colour to white, so the finish shows in its true colours, and sets a natural size for the pattern. Pick a colour afterwards to tint it.
+
+### Engraving pen (new Engrave tool, under Shape)
+- **Draw on any part:** pick the Engrave tool, click a part to pick it, then draw on it with the mouse, like scrollwork or a signature. It works on any face (sides, top, ends, curved parts): turn the view to reach it.
+- **Write text:** switch to *Text*, type it in the panel, and click where it goes; a faint preview follows the mouse first. It's written in single-line engraving letters: capitals, figures and the usual signs (small letters become capitals). Choose the letter height and turn it to any angle.
+- **Erase:** click a line or a word to remove it. *Clear this part's engravings* removes them all.
+- Line width, and what shows in the cut: bare metal, dark, gold inlay, white or red fill, or your own colour.
+- Engravings stay on their part: they go with it when you move, turn, flip or mirror it, and they ride along on the test bench (a slide's markings move with the slide). Reshaping the part leaves them where they are. A copy made for the other side of the gun starts without them.
+- They're for looks only: they never change how the gun works.
+
 ## 0.2.19-alpha
 
 - **The studio is OAB Foundry:** the launch splash now reads *OAB Foundry* (it said *One Armed Bandit Games*). The developer stays *The One Armed Bandit*, as in the license agreement.

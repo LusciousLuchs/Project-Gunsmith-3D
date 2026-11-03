@@ -89,6 +89,44 @@ static void carveToolPanel() {
     editedAny = wasEdited;  // tool settings aren't part of the design
     ImGui::Spacing();
 }
+static void engraveToolPanel() {
+    bool wasEdited = editedAny;
+    ImGui::SeparatorText("Engraving pen");
+    muted("Click a part to pick it, then draw on it, or write on it. Any face, from any side: turn the view to engrave the top or the far side. Engravings are looks only.");
+    float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+    const char* modes[3] = {"Draw", "Text", "Erase"};
+    for (int k = 0; k < 3; k++) { if (k) ImGui::SameLine(); if (accentButton(modes[k], A.engraveMode == k, {w3, 0})) A.engraveMode = k; }
+    if (A.engraveMode == 1) {
+        prop("Text", "Capitals, figures and the usual signs (. , - / : # and more). Small letters are written as capitals.");
+        inputText("##etext", A.engraveText);
+        pNumU("Letter height", A.engraveSize, 0.5, Q::Length, -1, "How tall the capitals are.");
+        pNum("Turn", A.engraveTurn, 5, "%.0f\xc2\xb0", "Turns the text on the surface. 0 reads along the gun.");
+        A.engraveSize = std::clamp(A.engraveSize, 0.5, 100.0);
+    }
+    if (A.engraveMode != 2) {
+        pNumU("Line width", A.engraveWidth, 0.1, Q::Length, -1, "How wide the pen cuts.");
+        A.engraveWidth = std::clamp(A.engraveWidth, 0.1, 5.0);
+        prop("Colour", "What shows in the cut: bare metal, a dark fill, gold inlay or a white fill.");
+        static const char* names[] = {"Bright (bare metal)", "Dark", "Gold inlay", "White fill", "Red fill"};
+        static const char* hexes[] = {"#dcd8d0", "#161616", "#d4a640", "#f2f2ee", "#b83228"};
+        int ci = -1; for (int k = 0; k < 5; k++) if (A.engraveColor == hexes[k]) ci = k;
+        if (ImGui::BeginCombo("##ecol", ci >= 0 ? names[ci] : "Your own")) {
+            for (int k = 0; k < 5; k++) if (ImGui::Selectable(names[k], ci == k)) A.engraveColor = hexes[k];
+            ImGui::EndCombo();
+        }
+        Color cc = hexColor(A.engraveColor);
+        float col[3] = {cc.r / 255.f, cc.g / 255.f, cc.b / 255.f};
+        ImGui::SameLine();
+        if (ImGui::ColorEdit3("##ecolpick", col, ImGuiColorEditFlags_NoInputs)) A.engraveColor = TextFormat("#%02x%02x%02x", (int)(col[0] * 255), (int)(col[1] * 255), (int)(col[2] * 255));
+    }
+    editedAny = wasEdited;  // tool settings aren't part of the design
+    if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()) {
+        auto& b = A.design.bodies[A.sel.idx];
+        ImGui::TextDisabled("%d engraving%s on this part.", (int)b.marks.size(), b.marks.size() == 1 ? "" : "s");
+        if (!b.marks.empty() && dangerButton("Clear this part's engravings", {-1, 0})) { b.marks.clear(); commit(); }
+    }
+    ImGui::Spacing();
+}
 // The part's carves: pick one to change it.
 static void carvesSection(BodyDef& b) {
     if (!section(b.carves.empty() ? "Carves" : TextFormat("Carves (%d)###carves", (int)b.carves.size()), !b.carves.empty() || A.tool == Tool::Carve)) return;
@@ -518,7 +556,12 @@ static void inspectPart(BodyDef& b) {
     if (section("Surface", !b.texture.empty())) {
         prop("Texture", "A picture laid over the part. Its colour tints the picture: white shows it as it is.");
         ImGui::SetNextItemWidth(-1);
-        if (texturePicker(b.texture)) editedAny = true;
+        std::string wasTex = b.texture;
+        if (texturePicker(b.texture)) {
+            editedAny = true;
+            for (auto& bt : builtinTextures())   // a gun finish: shown in its own colours, at its natural size
+                if (bt.file == b.texture && bt.file != wasTex) { b.color = "#ffffff"; b.texScale = bt.scale; toast("The part's colour is set to white so the finish shows true. Pick a colour to tint it."); }
+        }
         if (!b.texture.empty()) { pNumU("Picture size", b.texScale, 5, Q::Length, -1, "How big one copy of the picture is before it repeats."); b.texScale = std::clamp(b.texScale, 1.0, 5000.0); }
         muted("Looks only. Drag pictures onto the game window to add them.");
     }
@@ -1271,6 +1314,7 @@ void buildPanel() {
         if (inspOpen) {
             ImGui::BeginChild("##inspect", {0, 0});
             if (A.tool == Tool::Carve) carveToolPanel();
+            if (A.tool == Tool::Engrave) engraveToolPanel();
             if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) inspectPart(D.bodies[A.sel.idx]);
             else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) inspectJoint(D.joints[A.sel.idx]);
             else {

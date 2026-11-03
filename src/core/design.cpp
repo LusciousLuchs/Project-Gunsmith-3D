@@ -838,6 +838,21 @@ std::string designToJson(const Design& d, bool pretty) {
             for (size_t i = 0; i < b.pts.size(); i++) a.push_back({b.depthOff[i].x, b.depthOff[i].y, b.depthZn[i], b.depthZf[i]});
             jb["depth"] = a;
         }
+        if (!b.marks.empty()) {
+            json ms = json::array();
+            for (auto& m : b.marks) {
+                json pts = json::array(), ns = json::array();
+                for (size_t k = 0; k < m.pts.size(); k++) {
+                    pts.push_back({m.pts[k].x, m.pts[k].y, m.pts[k].z});
+                    P3d n = k < m.n.size() ? m.n[k] : P3d{0, 0, 1};
+                    ns.push_back({n.x, n.y, n.z});
+                }
+                json jm = {{"pts", pts}, {"n", ns}, {"width", m.width}, {"color", m.color}};
+                if (!m.text.empty()) { jm["text"] = m.text; jm["size"] = m.size; jm["right"] = {m.right.x, m.right.y, m.right.z}; }
+                ms.push_back(jm);
+            }
+            jb["marks"] = ms;
+        }
         if (!b.mirror.empty()) {
             jb["mirror"] = b.mirror; jb["mirrorKind"] = b.mirrorKind;
             if (b.mirrorKind == "line") { jb["mirrorA"] = v2j(b.mirrorA); jb["mirrorB"] = v2j(b.mirrorB); }
@@ -1096,7 +1111,21 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         }
         if (jb.contains("rad") && jb["rad"].is_array()) for (auto& r : jb["rad"]) b.rad.push_back(r.get<double>());
         if (jb.contains("bulge") && jb["bulge"].is_array()) for (auto& r : jb["bulge"]) b.bulge.push_back(r.get<double>());
+        if (jb.contains("marks") && jb["marks"].is_array())
+            for (auto& jm : jb["marks"]) {
+                if (!jm.is_object() || !jm.contains("pts") || !jm["pts"].is_array()) continue;
+                MarkDef m;
+                auto p3 = [](const json& q) { return q.is_array() && q.size() >= 3 ? P3d{q[0].get<double>(), q[1].get<double>(), q[2].get<double>()} : P3d{0, 0, 0}; };
+                for (auto& q : jm["pts"]) m.pts.push_back(p3(q));
+                if (jm.contains("n") && jm["n"].is_array()) for (auto& q : jm["n"]) m.n.push_back(p3(q));
+                m.n.resize(m.pts.size(), P3d{0, 0, 1});
+                m.width = opt<double>(jm, "width", 0.4); m.color = opt<std::string>(jm, "color", "#dcd8d0");
+                m.text = opt<std::string>(jm, "text", ""); m.size = opt<double>(jm, "size", 4);
+                if (jm.contains("right")) m.right = p3(jm["right"]);
+                if (!m.pts.empty()) b.marks.push_back(m);
+            }
         fixShape(b);
+        b.markRef = b.pts; b.markRefZ = b.z; b.markRefThick = b.thick;
         if (b.pts.size() >= 3) d.bodies.push_back(b);
     }
     for (auto& jj : o["joints"]) {

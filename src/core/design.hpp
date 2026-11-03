@@ -92,6 +92,18 @@ struct BarrelDef {
     int grooves = 6;
     int muzzleEnd = 1;            // which end is the muzzle, along the part's axis: +1 or -1
 };
+struct P3d { double x, y, z; };
+// An engraving on a part's surface (the Engrave tool): a line drawn freehand, or a line of text. Looks only: it never
+// changes how the part moves or collides. Points are in design mm like the outline (x, y down, z depth), lying on the
+// surface; n is the surface's outward direction at each point. Text: pts[0] is its middle, `right` the way it reads.
+struct MarkDef {
+    std::vector<P3d> pts, n;
+    std::string text;                    // "" = a drawn line
+    double size = 4;                     // text: capital height (mm)
+    P3d right{1, 0, 0};                  // text: the way it reads, along the surface
+    double width = 0.4;                  // the cut's width (mm)
+    std::string color = "#dcd8d0";      // the cut's colour (bright: bare metal showing through)
+};
 struct BodyDef {
     std::string id, name;
     bool fixed = false;
@@ -153,6 +165,9 @@ struct BodyDef {
     std::vector<V2> depthOff;
     std::vector<double> depthZn, depthZf;
     std::vector<V2> depthRef;
+    std::vector<MarkDef> marks;          // engravings (looks only)
+    std::vector<V2> markRef;             // (not saved) the outline, depth and thickness the marks were last placed for:
+    double markRefZ = 0, markRefThick = 0;   // when the whole part moves, turns or flips, they go with it (followMarks)
     std::string weld;                    // welded: every part with the same tag is one solid piece ("" = on its own)
     // A live mirror: two parts with the same tag are kept as mirror images of each other; edit either and the other
     // follows (shape, cuts, depth, thickness, tilt, look). "depth": across the gun (the far side's matching part);
@@ -333,10 +348,18 @@ void simplifyBody(BodyDef& b, int maxCorners = MAX_CORNERS);
 // standard's formula (EN 13906-1) for ends seated flat, from its free length and mean coil diameter. A spring
 // short for its width never buckles (returns a huge number).
 double bucklingSqueeze(double freeLen, double coilDia, double wire);
+// Engravings (see MarkDef): keep them on their part when it's moved, turned, flipped or mirrored as a whole, or made
+// thicker or moved in depth (call after edits; cheap when there are none). Reshaping the outline leaves them where they are.
+void followMarks(BodyDef& b);
+// A mark as lines to draw (design mm), each point with its surface direction: text is spelt out in a single-stroke
+// lettering (capitals, figures and common signs; small letters are written as capitals).
+struct MarkPt { P3d p, n; };
+std::vector<std::vector<MarkPt>> markLines(const MarkDef& m);
+std::vector<std::vector<V2>> strokeText(const std::string& text, double height, double* width = nullptr);   // flat, x right, y up, centred
+P3d textRightFor(P3d n, double turnDeg);   // the way text reads on a surface facing n (design axes), turned by turnDeg
 // Shaped in depth (see BodyDef::depthOff): whether a part is, keeping it in step after its outline changed (call after
 // edits), its corners on the near and far faces (x, y, z in mm), how deep it reaches, and its outline where the plane
 // at depth z cuts it (one or more pieces)
-struct P3d { double x, y, z; };
 bool depthShaped(const BodyDef& b);
 void normalizeDepth(BodyDef& b);
 void depthRings(const BodyDef& b, std::vector<P3d>& nearR, std::vector<P3d>& farR);
