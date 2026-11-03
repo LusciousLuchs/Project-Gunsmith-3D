@@ -18,7 +18,7 @@ Your work autosaves to `gunsmith3d_autosave.json` next to where you start it. Na
 
 ## The menu
 
-The game opens on the studio's splash (a key or click skips it), then, the first time, the End User License Agreement: agree to go on to the main menu, or decline to close the game. Once agreed, it's never asked again.
+The game opens on the studio's splash, OAB Foundry (a key or click skips it), then, the first time, the End User License Agreement: agree to go on to the main menu, or decline to close the game. Once agreed, it's never asked again.
 
 The main menu:
 

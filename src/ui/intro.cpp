@@ -1,4 +1,4 @@
-// Gunsmith3D - what the game shows at launch, before the main menu: the studio's splash, then the End User License
+// Gunsmith3D - what the game shows at launch, before the main menu: the studio's splash (OAB Foundry), then the End User License
 // Agreement, until the player has agreed to it once.
 #include "ui/ui.hpp"
 #include "app/settings.hpp"
@@ -50,10 +50,12 @@ void splash(float dt) {
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight(), cx = W / 2, cy = H / 2;
     float big = std::fmin(64.f * S(), W / 14.f), small = big * 0.42f;
     ImU32 white = IM_COL32(236, 238, 242, (int)(255 * a)), gold = IM_COL32(232, 161, 58, (int)(255 * a)), dim = IM_COL32(150, 156, 168, (int)(255 * a));
-    spaced(dl, gFontBold, big, cx, cy - big * 0.95f, "ONE ARMED BANDIT", big * 0.08f, white);
-    float lw = big * 4.2f;
-    dl->AddRectFilled({cx - lw / 2, cy + big * 0.32f}, {cx + lw / 2, cy + big * 0.32f + std::fmax(2.f, 2 * S())}, gold);
-    spaced(dl, gFontBold, small, cx, cy + big * 0.55f, "GAMES", small * 0.9f, dim);
+    // the studio: OAB Foundry
+    big *= 1.5f; small = big * 0.3f;
+    spaced(dl, gFontBold, big, cx, cy - big * 0.95f, "OAB", big * 0.18f, white);
+    float lw = big * 3.0f;
+    dl->AddRectFilled({cx - lw / 2, cy + big * 0.28f}, {cx + lw / 2, cy + big * 0.28f + std::fmax(2.f, 2 * S())}, gold);
+    spaced(dl, gFontBold, small, cx, cy + big * 0.45f, "FOUNDRY", small * 0.9f, dim);
     if (t >= FADE_IN + HOLD + FADE_OUT) { t = 0; phase = agreed() ? Phase::Off : Phase::Eula; }
 }
 

@@ -13,7 +13,9 @@ BEGIN
   BEGIN
     BLOCK "040904b0"
     BEGIN
+      VALUE "CompanyName", "OAB Foundry"
       VALUE "FileDescription", "Gunsmith3D - design and test firearm mechanisms"
+      VALUE "LegalCopyright", "Copyright (C) 2026 The One Armed Bandit"
       VALUE "FileVersion", "@GUNSMITH_VERSION@"
       VALUE "ProductName", "Gunsmith3D"
       VALUE "ProductVersion", "@GUNSMITH_VERSION@"

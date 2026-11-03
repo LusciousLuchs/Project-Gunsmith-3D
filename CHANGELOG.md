@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.19-alpha
+
+- **The studio is OAB Foundry:** the launch splash now reads *OAB Foundry* (it said *One Armed Bandit Games*). The developer stays *The One Armed Bandit*, as in the license agreement.
+- The game's file on Windows (right-click *gunsmith3d.exe* > Properties > Details) shows *OAB Foundry* as the company, and the copyright as *The One Armed Bandit*.
+
 ## 0.2.18-alpha
 
 ### Spare magazines don't pile up
