@@ -719,7 +719,48 @@ Body* seatedMag(Sim& S) {   // the magazine feeding the gun: a removable one lat
     for (auto& b : S.bodies) if (b.builtInMag && !b.gone) return &b;
     return nullptr;
 }
+static int sideOf(const Body& M) { return M.d && M.d->gen.on && M.d->gen.side ? (M.d->gen.side > 0 ? 1 : -1) : 0; }
+// A side magazine: held in the side view where its mouth meets the action, and slid in and out across the gun.
+// Released, it slides out (as if pulled) and is let go once clear; a loose one held up to the well slides in.
+static void solveSideWell(Sim& S, Joint& J) {
+    Body& B = *J.B;
+    V2 seat = wpt(B, J.path.front());
+    if (!J.A) {
+        for (auto& b : S.bodies) {
+            if (!b.isMag || !b.loose || !sideOf(b)) continue;
+            V2 pa = wpt(b, J.la);
+            double da = std::remainder(b.a - B.a, 2 * 3.14159265358979323846);
+            if (std::hypot(pa.x - seat.x, pa.y - seat.y) < 0.010 && std::fabs(da) < 15 * D2R) {
+                J.A = &b; b.loose = false; J.attached = true; J.latched = false; J.engaged = false;
+                J.zOut = std::fabs(b.z - b.d->z / 1000);
+                break;
+            }
+        }
+        if (!J.A) return;
+    }
+    Body& M = *J.A;
+    const int side = sideOf(M);
+    const double travel = M.d->thick / 1000 + 0.004;   // out until its whole length is clear of the gun
+    bool release = S.magRelease;
+    if (J.R && std::hypot(J.R->x - J.R->x0, J.R->y - J.R->y0) * 1000 > J.j->releaseAt) release = true;
+    if (release && J.latched) { J.latched = false; J.engaged = true; }
+    if (J.latched) J.zOut = 0;
+    else if (J.engaged) J.zOut += 0.9 * H;                    // on its way out
+    else J.zOut = std::max(0.0, J.zOut - 0.9 * H);            // on its way in
+    if (J.zOut > travel) {                                     // clear of the gun: it's in your hand, then on the bench
+        M.z = M.d->z / 1000 + side * J.zOut;
+        J.attached = false; J.A = nullptr; M.loose = true; J.engaged = false;
+        return;
+    }
+    M.z = M.d->z / 1000 + side * J.zOut;
+    V2 pa = wpt(M, J.la);
+    double L = std::hypot(seat.x - pa.x, seat.y - pa.y);
+    if (L > 1e-9) solve(M, B, pa, seat, (seat.x - pa.x) / L, (seat.y - pa.y) / L, L);
+    solveAng(M, B, J.pathAng.empty() ? 0 : J.pathAng.front());
+    if (!J.latched && !J.engaged && J.zOut <= 0) J.latched = true;
+}
 static void solveMagwell(Sim& S, Joint& J) {
+    if ((J.A && sideOf(*J.A)) || (!J.A && S.magTmpl && S.magTmpl->gen.on && S.magTmpl->gen.side)) { solveSideWell(S, J); return; }
     Body& B = *J.B;
     V2 seat = wpt(B, J.path.front()), exitp = wpt(B, J.path.back());
     if (!J.A) {  // try to catch a loose magazine pushed into the mouth of the well
@@ -857,7 +898,7 @@ Body* spawnMagazine(Sim& S, V2 c, bool seat) {
         nb->x = sw.x - (ca * J->la.x - sa * J->la.y);
         nb->y = sw.y - (sa * J->la.x + ca * J->la.y);
         nb->loose = false;
-        J->A = nb; J->attached = true; J->latched = true; J->engaged = false;
+        J->A = nb; J->attached = true; J->latched = true; J->engaged = false; J->zOut = 0;
     }
     nb->px = nb->x; nb->py = nb->y; nb->pa = nb->a;  // placed, not moved: no velocity
     return nb;
@@ -867,6 +908,7 @@ void dropMagazine(Sim& S) {
     if (!J || !J->A) return;
     Body& M = *J->A;
     J->latched = false; J->engaged = true;
+    if (sideOf(M)) return;   // a side magazine slides out across the gun (solveSideWell)
     V2 seat = wpt(*J->B, J->path.front()), exitp = wpt(*J->B, J->path.back());
     double dx = exitp.x - seat.x, dy = exitp.y - seat.y, dl = std::hypot(dx, dy);
     if (dl > 0) { M.vx = dx / dl * 0.9; M.vy = dy / dl * 0.9; }
@@ -877,6 +919,7 @@ void quickReload(Sim& S) {
     if (J->A) {
         Body& M = *J->A;
         V2 seat = wpt(*J->B, J->path.front()), exitp = wpt(*J->B, J->path.back());
+        if (int side = sideOf(M)) M.z = M.d->z / 1000 + side * (M.d->thick / 1000 + 0.01);   // out to the side
         M.x += exitp.x - seat.x + 0.004; M.y += exitp.y - seat.y + 0.004;
         M.px = M.x; M.py = M.y; M.pa = M.a;
         M.vx = 0.3; M.vy = 0.5; M.loose = true;

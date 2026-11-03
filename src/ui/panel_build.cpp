@@ -649,7 +649,8 @@ static void inspectPart(BodyDef& b) {
                 }
             }
             int mi = magwellIndex(b.id);
-            if (mi >= 0 && D.joints[mi].path.size() >= 2) {
+            if (mi >= 0 && b.gen.on && b.gen.side) muted("It slides in and out sideways, across the gun.");
+            else if (mi >= 0 && D.joints[mi].path.size() >= 2) {
                 auto& j = D.joints[mi];
                 double dx = j.path.back().x - j.path.front().x, dy = j.path.back().y - j.path.front().y;
                 double travel = std::hypot(dx, dy), ang = std::atan2(dx, dy) / DEG2RAD, t0 = travel, a0 = ang;
@@ -702,6 +703,26 @@ static void inspectPart(BodyDef& b) {
             }
             if (b.gen.on) {
                 bool regen = false;
+                {   // where it sits: under the gun, on top, or sticking out of either side
+                    int pos = b.gen.side > 0 ? 3 : b.gen.side < 0 ? 2 : std::fabs(std::remainder(b.gen.angle, 360.0)) > 90 ? 1 : 0;
+                    prop("Position", "Below or on top: it sits in the side view, and drops out of its well (set its angle below).\n"
+                                     "Left or right side: it sticks out across the gun, like a Sten's. The rounds come in sideways,\n"
+                                     "and only its mouth is in the side view: the bolt strips the round lying there, and pushes it\n"
+                                     "back into the magazine as it rides over it. Released, it slides out sideways.\n"
+                                     "Cut an opening in the receiver wall for it (Carve), or it goes through the wall.");
+                    if (ImGui::Combo("##magpos", &pos, "Below\0On top\0Left side\0Right side\0")) {
+                        bool wasSide = b.gen.side != 0;
+                        b.gen.side = pos == 3 ? 1 : pos == 2 ? -1 : 0;
+                        if (pos <= 1) {
+                            b.gen.angle = pos == 1 ? 180 : 0;
+                            if (wasSide) b.z = 0;
+                            int wi = magwellIndex(b.id);   // a fresh straight well, the new way out
+                            if (wi >= 0) D.joints[wi].path.resize(std::min<size_t>(D.joints[wi].path.size(), 2));
+                            if (wi >= 0 && D.joints[wi].path.size() == 2) { auto& j = D.joints[wi]; j.path[1] = {j.path[0].x + std::sin(b.gen.angle * DEG2RAD), j.path[0].y + std::cos(b.gen.angle * DEG2RAD)}; }
+                        }
+                        regen = true;
+                    }
+                }
                 int st = b.gen.stack - 1;
                 prop("Stack");
                 if (ImGui::Combo("##stack", &st, "Single\0Double\0")) { b.gen.stack = st + 1; regen = true; }
@@ -1078,6 +1099,13 @@ static void firingTab() {
         pCheck("Physical rounds", br.physicalFeed, "Every round and case is a real part: the magazine lips, feed ramp, chamber,\nextractor, ejector and port you draw decide whether it feeds and ejects.");
         tutAnchor("firing:physical");
         if (!br.physicalFeed) pNumU("Feeds when open", br.feed, 1, Q::Length);
+        if (br.physicalFeed) {
+            int ex = br.extractor == "top" ? 1 : br.extractor == "bottom" ? 2 : 0;
+            prop("Extractor", "Which edge of the case rim the extractor claw grips as the breech draws it out.\n"
+                              "The ejector has to hit the case on the other edge to flick it off the claw.\n"
+                              "Automatic: the edge away from the magazine (the top, unless the magazine is on top).");
+            if (ImGui::Combo("##extr", &ex, "Automatic\0Top\0Bottom\0")) { br.extractor = ex == 1 ? "top" : ex == 2 ? "bottom" : "auto"; editedAny = true; }
+        }
         pCheck("Starts loaded", br.loaded, "Begin each test with a round in the chamber.");
     }
     if (section("Fire control", true)) {

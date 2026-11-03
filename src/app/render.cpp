@@ -35,6 +35,10 @@ std::vector<RB> renderList() {
         int t = A.design.bodyIndex(b.tmpl.empty() ? b.id : b.tmpl);
         if (t < 0) continue;
         Matrix M = poseMatrix(t, b.x * 1000, b.y * 1000, b.a, b.roll);
+        if (b.isMag) {   // a side magazine sliding in or out across the gun
+            float dz = (float)(b.z * 1000 - A.design.bodies[t].z) * U;
+            if (std::fabs(dz) > 1e-5f) M = MatrixMultiply(M, MatrixTranslate(0, 0, dz));
+        }
         if (b.rollParent) {  // a piece of a rotating bolt turns about the bolt's axis, not its own centre
             float ay = (float)(b.axisDy * 1000) * U, az = -(float)(b.axisDz * 1000) * U;
             Matrix R = MatrixMultiply(MatrixMultiply(MatrixTranslate(0, -ay, -az), MatrixRotateX(-(float)b.rollParent->roll)), MatrixTranslate(0, ay, az));
@@ -358,13 +362,33 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
         }
         return;
     }
+    if (d.gen.on && d.gen.side) {   // across the gun: stacked from the mouth outward, staggered for double stack
+        double dia = br.cart.headDia() * 1.02, pitch = d.gen.stack == 2 ? dia * 0.56 : dia * 0.98;
+        double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0, ml = std::hypot(mx, my);
+        V2 fwd = ml > 0 ? V2{mx / ml, my / ml} : V2{1, 0};
+        V2 mid{d.gen.top.x, d.gen.top.y + 3 + dia / 2};
+        float sd = d.gen.side > 0 ? 1.f : -1.f;
+        int n = std::min(rounds, d.magCap);
+        for (int k = skip; k < n; k++) {
+            double across = 3 + dia / 2 + k * pitch - d.thick / 2;   // from the magazine's middle, toward its far end
+            V2 m{mid.x, mid.y + (d.gen.stack == 2 ? (k % 2 ? 1 : -1) * dia * 0.25 : 0)};
+            V2 head{m.x - fwd.x * br.cart.oal / 2, m.y - fwd.y * br.cart.oal / 2};
+            float z = sd * (float)across * U;
+            Vector3 o = Vector3Transform({(float)(head.x - c.x) * U, -(float)(head.y - c.y) * U, z}, r.M);
+            Vector3 o2 = Vector3Transform({(float)(head.x + fwd.x - c.x) * U, -(float)(head.y + fwd.y - c.y) * U, z}, r.M);
+            drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)));
+        }
+        return;
+    }
     if (d.gen.on) {  // generated magazine: rounds follow its centreline, staggered for double stack
         double dia = br.cart.headDia() * 1.02, pitch = d.gen.stack == 2 ? dia * 0.56 : dia * 0.98;
+        double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0;
         int n = std::min(rounds, d.magCap);
         for (int k = skip; k < n; k++) {
             double s = 3 + dia / 2 + k * pitch, phi;
             V2 m = magCentre(d.gen, s, &phi);
             V2 fwd{std::cos(phi * DEG2RAD), -std::sin(phi * DEG2RAD)};
+            if (fwd.x * mx + fwd.y * my < 0) fwd = {-fwd.x, -fwd.y};   // a magazine on top: they still point at the muzzle
             V2 head{m.x - fwd.x * br.cart.oal / 2, m.y - fwd.y * br.cart.oal / 2};
             float z = d.gen.stack == 2 ? (k % 2 ? 1.f : -1.f) * (float)(dia * 0.25) * U : 0;
             Vector3 o = Vector3Transform({(float)(head.x - c.x) * U, -(float)(head.y - c.y) * U, z}, r.M);

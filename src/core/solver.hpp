@@ -76,6 +76,10 @@ struct Body {
     Body* mag = nullptr;                 // presented: the magazine holding it
     V2 lipsL, feedL;                     // presented: where its head starts and the feed direction, in the magazine's frame
                                          // (leaving a tube: the tube's mouth and the way out)
+    V2 liftL{0, -1};                     // presented: the way the follower pushes it (toward the lips), in the magazine's frame
+    int sideFeed = 0;                    // presented by a side magazine: which side (+1 right, -1 left). It sits in the bolt's
+                                         // path; whatever rides over it pushes it back into the magazine sideways
+    bool pushedIn = false;               // ...and it's pushed in just now
     V2 clawB, clawR;                     // clawed: the extractor's grip, on the breech and on the cartridge (local, m)
     Body* top = nullptr;                 // magazines: the round held up under the lips (physical feeding)
     Body* pawl = nullptr;                // belts: the part whose stroke moves the belt on
@@ -106,6 +110,7 @@ struct Joint {
     bool attached = false, latched = false;  // magwell
     bool merged = false;                     // weld inside a rigid assembly: nothing left to solve
     V2 nrm;                                  // leaf spring: push direction in A's frame
+    double zOut = 0;                         // magwell of a side magazine: how far it has slid out sideways (m)
     bool buckled = false;                    // coil spring with no guide rod, bent sideways
     double bow = 0;                          // ...by this much at its middle (m)
 };

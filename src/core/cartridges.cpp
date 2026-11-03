@@ -173,7 +173,7 @@ int looseRounds(const Sim& S) {
 }
 static void retire(Sim& S, Body& b) { retireBody(S, b); }
 
-static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL);
+static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL, V2* liftL = nullptr, int* side = nullptr);
 static bool doubleStack(const Body& M) { return M.d && M.d->gen.on && M.d->gen.stack == 2; }
 static bool tubeMag(const Body& M) { return M.d && M.d->roundStyle == "line" && M.d->roundPath.size() >= 2; }   // rounds nose to tail
 static bool physicalTube(const Body& M) { return tubeMag(M) && M.d->tubeFeed == "physical"; }
@@ -279,10 +279,17 @@ void legacyRoundsStep(Sim& S) {
 }
 
 // ---------- physical feeding ----------
-static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL) {  // where the top round's head sits, in the magazine's frame
+// Where the top round's head sits and which way it feeds (toward the muzzle), in the magazine's frame; `liftL` is
+// the way the follower pushes it (out of the magazine, toward the lips), and `side` a magazine across the gun.
+static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL, V2* liftL, int* side) {
     const BodyDef& d = *M.d;
     const Cartridge& c = S.design.breech.cart;
     V2 cen = centroidOf(d);
+    V2 lift{0, -1};
+    if (side) *side = 0;
+    const BreechDef& brd = S.design.breech;
+    V2 gunFwd{brd.hasMuzzle && brd.hasFace ? brd.muzzle.x - brd.face.x : 1, brd.hasMuzzle && brd.hasFace ? brd.muzzle.y - brd.face.y : 0};
+    auto done = [&]() { if (liftL) *liftL = lift; return true; };
     if (d.roundPath.size() >= 2) {  // the round path you drew: the top round sits at its first point
         V2 p0 = d.roundPath[0], p1 = d.roundPath[1];
         double dx = p1.x - p0.x, dy = p1.y - p0.y, l = std::hypot(dx, dy);
@@ -291,37 +298,65 @@ static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL) {  // wher
         if (d.roundStyle == "line") {   // nose to tail: its head at the mouth, its nose pointing into the tube
             headL = {(p0.x + up.x - cen.x) / 1000, (p0.y + up.y - cen.y) / 1000};
             fwdL = u;
-        } else {                        // side by side: across the path, pointing at the muzzle
+            lift = {u.y, -u.x};
+        } else {                        // side by side: across the path, pointing at the muzzle; the follower pushes back up the path
             V2 f{-u.y, u.x};
-            const BreechDef& br = S.design.breech;
-            double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0;
-            if (f.x * mx + f.y * my < 0) f = {-f.x, -f.y};
+            if (f.x * gunFwd.x + f.y * gunFwd.y < 0) f = {-f.x, -f.y};
             headL = {(p0.x + up.x - f.x * c.oal / 2 - cen.x) / 1000, (p0.y + up.y - f.y * c.oal / 2 - cen.y) / 1000};
             fwdL = f;
+            lift = {-u.x, -u.y};
         }
-        return true;
+        return done();
+    }
+    if (d.gen.on && d.gen.side != 0) {   // across the gun: the top round lies in the bolt's path at the mouth, along the bore
+        double dia = c.headDia() * 1.02, gl = std::hypot(gunFwd.x, gunFwd.y);
+        V2 f = gl > 0 ? V2{gunFwd.x / gl, gunFwd.y / gl} : V2{1, 0};
+        V2 m{d.gen.top.x, d.gen.top.y + 3 + dia / 2 - d.lipHeight};
+        headL = {(m.x - f.x * c.oal / 2 - cen.x) / 1000, (m.y - f.y * c.oal / 2 - cen.y) / 1000};
+        fwdL = f;
+        lift = {f.y, -f.x};
+        if (side) *side = d.gen.side > 0 ? 1 : -1;
+        return done();
     }
     if (d.gen.on) {
         double dia = c.headDia() * 1.02, phi;
         V2 m = magCentre(d.gen, 3 + dia / 2, &phi);
         V2 f{std::cos(phi * D2R), -std::sin(phi * D2R)};
+        lift = {f.y, -f.x};   // back up the magazine toward its mouth, whichever way it's turned
         headL = {(m.x - f.x * c.oal / 2 - cen.x) / 1000, (m.y - f.y * c.oal / 2 - cen.y) / 1000};
+        headL = {headL.x + lift.x * d.lipHeight / 1000, headL.y + lift.y * d.lipHeight / 1000};
+        if (f.x * gunFwd.x + f.y * gunFwd.y < 0) {   // turned over (a magazine on top): the round still points at the muzzle
+            headL = {headL.x + f.x * c.oal / 1000, headL.y + f.y * c.oal / 1000};
+            f = {-f.x, -f.y};
+        }
         fwdL = f;
-        headL = {headL.x + f.y * d.lipHeight / 1000, headL.y - f.x * d.lipHeight / 1000};   // up is across the feed direction
-        return true;
+        return done();
     }
     double x0 = 1e9, x1 = -1e9, y0 = 1e9;
     for (auto& p : d.pts) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); }
     headL = {((x0 + x1) / 2 - c.oal / 2 - cen.x) / 1000, (y0 + 1.5 + c.headDia() / 2 - d.lipHeight - cen.y) / 1000};
     fwdL = {1, 0};
-    return true;
+    return done();
+}
+
+// Which edge of the rim the extractor grips: set in the design, or away from the magazine (the top, unless the
+// magazine is above the bore)
+static double clawSide(const Sim& S, V2 up) {
+    const BreechDef& br = S.design.breech;
+    if (br.extractor == "top") return 1;
+    if (br.extractor == "bottom") return -1;
+    const BodyDef* m = S.magTmpl;
+    if (!m) for (auto& b : S.design.bodies) if (b.magazine) { m = &b; break; }
+    if (!m || (m->gen.on && m->gen.side) || !br.hasFace) return 1;
+    V2 c = centroidOf(*m);
+    return (c.x - br.face.x) * up.x + (c.y - br.face.y) * up.y > 0 ? -1 : 1;   // (up is in the gun's frame: design y is down)
 }
 
 void cartridgeForces(Sim& S) {
     if (!S.physicalFeed) return;
     for (auto& b : S.bodies) {  // the follower spring pushes the top round up against the lips
-        if (b.rs != RS::Presented || !b.mag || b.gone) continue;
-        V2 f = rot(b.feedL, b.mag->a), n{f.y, -f.x};
+        if (b.rs != RS::Presented || !b.mag || b.gone || b.sideFeed) continue;   // (a side magazine pushes across the gun)
+        V2 n = rot(b.liftL, b.mag->a);
         double F = (10 + 0.5 * b.mag->rounds) * springOf(*b.mag);
         b.fx += n.x * F; b.fy += n.y * F;
         b.mag->fx -= n.x * F; b.mag->fy -= n.y * F;
@@ -402,6 +437,11 @@ static void partContacts(Sim& S, Body& r, const Body* ignore = nullptr) {  // a 
 static bool presentedContacts(Sim& S, Body& r, V2 f, V2 n, double stripped) {
     bool lifted = false;
     bbox(r);
+    // a side magazine's round: whatever rides over it pushes it back into the magazine, across the gun, and it pops
+    // out again behind it. Only a round that is out (or nearly) can be caught by the breech face.
+    const bool side = r.sideFeed != 0;
+    const bool wasIn = side && std::fabs(r.zVis) > S.design.breech.cart.headDia() / 1000 * 0.35;
+    if (side) r.pushedIn = false;
     const Cartridge& c = S.design.breech.cart;
     for (auto& P : S.bodies) {
         if (&P == &r || !solidPart(S, P) || std::fabs(P.z - r.z) >= P.zh + r.zh) continue;
@@ -423,13 +463,17 @@ static bool presentedContacts(Sim& S, Body& r, V2 f, V2 n, double stripped) {
             Body* br = S.BR->root ? S.BR->root : S.BR;
             bool breechPart = (P.root ? P.root : &P) == br;
             bool closing = (br->vx - r.vx) * f.x + (br->vy - r.vy) * f.y > 0.05;  // the breech coming forward onto the rim
-            if (vdot(nc, f) > 0.5 && t < 0.25 && breechPart && closing) {  // the breech face catching the rim: stripping
+            if (vdot(nc, f) > 0.5 && t < 0.25 && breechPart && closing && !wasIn) {  // the breech face catching the rim: stripping
                 solve(r, P, w, qw, nc.x, nc.y, d);
+            } else if (side) {
+                r.pushedIn = true;
             } else if (t > 0.55 && vdot(nc, n) > 0.3 && !breechPart && stripped > 0.002) {  // nose up a feed ramp: it tips up
                 solve(r, P, w, qw, nc.x, nc.y, d);                                                // while the lips hold its head
                 lifted = true;
                 double rel = std::remainder(r.a - std::atan2(f.y, f.x), 2 * 3.14159265358979323846);
-                r.tilt = std::clamp(std::min(r.tilt, rel), -25 * D2R, 0.0);
+                // it can only tip toward the bore, away from the magazine: nose up from below, nose down from a top magazine
+                if (vcross(f, n) <= 0) r.tilt = std::clamp(std::min(r.tilt, rel), -25 * D2R, 0.0);
+                else r.tilt = std::clamp(std::max(r.tilt, rel), 0.0, 25 * D2R);
             } else {  // anything else rides over it and presses it down; the follower is soft, so only the round moves
                 double dn = std::max(0.0, -vdot(vsub(qw, w), n));
                 if (dn > 1e-7) { r.x -= n.x * dn; r.y -= n.y * dn; }
@@ -495,9 +539,10 @@ static void chamberStep(Sim& S, bool main) {
             placeHead(*r, L.face, ang);
             r->inChamber = true;
             V2 f = wpt(*S.BR, S.faceB);
-            V2 claw{f.x + up.x * rimR + u.x * 0.0003, f.y + up.y * rimR + u.y * 0.0003};
+            double cs = clawSide(S, up);   // +1 the top edge of the rim, -1 the bottom
+            V2 claw{f.x + up.x * rimR * cs + u.x * 0.0003, f.y + up.y * rimR * cs + u.y * 0.0003};
             r->clawB = lpt(*S.BR, claw);
-            r->clawR = {r->headLx + 0.0003, -rimR};
+            r->clawR = {r->headLx + 0.0003, -rimR * cs};
             r->vx = S.BR->vx; r->vy = S.BR->vy;
         }
     }
@@ -521,8 +566,8 @@ static void chamberStep(Sim& S, bool main) {
         }
     }
     if (M && M->rounds > 0 && !M->top && !tubeMag(*M) && (!belt || M->indexReady)) {
-        V2 hl, fl;
-        magLips(S, *M, hl, fl);
+        V2 hl, fl, ll; int side = 0;
+        magLips(S, *M, hl, fl, &ll, &side);
         V2 LH = wpt(*M, hl), f = rot(fl, M->a);
         bool clear = true;
         for (auto& b : S.bodies) {
@@ -535,15 +580,16 @@ static void chamberStep(Sim& S, bool main) {
                 setState(*r, RS::Presented);
                 // it starts one round down in the stack and the follower spring has to lift it to the lips
                 // (a double stack rises about half a round at a time); a weak spring may not get it there in time
-                double step = belt ? 0 : c.headDia() / 1000 * (doubleStack(*M) ? 0.55 : 1.0);  // (a belt lays it in the tray)
-                if (belt) M->indexReady = false;
-                V2 up{f.y, -f.x};
+                double step = belt || side ? 0 : c.headDia() / 1000 * (doubleStack(*M) ? 0.55 : 1.0);  // (a belt lays it in the tray;
+                if (belt) M->indexReady = false;                                                         //  a side magazine pushes it out sideways)
+                V2 up = rot(ll, M->a);
                 placeHead(*r, {LH.x - up.x * step, LH.y - up.y * step}, std::atan2(f.y, f.x));
-                if (doubleStack(*M) && M->d->doubleFeed) {  // double position: the top round sits to one side, alternating
+                if (doubleStack(*M) && M->d->doubleFeed && !side) {  // double position: the top round sits to one side, alternating
                     r->zFeed = c.headDia() / 1000 * 0.43 * ((M->rounds % 2) ? 1 : -1);
                     r->zVis = r->zFeed;   // drawn off to the side; it still collides as if centred (see zVis)
                 }
-                r->mag = M; r->lipsL = hl; r->feedL = fl;
+                r->mag = M; r->lipsL = hl; r->feedL = fl; r->liftL = ll; r->sideFeed = side; r->pushedIn = false;
+                if (side) r->zVis = side * c.headDia() / 1000;   // it comes out of the mouth beside the gun
                 M->top = r;
             }
     }
@@ -593,7 +639,7 @@ static void chamberStep(Sim& S, bool main) {
             }
             if (b.rs == RS::Presented && b.mag) {  // under the lips: it can slide forward, or be pushed down into the magazine
                 Body& Mg = *b.mag;
-                V2 LH = wpt(Mg, b.lipsL), f = rot(b.feedL, Mg.a), n{f.y, -f.x};
+                V2 LH = wpt(Mg, b.lipsL), f = rot(b.feedL, Mg.a), n = rot(b.liftL, Mg.a);
                 double fa = std::atan2(f.y, f.x);
                 auto holdLevel = [&]() { b.a = fa + b.tilt; b.pa = b.a; b.w = 0; };  // level, or as far as a feed ramp tipped it
                 holdLevel();
@@ -602,7 +648,8 @@ static void chamberStep(Sim& S, bool main) {
                 if (s < 0) solve(b, Mg, h, {h.x - f.x * s, h.y - f.y * s}, f.x, f.y, -s);
                 h = wpt(b, {b.headLx, 0}); d = vsub(h, LH); e = vdot(d, n);
                 if (e > 0) solve(b, Mg, h, {h.x - n.x * e, h.y - n.y * e}, -n.x, -n.y, e);
-                double low = std::max(0.008, c.headDia() / 1000 + 0.002);  // as far down as the stack can be pushed
+                double low = b.sideFeed ? 0.0 : std::max(0.008, c.headDia() / 1000 + 0.002);  // as far down as the stack can be pushed
+                                                                                                // (a side magazine's goes in sideways)
                 if (e < -low) solve(b, Mg, h, {h.x - n.x * (e + low), h.y - n.y * (e + low)}, n.x, n.y, -(e + low));
                 bool lifted = presentedContacts(S, b, f, n, s);
                 b.wasOut = true;
@@ -620,6 +667,10 @@ static void chamberStep(Sim& S, bool main) {
                 h = wpt(b, {b.headLx, 0});
                 double fwd = vdot(vsub(h, LH), f);
                 if (b.zFeed != 0) b.zVis = b.zFeed * std::clamp(1 - fwd / (c.oal / 1000 * 0.75), 0.0, 1.0);  // the lips steer it in
+                if (b.sideFeed) {   // pushed back into a side magazine, or out at its mouth in the bolt's path
+                    double want = b.pushedIn ? b.sideFeed * c.headDia() / 1000 : 0, step = 2.5 * H;   // the follower: ~2.5 m/s
+                    b.zVis += std::clamp(want - b.zVis, -step, step);
+                }
                 if (pass == 0) chamberContacts(S, b, L);  // only to notice the nose entering the chamber mouth
                 // stripped off the lips, or pushed forward into the chamber (a barrel that recoils back to sit just in
                 // front of the round doesn't count: something has to push it)

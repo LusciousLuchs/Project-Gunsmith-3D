@@ -30,6 +30,7 @@ What's there already is noted; the rest is new work.
 
 ## Noticed while testing
 
+- **A mirror image of a gun doesn't behave exactly like the original.** The blowback pistol turned upside down, with gravity turned over too, jams about 9 times in 100 against 2 for the original. Found: where a contact point sits exactly as close to two edges of a part, the physics picks the first edge in the part's list, and mirroring a part reverses its list. Worth making that choice independent of the order some day; it doesn't affect any example.
 - **The 50-round test is touchy on a knife-edge design.** The tilting pistol's sear, unchanged but with its corners listed from a different starting corner, can give 2 jams in 50 instead of 0. The run is the same every time for the same design, but tiny differences can tip it. A spec sheet should run a few seeds and give a range.
 
 ## Shelved

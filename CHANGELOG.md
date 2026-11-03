@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.5-alpha
+
+### Magazines anywhere
+- **Magazine position** (a fitted magazine's panel): *Below*, *On top*, *Left side* or *Right side*.
+- **On top:** the magazine feeds downward. The spring pushes rounds out of the magazine whichever way it's turned, the round still points at the muzzle, and a feed ramp tips its nose down into the chamber instead of up. Tested by turning the whole blowback pistol upside down: it feeds and fires 50 rounds (3 failures to eject: its ejection port is now underneath, and an odd case falls back in).
+- **Left or right side** (like a Sten): the magazine sticks out across the gun with its rounds stacked sideways. This is a simplified treatment, because parts only move in the side view: the side view sees just its mouth, where the top round lies in the bolt's path. The breech face strips it forward as usual; anything riding over it pushes it back into the magazine sideways, and it pops out again behind. Released, the magazine slides out sideways and drops once clear; a new one slides in. Tested on the blowback pistol with its magazine moved to either side: 50 of 50, no jams, 6 reloads. Cut an opening in the receiver wall for it (Carve), or it goes through the wall.
+- **Extractor** (Firing tab, with physical rounds): which edge of the rim the claw grips, *Top*, *Bottom* or *Automatic* (the edge away from the magazine: the top, unless the magazine is on top). It used to always be the top, so a gun with its magazine on top could never throw its cases out.
+- Every example behaves exactly as before.
+
 ## 0.2.4-alpha
 
 ### Springs

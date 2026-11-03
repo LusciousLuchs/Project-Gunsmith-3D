@@ -1430,6 +1430,35 @@ static void springBuckling() {
     for (auto& J : S->joints) if (J.j && J.j->type == "spring" && J.j->a == "nose") { buck = J.buckled; F = J.force; bow = J.bow; }
     CHECK(buck && F > 5 && bow > 0 && bow <= 0.014 + 1e-9, "unguided, it bows out (no more than two coil widths) and still pushes");
 }
+static void magazinePositions() {
+    std::printf("magazinePositions\n");
+    // the blowback pistol's magazine turned to stick out of the left side: rounds come in sideways
+    Design side = loadPreset("blowback");
+    int mi = -1;
+    for (int i = 0; i < (int)side.bodies.size(); i++) if (side.bodies[i].magazine && side.bodies[i].gen.on) mi = i;
+    side.bodies[mi].gen.side = -1;
+    generateMagazine(side, mi);
+    CHECK(side.bodies[mi].z < -side.bodies[mi].thick / 2 && side.bodies[mi].thick > 40, "a side magazine sticks out across the gun");
+    Design back; designFromJson(designToJson(side), back);
+    CHECK(back.bodies[mi].gen.side == -1, "its side is saved");
+    sim::ReliabilityOptions o; o.rounds = 20;
+    auto R = sim::runReliability(side, o);
+    CHECK(R.fired == 20 && R.jams == 0 && R.reloads >= 2, "fed from the side, it fires 20 of 20, reloading sideways");
+    // the whole pistol upside down: its magazine on top, feeding down; the round still points at the muzzle
+    Design up = loadPreset("blowback"), ref = up;
+    double c = up.breech.face.y;
+    auto fy = [&](V2& p) { p.y = 2 * c - p.y; };
+    for (auto& b : up.bodies) { mirrorBody(b, {0, c}, {1, c}); for (auto& q : b.roundPath) fy(q); }
+    for (auto& j : up.joints) { fy(j.p); fy(j.pa); fy(j.pb); for (auto& q : j.path) fy(q); for (auto& a : j.pathAng) a = -a; if (j.kind == "leaf") j.flip = !j.flip; }
+    fy(up.breech.face); fy(up.breech.muzzle); fy(up.breech.strikerTip);
+    up.bodies[mi].gen = ref.bodies[mi].gen; fy(up.bodies[mi].gen.top); up.bodies[mi].gen.angle = 180; generateMagazine(up, mi);
+    auto S = sim::build(up);
+    sim::run(*S, 0.3);
+    for (int k = 0; k < 4; k++) { sim::setKey(*S, "fire", true); sim::run(*S, 0.05); sim::setKey(*S, "fire", false); sim::run(*S, 0.25); }
+    CHECK(S->shots == 4, "a magazine on top feeds down: the upside-down pistol fires 4 of 4");
+    R = sim::runReliability(up, o);
+    CHECK(R.fired == 20 && R.jams <= 2, "and runs 20 rounds (the odd case falls back in through the port, now underneath)");
+}
 static void benchBugs() {
     std::printf("Playtest bugs (0.2.1)\n");
     {   // the bench used to run out of room after about 200 reloads: no new magazine, the gun empty
@@ -1481,6 +1510,7 @@ int main() {
     shapeTools();
     liveMirrors();
     springBuckling();
+    magazinePositions();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

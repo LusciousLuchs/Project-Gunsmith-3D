@@ -63,7 +63,9 @@ struct MagGen {
     int stack = 2;              // 1 single stack, 2 double stack
     double curve = 0;           // degrees the magazine bends forward over its length (banana mags)
     double wall = 1.2;          // mm
-    double angle = 0;           // degrees from straight down (follows the well)
+    double angle = 0;           // degrees from straight down (follows the well); 180 = on top
+    int side = 0;               // 0 in the side view (below, above, slanted: see angle); +1 sticks out the right side, -1 the
+                                // left: the rounds stack across the gun and come in sideways (the side view sees only the mouth)
     V2 top;                     // top centre (feed lips), design coords
     double H = 0, W = 0;        // generated height and width
 };
@@ -207,6 +209,9 @@ struct BreechDef {
     std::string feedMode = "magazine";   // magazine, internal, single
     bool physicalFeed = false;           // rounds and cases are physical through the whole cycle (older blueprints: simplified)
     std::string ignition = "button";     // button (fires on the FIRE key) or striker (fires when a part hits the primer)
+    std::string extractor = "auto";      // which edge of the rim the extractor claw grips: "top", "bottom", or "auto" (the side
+                                         // away from the magazine: the top, unless the magazine is on top). The ejector has to
+                                         // hit the case on the other side to flick it off the claw
     std::string striker;                 // part that hits the primer
     V2 strikerTip;
     double igniteSpeed = 1.5;            // m/s needed at impact

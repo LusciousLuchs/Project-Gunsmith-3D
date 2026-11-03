@@ -689,6 +689,38 @@ void generateMagazine(Design& D, int bi) {
     double stackH = g.stack == 2 ? b.magCap * pitch + dia * 0.5 : b.magCap * pitch;
     g.H = 3 + stackH + 12 + 5;  // lips, rounds, follower and spring, floorplate
     g.W = c.oal + 2 * g.wall + 3;
+    if (g.side != 0) {   // across the gun: the side view sees only its mouth, a box round the top round
+        double yc = g.top.y + 3 + dia / 2, half = dia * (g.stack == 2 ? 0.9 : 0.55) + g.wall;
+        double x0 = g.top.x - g.W / 2, x1 = g.top.x + g.W / 2;
+        b.pts = {{x0, yc - half}, {x1, yc - half}, {x1, yc + half}, {x0, yc + half}};
+        for (auto& q : b.pts) { q.x = std::round(q.x * 100) / 100; q.y = std::round(q.y * 100) / 100; }
+        b.rad.assign(4, 1.0);
+        b.bulge.assign(4, 0.0);
+        b.mass = std::round(45 + 0.35 * g.H);
+        b.thick = std::round(g.H);
+        b.z = (g.side > 0 ? 1 : -1) * (dia / 2 + 0.5 + b.thick / 2);   // its mouth right beside the top round
+        b.magazine = true;
+        b.ghost = true;
+        if (b.magFixed) {
+            if (wi >= 0) D.joints.erase(D.joints.begin() + wi);
+            return;
+        }
+        // the well holds it in the side view; it slides in and out across the gun (the simulation does that part)
+        V2 p{g.top.x, g.top.y + 10};
+        if (wi < 0) {
+            JointDef j; j.type = "magwell"; j.a = b.id; j.b = "world";
+            for (int i = (int)D.bodies.size() - 1; i >= 0; i--)
+                if (D.bodies[i].fixed && inside(g.top.x, g.top.y + 2, outlineOf(D.bodies[i]))) { j.b = D.bodies[i].id; break; }
+            if (j.b == "world") for (auto& o : D.bodies) if (o.fixed) { j.b = o.id; break; }
+            D.joints.push_back(j);
+            wi = (int)D.joints.size() - 1;
+        }
+        auto& j = D.joints[wi];
+        j.p = p;
+        j.path = {p, {p.x, p.y + 1}};
+        j.pathAng = {0.0, 0.0};
+        return;
+    }
     int N = std::max(4, (int)std::ceil(std::fabs(g.curve) / 6) + 4);
     std::vector<V2> rear, front;
     for (int k = 0; k <= N; k++) {
@@ -822,7 +854,7 @@ std::string designToJson(const Design& d, bool pretty) {
             if (!b.feedPawl.empty()) jb["magazine"]["pawl"] = {{"part", b.feedPawl}, {"stroke", b.pawlStroke}};
             if (b.clip != "none") jb["magazine"]["clip"] = {{"kind", b.clip}, {"size", b.clipSize}};
             if (!b.roundPath.empty()) { json a = json::array(); for (auto& q : b.roundPath) a.push_back(v2j(q)); jb["magazine"]["roundPath"] = a; }
-            if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
+            if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"side", b.gen.side}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
         }
         if (b.tiltX != 0 || b.tiltY != 0) jb["tilt"] = {b.tiltX, b.tiltY};
         if (b.barrel.on) jb["barrel"] = {{"cartridge", cartToJson(b.barrel.cart)}, {"rifled", b.barrel.rifled}, {"twist", b.barrel.twist}, {"grooves", b.barrel.grooves}, {"muzzleEnd", b.barrel.muzzleEnd}};
@@ -868,7 +900,7 @@ std::string designToJson(const Design& d, bool pretty) {
         json jb = {{"breech", r.breech}, {"chamber", r.chamber}, {"impulse", r.impulse}, {"dur", r.dur}, {"feed", r.feed},
                    {"rounds", r.rounds}, {"auto", r.autoFire}, {"loaded", r.loaded}, {"round", {r.roundLen, r.roundDia}},
                    {"cartridge", cartToJson(r.cart)}, {"cartImpulse", r.cartImpulse}, {"feedMode", r.feedMode}, {"physicalFeed", r.physicalFeed},
-                   {"ignition", r.ignition}, {"striker", r.striker}, {"strikerTip", v2j(r.strikerTip)}, {"igniteSpeed", r.igniteSpeed},
+                   {"ignition", r.ignition}, {"extractor", r.extractor}, {"striker", r.striker}, {"strikerTip", v2j(r.strikerTip)}, {"igniteSpeed", r.igniteSpeed},
                    {"hammer", r.hammer}, {"cockAt", r.cockAt}, {"fireMode", r.fireMode}, {"burst", r.burst},
                    {"doubleAction", r.doubleAction}, {"lockTime", r.lockTime}};
         jb["auto"] = r.fullAuto();
@@ -1009,7 +1041,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             if (m.contains("gen") && m["gen"].is_object()) {
                 auto& g = m["gen"];
                 b.gen.on = true; b.gen.stack = opt<int>(g, "stack", 2); b.gen.curve = opt<double>(g, "curve", 0);
-                b.gen.wall = opt<double>(g, "wall", 1.2); b.gen.angle = opt<double>(g, "angle", 0);
+                b.gen.wall = opt<double>(g, "wall", 1.2); b.gen.angle = opt<double>(g, "angle", 0); b.gen.side = opt<int>(g, "side", 0);
                 if (g.contains("top")) b.gen.top = j2v(g["top"]);
                 b.gen.H = opt<double>(g, "H", 0); b.gen.W = opt<double>(g, "W", 0);
             }
@@ -1096,6 +1128,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         r.feedMode = opt<std::string>(jb, "feedMode", hasWell ? "magazine" : "internal");
         r.physicalFeed = opt<bool>(jb, "physicalFeed", false);
         r.ignition = opt<std::string>(jb, "ignition", "button");
+        r.extractor = opt<std::string>(jb, "extractor", "auto");
         r.striker = opt<std::string>(jb, "striker", "");
         if (jb.contains("strikerTip")) r.strikerTip = j2v(jb["strikerTip"]);
         r.igniteSpeed = opt<double>(jb, "igniteSpeed", 1.5);
