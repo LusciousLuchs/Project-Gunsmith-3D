@@ -163,6 +163,72 @@ double breechStroke(Sim& S, Body* B) {
 
 }  // namespace
 
+// The plain way to work this gun's action, as hand keys: what the reliability test does, worked out from the parts.
+// The hand takes the part that's worked by hand (or the breech assembly), turns it if it turns about the bore, draws
+// it all the way back, and brings it home (or lets its spring do that); a part hinged to the frame is swung open
+// and shut. Times are a person's pace. Empty when there's nothing to work.
+Animation autoWorkAction(Sim& S) {
+    Animation an;
+    if (!S.BR || !S.hasFace) return an;
+    Body* B = S.BR->root ? S.BR->root : S.BR;
+    const BodyDef* handleDef = nullptr;
+    for (auto& b : S.bodies)
+        if (b.d && b.d->ctrl == "handle" && !b.fixed && !b.slice && b.tmpl.empty()) { B = b.root ? b.root : &b; handleDef = b.d; break; }
+    if (B->fixed || !B->d) return an;
+    BoreLine L0 = boreLine(S);
+    Runner R{S, B, L0.ok ? L0.dir : V2{1, 0}, breechStroke(S, B), B->invIr > 0, nullptr};
+    R.findHinge();
+    // where the hand takes hold, in the gun's millimetres: a handle's marked point, a bolt's handle, or the part's middle
+    V2 grip{B->x0 * 1000, B->y0 * 1000};
+    if (handleDef && handleDef->ctrl == "handle") grip = handleDef->ctrlPt;
+    else if (B->d->rollOn && B->d->handle > 0) {
+        double x0 = 1e9, x1 = -1e9;
+        for (auto& p : B->d->pts) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); }
+        grip = {x0 + (x1 - x0) * 0.78, centroidOf(*B->d).y};
+    }
+    if (R.hinged) grip = {R.grab0.x * 1000, R.grab0.y * 1000};
+    // which hand: the firing hand works a part that turns (its handle sticks out on the firing hand's side); the
+    // other hand works the rest
+    const Design& D = S.design;
+    bool firing = R.rolling || !D.pose.support.on;
+    auto key = [&](double t, V2 at, bool grip_, double turn = -1) {
+        AnimKey k; k.t = t;
+        k.firing = D.pose.firing; k.support = D.pose.support;
+        HandHold& h = firing ? k.firing : k.support;
+        h.on = true; h.part = B->d->id; h.at = at; h.angle = 90;
+        (firing ? k.gripF : k.gripS) = grip_;
+        k.turn = turn;
+        return k;
+    };
+    double t = 0.25;
+    if (R.hinged) {   // swung about its pin, out to 80 degrees and back
+        auto at = [&](double deg) {
+            double a = R.sign * deg * 3.14159265358979 / 180, c = std::cos(a), s = std::sin(a);
+            V2 d{grip.x - R.hinge.x * 1000, grip.y - R.hinge.y * 1000};
+            return V2{R.hinge.x * 1000 + c * d.x - s * d.y, R.hinge.y * 1000 + s * d.x + c * d.y};
+        };
+        an.keys.push_back(key(t, at(0), true));
+        for (double deg : {40.0, 80.0}) an.keys.push_back(key(t += 0.25, at(deg), true));
+        an.keys.push_back(key(t += 0.3, at(80), true));
+        for (double deg : {40.0, 0.0}) an.keys.push_back(key(t += 0.25, at(deg), true));
+        an.keys.push_back(key(t += 0.15, at(0), false));
+        return an;
+    }
+    double full = (B->rmax - B->rmin) * 180 / 3.14159265358979;
+    double turn0 = R.rolling ? 0 : -1, turn1 = R.rolling ? std::fabs(full) : -1;
+    V2 back{grip.x - R.dir.x * (R.stroke * 1000 + 3), grip.y - R.dir.y * (R.stroke * 1000 + 3)};
+    double stroke = std::max(0.12, (R.stroke + 0.003) / 1.0);   // a brisk hand: about a metre a second, as the reliability test works it
+    an.keys.push_back(key(t, grip, true, turn0));
+    if (R.rolling) an.keys.push_back(key(t += 0.15, grip, true, turn1));              // lift the handle
+    an.keys.push_back(key(t += stroke, back, true, turn1));                            // draw it back
+    if (R.rolling || !S.breechSprung) {
+        an.keys.push_back(key(t += stroke, {grip.x + R.dir.x * 0.5, grip.y + R.dir.y * 0.5}, true, turn1));   // home
+        if (R.rolling) an.keys.push_back(key(t += 0.15, {grip.x + R.dir.x * 0.5, grip.y + R.dir.y * 0.5}, true, turn0));   // and down
+        an.keys.push_back(key(t += 0.1, an.keys.back().firing.on && firing ? an.keys.back().firing.at : an.keys.back().support.at, false));
+    } else an.keys.push_back(key(t += 0.08, back, false));                               // let go: its spring closes it
+    return an;
+}
+
 ReliabilityReport runReliability(const Design& design, const ReliabilityOptions& o, std::atomic<int>* done,
                                  const std::atomic<bool>* cancel) {
     ReliabilityReport R;

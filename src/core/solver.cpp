@@ -1349,7 +1349,7 @@ void substep(Sim& S) {
 bool playAnim(Sim& S, const std::string& slot) {
     auto it = S.design.anims.find(slot);
     if (it == S.design.anims.end() || it->second.keys.empty()) return false;
-    S.animSlot = slot; S.animT = 0; S.animKeysDone = 0;
+    S.animSlot = slot; S.animT = 0; S.animKeysDone = 0; S.animWait = 0;
     for (auto& h : S.animHand) h.on = false;
     return true;
 }
@@ -1357,14 +1357,45 @@ bool animPlaying(const Sim& S) { return S.animT >= 0; }
 AnimHands animHandsNow(const Sim& S) {
     auto it = S.design.anims.find(S.animSlot);
     if (S.animT < 0 || it == S.design.anims.end()) { AnimHands o; o.firing = S.design.pose.firing; o.support = S.design.pose.support; return o; }
-    return animAt(S.design, it->second, S.animT);
+    AnimHands o = animAt(S.design, it->second, S.animT);
+    for (int k = 0; k < 2; k++) {   // a gripping hand is where it holds the part (it moves with it)
+        const Sim::Hand& hd = S.animHand[k];
+        if (!hd.on || !hd.b) continue;
+        V2 g = wpt(*hd.b, hd.l);
+        (k == 0 ? o.firing : o.support).at = {g.x * 1000, g.y * 1000};
+    }
+    return o;
+}
+static Body* turner(Body* b) {   // the part that turns about the bore, for a part of it
+    if (!b) return nullptr;
+    Body* r = b->rollParent ? b->rollParent : b->root ? b->root : b;
+    return r->invIr > 0 ? r : nullptr;
 }
 static void animTick(Sim& S) {
     if (S.animT < 0) return;
     auto it = S.design.anims.find(S.animSlot);
     if (it == S.design.anims.end()) { S.animT = -1; return; }
     const Animation& a = it->second;
-    S.animT += H;
+    // follow the gun: while a gripped part hasn't caught up with the hand (or the bolt with its turn), the hands wait
+    // for it, up to a second; a part that won't come gives up its hold on the clock and the animation carries on
+    // (only while it's still coming: one held at a stop, or stuck, doesn't hold the hands up)
+    bool lag = false;
+    for (int k = 0; k < 2; k++) {
+        const Sim::Hand& hd = S.animHand[k];
+        if (!hd.on || !hd.b || hd.b->gone) continue;
+        const Body& rb = hd.b->root ? *hd.b->root : *hd.b;
+        V2 g = wpt(*hd.b, hd.l);
+        double dx = hd.t.x - g.x, dy = hd.t.y - g.y, d = std::hypot(dx, dy);
+        double coming = d > 0 ? ((rb.x - rb.px) * dx + (rb.y - rb.py) * dy) / (d * H) : 0;   // m/s toward the hand
+        if (d > 0.004 && coming > 0.02) lag = true;   // (a hand against a spring always trails by a millimetre or two)
+    }
+    if (S.animTurning && S.rollHand.on && S.rollHand.b) {
+        const Body& tb = *S.rollHand.b;
+        double off = S.rollHand.t - tb.roll;
+        if (std::fabs(off) > 15 * D2R && tb.wr * off > 0.2 * std::fabs(off)) lag = true;   // still turning toward it
+    }
+    if (lag && S.animWait < 1.0) S.animWait += H;
+    else { S.animT += H; if (!lag) S.animWait = 0; }
     while (S.animKeysDone < a.keys.size() && a.keys[S.animKeysDone].t <= S.animT) {   // a key passed: its event
         const std::string& ev = a.keys[S.animKeysDone].event;
         Joint* J = magwell(S);
@@ -1374,7 +1405,11 @@ static void animTick(Sim& S) {
         }
         S.animKeysDone++;
     }
-    if (S.animT > animLength(a)) { S.animT = -1; for (auto& h : S.animHand) h.on = false; return; }
+    if (S.animT > animLength(a)) {
+        S.animT = -1; for (auto& h : S.animHand) h.on = false;
+        if (S.animTurning) { S.rollHand.on = false; S.animTurning = false; }
+        return;
+    }
     AnimHands hs = animAt(S.design, a, S.animT);
     for (int k = 0; k < 2; k++) {
         const HandHold& h = k == 0 ? hs.firing : hs.support;
@@ -1390,6 +1425,13 @@ static void animTick(Sim& S) {
         }
         hd.t = target;
     }
+    // turning a gripped part about the bore (a bolt handle lifted or pushed down)
+    Body* tb = nullptr;
+    for (auto& hd : S.animHand) if (hd.on && !tb) tb = turner(hd.b);
+    if (tb && hs.turn >= 0) {
+        S.rollHand = {true, tb, tb->rmin + hs.turn * D2R * (tb->rmax >= tb->rmin ? 1 : -1), 0};
+        S.animTurning = true;
+    } else if (S.animTurning) { S.rollHand.on = false; S.animTurning = false; }
 }
 int run(Sim& S, double dt, int maxSteps) {
     int n = (int)std::lround(dt / H);

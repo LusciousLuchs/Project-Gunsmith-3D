@@ -1,5 +1,6 @@
 // Gunsmith3D - Test mode: running the simulation, grabbing parts, shot effects.
 #include "app/app.hpp"
+#include "reliability.hpp"
 #include "app/settings.hpp"
 #include "app/audio.hpp"
 #include "app/view.hpp"
@@ -73,6 +74,17 @@ void testInput(bool overUI) {
 }
 
 
+// Work the action: your recorded animation, or the plain way worked out from the parts (what the reliability test does)
+void workAction() {
+    if (!A.S || sim::animPlaying(*A.S)) return;
+    A.S->design.anims = A.design.anims;
+    if (sim::playAnim(*A.S, "work_action")) { toast("Working the action (your animation)."); return; }
+    Animation a = sim::autoWorkAction(*A.S);
+    if (a.keys.empty()) { toast("Nothing to work: this gun has no moving breech."); return; }
+    A.S->design.anims["auto:work_action"] = a;
+    sim::playAnim(*A.S, "auto:work_action");
+    A.running = true;
+}
 void stepSim(float dt) {
     if (!A.S || !A.running || (A.posing && !sim::animPlaying(*A.S))) return;   // (in Pose mode only an animation runs it)
     auto& S = *A.S;

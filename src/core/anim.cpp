@@ -7,12 +7,13 @@
 #include <cmath>
 
 std::vector<std::string> animSlots(const Design& d) {
-    std::vector<std::string> s = {"inspect", "reload", "reload_empty", "clear_jam"};
+    std::vector<std::string> s = {"work_action", "inspect", "reload", "reload_empty", "clear_jam"};
     for (auto& b : d.bodies)
         if (b.ctrl != "none" && b.ctrl != "trigger" && b.key != "fire") s.push_back("control:" + b.id);
     return s;
 }
 std::string animSlotName(const Design& d, const std::string& slot) {
+    if (slot == "work_action") return "Work the action";
     if (slot == "inspect") return "Inspect";
     if (slot == "reload") return "Reload";
     if (slot == "reload_empty") return "Reload (empty)";
@@ -88,5 +89,17 @@ AnimHands animAt(const Design& d, const Animation& a, double t) {
     o.support = handAt(d.pose.support, a.keys, false, t, end);
     for (auto& k : a.keys) if (k.t <= t + 1e-9) { o.gripF = k.gripF; o.gripS = k.gripS; }   // the latest key so far says
     if (t > a.keys.back().t + 1e-9) o.gripF = o.gripS = false;                               // (going back to the hold: let go)
+    // the turn of a gripped part (a bolt): eased from key to key while both keys turn it
+    for (size_t i = 0; i < a.keys.size(); i++) {
+        const AnimKey& k = a.keys[i];
+        if (k.t > t + 1e-9) break;
+        if (k.turn < 0) { o.turn = -1; continue; }
+        o.turn = k.turn;
+        if (i + 1 < a.keys.size() && a.keys[i + 1].turn >= 0 && a.keys[i + 1].t > t) {
+            double u = smooth(std::clamp((t - k.t) / std::max(1e-6, a.keys[i + 1].t - k.t), 0.0, 1.0));
+            o.turn = k.turn + (a.keys[i + 1].turn - k.turn) * u;
+        }
+    }
+    if (!(o.gripF || o.gripS)) o.turn = -1;
     return o;
 }

@@ -949,6 +949,7 @@ std::string designToJson(const Design& d, bool pretty) {
                 if (k.gripF) jk["gripF"] = true;
                 if (k.gripS) jk["gripS"] = true;
                 if (!k.event.empty()) jk["event"] = k.event;
+                if (k.turn >= 0) jk["turn"] = k.turn;
                 ks.push_back(jk);
             }
             An[slot] = ks;
@@ -1210,6 +1211,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 if (jk.contains("support")) readHand(jk["support"], k.support, "support");
                 k.gripF = opt<bool>(jk, "gripF", false); k.gripS = opt<bool>(jk, "gripS", false);
                 k.event = opt<std::string>(jk, "event", "");
+                k.turn = opt<double>(jk, "turn", -1.0);
                 a.keys.push_back(k);
             }
             std::stable_sort(a.keys.begin(), a.keys.end(), [](const AnimKey& x, const AnimKey& y) { return x.t < y.t; });

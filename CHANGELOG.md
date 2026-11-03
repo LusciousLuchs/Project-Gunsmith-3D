@@ -8,6 +8,18 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.8-alpha
+
+### Working the action
+- **Work the action** (new key **B** on the bench, and a button in the bench panel): a hand works the bolt, slide, lever or break-open, through the physics. With no animation recorded, it's worked out from your parts the way the reliability test works them: the hand takes the part marked *worked by hand* (or the part that carries the breech face), turns it if it turns about the bore, draws it all the way back, and brings it home (a part with a spring that shuts it is let go at the back); a part hinged to the frame is swung open and shut. Nothing is special-cased for any kind of gun: a bolt nobody has drawn before gets worked the same way.
+- The firing hand works a part that turns (its handle is on that side); the support hand works the rest.
+- Tested on every example: fired, then worked by hand, each has a fresh round in (the bolt turned up 90 degrees and back down), at a brisk hand's pace (a bolt in about 1.8 seconds).
+- **Your own:** *Work the action* is a new animation slot. *Start from the automatic one* fills it with those keys to change as you like.
+
+### Animations
+- **Turning a bolt in your keys:** when a hand grips a part that turns about the bore, its key gets *Turns it* and *Turned* (degrees, 0 closed). The turn eases from key to key.
+- **They follow the gun:** a gripping hand waits for its part to catch up (a slide still running back, a bolt still turning) before the animation moves on, up to a second; a part that's stopped (at its stop, or stuck) doesn't hold it up. The hand stays on the part as it moves.
+
 ## 0.2.7-alpha
 
 ### Hand animations (Test bench > Pose > Animations)

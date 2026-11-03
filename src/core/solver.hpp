@@ -161,6 +161,8 @@ struct Sim {
     std::string animSlot;
     double animT = -1;
     size_t animKeysDone = 0;
+    double animWait = 0;                 // how long it has waited for a gripped part to catch up (follows the gun)
+    bool animTurning = false;            // it's turning a part (the bolt-turning grip is the animation's)
     struct { bool on = false; Body* b = nullptr; double t = 0, arm = 0; } rollHand;  // arm: lever (m) limiting the torque; 0 = no limit
     double handStrength = 150;           // N, the most force your hand applies
     bool magRelease = false;             // magazine release button held

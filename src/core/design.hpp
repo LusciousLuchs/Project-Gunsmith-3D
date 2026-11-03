@@ -264,9 +264,11 @@ struct AnimKey {
     HandHold firing, support;
     bool gripF = false, gripS = false;   // from here, the hand holds its part and moves it
     std::string event;                   // "" | "dropmag" (the magazine is let go) | "freshmag" (a new one goes in)
+    double turn = -1;                    // a gripped part that turns (a bolt): how far it's turned from closed, degrees
+                                         // (-1: the hand doesn't turn it)
 };
 struct Animation { std::vector<AnimKey> keys; };   // kept in time order
-struct AnimHands { HandHold firing, support; bool gripF = false, gripS = false; };
+struct AnimHands { HandHold firing, support; bool gripF = false, gripS = false; double turn = -1; };
 const char* holdName(int h);
 const char* holdKey(int h);
 double defaultHandAngle(const std::string& which, const std::string& style = "");   // firing, support, butt
@@ -286,7 +288,7 @@ struct Design {
     std::vector<JointDef> joints;
     BreechDef breech;
     Pose pose;                           // how it's held (nothing placed in older blueprints)
-    std::map<std::string, Animation> anims;   // by slot: "inspect", "reload", "reload_empty", "clear_jam", "control:<part id>"
+    std::map<std::string, Animation> anims;   // by slot: "work_action", "inspect", "reload", "reload_empty", "clear_jam", "control:<part id>"
     // where the blueprint came from (filled in when loading; saving always writes the current version)
     int format = 1;                      // blueprint format number (GUNSMITH_BLUEPRINT_FORMAT when saved)
     std::string savedWith;               // app version that saved it, "" for blueprints older than versioning

@@ -155,6 +155,7 @@ void setMode(Mode m);
 void restartTest();
 void fireDown();
 void spawnSpareMag();
+void workAction();                // the bench: work the action (your animation, or the plain way from the parts)
 void topUpMagazines();   // fill every magazine (T on the bench)
 void spawnBenchRound(bool quiet = false);  // put a loose round on the baseplate under the action
 void setTool(Tool t);

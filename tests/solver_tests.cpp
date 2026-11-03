@@ -1501,6 +1501,30 @@ static void handAnimations() {
     int out = 0;
     for (auto& b : L->bodies) if (b.isRound && !b.isCase && !b.gone && b.rs == sim::RS::Loose) out++;
     CHECK(out == 1 && L->chambered && L->malf == sim::Malf::None, "racking a loaded gun by hand throws the live round out and chambers the next");
+    // working the action without an animation: worked out from the parts, the way the reliability test works it
+    for (const char* P : {"boltaction", "pumpshotgun", "blowback"}) {
+        auto B = sim::build(loadPreset(P));
+        sim::run(*B, 0.3);
+        sim::setKey(*B, "fire", true); sim::run(*B, 0.05); sim::setKey(*B, "fire", false); sim::run(*B, 0.4);
+        Animation au = sim::autoWorkAction(*B);
+        B->design.anims["auto"] = au;
+        sim::Body* bolt = B->BR->root ? B->BR->root : B->BR;
+        double turned = 0;
+        sim::playAnim(*B, "auto");
+        while (sim::animPlaying(*B)) { sim::run(*B, 0.005); turned = std::max(turned, std::fabs(bolt->roll)); }
+        sim::run(*B, 0.4);
+        bool turns = std::string(P) == "boltaction";
+        CHECK(!au.keys.empty() && B->chambered && !B->spent && B->malf == sim::Malf::None && (!turns || turned > 80 * 3.14159 / 180),
+              (std::string("worked by hand without an animation, the ") + P + (turns ? " (its bolt turned up and down)" : "") + " has a fresh round in").c_str());
+    }
+    {   // a key's turn: eased between keys, only while the hand grips
+        Animation t;
+        AnimKey k0; k0.t = 0.2; k0.firing.on = true; k0.gripF = true; k0.turn = 0;
+        AnimKey k1 = k0; k1.t = 0.4; k1.turn = 90;
+        t.keys = {k0, k1};
+        double mid = animAt(d, t, 0.3).turn;
+        CHECK(mid > 30 && mid < 60 && animAt(d, t, 0.45).turn < 0, "a bolt's turn eases between keys, and stops when the hand lets go");
+    }
     Design old; designFromJson(designToJson(loadPreset("pump")), old);
     CHECK(old.anims.empty(), "older guns have no animations: the plain actions happen");
 }

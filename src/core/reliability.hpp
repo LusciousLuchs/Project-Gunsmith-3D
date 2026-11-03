@@ -40,6 +40,10 @@ struct ReliabilityReport {
 };
 
 // Runs headless; can take a while for many rounds, so `done` reports progress (rounds fired) and `cancel` stops it.
+// The plain way to work this gun's action (bolt, slide, lever, break-open...) as hand keys, worked out from its parts
+// the way the reliability test works it: for a slot with nothing recorded. Empty when there's nothing to work.
+Animation autoWorkAction(Sim& S);
+
 ReliabilityReport runReliability(const Design& d, const ReliabilityOptions& o, std::atomic<int>* done = nullptr,
                                  const std::atomic<bool>* cancel = nullptr);
 
