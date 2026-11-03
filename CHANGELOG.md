@@ -8,6 +8,32 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.6-alpha
+
+### Gas operation
+- **Firing > Gas > Add a gas port:** drill a port into any bore and pick the part the gas pushes. Long stroke (a piston welded to the carrier), short stroke (a tappet that hits it) and direct impingement (the carrier itself) all come from what you draw and connect: nothing is special-cased.
+- **The settings all matter**, measured on a free piston beside a 20-inch 5.56 bore:
+  - **Port at:** 180 mm gives 2.6 N s, 330 mm gives 1.7, 480 mm gives 1.3 (past the muzzle: nothing).
+  - **Port size:** 1.5 mm gives 1.2 N s, 3.5 mm gives 2.1.
+  - **Piston size** and **Gas stroke** (how far it moves before the gas escapes) push harder as they grow.
+  - **Push angle** turns the push off straight back.
+- **Tuned against real guns:** an AR-15-like setup gives its 300 g carrier 1.7 N s (5.8 m/s), and an AK-like one gives its 430 g piston and carrier 5.7 m/s. Real ones run at about 5 to 6 m/s.
+- The gas only arrives once the bullet passes the port, weakens as the bullet goes down the bore, dies away after it leaves, and thins out as the piston moves.
+- **Give the piston a spring** to bring it back: the gun then counts as self-loading on the bench and in the reliability test. The breech still has to be locked and unlocked by what you draw.
+- The **gas port** shows on the bore in the designer, with a line to the part it pushes. On the bench, the panel shows what the gas gave the piston on the last shot.
+- No example gun uses gas yet.
+
+### Open bolt
+- **Firing > Fire control > Open bolt** (built-in fire control): the sear holds the bolt or slide back, open. The trigger lets it go; it strips a round, chambers it and fires it as it closes.
+- In **semi** it's caught again on the way back. In **full-auto** it keeps running while you hold the trigger, and is caught when you let go. Burst works too.
+- **Sear catches at:** how far open it's held. Set it to 0 for just far enough back to pick up the next round. A bolt that doesn't come back that far after a shot stays closed; the reliability test calls that a failure to cock. Rack it to cock it again.
+- The gun starts held open with the chamber empty. The bench shows *bolt held open on the sear*, *bolt running* or *bolt closed*.
+- **Drawn parts:** a firing pin welded into the bolt face now fires the round when the bolt slams home, so you can also build an open bolt with your own sear.
+- Tested on the long-recoil example made open bolt: in semi, one shot per pull and the bolt held open; in full-auto, it fires while the trigger is held. 20 of 20 rounds in the reliability test, both ways.
+
+### Fixes
+- **Barrels sat a little off their bore,** across the gun. To stop overlapping faces flickering, each part was nudged sideways by 0.04 mm per place in the parts list, so a barrel added late to a big gun sat most of a millimetre off. Round parts are no longer nudged, and the nudge for the rest is now capped at 0.12 mm.
+
 ## 0.3.5-alpha
 
 ### A better mannequin

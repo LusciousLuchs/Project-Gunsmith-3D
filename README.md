@@ -162,6 +162,10 @@ The physics uses the curved outline too, so the shape you see is the shape that 
 - *Coil:* stiffness, free length, coil diameter, wire and turns. Compressed to its solid height it becomes a hard stop. A coil longer than four times its diameter needs a guide rod (draw a rod part and pick it), or it buckles and loses most of its force. Buckled springs show red.
 - *Leaf:* a flat spring clamped to one part that pushes on another and never pulls. Use it for triggers, sears and tight spaces where a coil won't fit.
 
+**Gas.** In Firing > Gas, drill a port into any bore and pick the part the gas pushes: a piston, a tappet, or the carrier itself. Where the port is, its size, the piston's size and how far it travels before the gas escapes all change the push. Give the piston a spring, and let it unlock the breech you drew.
+
+**Open bolt.** In Firing > Fire control (built in), Open bolt makes the sear hold the bolt back; the trigger lets it run forward, chamber a round and fire it as it closes.
+
 **Controls.** Mark a part as a button, lever or trigger (or *worked by hand*: the part a shooter grabs to work the action, like a pump's fore-end; the reliability test works the gun by it), bind it to a key (Space, M, 1-4), and set where the finger pushes and how hard. Join it with a pin or track and give it a spring so it returns. A trigger bound to FIRE must actually be pulled 2 mm before the gun fires. The magazine catch can be released by a button part instead of by magic.
 
 **Fire control.** Feeding, the bolt and extraction are always parts you design. The hammer or striker can be either:

@@ -87,7 +87,13 @@ void redo() {
 void toast(const std::string& t) { A.toast = t; A.toastT = 2.5f + t.size() / 40.f; }  // longer messages stay up longer
 
 float bodyDepth(const BodyDef& b) { return (float)std::max(1.0, b.thick) * U; }
-float bodyBias(int i) { return i * 0.004f; }
+// a hair's nudge in depth so two parts with faces in the same plane don't flicker through each other. Kept tiny and
+// bounded (it used to grow with every part: a barrel late in a big gun sat most of a millimetre off its bore), and none for
+// round parts, whose curved sides never share a plane with anything
+float bodyBias(int i) {
+    if (i < 0 || i >= (int)A.design.bodies.size() || A.design.bodies[i].round) return 0.f;
+    return (float)(i % 4) * 0.004f;
+}
 float bodyZ(int i) { return (float)A.design.bodies[i].z * U + bodyBias(i); }                       // centre in depth
 float bodyFront(int i) {   // the face toward you: handles sit on it, so a part can be shaped from either side
     float c = bodyZ(i), h = bodyDepth(A.design.bodies[i]) / 2;

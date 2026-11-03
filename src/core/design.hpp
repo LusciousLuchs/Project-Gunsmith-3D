@@ -222,6 +222,18 @@ struct ChamberDef {
     bool ownCart = false;                    // cut for its own cartridge (a barrel's); otherwise the breech's
     Cartridge cart;
 };
+// A gas port: a hole drilled into a bore. Once the bullet has passed it, gas from behind the bullet fills a cylinder and
+// pushes a piston, a part the player drew (a short-stroke tappet, a long-stroke rod welded to the carrier, or the carrier
+// itself, fed by a tube: direct impingement), until the piston has moved its stroke and the gas escapes.
+struct GasPortDef {
+    int chamber = 0;              // which bore (0 the first, then BreechDef::more)
+    double at = 100;              // mm from the breech face, along the bore
+    double portDia = 2.5;         // mm: a bigger hole fills the cylinder faster (more push)
+    std::string piston;           // the part the gas pushes ("" = nothing yet)
+    double pistonDia = 12;        // mm: the piston's face, its area times the gas pressure is the push
+    double stroke = 8;            // mm the piston moves before the gas gets past it and vents
+    double dir = 0;               // degrees the push is turned from straight back along the bore
+};
 struct BreechDef {
     bool on = false;
     std::string breech, chamber = "world";
@@ -252,6 +264,11 @@ struct BreechDef {
     double lockTime = 0;                 // ms from the trigger breaking to the shot
     std::vector<ChamberDef> more;        // further chambers (none in older blueprints)
     std::string fireOrder = "turn";      // with several chambers: "turn" fires the next loaded one per pull, "together" all at once
+    // Open bolt (built-in fire control): a sear holds the breech part back, open, once it has come back cockAt mm. The
+    // trigger lets it go; it runs forward, strips and chambers a round, and fires it as it closes (a fixed firing pin).
+    // In semi it's caught again on the way back; in auto it runs as long as the trigger is held.
+    bool openBolt = false;
+    std::vector<GasPortDef> gas;         // gas ports (none in older blueprints)
     bool fullAuto() const { return fireMode == "auto" || (autoFire && fireMode != "burst"); }
 };
 void applyCartridge(BreechDef& b);      // copy round size and impulse from the cartridge

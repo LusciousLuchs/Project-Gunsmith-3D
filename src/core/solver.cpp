@@ -188,6 +188,10 @@ static constexpr int MAX_SPAWNED = 200;  // magazines and loose rounds added dur
 static void reshapeRolled(Body& b);
 void resample(Body& b);
 std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S);
+double searPoint(const BreechDef& br) {   // mm open where an open bolt's sear holds it: by default, far enough back to pick up a round
+    if (br.cockAt > 0) return br.cockAt;
+    return br.physicalFeed ? br.cart.oal + 6 : br.feed + 2;   // (simplified feeding takes a round once open `feed` mm)
+}
 
 std::unique_ptr<Sim> build(const Design& design) {
     auto S = std::make_unique<Sim>();
@@ -440,6 +444,11 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
             if (s.STR == &s.world) s.STR = nullptr;
             if (s.STR) { s.strikerIgnition = true; s.strTip = anc(*s.STR, br.strikerTip); }
         }
+        s.gas.assign(br.gas.size(), Sim::GasRun());
+        for (size_t i = 0; i < br.gas.size(); i++) {
+            Body* p = s.find(br.gas[i].piston);
+            s.gas[i].P = p == &s.world ? nullptr : p;
+        }
     }
     for (auto& b : s.bodies) {  // controls bound to keys
         const BodyDef& d = *b.d;
@@ -456,6 +465,22 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         Body* br = s.BR->root ? s.BR->root : s.BR;
         for (auto& J : s.joints)
             if (J.type == JT::Spring && ((J.A->root ? J.A->root : J.A) == br || (J.B->root ? J.B->root : J.B) == br)) s.breechSprung = true;
+        for (auto& g : s.gas) {   // a gas piston with a spring to bring it back: the gun loads itself (the piston works the breech)
+            if (!g.P || g.P->fixed) continue;
+            Body* pr = g.P->root ? g.P->root : g.P;
+            for (auto& J : s.joints)
+                if (J.type == JT::Spring && ((J.A->root ? J.A->root : J.A) == pr || (J.B->root ? J.B->root : J.B) == pr)) s.breechSprung = true;
+        }
+    }
+    if (br.on && br.openBolt && !s.strikerIgnition && s.BR && s.hasFace && s.CH) {
+        // an open bolt starts as it would be carried: back on the sear, the chamber empty
+        Body& R = s.BR->root ? *s.BR->root : *s.BR;
+        V2 u = br.hasMuzzle ? V2{br.muzzle.x - br.face.x, br.muzzle.y - br.face.y} : V2{1, 0};
+        double l = std::hypot(u.x, u.y); if (l < 1e-9) { u = {1, 0}; l = 1; }
+        double back = (searPoint(br) + 0.5) / 1000;
+        R.x -= u.x / l * back; R.y -= u.y / l * back; R.px = R.x; R.py = R.y;
+        if (!R.pieces.empty()) placePieces(R);
+        s.chambered = false; s.searHeld = true; s.searUp = true;
     }
     return std::move(S);
 }
@@ -964,6 +989,72 @@ bool hasControl(const Sim& S, const std::string& key) {
     return false;
 }
 
+// ---------- gas ports ----------
+// The bullet starts near the case mouth and speeds up evenly to its muzzle velocity, so it passes the port at a known time.
+// Behind it the pressure falls the further it has gone (from about 2.3x the bore's average to a third of it at the muzzle),
+// and after it leaves the muzzle the bore empties in a fraction of a millisecond. From the moment it passes, gas flows
+// through the port into the piston's cylinder (a small port into a big cylinder fills it slowly), and the cylinder's
+// pressure on the piston's face pushes it, until it has moved its stroke and the gas escapes past it.
+static void gasForces(Sim& S) {
+    const BreechDef& br = S.design.breech;
+    for (size_t i = 0; i < br.gas.size() && i < S.gas.size(); i++) {
+        const GasPortDef& g = br.gas[i];
+        Sim::GasRun& R = S.gas[i];
+        if (!R.P || R.P->fixed) continue;
+        int k = std::clamp(g.chamber, 0, chamberCount(S) - 1);
+        double t0 = S.chambers.empty() ? S.fireT : S.chambers[k].shotT;
+        if (t0 < -1e8 || S.t < t0) continue;
+        if (R.shot != t0) { R.shot = t0; R.pc = 0; R.vol = 0; R.vented = false; R.impulse = 0; R.start = {R.P->x, R.P->y}; }
+        double tt = S.t - t0;
+        if (R.vented || tt > 0.02) continue;
+        useChamber(S, k);
+        const Cartridge& c = br.cart;   // (this bore's own, swapped in)
+        V2 face = k == 0 ? br.face : br.more[k - 1].face, muz = k == 0 ? br.muzzle : br.more[k - 1].muzzle;
+        bool hasMuz = k == 0 ? br.hasMuzzle : br.more[k - 1].hasMuzzle;
+        Body* CH = S.CH;
+        useChamber(S, 0);
+        if (!hasMuz || !CH) continue;
+        double Lb = std::hypot(muz.x - face.x, muz.y - face.y) / 1000, x0 = c.caseLen / 1000, Lt = std::max(0.01, Lb - x0);
+        double v = std::max(30.0, c.velocity * std::sqrt(std::max(0.1, S.powerScale)));
+        double m = c.bulletMass / 1000 * std::max(1, c.projectiles), dia = c.bulletDia / 1000, Ab = 3.14159265358979 * dia * dia / 4;
+        if (c.shot()) { m = c.pelletMass() / 1000 * std::max(1, c.projectiles); dia = c.baseDia * 0.92 / 1000; Ab = 3.14159265358979 * dia * dia / 4; }
+        if (Ab <= 0 || m <= 0) continue;
+        double Pavg = m * v * v / (2 * Lt * Ab), tex = 2 * Lt / v;
+        double xp = g.at / 1000 - x0;
+        const double b = 2.0, cN = b / (1 - std::exp(-b));
+        double Pport = 0;
+        if (g.at / 1000 <= Lb) {
+            double tp = xp <= 0 ? 0 : 2 * std::sqrt(xp * Lt) / v;   // when the bullet's base passes the port
+            if (tt >= tp && tt < tex) { double xb = (v * tt / (2 * Lt)) * (v * tt / (2 * Lt)); Pport = Pavg * cN * std::exp(-b * xb); }
+            else if (tt >= tex) Pport = Pavg * cN * std::exp(-b) * std::exp(-(tt - tex) / 0.0003);
+        }
+        // which way: back along the bore (as the part the bore is in now lies), turned by the port's angle
+        double ux = muz.x - face.x, uy = muz.y - face.y, ul = std::hypot(ux, uy);
+        ux /= ul; uy /= ul;
+        double ca = std::cos(CH->a), sa = std::sin(CH->a), wx = -(ux * ca - uy * sa), wy = -(ux * sa + uy * ca);
+        double dr = g.dir * D2R, dx = wx * std::cos(dr) - wy * std::sin(dr), dy = wx * std::sin(dr) + wy * std::cos(dr);
+        double trav = ((R.P->x - R.start.x) * dx + (R.P->y - R.start.y) * dy) * 1000;
+        if (trav >= g.stroke) { R.vented = true; R.pc = 0; continue; }
+        // the cylinder: a millimetre of room behind the piston to start with, growing as it moves. Gas flows in (or back
+        // out) through the port at a rate set by the port's size and the difference in pressure; the same gas in a
+        // bigger space pushes less.
+        double Ap = 3.14159265358979 * (g.pistonDia / 1000) * (g.pistonDia / 1000) / 4, Ao = 3.14159265358979 * (g.portDia / 1000) * (g.portDia / 1000) / 4;
+        double V = Ap * (0.001 + std::max(0.0, trav) / 1000), Vprev = R.vol > 0 ? R.vol : V;
+        {   // the bore's gas shared with the cylinder: a big cylinder draws the bore down (the bullet's base, or the muzzle)
+            double xb = tt < tex ? x0 + Lt * (v * tt / (2 * Lt)) * (v * tt / (2 * Lt)) : Lb;
+            double Vb = Ab * xb;
+            Pport *= Vb / (Vb + V);
+        }
+        double PV = R.pc * Vprev + 60.0 * Ao * (Pport - R.pc) * H;   // (60: set so an AR-15 or AK carrier leaves at about 6 m/s, as real ones do)
+        R.vol = V;
+        R.pc = std::max(0.0, PV / V);
+        double F = R.pc * Ap;
+        R.P->fx += dx * F; R.P->fy += dy * F;
+        if (!CH->fixed) { CH->fx -= dx * F; CH->fy -= dy * F; }
+        R.impulse += F * H;
+    }
+}
+
 // ---------- step ----------
 void substep(Sim& S) {
     const BreechDef& br = S.design.breech;
@@ -1042,6 +1133,7 @@ void substep(Sim& S) {
         b.fx -= cx * F; b.fy -= cy * F; b.tq -= rx * cy * F - ry * cx * F;
     }
     useChamber(S, 0);
+    gasForces(S);
     if (S.rollHand.on && S.rollHand.b && S.rollHand.b->invIr > 0) {
         Body& b = *S.rollHand.b;
         double om = 2 * 3.14159265358979323846 * 5;
@@ -1071,6 +1163,17 @@ void substep(Sim& S) {
         double c = std::cos(b.pa), s = std::sin(b.pa);
         for (Body* p : b.pieces) { p->px = b.px + c * p->off.x - s * p->off.y; p->py = b.py + s * p->off.x + c * p->off.y; p->pa = b.pa + p->aOff; }
         placePieces(b);
+    }
+    // an open bolt held back by its sear: it can't come forward past it (it can be pulled further back)
+    if (S.searHeld && br.openBolt && S.BR && S.hasFace && S.CH) {
+        double gap = breechGap(S), at = searPoint(br);
+        if (gap < at) {
+            V2 a = wpt(*S.BR, S.faceB), c = wpt(*S.CH, S.faceC);
+            double ux = br.hasMuzzle ? br.muzzle.x - br.face.x : 1, uy = br.hasMuzzle ? br.muzzle.y - br.face.y : 0, ul = std::hypot(ux, uy);
+            if (ul < 1e-9) { ux = 1; uy = 0; ul = 1; }
+            double ca = std::cos(S.CH->a), sa = std::sin(S.CH->a), nx = -(ux * ca - uy * sa) / ul, ny = -(ux * sa + uy * ca) / ul;
+            solve(*S.BR, *S.CH, a, c, nx, ny, (at - gap) / 1000);
+        }
     }
     // geometric joints. An action lock holds before anything else is solved, so a shot can't shove what it holds (and
     // through it, whatever is linked to it) before the lock has caught it.
@@ -1300,7 +1403,13 @@ void substep(Sim& S) {
                 if (dk < d) { d = dk; hit = k; }
             }
             useChamber(S, hit);
-            double vx = st.vx - st.w * ry - S.BR->vx, vy = st.vy + st.w * rx - S.BR->vy;
+            // against the bolt it rides in; a firing pin fixed in the bolt face (an open bolt's) strikes as the bolt does
+            const Body* stR = st.root ? st.root : &st;
+            const Body* brR = S.BR->root ? S.BR->root : S.BR;
+            const Body& ref = stR == brR ? *S.CH : *S.BR;
+            double sx = tip.x - stR->x, sy = tip.y - stR->y;   // (a welded-on piece moves as its assembly does)
+            double vx = stR->vx - stR->w * sy - ref.vx, vy = stR->vy + stR->w * sx - ref.vy;
+            (void)rx; (void)ry;
             if (d > 0.004) S.primed = true;
             if (S.primed && d < 0.0012 && std::hypot(vx, vy) > br.igniteSpeed && S.t > S.fireT + dur * 2) {
                 S.primed = false;
@@ -1308,6 +1417,37 @@ void substep(Sim& S) {
                 else if (inBattery(S)) S.events.push_back({Ev::Click, S.t});
             }
             useChamber(S, 0);
+        } else if (br.openBolt) {
+            // An open bolt: the trigger lets the bolt off the sear; it fires the round it closes on.
+            bool burst = br.fireMode == "burst", full = br.fullAuto();
+            double at = searPoint(br);
+            if (!S.trigger) S.pressed = false;   // (a pull is kept until it's acted on, or the trigger is let go)
+            bool fresh = S.pressed;
+            bool pulled = true;
+            for (auto& p : S.pushers) {  // a trigger part bound to FIRE has to be pulled 2 mm first
+                if (p.key != "fire") continue;
+                V2 w = wpt(*p.b, p.l), w0{p.b->x0 + p.l.x, p.b->y0 + p.l.y};
+                pulled = (w.x - w0.x) * p.dx + (w.y - w0.y) * p.dy >= 0.002;
+                break;
+            }
+            if (S.searHeld && pulled && (fresh || (S.trigger && full)) && S.t > S.fireT + dur * 2) {
+                S.searHeld = false; S.boltFree = true; S.searUp = false; S.homeT = -1; S.pressed = false;
+                if (burst) S.burstLeft = std::max(1, br.burst);
+            }
+            if (S.boltFree && inBattery(S)) {
+                if (S.chambered && S.t > S.fireT + dur * 2) {
+                    fireChamber(S);
+                    if (burst) S.burstLeft--;
+                    bool more = S.trigger && (full || (burst && S.burstLeft > 0));
+                    if (!more) { S.boltFree = false; S.searUp = true; }
+                    S.homeT = -1;
+                } else if (!S.chambered) {   // home on nothing (or nothing fed in time): it stays closed
+                    if (S.homeT < 0) S.homeT = S.t;
+                    else if (S.t - S.homeT > 0.003) { S.boltFree = false; S.searUp = true; S.homeT = -1; S.events.push_back({Ev::Click, S.t}); }
+                }
+            }
+            if (S.boltFree && !S.trigger && (full || burst)) S.searUp = true;   // let go: the sear comes up for the next return
+            if (S.searUp && !S.searHeld && gap >= at) { S.searHeld = true; S.boltFree = false; }
         } else {
             // The built-in hammer or striker: no parts, but the action must open far enough to cock it again.
             if (br.cockAt <= 0 || gap >= br.cockAt) S.cocked = true;

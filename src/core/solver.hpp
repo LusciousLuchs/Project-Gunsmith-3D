@@ -193,6 +193,14 @@ struct Sim {
     int burstLeft = 0;                   // shots left in this burst
     double igniteAt = -1;                // when the falling hammer reaches the primer (s); -1 = not falling
     bool deadPull = false;               // the last pull found it down (single action): the trigger did nothing
+    // an open bolt (BreechDef::openBolt): the sear holds the breech part back; let go, it runs and fires as it closes
+    bool searHeld = false;               // the sear has the bolt
+    bool searUp = true;                  // the sear will catch the bolt as it comes back past it
+    bool boltFree = false;               // let go by the trigger: it fires when it closes on a round
+    double homeT = -1;                   // when it got home with nothing to fire (a moment's grace for the round to seat)
+    // gas ports (BreechDef::gas): the gas in each piston's cylinder since its bore last fired
+    struct GasRun { Body* P = nullptr; double pc = 0, vol = 0, shot = -1e9, impulse = 0; V2 start; bool vented = false; };
+    std::vector<GasRun> gas;
     bool gripped = false;                // the extractor has the chambered round (the breech closed on it)
     // physical feeding: rounds come up under the magazine lips, are stripped, ride the feed ramp, enter the chamber
     // only if they arrive straight, and are pulled out by the extractor and kicked clear by an ejector you draw

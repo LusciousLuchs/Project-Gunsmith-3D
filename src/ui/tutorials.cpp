@@ -404,6 +404,7 @@ static const std::vector<Lesson>& lessons() {
         Step("Two ways to fire", "Built in: no hammer to draw, but the action still has to cock it. Drawn parts: you build the striker or hammer, the sear and the trigger yourself.").at("firing:control").onTab(2),
         Step("Built in", "Switch to Built in. You can then pick semi-auto, full-auto or burst.").check(builtIn, "Choose Built in").at("firing:control").onTab(2),
         Step("Drawn parts", "In this pistol the sear holds the striker back until the trigger pushes it free. Every piece is a real part.").show("sear"),
+        Step("Open bolt", "Built in also offers Open bolt: the sear holds the bolt back, and the trigger lets it fly forward to strip, chamber and fire a round as it closes. Most submachine guns work this way.").at("firing:control").onTab(2),
         Step("Fire it", "Pull the trigger.").check(fired, "Fire (Space)").at("fire").bench(),
     }},
     {"operating", "Locking the breech", "Why strong rounds need the breech locked, and one way to do it.", "tilting", {
@@ -412,6 +413,7 @@ static const std::vector<Lesson>& lessons() {
         Step("Unlocking", "Then this fixed pin, riding in a slot in the barrel, pulls the barrel down and unlocks it. No special joint: just shapes.").show("xpin"),
         Step("Watch it", "Fire, and watch the barrel drop in slow motion.").check(fired, "Fire (Space)").at("fire").bench(),
         Step("Other ways", "Rifles often turn the bolt to lock it. Try the bolt-action example from Open in the top bar: drag its handle up and back.").at("file:open"),
+        Step("Gas", "A locked breech needs something to open it after the shot. Firing > Gas drills a port in the bore: the gas behind the bullet pushes a part you drew (a piston, or the carrier itself) until it has moved its stroke. Give that part a spring to bring it back, and let it unlock the breech.").at("firing:gas").onTab(2),
     }},
     {"bench", "The test bench", "Work the gun by hand, load it, fire it, clear jams.", "blowback", {
         Step("Hands on", "On the bench everything moves for real. Drag any moving part: rack the slide, pull the trigger, pick up rounds.").bench(),

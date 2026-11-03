@@ -1261,6 +1261,15 @@ static void firingTab() {
             int hk = br.hammer == "hammer" ? 1 : 0;
             prop("Type", "Only changes the wording on the bench.");
             if (ImGui::Combo("##hk", &hk, "Striker\0Hammer\0")) { br.hammer = hk ? "hammer" : "striker"; editedAny = true; }
+            pCheck("Open bolt", br.openBolt, "Fires from an open bolt: the sear holds the bolt (or slide) back, open. The trigger lets it go;\n"
+                                             "it runs forward, strips a round, chambers it and fires it as it closes (a firing pin fixed in its face).\n"
+                                             "In semi it's caught again on the way back; in full-auto it keeps running while you hold the trigger.\n"
+                                             "It has to come back past the sear after each shot, or it stays closed (rack it).");
+            if (br.openBolt) {
+                pNumU("Sear catches at", br.cockAt, 0.5, Q::Length, 1,
+                      "How far open the sear holds the bolt. 0: just far enough back to pick up the next round.\n"
+                      "The bolt must come back at least this far after a shot to be caught.");
+            } else
             pNumU("Cocks after", br.cockAt, 0.5, Q::Length, 1,
                   "How far the bolt or slide must open to cock it again. The shot is only ready once the action\n"
                   "has cycled at least this far. 0 means it is always cocked.");
@@ -1273,9 +1282,10 @@ static void firingTab() {
                 double b = br.burst;
                 if (pNum("Shots per burst", b, 1, "%.0f")) br.burst = std::clamp((int)std::lround(b), 2, 10);
             }
+            if (!br.openBolt)
             pCheck("Double action", br.doubleAction, "Pulling the trigger cocks and drops it, so it also fires when it wasn't cocked\n"
                                                      "(revolvers, double-action pistols).");
-            pNum("Lock time", br.lockTime, 0.1, "%.1f ms", "Time from the trigger breaking to the shot, while the hammer or striker falls.");
+            if (!br.openBolt) pNum("Lock time", br.lockTime, 0.1, "%.1f ms", "Time from the trigger breaking to the shot, while the hammer or striker falls.");
             br.lockTime = std::max(0.0, br.lockTime);
         } else {
             prop("Hits the primer");
@@ -1286,8 +1296,62 @@ static void firingTab() {
             if (br.striker.empty()) warn("Choose the striker or firing pin part.");
             pNumU("Needs speed", br.igniteSpeed, 0.1, Q::Velocity, 1, "The tip must reach the primer at least this fast.");
             if (ImGui::Button("Place the tip", {-1, 0})) A.tool = Tool::StrikerTip;
-            muted("Semi or full-auto is up to your parts: the sear, disconnector and trigger you draw.");
+            muted("Semi or full-auto is up to your parts: the sear, disconnector and trigger you draw. For an open bolt, draw a sear that holds the bolt back and a firing pin welded into the bolt face: it fires as the bolt slams home.");
         }
+    }
+    if (section("Gas", !br.gas.empty())) {
+        muted("A port drilled into the bore lets gas out behind the bullet to push a part you drew: a short-stroke tappet, "
+              "a long-stroke piston welded to the carrier, or the carrier itself (direct impingement). It pushes until the "
+              "piston has moved its stroke and the gas escapes. Give the piston a spring to bring it back.");
+        int remove = -1;
+        for (size_t gi = 0; gi < br.gas.size(); gi++) {
+            GasPortDef& g = br.gas[gi];
+            ImGui::PushID((int)gi);
+            heading(br.gas.size() > 1 ? ("Gas port " + std::to_string(gi + 1)).c_str() : "Gas port");
+            if (!br.more.empty()) {
+                int ch = g.chamber;
+                prop("Bore");
+                std::string cur = ch == 0 ? "1 (the first)" : std::to_string(ch + 1);
+                if (ImGui::BeginCombo("##gb", cur.c_str())) {
+                    for (int k = 0; k <= (int)br.more.size(); k++)
+                        if (ImGui::Selectable(k == 0 ? "1 (the first)" : std::to_string(k + 1).c_str(), ch == k)) { g.chamber = k; editedAny = true; }
+                    ImGui::EndCombo();
+                }
+            }
+            int k = std::clamp(g.chamber, 0, (int)br.more.size());
+            V2 f = k == 0 ? br.face : br.more[k - 1].face, mz = k == 0 ? br.muzzle : br.more[k - 1].muzzle;
+            double L = std::hypot(mz.x - f.x, mz.y - f.y);
+            pNumU("Port at", g.at, 1, Q::Length, 0, "How far along the bore from the breech face. Nearer the chamber the gas is hotter and\n"
+                                                    "stronger (and comes sooner); nearer the muzzle, weaker. Past the muzzle: nothing.");
+            g.at = std::max(0.0, g.at);
+            if (L > 1) muted("The bore is %s long.", fmtQ(Q::Length, L, 0).c_str());
+            if (L > 1 && g.at > L) warn("The port is past the muzzle: no gas reaches it.");
+            pNumU("Port size", g.portDia, 0.1, Q::Length, 1, "The hole's diameter. Bigger lets the gas fill the cylinder faster: a harder push.");
+            g.portDia = std::clamp(g.portDia, 0.3, 10.0);
+            prop("Pushes", "The part the gas drives: the piston, or the carrier itself.");
+            if (ImGui::BeginCombo("##gp", g.piston.empty() ? "Choose..." : bname(g.piston).c_str())) {
+                for (auto& o : D.bodies) if (!o.fixed && !o.magazine && ImGui::Selectable((o.name + "##g" + o.id).c_str(), g.piston == o.id)) { g.piston = o.id; editedAny = true; }
+                ImGui::EndCombo();
+            }
+            if (g.piston.empty()) warn("Choose the part the gas pushes.");
+            pNumU("Piston size", g.pistonDia, 0.1, Q::Length, 1, "The piston's diameter: the gas pressure on its face is the push. Bigger pushes harder.");
+            g.pistonDia = std::clamp(g.pistonDia, 2.0, 60.0);
+            pNumU("Gas stroke", g.stroke, 0.5, Q::Length, 1, "How far the piston moves before the gas gets past it and escapes. Longer: a longer push.");
+            g.stroke = std::clamp(g.stroke, 0.5, 300.0);
+            pNum("Push angle", g.dir, 1, "%.0f\xc2\xb0", "Which way the gas pushes, turned from straight back along the bore. 0: straight back.");
+            if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+            if (ImGui::Button("Remove this port", {-1, 0})) remove = (int)gi;
+            ImGui::PopID();
+        }
+        if (remove >= 0) { br.gas.erase(br.gas.begin() + remove); editedAny = true; }
+        if (ImGui::Button("Add a gas port", {-1, 0})) {
+            GasPortDef g;
+            double L = br.hasMuzzle ? std::hypot(br.muzzle.x - br.face.x, br.muzzle.y - br.face.y) : 200;
+            g.at = std::round(L * 0.6);
+            br.gas.push_back(g);
+            editedAny = true;
+        }
+        tutAnchor("firing:gas");
     }
     ImGui::Dummy({0, 6 * S()});
     if (dangerButton("Remove firing system", {-1, 0})) { br.on = false; commit(); }

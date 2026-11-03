@@ -375,11 +375,20 @@ void testPanel() {
     else if (S.feedMode == "internal") line += "   \xC2\xB7   " + std::to_string(S.rounds) + " left";
     if (S.hasFace && !S.magTmpl) line += "   \xC2\xB7   " + std::to_string(sim::looseRounds(S)) + " on the bench";
     const auto& br = S.design.breech;
-    if (!S.strikerIgnition && br.cockAt > 0)  // the built-in hammer or striker
+    if (!S.strikerIgnition && br.openBolt)    // an open bolt: held back on the sear, or running
+        line += std::string("   \xC2\xB7   ") + (S.searHeld ? "bolt held open on the sear" : S.boltFree ? "bolt running" : "bolt closed (rack it to cock)");
+    else if (!S.strikerIgnition && br.cockAt > 0)  // the built-in hammer or striker
         line += std::string("   \xC2\xB7   ") + (br.hammer == "hammer" ? "hammer " : "striker ") + (S.cocked ? "cocked" : "down");
     ImGui::TextDisabled("%s", line.c_str());
 
     // ---- more numbers for those who want them (Settings > Interface > Statistics)
+    for (size_t gi = 0; gi < S.gas.size(); gi++)   // what the gas gave its piston on the last shot
+        if (S.gas[gi].impulse > 0) {
+            const sim::Body* P = S.gas[gi].P;
+            double m = P ? (P->root ? P->root->m : P->m) : 0;
+            ImGui::TextDisabled("%s: %.2f N s last shot%s", S.gas.size() > 1 ? ("Gas port " + std::to_string(gi + 1)).c_str() : "Gas",
+                                S.gas[gi].impulse, m > 0 ? TextFormat(" (about %.1f m/s to the piston)", S.gas[gi].impulse / m) : "");
+        }
     if (detail(StatsDetail::Standard)) {
         heading("Details");
         if (S.shots > 0) {

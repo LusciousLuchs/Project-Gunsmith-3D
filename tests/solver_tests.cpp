@@ -1712,6 +1712,63 @@ static void poseAndGunMoves() {
     Animation ins = defaultInspect(d);
     CHECK(!ins.keys.empty() && gunMoved(ins.keys[0].gun), "a gun with no inspect animation is still looked over");
 }
+// a free piston beside a rifle bore, pushed by a gas port: what it gets from one shot
+static double gasShot(const char* cart, double barrel, double at, double port, double pdia, double stroke, double mass) {
+    Design d = loadPreset("blank");
+    d.bodies.clear(); d.joints.clear();
+    auto rect = [](std::string id, double x0, double y0, double x1, double y1, bool fixed, double m) {
+        BodyDef b; b.id = id; b.name = id; b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}; b.fixed = fixed; b.mass = m; b.thick = 10; b.layer = "ABC"; fixShape(b); return b; };
+    d.bodies.push_back(rect("barrel", 0, -6, barrel, 6, true, 0));
+    d.bodies.push_back(rect("brk", -30, -6, 0, 6, true, 0));
+    d.bodies.push_back(rect("car", 100, 20, 160, 32, false, mass));
+    JointDef t; t.type = "track"; t.a = "car"; t.b = "world"; t.p = {130, 26}; t.path = {{130, 26}, {-300, 26}}; t.lockRot = true; d.joints.push_back(t);
+    BreechDef& br = d.breech; br.on = true; br.breech = "brk"; br.chamber = "barrel"; br.hasFace = true; br.face = {0, 0}; br.hasMuzzle = true; br.muzzle = {barrel, 0};
+    for (auto& c : cartridgePresets()) if (c.name == cart) br.cart = c;
+    br.cartImpulse = true; applyCartridge(br); br.loaded = true; br.feedMode = "single"; br.ignition = "button"; br.cockAt = 0;
+    GasPortDef g; g.at = at; g.portDia = port; g.piston = "car"; g.pistonDia = pdia; g.stroke = stroke; br.gas.push_back(g);
+    auto S = sim::build(d);
+    sim::run(*S, 0.05);
+    S->pressed = true; S->trigger = true;
+    sim::run(*S, 0.02);
+    return S->gas.empty() ? 0 : S->gas[0].impulse;
+}
+static void gasAndOpenBolt() {
+    std::printf("gasAndOpenBolt\n");
+    // gas: an AR-15-like setup gives its 300 g carrier what a real one gets (about 1.6 N s, 5 to 6 m/s)
+    double ar = gasShot("5.56x45mm", 508, 330, 2.4, 12.7, 3.5, 300);
+    std::printf("  (AR-15-like carrier: %.2f N s)\n", ar);
+    CHECK(ar > 1.3 && ar < 2.1, "a rifle's gas port pushes its carrier about as hard as a real one");
+    CHECK(gasShot("5.56x45mm", 508, 330, 1.5, 12.7, 3.5, 300) < ar && gasShot("5.56x45mm", 508, 330, 3.5, 12.7, 3.5, 300) > ar, "a bigger port pushes harder");
+    CHECK(gasShot("5.56x45mm", 508, 180, 2.4, 12.7, 3.5, 300) > ar && gasShot("5.56x45mm", 508, 480, 2.4, 12.7, 3.5, 300) < ar, "nearer the chamber pushes harder, nearer the muzzle softer");
+    CHECK(gasShot("5.56x45mm", 508, 330, 2.4, 12.7, 1.5, 300) < ar, "a shorter stroke vents sooner");
+    CHECK(gasShot("5.56x45mm", 508, 600, 2.4, 12.7, 3.5, 300) == 0, "a port past the muzzle gets nothing");
+    // saved with the gun; older blueprints have none
+    {
+        Design d = loadPreset("pump");
+        CHECK(d.breech.gas.empty() && !d.breech.openBolt, "older guns have no gas ports and a closed bolt");
+        GasPortDef g; g.at = 150; g.portDia = 3; g.piston = "bar"; g.pistonDia = 14; g.stroke = 20; g.dir = 5;
+        d.breech.gas.push_back(g); d.breech.openBolt = true;
+        Design back; designFromJson(designToJson(d), back);
+        CHECK(back.breech.openBolt && back.breech.gas.size() == 1 && back.breech.gas[0].piston == "bar" && back.breech.gas[0].pistonDia == 14 && back.breech.gas[0].dir == 5, "gas ports and the open bolt are saved");
+    }
+    // open bolt: the long-recoil gun made to fire from an open bolt
+    for (const char* mode : {"semi", "auto"}) {
+        Design d = loadPreset("longrecoil");
+        d.breech.openBolt = true; d.breech.fireMode = mode;
+        auto S = sim::build(d);
+        sim::run(*S, 0.2);
+        CHECK(S->searHeld && !S->chambered && sim::breechGap(*S) > 20, "an open bolt starts held back, the chamber empty");
+        S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true);
+        sim::run(*S, std::string(mode) == "auto" ? 0.25 : 0.08);
+        S->trigger = false; sim::setKey(*S, "fire", false);
+        sim::run(*S, 0.2);
+        if (std::string(mode) == "semi") CHECK(S->shots == 1 && S->searHeld, "semi: one shot per pull, then the sear holds the bolt open again");
+        else CHECK(S->shots >= 3 && S->searHeld, "full-auto: it keeps firing while the trigger is held, and is caught when it's let go");
+        sim::ReliabilityOptions o; o.rounds = 20;
+        auto R = sim::runReliability(d, o);
+        CHECK(R.fired == 20 && R.jams == 0, "it shoots 20 rounds without a stoppage");
+    }
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -1785,6 +1842,7 @@ int main() {
     engravings();
     controlButtons();
     poseAndGunMoves();
+    gasAndOpenBolt();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

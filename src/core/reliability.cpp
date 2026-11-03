@@ -305,7 +305,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         R.attempts++;
         if (S.shots == before) {
             if (wasChambered) {  // the trigger fell on a chambered round and nothing happened
-                record(S.deadPull ? Malf::FailureToCock : Malf::LightStrike);
+                record(S.deadPull || (S.design.breech.openBolt && !S.strikerIgnition && !S.searHeld) ? Malf::FailureToCock : Malf::LightStrike);
                 run_.cycle();     // work the action to get rid of the dud
             } else if (S.malf == Malf::None) {
                 chamberNext();

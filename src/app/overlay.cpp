@@ -74,6 +74,27 @@ void drawOverlay() {
         { Vector2 s = toScreen(W3(c.face, frontZ(c.breech.empty() ? br.breech : c.breech))); if (!fromBarrels) A.handles.push_back({s, 5, (int)k, -1}); label(s, ("Breech face " + n).c_str(), Color{255, 122, 89, 255}); }
         if (c.hasMuzzle) { Vector2 s = toScreen(W3(c.muzzle, frontZ(c.chamber))); if (!fromBarrels) A.handles.push_back({s, 6, (int)k, -1}); label(s, ("Muzzle " + n).c_str(), Color{255, 122, 89, 255}); }
     }
+    if (br.on) for (size_t gi = 0; gi < br.gas.size(); gi++) {   // gas ports: on the bore, a line to the piston they push
+        const GasPortDef& g = br.gas[gi];
+        int k = std::clamp(g.chamber, 0, (int)br.more.size());
+        V2 f = k == 0 ? br.face : br.more[k - 1].face, mz = k == 0 ? br.muzzle : br.more[k - 1].muzzle;
+        bool hm = k == 0 ? br.hasMuzzle : br.more[k - 1].hasMuzzle;
+        if (!hm) continue;
+        double L = std::hypot(mz.x - f.x, mz.y - f.y);
+        if (L < 1) continue;
+        V2 p{f.x + (mz.x - f.x) / L * g.at, f.y + (mz.y - f.y) / L * g.at};
+        const std::string& chId = k == 0 ? br.chamber : br.more[k - 1].chamber;
+        Vector2 s = toScreen(W3(p, frontZ(chId) + 0.1f));
+        Color gc{120, 200, 255, 255};
+        DrawCircleV(s, 4.5f, gc);
+        int pi = D.bodyIndex(g.piston);
+        if (pi >= 0) {
+            Vector2 t = toScreen(W3(centroidOf(D.bodies[pi]), frontZ(g.piston)));
+            DrawLineEx(s, t, 1.5f, Color{gc.r, gc.g, gc.b, 140});
+            DrawCircleLinesV(t, 6, gc);
+        }
+        label(s, br.gas.size() > 1 ? ("Gas port " + std::to_string(gi + 1)).c_str() : "Gas port", gc);
+    }
     for (auto& h : A.handles)   // the handle picked: a second press drags it
         if (h.kind != 0 && h.kind != 7 && h.kind == A.armedKind && h.i == A.armedI && h.v == A.armedV) DrawCircleLinesV(h.s, 9, Color{255, 205, 60, 255});
     if (A.axisLock && (A.dragKind == 1 || A.dragKind == 2)) {  // which way a drag is held to

@@ -958,6 +958,13 @@ std::string designToJson(const Design& d, bool pretty) {
             jb["more"] = a;
             jb["fireOrder"] = r.fireOrder;
         }
+        if (r.openBolt) jb["openBolt"] = true;
+        if (!r.gas.empty()) {
+            json g = json::array();
+            for (auto& p : r.gas)
+                g.push_back({{"chamber", p.chamber}, {"at", p.at}, {"portDia", p.portDia}, {"piston", p.piston}, {"pistonDia", p.pistonDia}, {"stroke", p.stroke}, {"dir", p.dir}});
+            jb["gas"] = g;
+        }
         o["breech"] = jb;
     } else o["breech"] = nullptr;
     {
@@ -1238,6 +1245,16 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 r.more.push_back(c);
             }
         r.fireOrder = opt<std::string>(jb, "fireOrder", "turn") == "together" ? "together" : "turn";
+        r.openBolt = opt<bool>(jb, "openBolt", false);
+        if (jb.contains("gas") && jb["gas"].is_array())
+            for (auto& jg : jb["gas"]) {
+                if (!jg.is_object()) continue;
+                GasPortDef p;
+                p.chamber = std::max(0, opt<int>(jg, "chamber", 0)); p.at = opt<double>(jg, "at", 100.0); p.portDia = opt<double>(jg, "portDia", 2.5);
+                p.piston = opt<std::string>(jg, "piston", ""); p.pistonDia = opt<double>(jg, "pistonDia", 12.0);
+                p.stroke = opt<double>(jg, "stroke", 8.0); p.dir = opt<double>(jg, "dir", 0.0);
+                r.gas.push_back(p);
+            }
         if (r.cartImpulse) applyCartridge(r);
     }
     auto readHand = [&](const json& jh, HandHold& h, const char* which) {
