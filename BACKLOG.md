@@ -15,7 +15,7 @@ What's there already is noted; the rest is new work.
 - **Extrude**: exists for edges (Shift-drag an edge's diamond). Could add extruding a whole face in depth.
 - [x] **Bevel**: corners can be rounded (Round corners) or cut flat (Chamfer, 0.2.2); front and back edges softened (Smoothness). Still new: a flat bevel on the front and back edges.
 - [x] **Boolean**: Merge, Keep overlap and Cut away between two parts (0.2.2). Carve still makes cuts partway in and holes.
-- **Mirror and asymmetry**: the Mirror tool and *Copy to the other side* exist. Still new: a live mirror (edit one side, the other follows, with a switch to break it).
+- [x] **Mirror and asymmetry**: the Mirror tool and *Copy to the other side*. A live mirror (one side follows the other) was considered and dropped by the owner.
 - [x] **Coordinates**: X, Y, Z for corners, cuts, and now a whole part's position (0.2.2). Could add them for joints.
 - [x] **Merge**: Weld makes parts move as one; Merge makes two parts one outline (0.2.2).
 - [x] **Measurements**: the workbench ruler, and the Measure tool (0.2.2).
