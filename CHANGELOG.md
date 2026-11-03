@@ -8,6 +8,28 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.0-alpha
+
+### The firing range
+- **Firing range** on the main menu is open. Choose where to shoot (the practice range, the map in your map editor, or a saved map), then which gun: your sandbox design, an example, or a saved blueprint.
+- **Your gun in your hands, working for real.** It's the same simulation as the test bench: the parts move, rounds feed and extract, cases fly out, and a gun that jams on the bench jams here.
+- **Controls:** left mouse fires, right mouse aims, R reloads (and racks a round in if the gun was empty), B works the action (your *Work the action* animation, or one made from your parts), M and your control keys as on the bench. WASD, Shift to sprint, C crouch, Z prone, Q/E lean, Esc for the menu.
+- **Aiming** uses your pose: the eye where you posed it, looking over the top of the gun. Guns are sighted in at 25 m (held in one hand) or 100 m (against the shoulder).
+- **Real shots:** each bullet, or each pellet from a shotshell, flies from the muzzle along the bore at the cartridge's speed, dropping with gravity and slowed by the air, and leaves a mark where it lands. The practice range has paper targets that score rings (*Hit: 9 at 15 m*) and steel plates that ring.
+- **Recoil and weight:** the kick comes from the cartridge's push against the gun's weight, and is stronger in one hand than in the shoulder. A heavy gun comes up to aim more slowly and trails behind when you turn.
+- Limits for now: no hands or arms are drawn in first person, the gun can poke through walls, and spent cases vanish soon after they fly out.
+
+### Discord
+- A **Discord** button on the main menu opens the invite to the community server.
+
+### Opening blueprints
+- **Open** now opens a window: your saved blueprints (newest first, with a search box) and the examples. Pick one to see what it is (parts, cartridge, how it's held, when it was saved), then **Open**, **Rename** or **Delete** it (Delete asks first). Double-click opens straight away.
+
+### Tutorials
+- **The building tools**: one big lesson replacing the five small ones (drawing, carving, depth, joints, springs). It goes through every tool in turn: Select, Rectangle, Polygon, Circle, Barrel, corners and edges, rounding, the part's settings, round parts, finishes, Faces, shaping in depth, Knife, Mirror, Measure, Carve, Engrave, Pin, Weld, Track, Spring, copying and the parts library.
+- **Posing and animations**: a new lesson on Pose mode, the three holds, the fingers, and recording animations: keys, gripping parts, magazine moments, playing them on the gun, and using them with R and B.
+- The test bench lesson ends with a pointer to the firing range.
+
 ## 0.2.20-alpha
 
 ### Gun finishes

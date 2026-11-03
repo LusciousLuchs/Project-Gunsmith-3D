@@ -138,7 +138,9 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
         pNum("Angle", h.angle, 1, "%.0f\xc2\xb0", "The line the fingers wrap round (the butt pad's line, for the butt). 0 points at the muzzle, 90 straight down.\nOr drag the dot at the end of its green line.");
         int bi = A.design.bodyIndex(h.part);
         ImGui::TextDisabled("On: %s", bi >= 0 ? (A.design.bodies[bi].name.empty() ? h.part.c_str() : A.design.bodies[bi].name.c_str()) : "nothing");
-        if (std::string(which) != "butt" && ImGui::TreeNode("Fingers")) {
+        bool fingersOpen = std::string(which) != "butt" && ImGui::TreeNode("Fingers");
+        if (std::string(which) == "firing") tutAnchor("pose:fingers");
+        if (fingersOpen) {
             int hand = std::string(which) == "firing" ? 0 : 1;
             A.poseHand = hand;  // (its fingertips show in the view)
             if (ImGui::Button("Zoom to this hand", {-1, 0})) poseFocusHand(hand);
@@ -169,11 +171,14 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
 }
 // Recorded animations: keys on a timeline where both hands are; the hands go smoothly through them
 static void animSection() {
-    if (!section("Animations", A.animEdit)) return;
+    bool open = section("Animations", A.animEdit);
+    tutAnchor("anim:section");
+    if (!open) return;
     auto& D = A.design;
     bool playing = A.S && sim::animPlaying(*A.S);
     if (pCheck("Edit an animation", A.animEdit, "On: the hands you drag are the animation's, at the moment on its timeline.\n"
                                                "Off: they're the hold's again.")) { A.animPreview = false; if (!A.animEdit) A.animT = 0; }
+    tutAnchor("anim:edit");
     if (!A.animEdit) { muted("Reload, inspect, clear a jam, or work a control, with hands you place. Not animated, it just happens."); return; }
     auto slots = animSlots(D);
     if (std::find(slots.begin(), slots.end(), A.animSlot) == slots.end()) A.animSlot = slots.front();
@@ -187,6 +192,7 @@ static void animSection() {
         }
         ImGui::EndCombo();
     }
+    tutAnchor("anim:slot");
     Animation& an = D.anims[A.animSlot];
     double len = animLength(an), span = std::max(2.0, len + 0.5);
     if (an.keys.empty()) muted("Not animated yet: on the bench the plain action happens. Move the time slider, then drag a hand: a key is made there. The hands start and end in the aiming hold.");
@@ -195,6 +201,7 @@ static void animSection() {
     float t = (float)A.animT;
     ImGui::SetNextItemWidth(-1);
     if (ImGui::SliderFloat("##atime", &t, 0, (float)span, "%.2f s")) { A.animT = t; A.animPreview = false; }
+    tutAnchor("anim:time");
     {
         ImVec2 a = ImGui::GetItemRectMin(), b = ImGui::GetItemRectMax();
         auto* dl = ImGui::GetWindowDrawList();
@@ -214,7 +221,9 @@ static void animSection() {
     ImGui::SameLine();
     if (ImGui::Button("Key >", {w3, 0})) { for (auto& k : an.keys) if (k.t > A.animT + 0.031) { A.animT = k.t; break; } A.animPreview = false; }
     ImGui::BeginDisabled(an.keys.empty() || playing);
-    if (ImGui::Button("Play on the gun", {-1, 0})) {
+    bool playIt = ImGui::Button("Play on the gun", {-1, 0});
+    tutAnchor("anim:play");
+    if (playIt) {
         A.animPreview = false;
         A.S->design.anims = D.anims;
         sim::playAnim(*A.S, A.animSlot);
@@ -243,11 +252,13 @@ static void animSection() {
         if (kk.firing.on) edit |= pCheck("  grips its part", kk.gripF, "From here the hand holds the part it's on and moves it, until a key lets go.");
         edit |= pCheck("Support hand", kk.support.on, "On the gun at this key. Off: away from the gun.");
         if (kk.support.on) edit |= pCheck("  grips its part##s", kk.gripS, "From here the hand holds the part it's on (a slide, a bolt handle, a catch)\nand moves it, until a key lets go.");
+        tutAnchor("anim:grip");
         if (kk.firing.on && kk.gripF) ImGui::TextDisabled("Firing hand holds: %s", bname(kk.firing.part).c_str());
         if (kk.support.on && kk.gripS) ImGui::TextDisabled("Support hand holds: %s", bname(kk.support.part).c_str());
         int ev = kk.event == "dropmag" ? 1 : kk.event == "freshmag" ? 2 : 0;
         prop("Magazine", "What happens to the magazine as the hands reach this key.\nDrop: it's let go and falls out (or slides out sideways).\nFresh one in: a full magazine goes into the well.");
         if (ImGui::Combo("##aev", &ev, "Nothing\0Drop it\0Fresh one in\0")) { kk.event = ev == 1 ? "dropmag" : ev == 2 ? "freshmag" : ""; edit = true; }
+        tutAnchor("anim:mag");
         if (edit) commit();
         if (ImGui::Button("Delete this key", {-1, 0})) { an.keys.erase(an.keys.begin() + ki); commit(); }
     }
@@ -271,6 +282,7 @@ static void posePanel() {
     for (int h = 0; h < HOLD_COUNT; h++) {
         if (h) ImGui::SameLine();
         if (accentButton(holdName(h), A.poseHold == h, {0, 0})) { A.poseHold = h; poseView(); }
+        tutAnchor(h == 0 ? "pose:holds" : "pose:holds2");
     }
     ImGui::Dummy({0, 4 * CFG.uiScale});
     if (section("Body", !A.animEdit)) {

@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
         relPoll();
         applyAudio();
         autosaveTick();
-        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker || A.showTutorials;
+        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker || A.showTutorials || A.showOpenWindow || A.showRangePicker;
         bool menu = A.screen == Screen::Menu;
         TOOLBAR_H = menu ? 0.f : TOOLBAR_H_BASE * CFG.uiScale;
         if (relArg > 0 && frame == 2) { REL.rounds = relArg; relStart(); }

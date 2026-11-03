@@ -22,6 +22,8 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <ctime>
+#include <chrono>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -422,7 +424,7 @@ static void inspectPart(BodyDef& b) {
                 return;
             }
             if (tipHover()) ImGui::SetTooltip("Stops the mirroring, so each side can be shaped on its own.");
-        } else if (ImGui::Button("Copy to the other side", {-1, 0})) {
+        } else if (tutAnchorAfter(ImGui::Button("Copy to the other side", {-1, 0}), "part:otherside")) {
             std::string tag = "m-" + uid();
             b.mirror = tag; b.mirrorKind = "depth";
             BodyDef cpy = mirrorImage(b);
@@ -553,7 +555,9 @@ static void inspectPart(BodyDef& b) {
 
     carvesSection(b);
 
-    if (section("Surface", !b.texture.empty())) {
+    bool surfOpen = section("Surface", !b.texture.empty());
+    tutAnchor("part:surface");
+    if (surfOpen) {
         prop("Texture", "A picture laid over the part. Its colour tints the picture: white shows it as it is.");
         ImGui::SetNextItemWidth(-1);
         std::string wasTex = b.texture;
@@ -1227,29 +1231,154 @@ static void firingTab() {
 
 // ---------------------------------------------------------------- file
 // ---------------------------------------------------------------- files (in the top bar)
-static void openList() {
-    ImGui::TextDisabled("Your blueprints");
+// The blueprint browser: your saved guns and the examples, with Open, Rename and Delete.
+namespace {
+struct BpInfo { std::string file, name, cart, held; int parts = 0; bool ok = false; std::string err, when; };
+BpInfo readBlueprint(const fs::path& f) {
+    BpInfo i; i.file = f.string();
+    std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
+    Design d;
+    i.ok = designFromJson(ss.str(), d, &i.err);
+    if (i.ok) {
+        i.name = d.name; i.parts = (int)d.bodies.size();
+        i.cart = d.breech.on ? d.breech.cart.name : "";
+        i.held = heldWith(d);
+    }
+    std::error_code ec;
+    auto t = fs::last_write_time(f, ec);
+    if (!ec) {
+        auto sys = std::chrono::time_point_cast<std::chrono::system_clock::duration>(t - fs::file_time_type::clock::now() + std::chrono::system_clock::now());
+        std::time_t tt = std::chrono::system_clock::to_time_t(sys);
+        char b[64]; std::strftime(b, sizeof b, "%d %b %Y, %H:%M", std::localtime(&tt));
+        i.when = b;
+    }
+    return i;
+}
+void openFile(const fs::path& f) {
+    std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
+    Design nd; std::string err;
+    std::string n = f.stem().string();
+    if (designFromJson(ss.str(), nd, &err)) {
+        std::string vn = blueprintVersionNote(nd);
+        loadDesign(nd, vn.empty() ? "Opened " + n + ". Undo brings back what you had." : vn);
+        std::snprintf(A.saveName, sizeof A.saveName, "%s", n.c_str());  // Ctrl+S saves back to this file
+        A.showOpenWindow = false;
+    } else toast("Couldn't read " + n + ": " + err);
+}
+}  // namespace
+static void blueprintWindow() {
+    static std::string picked;          // the file picked in the list
+    static BpInfo info;
+    static char filter[64] = "", renameTo[128] = "";
+    static bool renaming = false, focusRename = false;
+    float w = std::min(760 * S(), GetScreenWidth() - 40.f), h = std::min(540 * S(), GetScreenHeight() - 60.f);
+    ImGui::SetNextWindowPos({GetScreenWidth() / 2.f, GetScreenHeight() / 2.f}, ImGuiCond_Always, {0.5f, 0.5f});
+    ImGui::SetNextWindowSize({w, h});
+    if (!ImGui::IsPopupOpen("##bpwin")) ImGui::OpenPopup("##bpwin");   // a modal window: on top of everything, the rest dimmed
+    if (!ImGui::BeginPopupModal("##bpwin", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) return;
+    ImGui::PushFont(gFontBold, 20.0f); ImGui::TextUnformatted("Open a blueprint"); ImGui::PopFont();
+    ImGui::TextDisabled("Your saved guns are in the game folder, under user/guns.");
+    ImGui::Dummy({0, 4 * S()});
     std::vector<fs::path> files;
     if (fs::exists(GUNS_DIR))
         for (auto& e : fs::directory_iterator(GUNS_DIR)) if (e.path().extension() == ".json") files.push_back(e.path());
-    std::sort(files.begin(), files.end());
-    if (files.empty()) muted("None saved yet.");
-    for (auto& f : files) {
-        std::string n = f.stem().string();
-        if (!ImGui::Selectable(n.c_str())) continue;
-        std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
-        Design nd; std::string err;
-        if (designFromJson(ss.str(), nd, &err)) {
-            std::string vn = blueprintVersionNote(nd);
-            loadDesign(nd, vn.empty() ? "Opened " + n + ". Undo brings back what you had." : vn);
-            std::snprintf(A.saveName, sizeof A.saveName, "%s", n.c_str());  // Ctrl+S saves back to this file
+    std::sort(files.begin(), files.end(), [](const fs::path& x, const fs::path& y) {
+        std::error_code e1, e2; return fs::last_write_time(x, e1) > fs::last_write_time(y, e2); });   // newest first
+    float listW = w * 0.46f, foot = ImGui::GetFrameHeightWithSpacing() + 12 * S();
+    // the list
+    ImGui::BeginChild("##bplist", {listW, -foot}, ImGuiChildFlags_Borders);
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##bpfilter", "Search", filter, sizeof filter);
+    std::string f = filter; std::transform(f.begin(), f.end(), f.begin(), ::tolower);
+    ImGui::SeparatorText("Your blueprints");
+    if (files.empty()) muted("None saved yet. Save in the top bar keeps your design here.");
+    for (auto& p : files) {
+        std::string n = p.stem().string(), low = n;
+        std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+        if (!f.empty() && low.find(f) == std::string::npos) continue;
+        bool sel = picked == p.string();
+        if (ImGui::Selectable(n.c_str(), sel, ImGuiSelectableFlags_AllowDoubleClick)) {
+            if (!sel) { picked = p.string(); info = readBlueprint(p); renaming = false; }
+            if (ImGui::IsMouseDoubleClicked(0)) openFile(p);
         }
-        else toast("Couldn't read " + n + ": " + err);
     }
-    ImGui::Separator();
-    ImGui::TextDisabled("Examples");
-    for (auto& p : presetList())
-        if (ImGui::Selectable(p.label)) { loadDesign(loadPreset(p.key), "Opened the example. Undo brings back what you had."); A.saveName[0] = 0; }
+    ImGui::SeparatorText("Examples");
+    for (auto& ex : presetList()) {
+        std::string low = ex.label; std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+        if (!f.empty() && low.find(f) == std::string::npos) continue;
+        if (ImGui::Selectable(ex.label)) { loadDesign(loadPreset(ex.key), "Opened the example. Undo brings back what you had."); A.saveName[0] = 0; A.showOpenWindow = false; }
+    }
+    ImGui::EndChild();
+    ImGui::SameLine();
+    // the one picked: what it is, and what to do with it
+    ImGui::BeginChild("##bpinfo", {0, -foot}, ImGuiChildFlags_Borders);
+    bool exists = !picked.empty() && fs::exists(picked);
+    if (!exists) { picked.clear(); muted("Pick a blueprint on the left to see it here. Double-click opens it."); }
+    else {
+        fs::path p(picked);
+        ImGui::PushFont(gFontBold, 17.0f); ImGui::TextUnformatted(p.stem().string().c_str()); ImGui::PopFont();
+        if (!info.ok) ImGui::TextColored(colBad(), "This file can't be read: %s", info.err.c_str());
+        else {
+            if (!info.name.empty() && info.name != p.stem().string()) ImGui::TextDisabled("Design name: %s", info.name.c_str());
+            ImGui::TextDisabled("%d part%s", info.parts, info.parts == 1 ? "" : "s");
+            if (!info.cart.empty()) ImGui::TextDisabled("Fires %s", info.cart.c_str());
+            if (!info.held.empty()) ImGui::TextDisabled("Held with %s", info.held.c_str());
+        }
+        if (!info.when.empty()) ImGui::TextDisabled("Saved %s", info.when.c_str());
+        ImGui::Dummy({0, 10 * S()});
+        ImGui::BeginDisabled(!info.ok);
+        if (accentButton("Open", true, {-1, 32 * S()})) openFile(p);
+        ImGui::EndDisabled();
+        ImGui::Dummy({0, 4 * S()});
+        if (!renaming) {
+            if (ImGui::Button("Rename", {-1, 0})) { renaming = true; focusRename = true; std::snprintf(renameTo, sizeof renameTo, "%s", p.stem().string().c_str()); }
+        } else {
+            ImGui::SetNextItemWidth(-1);
+            if (focusRename) { ImGui::SetKeyboardFocusHere(); focusRename = false; }   // ready to type straight away
+            bool go = ImGui::InputText("##bpren", renameTo, sizeof renameTo, ImGuiInputTextFlags_EnterReturnsTrue);
+            float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+            if (ImGui::Button("Rename it", {w2, 0}) || go) {
+                std::string nn = safeFileName(renameTo);
+                fs::path to = fs::path(GUNS_DIR) / (nn + ".json");
+                std::error_code ec;
+                if (nn.empty()) toast("Give it a name.");
+                else if (fs::exists(to) && to != p) toast("There's already a blueprint called " + nn + ".");
+                else {
+                    fs::rename(p, to, ec);
+                    if (ec) toast("Couldn't rename it.");
+                    else {
+                        if (std::string(A.saveName) == p.stem().string()) std::snprintf(A.saveName, sizeof A.saveName, "%s", nn.c_str());
+                        picked = to.string(); info = readBlueprint(to); renaming = false;
+                    }
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", {w2, 0})) renaming = false;
+        }
+        ImGui::Dummy({0, 4 * S()});
+        if (dangerButton("Delete", {-1, 0})) ImGui::OpenPopup("##bpdel");
+        if (ImGui::BeginPopupModal("##bpdel", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+            ImGui::Text("Delete %s?", p.stem().string().c_str());
+            ImGui::TextDisabled("The file is removed from user/guns. This can't be undone.");
+            ImGui::Dummy({0, 4 * S()});
+            if (dangerButton("Delete it", {140 * S(), 0})) {
+                std::error_code ec;
+                fs::remove(p, ec);
+                if (ec) toast("Couldn't delete it.");
+                else { toast("Deleted " + p.stem().string() + "."); if (std::string(A.saveName) == p.stem().string()) A.saveName[0] = 0; picked.clear(); }
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Keep it", {140 * S(), 0}) || IsKeyPressed(KEY_ESCAPE)) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+    }
+    ImGui::EndChild();
+    if (ImGui::Button("Close", {120 * S(), 0}) || (IsKeyPressed(KEY_ESCAPE) && !ImGui::IsPopupOpen("##bpdel"))) A.showOpenWindow = false;
+    ImGui::SameLine();
+    if (ImGui::Button("Open the guns folder", {200 * S(), 0})) { std::error_code ec; fs::create_directories(GUNS_DIR, ec); openFolder(fs::absolute(GUNS_DIR).string()); }
+    if (!A.showOpenWindow) ImGui::CloseCurrentPopup();
+    ImGui::EndPopup();
 }
 void fileButtons() {
     float sz = TOOLBAR_H - 14 * S();
@@ -1270,9 +1399,9 @@ void fileButtons() {
         ImGui::EndPopup();
     }
     ImGui::SameLine(0, 2);
-    if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Open", {0, sz})) ImGui::OpenPopup("##open");
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Open", {0, sz})) A.showOpenWindow = true;
+    if (tipHover()) ImGui::SetTooltip("Your saved blueprints and the examples: open, rename or delete them.");
     tutAnchor("file:open");
-    if (ImGui::BeginPopup("##open")) { openList(); ImGui::EndPopup(); }
     ImGui::SameLine(0, 2);
     if (ImGui::Button(ICON_FA_PUZZLE_PIECE "  Parts", {0, sz})) ImGui::OpenPopup("##parts");
     if (tipHover()) ImGui::SetTooltip("Your parts library: parts and assemblies you saved (Save to my parts, in a part's panel).");
@@ -1294,6 +1423,7 @@ void fileButtons() {
     }
     if (tipHover()) ImGui::SetTooltip("Start a new design on a blank frame. Undo brings back what you had.");
     tutAnchor("file:new");
+    if (A.showOpenWindow) blueprintWindow();
 }
 
 void buildPanel() {

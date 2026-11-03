@@ -26,7 +26,9 @@ The main menu:
 - **Test bench** puts any gun on the bench: your sandbox design, an example, or a saved blueprint.
 - **Map editor** builds your own ranges and lets you walk them in first person (see below).
 - **Settings.**
-- **Career** and **Firing range** are greyed out until they exist.
+- **Firing range**: pick a map and a gun, and shoot it in first person (see below).
+- **Discord** opens the invite to the community server.
+- **Career** is greyed out until it exists.
 
 Esc in the workshop opens a small menu: resume, settings, back to the main menu, quit.
 
@@ -119,9 +121,19 @@ The panel on the right has four tabs:
 - **Inspect:** whatever is selected. Its settings are grouped (Part, Shape, Motion, Control, Magazine, Advanced), and the groups you don't need stay folded.
 - **Outline:** every part and joint, with a filter.
 - **Firing:** breech and barrel, cartridge, feeding and firing.
-- **File:** save, open, and start from an example.
+- **File:** save, open, and start from an example. *Open* shows your saved blueprints and the examples: open, rename or delete them.
 
 In the view, click anything (a part, a corner, an edge, a spring end, a track point, a pin, the breech face or muzzle, a face, a hand in Pose) to pick it, then drag it to move it: the first click never moves anything. Drag a number sideways to scrub it, or click it without dragging to type an exact value. Sliders take a double-click (or Ctrl+click) to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
+
+## The firing range
+
+Pick where to shoot (the practice range, your map editor's map, or a saved map) and the gun to take. The gun in your hands is the same simulation as the test bench, so it feeds, extracts and jams for real.
+
+- Left mouse fires, right mouse aims. R reloads (racking a round in if it was empty), B works the action, M and your control keys work as on the bench.
+- WASD to walk, Shift to sprint, C to crouch, Z to go prone, Q and E to lean, Esc for the menu.
+- Aiming puts your eye where your pose has it, looking over the top of the gun. Guns are sighted in at 25 m in one hand, 100 m in the shoulder.
+- Bullets and pellets fly from the muzzle with gravity and air drag and mark where they land. Paper targets score rings; steel plates ring.
+- Recoil comes from the cartridge's push against the gun's weight; heavy guns come up and swing more slowly.
 
 ## Building blocks
 

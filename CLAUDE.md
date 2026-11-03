@@ -45,7 +45,11 @@ Engravings (`src/core/marks.cpp`, `app/engrave.cpp`): `BodyDef::marks` (`MarkDef
 
 Hard limit to keep in mind: the physics works in the side-view plane plus depth. Shapes can now be fully 3D (carving), but parts still only move in that plane. Things that move *across* the gun (swing-out cylinders, side-mounted magazines, cross-bolt safeties) need a simplified treatment. Do these last, and be upfront about it.
 
-Later: gun spec sheet from bench data, then firing range mode (first person, ballistics, live-fire jams), then the move from raylib/OpenGL to Vulkan (SDL3 GPU API; the owner wants Vulkan and no licensing fees), then career mode.
+Firing range (`app/range.cpp`, `Screen::Range`): the picked gun replaces `A.design` (stashed like the bench) and runs as the bench sim (`A.S`); the map's player moves as in map walking. The whole gun scene (`drawGunOnly`, the designer's gun drawing without the bench) is drawn under an rlgl matrix `R.G` that maps the gun's drawing frame to the eye (aim: the pose's aim eye, raised over the top of the gun, `sightY`; ready: lower and to the right), with lag, sway and kick. `Ev::Bang` fires each projectile from the muzzle along the bore (point mass, gravity, quadratic drag), with a zero angle (25 m one hand, 100 m shoulder). `target_paper` map entities (in `builtinRange`) score rings. Live-fire jams come from the sim itself. Not yet: first-person hands, walls clipping the gun, cases in the world.
+
+Tutorials (`ui/tutorials.cpp`): the owner asked for one big building-tools lesson (`tools`) instead of the small ones, and a `animations` lesson.
+
+Later: gun spec sheet from bench data, then more of the range (hands, holstering, moving targets), then the move from raylib/OpenGL to Vulkan (SDL3 GPU API; the owner wants Vulkan and no licensing fees), then career mode.
 
 ## Working with the owner
 

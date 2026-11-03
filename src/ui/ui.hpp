@@ -53,7 +53,8 @@ void toolRail();
 void tutorialsWindow();   // the list of lessons
 void rangePicker();       // the firing range: which map and which gun
 void tutorialPanel();     // the lesson in progress, over the view
-void tutAnchor(const char* id);   // marks the last widget drawn, so a tutorial step can point at it
+void tutAnchor(const char* id);
+bool tutAnchorAfter(bool r, const char* id);   // tutAnchor, passing a button's result through   // marks the last widget drawn, so a tutorial step can point at it
 int tutorialsDoneCount();
 void startTutorial(int lesson);   // (also used by automated screenshots)
 void openExample(const char* key, const char* msg);   // open an example design (undo brings back the old one)

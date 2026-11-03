@@ -40,6 +40,14 @@ struct TutState {
     int carves = 0, carvesAcross = 0, carvesThrough = 0;  // cuts; cuts not made from the near or far side; right-through cuts
     bool carveTool = false;
     bool breechOn = false, hasFace = false, hasMuzzle = false, chamberOk = false, handFeed = false;
+    // the building tools
+    int tool = 0, barrels = 0, mirrors = 0, marks = 0, shapedDepth = 0, textured = 0;
+    bool measured = false;
+    double measureLen = 0;
+    // posing and animations
+    bool posing = false, animEdit = false, animPlaying = false;
+    std::string animSlot;
+    int animKeys = 0, gripKeys = 0, animEvents = 0;
 };
 static TutState snapshot() {
     TutState t;
@@ -74,6 +82,19 @@ static TutState snapshot() {
         if (j.type == "track") t.tracks++;
         if (j.type == "spring") t.springs++;
     }
+    for (auto& b : D.bodies) {
+        if (b.barrel.on) t.barrels++;
+        if (!b.mirror.empty()) t.mirrors++;
+        t.marks += (int)b.marks.size();
+        if (depthShaped(b)) t.shapedDepth++;
+        if (!b.texture.empty()) t.textured++;
+    }
+    t.tool = (int)A.tool; t.measured = A.measured; t.measureLen = std::hypot(A.measureB.x - A.measureA.x, A.measureB.y - A.measureA.y);
+    t.posing = A.posing; t.animEdit = A.animEdit; t.animSlot = A.animSlot;
+    for (auto& [slot, an] : D.anims) {
+        t.animKeys += (int)an.keys.size();
+        for (auto& k : an.keys) { if (k.gripF || k.gripS) t.gripKeys++; if (!k.event.empty()) t.animEvents++; }
+    }
     t.yaw = A.yaw; t.pitch = A.pitch; t.dist = A.dist; t.target = A.target;
     t.carveTool = A.tool == Tool::Carve;
     t.ortho = A.ortho; t.xray = A.xray; t.cutaway = A.cutaway; t.mode = A.mode; t.selKind = A.sel.kind;
@@ -91,6 +112,7 @@ static TutState snapshot() {
             if (b.builtInMag) t.tubeRounds += b.rounds;
         }
         t.looseRounds = sim::looseRounds(S);
+        t.animPlaying = sim::animPlaying(S);
     }
     return t;
 }
@@ -154,6 +176,25 @@ static bool carvedAcross(const TutState& w, const TutState& n) { return n.carves
 static bool carvedThrough(const TutState& w, const TutState& n) { return n.carvesThrough > w.carvesThrough; }
 static bool tubeFed(const TutState& w, const TutState& n) { return n.mode == Mode::Test && n.tubeRounds < w.tubeRounds; }
 static bool roundsHandled(const TutState& w, const TutState& n) { return n.looseRounds > w.looseRounds || n.magRounds > w.magRounds; }
+
+// the building tools
+static bool selectedPart(const TutState&, const TutState& n) { return n.selKind == 1; }
+static bool newBarrel(const TutState& w, const TutState& n) { return n.barrels > w.barrels; }
+static bool newMirror(const TutState& w, const TutState& n) { return n.mirrors > w.mirrors; }
+static bool newMark(const TutState& w, const TutState& n) { return n.marks > w.marks; }
+static bool shapedInDepth(const TutState& w, const TutState& n) { return n.shapedDepth > w.shapedDepth; }
+static bool finished(const TutState& w, const TutState& n) { return n.textured > w.textured; }
+static bool measuredIt(const TutState& w, const TutState& n) { return n.measured && n.measureLen > 1 && std::fabs(n.measureLen - w.measureLen) > 0.01; }
+static bool facesPushed(const TutState& w, const TutState& n) { return n.tool == (int)Tool::Faces && n.snap != w.snap; }
+// posing and animations
+static bool posingNow(const TutState&, const TutState& n) { return n.posing; }
+static bool poseChanged(const TutState& w, const TutState& n) { return n.posing && n.snap != w.snap; }
+static bool editingAnim(const TutState&, const TutState& n) { return n.animEdit; }
+static bool reloadPicked(const TutState&, const TutState& n) { return n.animEdit && n.animSlot == "reload"; }
+static bool newKey(const TutState& w, const TutState& n) { return n.animKeys > w.animKeys; }
+static bool newGrip(const TutState& w, const TutState& n) { return n.gripKeys > w.gripKeys; }
+static bool newEvent(const TutState& w, const TutState& n) { return n.animEvents > w.animEvents; }
+static bool animPlayed(const TutState&, const TutState& n) { return n.animPlaying; }
 
 // building a gun
 static bool newFixed(const TutState& w, const TutState& n) { return n.fixedParts > w.fixedParts; }
@@ -289,6 +330,33 @@ static const std::vector<Lesson>& lessons() {
         Step("See inside", "Guns hide their insides. X-ray turns see-through parts into outlines. Cutaway hides the near side so you can watch the parts inside.").check(lookInside, "Press X or C").at("view:xray|view:cutaway"),
         Step("Build, then test", "The designer is for building: nothing moves. The test bench runs your gun for real. Testing never changes your design.").check(onBench, "Press Tab, or click Test bench").at("mode:test"),
     }},
+    {"tools", "The building tools", "Every tool in the designer, one by one: drawing, shaping, carving, engraving and joining parts.", "blank", {
+        Step("Your workshop", "The tools are down the left, in three groups. Draw makes new parts, Shape changes them, and Join connects them. Whatever you select shows its settings on the right.\n\nEvery part is a flat outline drawn from the side and given a thickness, so most drawing happens in the side view.").designer().side(),
+        Step("Select", "Pick Select. Click a part to pick it: it lights up and its settings appear. Click it again and drag to move it. The first click never moves anything, so you can always look before you touch.").check(selectedPart, "Click a part").at("tool:Select"),
+        Step("Rectangle", "Pick Rectangle and drag in the view. Most parts start as a rectangle.").check(newPart, "Draw a rectangle").at("tool:Rectangle"),
+        Step("Polygon", "Pick Polygon and click to place corners. Click the first corner again (or press Enter) to close the shape.").check(newPart, "Draw a polygon").at("tool:Polygon"),
+        Step("Circle", "Pick Circle, click the centre and drag out the radius. Good for pins, knobs and buttons.").check(newPart, "Draw a circle").at("tool:Circle"),
+        Step("Barrel", "Pick Barrel and drag from the breech end to the muzzle. You get a real round barrel with a bore, and a chamber cut for the cartridge you choose in its panel. It also sets up where the round sits and where the muzzle is.").check(newBarrel, "Draw a barrel").at("tool:Barrel"),
+        Step("Corners", "Select a part. Its corners are the little squares: click one to pick it (its X and Y show on the right), then drag it. Shift-click picks several, and arrow keys nudge them.").check(reshaped, "Pick a corner, then drag it").at("tool:Select"),
+        Step("Edges", "The diamonds sit in the middle of each edge. Pick one, then drag to move the whole edge, or Shift-drag to pull out a step. Right-click (or double-click) a diamond to split the edge and get a new corner. A part can have up to 1024 corners.").check(moreCorners, "Right-click a diamond").at("shape:split"),
+        Step("Rounding", "Round corners rounds every corner; pick one corner to round just that one. Chamfer cuts corners off flat. Smoothness rounds the edges between the sides and the faces, good for grips.").check(rounded, "Round the corners or add smoothness").at("shape:round|shape:smooth").onTab(0),
+        Step("The part's settings", "Thickness is how thick the part is. Z (offset) is where it sits across the gun: 0 is the middle, + is towards you. Fixed parts are the frame and never move. Solid parts bump into each other where they overlap; untick it for parts that are just for looks, like grip panels. Mass is how heavy it is. Every number can be typed: click it without dragging.").at("part:thickness|part:depth|part:fixed|part:solid"),
+        Step("Round parts", "Tick Round to turn a part on a lathe: a rectangle becomes a round bar, and steps in its outline become shoulders. Sides turns it down to flats instead (8 is an octagon).").at("part:round").onTab(0),
+        Step("Finishes", "Under Surface, give a part a finish: stained wood, black polymer, blued steel, or a picture of your own.").check(finished, "Give a part a finish").at("part:surface").onTab(0),
+        Step("Faces", "Pick Faces. Point at any face of a part, front, back, top, bottom or an end, and drag it to push or pull it. E extrudes a face, drawing it out into a new step or piece.").check(facesPushed, "Push or pull a face").at("tool:Faces"),
+        Step("Shaped in depth", "With Faces, the selected part's corners show on both faces: squares at the front, circles at the back. Pick one, then drag it on its own to give the front and back different shapes, like a taper. From the top or the end it moves in the plane you're looking at.").check(shapedInDepth, "Drag a corner on one face only").at("tool:Faces"),
+        Step("Knife", "The Knife cuts a part into two separate parts along a line you drag. Delete the offcut to cut a notch.").check(newPart, "Cut a part with the knife").at("tool:Knife"),
+        Step("Mirror", "Select a part, pick Mirror and drag a line: a mirrored copy appears across it. It stays a live mirror, so change either one and the other follows. Copy to the other side makes the matching part on the far side of the gun.").check(newMirror, "Mirror a part").at("tool:Mirror|part:otherside"),
+        Step("Measure", "Pick Measure and drag between two points. It shows the length, how far across and up, and the angle, snapping to corners and joints.").check(measuredIt, "Measure something").at("tool:Measure"),
+        Step("Carve", "Pick Carve to cut a hole, slot or pocket into a part: choose the cutter's shape, size and depth on the right, then click the part's surface. It goes straight in from the face you click, so turn the view to cut from the top or the far side. Cuts are real for the physics too.").check(newCarve, "Carve into a part").at("tool:Carve"),
+        Step("Engrave", "Pick Engrave, click a part, then draw on it like an engraving pen. Switch to Text to write roll marks or a serial number, and Erase to remove a line or a word. Engravings are for looks only.").check(newMark, "Engrave a part").at("tool:Engrave"),
+        Step("Pin", "Join tools connect parts. A pin lets parts swing, like a trigger or a hammer. Pick Pin and click where two parts overlap. Over a single part, it pins it to the ground.").check(newPin, "Add a pin").at("tool:Pin"),
+        Step("Weld", "Welding makes two parts one solid piece: they move as one, and nothing is added to the gun. Pick Weld, click one part, then the other. Build complicated parts from simple pieces this way.").check(newWeld, "Weld two parts").at("tool:Weld"),
+        Step("Track", "A track lets a part slide along a slot: bolts, slides and cams. Pick Track, click the part that should slide, then click where it slides to. Hold Shift on that click to add bends.").check(newTrack, "Add a track").at("tool:Track"),
+        Step("Spring", "Pick Spring, click one end on a part, then the other end on another part. A coil spring pushes and pulls; a leaf spring is a flat strip that only pushes, good where a coil won't fit. A long, thin coil buckles and goes weak (it turns red on the bench): run a guide rod through it.").check(newSpring, "Add a spring").at("tool:Spring"),
+        Step("Copy, paste and keep", "Ctrl+C and Ctrl+V copy a part with its welded pieces and joints. Save to my parts keeps it in your parts library, to drop into any gun from Parts in the top bar. Combine with another part merges, cuts or overlaps two outlines.").at("file:parts"),
+        Step("Undo, then try it", "Ctrl+Z undoes and Ctrl+Y redoes. When you've built something, open the test bench and drag your parts around: there everything moves for real.").check(onBench, "Open the test bench").at("mode:test|undo"),
+    }},
     {"firstgun", "Build your first gun", "From a blank frame to a gun that fires, ejects and reloads.", "blank", {
         Step("What you'll build", "A simple single-shot: a barrel, a heavy bolt that slides, and an ejector. Firing blows the bolt open and throws out the empty case. You put in the next round by hand and push the bolt shut.\n\nEvery step has a \"Do it for me\" button if you get stuck.").designer().side(),
         Step("The barrel", "Pick Rectangle and draw a long, thin barrel along the top of the frame's front half. Then tick Fixed: a barrel doesn't move.").check(newFixed, "Draw a barrel and tick Fixed").at("tool:Rectangle|part:fixed").doIt(helpBarrel),
@@ -303,51 +371,6 @@ static const std::vector<Lesson>& lessons() {
         Step("Fire!", "Go to the test bench and press Space. Watch the bolt blow open and the empty case fly out (the shot is slowed down for you).").check(fired, "Press Space on the test bench").at("mode:test|fire"),
         Step("Load the next round", "Grab one of the rounds lying on the bench (L adds more). Drag it into the open action, just in front of the bolt and in line with the barrel: it snaps into place. Then drag the bolt forward to close it.").check(reloaded, "Load a round and close the bolt").bench(),
         Step("Fire again", "You built a working gun. Fire it again!\n\nIdeas for next time: a spring to close the bolt by itself (then you'll need a catch to hold it open while you load), a magazine, or a trigger you draw.").check(fired, "Fire").at("fire"),
-    }},
-    {"drawing", "Drawing and shaping parts", "Draw parts, then shape their corners, edges and curves.", "blank", {
-        Step("Parts are outlines", "Every part is a flat outline drawn from the side, then given a thickness. You'll start on a blank frame.").designer(),
-        Step("Draw a rectangle", "Pick Rectangle, then drag in the view.").check(newPart, "Draw a rectangle").at("tool:Rectangle"),
-        Step("Draw any shape", "Pick Polygon and click to place corners. Click the first corner again to close the shape.").check(newPart, "Draw a polygon").at("tool:Polygon"),
-        Step("Move a corner", "Pick Select and click a part. Its corners are the little squares: drag one.").check(reshaped, "Drag a corner").at("tool:Select"),
-        Step("Edges", "The diamonds sit in the middle of each edge. Drag one to move the whole edge, or Shift-drag it to pull out a step. Right-click (or double-click) one to split the edge and get a new corner. A part can have up to 1024 corners.").check(moreCorners, "Right-click a diamond").at("shape:split"),
-        Step("Round it off", "Round corners rounds every corner. Smoothness rounds the front and back edges: good for grips.").check(rounded, "Round the corners or add smoothness").at("shape:round|shape:smooth").onTab(0),
-        Step("Round parts", "Tick Round to turn a part on a lathe: a rectangle becomes a round bar or barrel, and steps in the outline become shoulders. Sides turns it down to flats instead (8 is an octagon), and Sweep makes a wedge, like a locking lug.").at("part:round").onTab(0),
-        Step("Exact numbers", "Every number on the right can be typed. Click it without dragging and type a value, or drag sideways to nudge it. Sliders take a double-click.").at("part:thickness").onTab(0),
-        Step("Cut", "The Knife cuts a part into two separate parts along a line you drag.").check(newPart, "Cut a part with the knife").at("tool:Knife"),
-        Step("Holes and pockets", "To cut a hole, slot or pocket into a part, use Carve. It has its own lesson, next.").at("tool:Carve"),
-        Step("Undo", "Made a mess? Ctrl+Z undoes, Ctrl+Y redoes.").at("undo"),
-    }},
-    {"carving", "Carving in 3D", "Cut holes, slots and pockets into parts, from any side.", "blank", {
-        Step("Cutting in 3D", "Carve cuts a shape into a part: a round hole, a slot, a pocket. It goes straight in from the face you click, as deep as you say.").designer(),
-        Step("Something to carve", "Pick Rectangle and drag out a block above the frame.").check(newMoving, "Draw a block").at("tool:Rectangle").doIt(helpBlock),
-        Step("Pick a cutter", "Pick Carve. Its settings appear on the right: the shape (circle, half circle, rectangle or triangle), its size and how deep it cuts.").check(carvePicked, "Pick the Carve tool").at("tool:Carve").doIt(helpPickCarve),
-        Step("Cut into the block", "Move the cursor over the block: the outline shows where the cut will go. Click the side of the block to cut it.").check(newCarve, "Click the block").at("carve:shape|carve:depth").onTab(0).doIt(helpCarve),
-        Step("Size it as you go", "Press and drag instead of clicking: the cut grows as you drag, and the next plain click uses that size.").check(newCarve, "Drag out a cut").doIt(helpCarve),
-        Step("From any side", "Right-drag to turn the camera until you can see the top of the block, then click the top. The cut goes straight down from there.").check(carvedAcross, "Cut into the top").doIt(helpCarveTop),
-        Step("Change a cut", "Your cuts are listed under Carves on the part. Click one to change its shape, size or depth. Turn and Tilt aim it at an angle. Del removes it.").check(reshaped, "Change one of your cuts").at("carves:list|carve:aim").onTab(0).doIt(helpChangeCut),
-        Step("Right through", "Tick Right through for a hole that goes all the way through.").check(carvedThrough, "Make a cut go right through").at("carve:through").onTab(0).doIt(helpThrough),
-        Step("Real on the bench", "Cuts are real on the test bench too. A part slides past another part that sits in a groove you cut, and every cut makes a part lighter.\n\nOn magazines and on parts that turn on the bore, cuts only change the look for now."),
-    }},
-    {"depth", "Thickness, depth and collisions", "How flat parts stack into a 3D gun, and which parts touch.", "blowback", {
-        Step("Parts sit side by side", "This is the right wall of the slide. Thickness is how thick it is. Z (offset) is where it sits across the gun: 0 is the middle, + is towards you.").show("wall_r").at("part:thickness|part:depth"),
-        Step("What touches what", "Solid parts bump into each other wherever they overlap. This grip panel isn't solid: it's just for looks, so everything passes through it.").show("grip_r").at("part:solid"),
-        Step("The frame", "Fixed parts are the frame. They never move, and everything else hangs off them.").show("grip_r").at("part:fixed"),
-        Step("Pieces that move together", "The slide is five pieces welded together, so they move as one. Build complicated parts from simple pieces this way.").show("slide"),
-        Step("Look inside", "Press C to hide the near side and see the parts in the middle.").check(lookInside, "Press C").at("view:cutaway"),
-    }},
-    {"joints", "Joints: pins, welds and tracks", "Connect parts so they pivot, slide or move as one.", "blank", {
-        Step("Two parts", "Joints connect two parts. Draw two small rectangles on the frame.").check(twoParts, "Draw two parts").at("tool:Rectangle").designer(),
-        Step("Pin", "A pin lets parts swing, like a trigger. Pick Pin and click where two parts overlap.").check(newPin, "Add a pin").at("tool:Pin"),
-        Step("Weld", "Welding makes two parts one solid piece: they move as one, and nothing is added to the gun. Pick Weld, click one part, then the other.").check(newWeld, "Add a weld").at("tool:Weld"),
-        Step("Track", "A track lets a part slide along a slot. Pick Track, click the part that should slide, then click where it slides to. Hold Shift on the second click to add bends.").check(newTrack, "Add a track").at("tool:Track"),
-        Step("Try it", "Go to the test bench and drag your parts around.").check(onBench, "Open the test bench").at("mode:test"),
-    }},
-    {"springs", "Springs", "Coil and leaf springs, and why long springs buckle.", "blowback", {
-        Step("A recoil spring", "This spring throws the slide back home after each shot. Its settings are on the right: stiffness is how hard it pushes, free length is how long it is with nothing pressing on it.").showSpring("nose").onTab(0),
-        Step("Add a spring", "Pick Spring, click one end on a part, then the other end on another part.").check(newSpring, "Add a spring").at("tool:Spring"),
-        Step("Buckling", "A long, thin spring bends sideways and goes weak (it turns red on the bench). Fix it with a guide rod: a rod part through the middle, picked as the spring's guide."),
-        Step("Leaf springs", "A leaf spring is a flat strip that only pushes. It's good where a coil won't fit, like this trigger.").show("trigger"),
-        Step("Watch it work", "On the bench, drag the slide back and let go: the recoil spring throws it home.").check(onBench, "Open the test bench").at("mode:test"),
     }},
     {"breech", "Barrel, breech and cartridge", "Where the round sits, and what it fires.", "blowback", {
         Step("The Firing tab", "Everything about the shot lives in the Firing tab.").at("tab:Firing").onTab(2),
@@ -396,6 +419,19 @@ static const std::vector<Lesson>& lessons() {
         Step("Magazines", "M drops the magazine. N puts a fresh one on the bench: drag it up into the gun. T tops up every magazine.").check(magOut, "Press M").at("bench:section|bench:newmag"),
         Step("Loading rounds", "L puts a loose round on the bench. Drag it onto the top of a magazine to load it.").check(roundsHandled, "Press L"),
         Step("Jams", "If it jams, the panel says why. Clear it like a real gun: rack the slide, or drag the stuck case out. Backspace restarts."),
+        Step("Take it shooting", "When it works on the bench, take it to the range: Firing range on the main menu. Pick the map and the gun, then left mouse fires, right mouse aims, R reloads and B works the action. Every part still moves for real, so it jams for real too."),
+    }},
+    {"animations", "Posing and animations", "How the gun is held, and recording hands that reload, inspect and work the gun.", "blowback", {
+        Step("Pose mode", "On the test bench, Pose shows a body holding the gun. Everything about how it's held lives here, and the animations too.").check(posingNow, "Click Pose").at("mode:pose").bench(),
+        Step("Three holds", "Aim, Hip and Lowered are three ways of holding the gun, each posed on its own. Drag the green dots to put the hands on the gun (click a dot to pick it, then drag it), and the dot at the end of a green line to turn the hand. The orange dot over the head moves the body.").at("pose:holds"),
+        Step("Fingers", "Open Fingers, or pick a fingertip in the view, then drag it: the whole finger bends to put the tip where you drag, within what a real hand can do. The thumb can swing across the palm to meet any fingertip. Shift-drag just curls a finger.").check(poseChanged, "Move a finger").at("pose:fingers"),
+        Step("Edit an animation", "Open Animations and tick Edit an animation. From now on the hands you drag belong to the animation, at the moment on its timeline.").check(editingAnim, "Tick Edit an animation").at("anim:section|anim:edit"),
+        Step("Pick one", "Choose Reload. There's also Reload (empty), Inspect, Clear a jam, Work the action, and one for each control on the gun. Anything you don't animate just happens, as before.").check(reloadPicked, "Choose Reload").at("anim:slot"),
+        Step("Make a key", "Move the time slider to about 0.4 s, then drag a hand somewhere: a key is made there. The hands start and end in the aiming hold and move smoothly through your keys.").check(newKey, "Move the slider, then drag a hand").at("anim:time"),
+        Step("Grip a part", "Put the support hand on the slide at a key and tick its grips its part. From that key the hand holds the slide and moves it, through the physics, until a later key lets go. So a slide pulled back too short really won't chamber a round.").check(newGrip, "Tick grips its part").at("anim:grip"),
+        Step("Magazine moments", "A key can drop the magazine or put a fresh one in, so a reload works without animating the magazine itself.").check(newEvent, "Set a key's Magazine").at("anim:mag"),
+        Step("Play it", "Preview plays the hands alone. Play on the gun runs it for real, and the animation waits for the gun: a hand gripping a slide that's still moving waits for it.").check(animPlayed, "Play on the gun").at("anim:play"),
+        Step("Using them", "On the bench, R plays your Reload and B works the action (your Work the action animation, or one made from your parts). Start from the automatic one gives you a working start to change. They play at the firing range too."),
     }},
     {"reliability", "Reliability testing", "Fire hundreds of rounds and see how often it jams.", "blowback", {
         Step("Run it", "This fires your gun over and over in the background, clearing jams like a shooter would.").at("bench:reliability").bench(),
@@ -429,6 +465,7 @@ int tutorialsDoneCount() { int n = 0; for (auto& l : lessons()) if (isDone(l.id)
 // ---------------------------------------------------------------- anchors: where the widgets steps point at are
 struct Anchor { ImVec2 a, b; int frame = -10; };
 static std::map<std::string, Anchor> gAnchors;
+bool tutAnchorAfter(bool r, const char* id) { tutAnchor(id); return r; }
 void tutAnchor(const char* id) {
     if (A.tutLesson < 0) return;
     gAnchors[id] = {ImGui::GetItemRectMin(), ImGui::GetItemRectMax(), ImGui::GetFrameCount()};
