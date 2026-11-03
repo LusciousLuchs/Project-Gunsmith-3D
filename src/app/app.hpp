@@ -21,7 +21,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor, Range };  // the main menu, the designer / test bench, the map editor, or the firing range
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Count };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Scale, Count };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; bool rough = false; double changedAt = -1e9; };   // rough: built without its cuts while being edited
@@ -81,6 +81,9 @@ struct App {
     int selCarve = -1;                   // with a part selected: one of its carves
     bool carveDrag = false; int carveBody = -1; Vector3 carveP{}, carveN{};  // pressed on this surface point (world)
     // the Engrave tool: draw lines or write text on a part's surface (looks only)
+    int scaleHandle = -1;                // Scale tool: the box handle picked (a second press drags it)
+    bool scaleDepth = true;              // a corner drag (keeping proportions) scales the thickness too
+    bool scaleKeep = true;               // typed sizes keep the proportions
     int engraveMode = 0;                 // 0 draw, 1 text, 2 erase
     double engraveWidth = 0.4, engraveSize = 4, engraveTurn = 0;
     std::string engraveColor = "#dcd8d0", engraveText = "CAL. 9MM";

@@ -4,6 +4,7 @@
 #include "carve.hpp"
 #include "app/carvetool.hpp"
 #include "app/engrave.hpp"
+#include "app/scaletool.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -28,6 +29,7 @@ void moveBody(int i, double dx, double dy) {
     BodyDef& d = A.design.bodies[i];
     for (auto& p : d.pts) { p.x += dx; p.y += dy; }
     for (auto& p : d.roundPath) { p.x += dx; p.y += dy; }
+    if (d.gen.on) { d.gen.top.x += dx; d.gen.top.y += dy; for (auto& p : d.gen.pts0) { p.x += dx; p.y += dy; } }   // a fitted magazine moved, still fitted
     carve::moveCarves(d, dx, dy);
     auto mv = [&](V2& p) { p.x += dx; p.y += dy; };
     for (auto& j : A.design.joints) {
@@ -50,6 +52,7 @@ void rotateBody(int i, V2 c, double deg) {
     for (auto& o : d.depthOff) { double x = o.x, y = o.y; o = {x * cs - y * sn, x * sn + y * cs}; }   // (the far face turns with it)
     if (!d.depthRef.empty()) d.depthRef = d.pts;
     for (auto& p : d.roundPath) rot(p);
+    if (d.gen.on) { rot(d.gen.top); d.gen.angle -= deg; for (auto& p : d.gen.pts0) rot(p); }   // a fitted magazine turned: still fitted, at its new angle
     for (auto& cv : d.carves) {
         rot(cv.at);
         double dx = cv.dx * cs - cv.dy * sn, dy = cv.dx * sn + cv.dy * cs;
@@ -222,6 +225,7 @@ void buildInput(bool overUI) {
     }
     if (A.tool == Tool::Carve || A.carveDrag) { carveInput(overUI); return; }
     if (A.tool == Tool::Engrave || A.engraving) { engraveInput(overUI); return; }
+    if (A.tool == Tool::Scale) { scaleInput(overUI); return; }
     if (A.tool == Tool::Faces || A.faceDragging) { facesInput(overUI); return; }
     if (A.tool == Tool::Select && A.sel.kind == 1 && A.dragKind == 0 && IsKeyPressed(KEY_E)) { facesInput(overUI); if (A.faceDragging) return; }
     Vector2 m = GetMousePosition();
@@ -378,6 +382,8 @@ void buildInput(bool overUI) {
                 return;
             }
             A.dragKind = 1; A.dragH = hh; A.dragMoved = false; A.dragPress = m; A.dragLive = false; A.dragExtrude = false;
+            if (hh.kind == 8 && hh.i >= 0 && hh.i < (int)A.design.bodies.size() && A.design.bodies[hh.i].roundPath.size() < 2)
+                A.design.bodies[hh.i].roundPath = autoRoundPath(A.design.bodies[hh.i], A.design.breech.cart);   // moving an automatic layout: from here on it's yours
             if (hh.kind == 0 || hh.kind == 7) {
                 auto& d = A.design.bodies[hh.i];
                 fixShape(d);
@@ -393,7 +399,7 @@ void buildInput(bool overUI) {
                 }
                 A.dragOrig = d.pts;
                 A.dragMM = mouseMM(z);
-            } else if (hh.i >= 0) { A.sel = {2, hh.i, -1}; A.selVs.clear(); }
+            } else if (hh.i >= 0 && hh.kind != 8) { A.sel = {2, hh.i, -1}; A.selVs.clear(); }   // (a round path point: its magazine stays selected)
             return;
         }
         auto hits = bodiesUnderMouse();  // nearest first
@@ -581,6 +587,12 @@ void buildInput(bool overUI) {
                     if (dx != 0 || dy != 0) A.dragMoved = true;
                 }
                 else if (h.kind == 1) A.design.joints[h.i].p = p;
+                else if (h.kind == 2 && h.v == 0 && A.design.joints[h.i].type == "magwell") {   // the seat: the magazine moves, its well with it
+                    auto& j = A.design.joints[h.i];
+                    double dx = p.x - j.path[0].x, dy = p.y - j.path[0].y;
+                    int mi = A.design.bodyIndex(j.a);
+                    if (mi >= 0 && (dx != 0 || dy != 0)) for (int k : weldedWith(A.design, mi)) moveBody(k, dx, dy);
+                }
                 else if (h.kind == 2) A.design.joints[h.i].path[h.v] = p;
                 else if (h.kind == 8 && h.i < (int)A.design.bodies.size() && h.v < (int)A.design.bodies[h.i].roundPath.size()) A.design.bodies[h.i].roundPath[h.v] = p;
                 else if (h.kind == 3) A.design.joints[h.i].pa = p;

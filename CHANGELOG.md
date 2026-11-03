@@ -8,6 +8,30 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.7-alpha
+
+### Scale tool
+- **Scale** (in the Shape tools): click a part, then click a handle of the box round it and drag.
+  - A **corner** makes it bigger or smaller and keeps its proportions; Shift stretches it freely.
+  - An **edge** stretches it one way.
+  - **Ctrl** scales it about its middle instead of the opposite side.
+- Or **type the size** in the panel: width, height, thickness, or *Scale by* a percentage. *Keep proportions* and *Thickness too* decide whether the other sizes follow.
+- **Everything welded to the part scales with it**, and so does everything attached at points on it: pins, track slots, spring ends, the breech face, muzzle, firing pin tip, hands, cuts, engravings and the control's push point.
+- A weight you set grows with the part. Springs keep their length and strength.
+- With **corners picked** (Shift-click or a box), only those corners are scaled.
+
+### Magazines: easier to resize and line up
+- **Every magazine shows its dots when selected**, and each one drags on its own (click a dot, then drag it):
+  - **Feeds from here (top round):** where the top round sits for the bolt to strip it.
+  - **Rounds lie this way:** the line the rest of the rounds sit along.
+  - **Seated here:** where the magazine sits in the gun. Dragging it moves the magazine, its well with it.
+  - **Magazine well exit**, as before.
+- Until you move a dot, the rounds are laid out automatically, as before.
+- **Fitted magazines have a Length and a Width** you can set (*Back to the fitted size* undoes it). They're no longer just as long as their capacity needs.
+- **Reshape a fitted magazine by hand** (drag its corners or faces, or scale it) and it keeps that shape: it's no longer refitted over your changes. Its rounds keep their exact place: the top round is presented within 0.005 mm of where it was. *Fit it to the cartridge again* puts it back.
+- Moving or turning a fitted magazine no longer makes it jump back on the next change.
+- Fixed: dragging a round-path dot deselected the magazine.
+
 ## 0.3.6-alpha
 
 ### Gas operation

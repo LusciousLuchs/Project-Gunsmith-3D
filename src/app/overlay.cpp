@@ -1,5 +1,6 @@
 // Gunsmith3D - 2D overlay drawn over the 3D view: handles, joints, labels.
 #include "app/app.hpp"
+#include "app/scaletool.hpp"
 #include "app/faces.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
@@ -56,7 +57,12 @@ void drawOverlay() {
         float z = std::max(frontZ(j.a), frontZ(j.b)) + 0.25f;
         if (j.type == "pin" || j.type == "weld" || j.type == "track") A.handles.push_back({toScreen(W3(j.p, z)), 1, (int)ji, -1});
         if (j.type == "track") for (size_t k = 0; k < j.path.size(); k++) A.handles.push_back({toScreen(W3(j.path[k], frontZ(j.b))), 2, (int)ji, (int)k});
-        if (j.type == "magwell" && j.path.size() >= 2) {   // every point after the seat: bends, and the mouth
+        if (j.type == "magwell" && j.path.size() >= 2) {   // the seat (drag: the magazine moves, well and all), bends, and the mouth
+            if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size() && D.bodies[A.sel.idx].id == j.a) {
+                Vector2 s = toScreen(W3(j.path[0], frontZ(j.a) + 0.15f));
+                A.handles.push_back({s, 2, (int)ji, 0});
+                viewText("Seated here", s.x - 9 - MeasureText("Seated here", (int)(11 * CFG.uiScale)), s.y + 4, 11, Color{110, 220, 150, 255});   // (left: the feed spot's name is on the right)
+            }
             for (size_t k = 1; k < j.path.size(); k++) {
                 Vector2 s = toScreen(W3(j.path[k], frontZ(j.a) + 0.15f));
                 A.handles.push_back({s, 2, (int)ji, (int)k});
@@ -119,6 +125,7 @@ void drawOverlay() {
                 viewText(t.c_str(), s.x + 2, s.y - 4, 10, Color{30, 32, 36, 255});
             }
     }
+    drawScaleOverlay();
     if (A.mode == Mode::Build && A.measured && (A.tool == Tool::Measure || A.shaping)) {  // the measuring line
         Vector2 a = toScreen(W3(A.measureA, 0)), b = toScreen(W3(A.measureB, 0));
         Color mc{255, 226, 90, 255};
@@ -210,14 +217,20 @@ void drawOverlay() {
         auto& d = D.bodies[A.sel.idx];
         float z = bodyFront(A.sel.idx) + 0.1f;
         Color pc{120, 200, 255, 255};
-        for (size_t k = 0; k + 1 < d.roundPath.size(); k++) DrawLineEx(toScreen(W3(d.roundPath[k], z)), toScreen(W3(d.roundPath[k + 1], z)), 2, pc);
-        for (size_t k = 0; k < d.roundPath.size(); k++) {
-            Vector2 s = toScreen(W3(d.roundPath[k], z));
+        // drawn, or (until you move one) where they're laid out automatically: either way their dots can be dragged
+        bool autoPath = d.roundPath.size() < 2;
+        std::vector<V2> rp = autoPath ? autoRoundPath(d, D.breech.cart) : d.roundPath;
+        Color lc = autoPath ? Color{pc.r, pc.g, pc.b, 110} : pc;
+        for (size_t k = 0; k + 1 < rp.size(); k++) DrawLineEx(toScreen(W3(rp[k], z)), toScreen(W3(rp[k + 1], z)), 2, lc);
+        for (size_t k = 0; k < rp.size(); k++) {
+            if (autoPath && k != 0 && k + 1 != rp.size()) continue;   // (automatic: just the two ends)
+            Vector2 s = toScreen(W3(rp[k], z));
             bool hot = Vector2Distance(s, m) < 8;
             DrawCircleV(s, hot ? 6.f : (k == 0 ? 5.f : 4.f), Color{20, 24, 32, 230});
             DrawCircleLinesV(s, hot ? 6.f : (k == 0 ? 5.f : 4.f), pc);
             A.handles.push_back({s, 8, A.sel.idx, (int)k});
-            if (k == 0) viewText("Feeds from here", s.x + 9, s.y - 17 * CFG.uiScale, 11, pc);
+            if (k == 0) viewText("Feeds from here (top round)", s.x + 9, s.y - 17 * CFG.uiScale, 11, pc);
+            else if (k + 1 == rp.size()) viewText("Rounds lie this way", s.x + 9, s.y - 17 * CFG.uiScale, 11, pc);
         }
     }
     if (A.drafting || A.draftHasF) {

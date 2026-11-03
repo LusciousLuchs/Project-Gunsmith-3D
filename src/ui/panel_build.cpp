@@ -5,6 +5,7 @@
 #include "app/usertex.hpp"
 #include "app/pieces.hpp"
 #include "app/app.hpp"
+#include "app/scaletool.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -90,6 +91,46 @@ static void carveToolPanel() {
     A.carveW = std::max(0.2, A.carveW); A.carveH = std::max(0.2, A.carveH); A.carveDepth = std::max(0.1, A.carveDepth);
     editedAny = wasEdited;  // tool settings aren't part of the design
     ImGui::Spacing();
+}
+// The Scale tool: the box's size, typed; a percentage; and what a corner drag does
+static void scaleToolPanel() {
+    auto& D = A.design;
+    ImGui::SeparatorText("Scale");
+    if (!(A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size())) {
+        muted("Click a part to scale it. Then drag a corner of its box to make it bigger or smaller (Shift: stretch freely), or an edge to stretch it one way. Ctrl: about its middle. Or type sizes here.");
+        return;
+    }
+    std::vector<int> parts = weldedWith(D, A.sel.idx);
+    std::vector<int> corners = A.selVs.size() >= 2 ? A.selVs : std::vector<int>{};
+    V2 lo, hi;
+    if (!scaleBox(D, parts, corners, lo, hi)) return;
+    if (!corners.empty()) muted("Scaling the %d picked corners. (Click the part's outline away from its corners to scale all of it.)", (int)corners.size());
+    else if (parts.size() > 1) muted("Scaling the welded piece: %d parts together.", (int)parts.size());
+    V2 c{(lo.x + hi.x) / 2, (lo.y + hi.y) / 2};
+    double W = hi.x - lo.x, Hh = hi.y - lo.y, T = 0;
+    for (int i : parts) T = std::max(T, D.bodies[i].thick);
+    double w = W, h = Hh, t = T;
+    bool changed = false;
+    double sx = 1, sy = 1, sz = 1;
+    if (pNumU("Width", w, 0.5, Q::Length, 1, "Front to back, in the side view.") && W > 1e-6 && w > 0.1) { sx = w / W; if (A.scaleKeep) sy = sz = sx; changed = true; }
+    if (pNumU("Height", h, 0.5, Q::Length, 1, "Top to bottom, in the side view.") && Hh > 1e-6 && h > 0.1) { sy = h / Hh; if (A.scaleKeep) sx = sz = sy; changed = true; }
+    if (corners.empty() && pNumU("Thickness", t, 0.5, Q::Length, 1, "Across the gun (the thickest part of the piece). Round parts take theirs from their outline.") && T > 1e-6 && t > 0.1) {
+        sz = t / T; if (A.scaleKeep) sx = sy = sz; changed = true;
+    }
+    if (!corners.empty()) sz = 1;
+    if (changed) { scaleParts(D, parts, c, sx, sy, sz, corners); editedAny = true; }
+    static double pct = 100;
+    float wb = ImGui::GetContentRegionAvail().x;
+    pNum("By", pct, 1, "%.0f%%", "Scale everything by this much, about its middle (100% = no change).");
+    pct = std::clamp(pct, 2.0, 5000.0);
+    if (ImGui::Button("Scale by that", {wb, 0}) && std::fabs(pct - 100) > 1e-6) {
+        double s = pct / 100;
+        scaleParts(D, parts, c, s, s, corners.empty() && A.scaleDepth ? s : 1, corners);
+        editedAny = true;
+    }
+    pCheck("Keep proportions", A.scaleKeep, "Typing one size scales the others to match.");
+    pCheck("Thickness too", A.scaleDepth, "Dragging a corner (without Shift) and Scale by that also scale the thickness.");
+    muted("Pins, slots, spring ends, the breech face, muzzle and hands on the part go with it. Springs keep their length and strength.");
 }
 static void engraveToolPanel() {
     bool wasEdited = editedAny;
@@ -837,7 +878,15 @@ static void inspectPart(BodyDef& b) {
                 b.gen.on = false;
                 if (gen) generateMagazine(D, A.sel.idx);
             }
-            if (b.gen.on) {
+            if (b.gen.on && b.gen.byHand) {
+                muted("Reshaped by hand: it keeps the shape you gave it. Its rounds lie along the blue dots: drag them to line them up.");
+                if (ImGui::Button("Fit it to the cartridge again", {-1, 0})) {
+                    b.gen.byHand = false; b.gen.extraH = b.gen.extraW = 0; b.roundPath.clear();
+                    generateMagazine(D, A.sel.idx); editedAny = true;
+                }
+                if (tipHover()) ImGui::SetTooltip("Back to the fitted shape, sized by the cartridge and capacity, its rounds laid out automatically.");
+            }
+            if (b.gen.on && !b.gen.byHand) {
                 bool regen = false;
                 {   // where it sits: under the gun, on top, or sticking out of either side
                     int pos = b.gen.side > 0 ? 3 : b.gen.side < 0 ? 2 : std::fabs(std::remainder(b.gen.angle, 360.0)) > 90 ? 1 : 0;
@@ -875,6 +924,14 @@ static void inspectPart(BodyDef& b) {
                 prop("Curve");
                 if (ImGui::SliderFloat("##curve", &curve, -15, 80, "%.0f\xc2\xb0")) { b.gen.curve = curve; regen = true; } typeable();
                 if (pNumU("Wall", b.gen.wall, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3)) { b.gen.wall = std::clamp(b.gen.wall, 0.6, 4.0); regen = true; }
+                if (b.gen.side == 0) {   // its size: as fitted, or longer / wider than it needs to be
+                    double L = b.gen.H, Wd = b.gen.W;
+                    if (pNumU("Length", L, 0.5, Q::Length, 1, "From the lips to the floorplate. Fitted: just long enough for its capacity.\nLonger leaves room below the follower; shorter than its rounds need, and they won't all fit.")) {
+                        b.gen.extraH += L - b.gen.H; regen = true;
+                    }
+                    if (pNumU("Width", Wd, 0.5, Q::Length, 1, "Front to back. Fitted: the round's length plus the walls.")) { b.gen.extraW += Wd - b.gen.W; regen = true; }
+                    if ((b.gen.extraH != 0 || b.gen.extraW != 0) && ImGui::Button("Back to the fitted size", {-1, 0})) { b.gen.extraH = b.gen.extraW = 0; regen = true; }
+                }
                 static int lastCap = -1;
                 if (lastCap != b.magCap) { lastCap = b.magCap; regen = true; }
                 if (regen) { generateMagazine(D, A.sel.idx); editedAny = true; }
@@ -1573,6 +1630,7 @@ void buildPanel() {
             ImGui::BeginChild("##inspect", {0, 0});
             if (A.tool == Tool::Carve) carveToolPanel();
             if (A.tool == Tool::Engrave) engraveToolPanel();
+            if (A.tool == Tool::Scale) scaleToolPanel();
             if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) inspectPart(D.bodies[A.sel.idx]);
             else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) inspectJoint(D.joints[A.sel.idx]);
             else {

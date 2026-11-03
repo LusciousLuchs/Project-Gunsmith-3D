@@ -1769,6 +1769,40 @@ static void gasAndOpenBolt() {
         CHECK(R.fired == 20 && R.jams == 0, "it shoots 20 rounds without a stoppage");
     }
 }
+static void magazineShaping() {
+    std::printf("magazineShaping\n");
+    Design d = loadPreset("tilting");
+    int mi = -1;
+    for (int i = 0; i < (int)d.bodies.size(); i++) if (d.bodies[i].magazine) mi = i;
+    CHECK(mi >= 0 && d.bodies[mi].gen.on, "the example's magazine is fitted to its cartridge");
+    // a size of your own, kept with the gun
+    double H0 = d.bodies[mi].gen.H;
+    d.bodies[mi].gen.extraH = 12; d.bodies[mi].gen.extraW = 3;
+    generateMagazine(d, mi);
+    CHECK(std::fabs(d.bodies[mi].gen.H - H0 - 12) < 1e-6, "a fitted magazine can be made longer than it needs to be");
+    Design back; designFromJson(designToJson(d), back);
+    CHECK(back.bodies[mi].gen.extraH == 12 && back.bodies[mi].gen.extraW == 3, "its extra length and width are saved");
+    // reshaped by hand: it keeps the shape, and its top round is presented where it was
+    Design f = loadPreset("tilting");
+    auto presented = [](const Design& dd) {
+        auto S = sim::build(dd); sim::run(*S, 0.3);
+        for (auto& r : S->bodies) if (r.isRound && r.rs == sim::RS::Presented) return V2{r.x * 1000, r.y * 1000};
+        return V2{-1e9, -1e9};
+    };
+    V2 a = presented(f);
+    freezeMagazine(f.bodies[mi], f.breech.cart);
+    f.bodies[mi].pts[0].x -= 2;   // a corner moved by hand
+    std::vector<V2> shaped = f.bodies[mi].pts;
+    generateMagazine(f, mi);
+    bool kept = f.bodies[mi].pts.size() == shaped.size();
+    for (size_t k = 0; kept && k < shaped.size(); k++) kept = f.bodies[mi].pts[k].x == shaped[k].x && f.bodies[mi].pts[k].y == shaped[k].y;
+    CHECK(kept, "a magazine reshaped by hand isn't refitted over what you did");
+    V2 b = presented(f);
+    CHECK(std::hypot(a.x - b.x, a.y - b.y) < 0.05, "its rounds keep their place (the top round is presented where it was)");
+    designFromJson(designToJson(f), back);
+    CHECK(back.bodies[mi].gen.byHand && back.bodies[mi].roundPath.size() >= 2, "the hand-made shape and the rounds' path are saved");
+    CHECK(autoRoundPath(loadPreset("tilting").bodies[mi], f.breech.cart).size() >= 2, "an automatic layout has a feed spot and a direction to drag");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -1843,6 +1877,7 @@ int main() {
     controlButtons();
     poseAndGunMoves();
     gasAndOpenBolt();
+    magazineShaping();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

@@ -684,11 +684,39 @@ V2 magCentre(const MagGen& g, double s, double* phiDeg) {
     if (phiDeg) *phiDeg = g.angle + g.curve * (s / H);
     return p;
 }
+std::vector<V2> autoRoundPath(const BodyDef& b, const Cartridge& c) {
+    double dia = c.headDia() * 1.02;
+    const MagGen& g = b.gen;
+    if (g.on && g.side == 0) {   // down the fitted magazine's middle, from the top round to the last
+        double s0 = 3 + dia / 2, s1 = std::max(s0 + dia, g.H - 17);
+        int n = std::fabs(g.curve) > 3 ? 6 : 1;
+        std::vector<V2> p;
+        for (int k = 0; k <= n; k++) {
+            V2 q = magCentre(g, s0 + (s1 - s0) * k / n, nullptr);
+            p.push_back({std::round(q.x * 100) / 100, std::round(q.y * 100) / 100});
+        }
+        return p;
+    }
+    if (g.on) return {};   // (across the gun: not in the side view)
+    // a magazine you drew: the top round just under its top, the rest below it
+    auto o = outlineOf(b);
+    double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (auto& p : b.pts) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); y1 = std::max(y1, p.y); }
+    if (x0 > x1) return {};
+    V2 top{(x0 + x1) / 2, y0 + 1.5 + c.headDia() / 2};
+    return {top, {top.x, std::max(top.y + dia, y1 - 2)}};
+}
+void freezeMagazine(BodyDef& b, const Cartridge& c) {
+    if (!b.gen.on || b.gen.byHand) return;
+    if (b.roundPath.size() < 2) { auto p = autoRoundPath(b, c); if (p.size() >= 2) b.roundPath = p; }
+    b.gen.byHand = true;
+}
 void generateMagazine(Design& D, int bi) {
     if (bi < 0 || bi >= (int)D.bodies.size()) return;
     BodyDef& b = D.bodies[bi];
     MagGen& g = b.gen;
     const Cartridge& c = D.breech.cart;
+    if (g.on && g.byHand) { b.magCap = std::clamp(b.magCap, 1, 250); g.pts0 = b.pts; return; }   // shaped by hand: left as it is
     int wi = -1;
     for (size_t i = 0; i < D.joints.size(); i++) if (D.joints[i].type == "magwell" && D.joints[i].a == b.id) wi = (int)i;
     const bool wasOn = g.on;
@@ -708,8 +736,8 @@ void generateMagazine(Design& D, int bi) {
     double dia = c.headDia() * 1.02;
     double pitch = g.stack == 2 ? dia * 0.56 : dia * 0.98;
     double stackH = g.stack == 2 ? b.magCap * pitch + dia * 0.5 : b.magCap * pitch;
-    g.H = 3 + stackH + 12 + 5;  // lips, rounds, follower and spring, floorplate
-    g.W = c.oal + 2 * g.wall + 3;
+    g.H = std::max(10.0, 3 + stackH + 12 + 5 + g.extraH);  // lips, rounds, follower and spring, floorplate
+    g.W = std::max(c.oal * 0.5, c.oal + 2 * g.wall + 3 + g.extraW);
     if (g.side != 0) {   // across the gun: the side view sees only its mouth, a box round the top round
         double yc = g.top.y + 3 + dia / 2, half = dia * (g.stack == 2 ? 0.9 : 0.55) + g.wall;
         double x0 = g.top.x - g.W / 2, x1 = g.top.x + g.W / 2;
@@ -722,6 +750,7 @@ void generateMagazine(Design& D, int bi) {
         b.z = (g.side > 0 ? 1 : -1) * (dia / 2 + 0.5 + b.thick / 2);   // its mouth right beside the top round
         b.magazine = true;
         b.ghost = true;
+        g.pts0 = b.pts;
         if (b.magFixed) {
             if (wi >= 0) D.joints.erase(D.joints.begin() + wi);
             return;
@@ -762,6 +791,7 @@ void generateMagazine(Design& D, int bi) {
     b.thick = std::round(std::max(12.0, c.headDia() * (g.stack == 2 ? 1.75 : 1.15) + 2));
     b.magazine = true;
     b.ghost = true;
+    g.pts0 = b.pts;
     if (b.magFixed) {   // built in: no well to slide along
         if (wi >= 0) D.joints.erase(D.joints.begin() + wi);
         return;
@@ -896,6 +926,8 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.clip != "none") jb["magazine"]["clip"] = {{"kind", b.clip}, {"size", b.clipSize}};
             if (!b.roundPath.empty()) { json a = json::array(); for (auto& q : b.roundPath) a.push_back(v2j(q)); jb["magazine"]["roundPath"] = a; }
             if (b.gen.on) jb["magazine"]["gen"] = {{"stack", b.gen.stack}, {"curve", b.gen.curve}, {"wall", b.gen.wall}, {"angle", b.gen.angle}, {"side", b.gen.side}, {"top", v2j(b.gen.top)}, {"H", b.gen.H}, {"W", b.gen.W}};
+            if (b.gen.on && (b.gen.extraH != 0 || b.gen.extraW != 0)) { jb["magazine"]["gen"]["extraH"] = b.gen.extraH; jb["magazine"]["gen"]["extraW"] = b.gen.extraW; }
+            if (b.gen.on && b.gen.byHand) jb["magazine"]["gen"]["byHand"] = true;
         }
         if (b.tiltX != 0 || b.tiltY != 0) jb["tilt"] = {b.tiltX, b.tiltY};
         if (b.barrel.on) jb["barrel"] = {{"cartridge", cartToJson(b.barrel.cart)}, {"rifled", b.barrel.rifled}, {"twist", b.barrel.twist}, {"grooves", b.barrel.grooves}, {"muzzleEnd", b.barrel.muzzleEnd}};
@@ -1115,6 +1147,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 b.gen.wall = opt<double>(g, "wall", 1.2); b.gen.angle = opt<double>(g, "angle", 0); b.gen.side = opt<int>(g, "side", 0);
                 if (g.contains("top")) b.gen.top = j2v(g["top"]);
                 b.gen.H = opt<double>(g, "H", 0); b.gen.W = opt<double>(g, "W", 0);
+                b.gen.extraH = opt<double>(g, "extraH", 0.0); b.gen.extraW = opt<double>(g, "extraW", 0.0); b.gen.byHand = opt<bool>(g, "byHand", false);
             }
         }
         if (jb.contains("control") && jb["control"].is_object()) {
@@ -1316,6 +1349,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             if (!h.on) readHand(jg, h, k == "shoulder" ? "butt" : k.c_str());
         }
     }
+    for (auto& b : d.bodies) if (b.gen.on) b.gen.pts0 = b.pts;   // as fitted (or as reshaped): a later change is the player's
     out = d;
     return true;
 }

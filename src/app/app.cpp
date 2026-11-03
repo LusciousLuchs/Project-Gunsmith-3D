@@ -59,6 +59,12 @@ void commit() {
         if (designFromJson(A.lastSnap, prev)) syncMirrors(A.design, &prev, A.sel.kind == 1 ? A.sel.idx : -1);
     }
     syncBarrels(A.design);  // barrels set the firing system's chambers and muzzles
+    for (auto& b : A.design.bodies) {   // a fitted magazine reshaped by hand keeps its new shape (it's not refitted over it)
+        if (!b.gen.on || b.gen.byHand || b.gen.pts0.empty()) continue;
+        bool same = b.pts.size() == b.gen.pts0.size();
+        for (size_t k = 0; same && k < b.pts.size(); k++) same = std::fabs(b.pts[k].x - b.gen.pts0[k].x) < 0.02 && std::fabs(b.pts[k].y - b.gen.pts0[k].y) < 0.02;
+        if (!same) { freezeMagazine(b, A.design.breech.cart); toast("Reshaped by hand: the magazine keeps this shape, and its rounds keep their place (drag their dots to move them)."); }
+    }
     A.hist.push_back(A.lastSnap);
     if (A.hist.size() > 120) A.hist.erase(A.hist.begin());
     A.future.clear();
@@ -228,7 +234,8 @@ const char* TOOL_HINT[] = {
     "Drag from the breech end to the muzzle. Its cartridge, rifling and length are in its panel.",
     "Drag between two points to measure the length, how far across and up, and the angle. Snaps to corners and joints.",
     "Point at any face of a part and drag to push or pull it; E extrudes it. The selected part's corners show on both faces (squares front, circles back): drag one on its own to shape the part in depth. It moves in the plane you look at: from the side up and along, from the top along and in depth, from the front up and in depth (Z while dragging: in depth from any view).",
-    "Engrave: click a part to pick it, then draw on its surface with the mouse, or switch to Text and click where the words go. Any face, from any side. Erase removes a line or a word."};
+    "Engrave: click a part to pick it, then draw on its surface with the mouse, or switch to Text and click where the words go. Any face, from any side. Erase removes a line or a word.",
+    "Scale: click a part, click a handle of its box, then drag it. Corners keep the proportions (Shift: free), edges stretch one way, Ctrl scales about the middle. Or type sizes in the panel."};
 static_assert(sizeof(TOOL_HINT) / sizeof(TOOL_HINT[0]) == (size_t)Tool::Count, "a hint for every tool");
 void setTool(Tool t) {
     if (A.mode == Mode::Test) setMode(Mode::Build);

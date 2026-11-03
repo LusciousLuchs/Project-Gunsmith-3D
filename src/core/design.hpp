@@ -73,6 +73,9 @@ struct MagGen {
                                 // left: the rounds stack across the gun and come in sideways (the side view sees only the mouth)
     V2 top;                     // top centre (feed lips), design coords
     double H = 0, W = 0;        // generated height and width
+    double extraH = 0, extraW = 0;   // mm longer / wider than the cartridge and capacity need (0: just fitted)
+    bool byHand = false;        // reshaped by hand (corners, faces, scaled): its outline is kept as drawn, not refitted
+    std::vector<V2> pts0;       // (not saved) the outline as last fitted: an outline that no longer matches was reshaped by hand
 };
 
 // A carve: a cutter of some shape pushed into a part from any direction, to some depth. Subtractive only.
@@ -415,6 +418,10 @@ void weldParts(Design& d, const std::string& a, const std::string& b);
 void unweld(Design& d, const std::string& id);
 std::vector<int> weldedWith(const Design& d, int i);   // the parts in i's piece (including i)
 void weldJointsToTags(Design& d);
+// A fitted magazine reshaped by hand keeps its shape from then on; its rounds keep their place (they're laid along a
+// round path made from where they were).
+void freezeMagazine(BodyDef& b, const Cartridge& c);
+std::vector<V2> autoRoundPath(const BodyDef& b, const Cartridge& c);   // where the rounds sit when nothing is drawn: feed spot first
 void generateMagazine(Design& d, int bodyIndex);               // rebuild the magazine shape and its well
 V2 magCentre(const MagGen& g, double s, double* phiDeg);       // point on the magazine centreline, s mm below the lips
 

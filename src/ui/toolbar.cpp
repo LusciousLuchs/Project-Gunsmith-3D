@@ -87,6 +87,7 @@ static const RailTool RAIL_DRAW[] = {
 static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_CUBE, "Faces", "Point at any face of a part (front, back, top, bottom, ends) and drag to push or pull it.\nE extrudes the face: move the mouse to draw it out, click to finish.", Tool::Faces, -1},
     {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
+    {ICON_FA_EXPAND, "Scale", "Make a part bigger or smaller: drag a corner of the box round it (Shift: stretch freely),\nor an edge to stretch it one way. Ctrl scales about its middle. Pins, slots and springs on it go with it.\nOr type exact sizes in its panel. With corners picked, only those corners are scaled.", Tool::Scale, -1},
     {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.\nIt stays a live mirror: change either one and the other follows.", Tool::Mirror, -1},
     {ICON_FA_RULER, "Measure", "Drag between two points to measure: the length, how far across and up, and the angle.\nSnaps to corners and joints. The line stays until you measure again.", Tool::Measure, -1},
     {ICON_FA_CIRCLE_MINUS, "Carve", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1},
