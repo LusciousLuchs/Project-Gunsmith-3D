@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.2.16-alpha
+
+- **The license agreement is asked only once:** after a player agrees, they're never asked again, even when the agreement's text changes in a later version.
+
 ## 0.2.15-alpha
 
 ### At launch

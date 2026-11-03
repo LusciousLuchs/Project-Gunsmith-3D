@@ -1,6 +1,6 @@
 // Gunsmith3D - the End User License Agreement shown at launch (src/ui/intro.cpp).
-// To change it, replace the text between the two EULA markers. Players who agreed to an older text are asked again,
-// because the game remembers which text was agreed to (a fingerprint of it), not just that something was.
+// To change it, replace the text between the two EULA markers. A player is asked only until they agree once; the game
+// keeps a fingerprint of the text they agreed to.
 R"EULA(GUNSMITH3D - END USER LICENSE AGREEMENT (placeholder)
 
 Please read this before playing.
@@ -18,6 +18,4 @@ To the fullest extent the law allows, One Armed Bandit Games is not liable for a
 Gunsmith3D is a game. Its designs and simulations are simplified and are not real engineering. Do not use anything from it to make, modify or repair a real firearm.
 
 5. Agreement
-By choosing "I agree", you accept this agreement. If you do not agree, choose "Decline", and the game will close.
-
-This is a temporary agreement. A full agreement will replace it in a later version, and you will be asked to agree again.)EULA"
+By choosing "I agree", you accept this agreement. If you do not agree, choose "Decline", and the game will close.)EULA"

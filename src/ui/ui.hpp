@@ -42,7 +42,7 @@ bool dangerButton(const char* label, ImVec2 size = {0, 0});
 void hintOverlay();
 void toastOverlay();
 void styleUI();
-// intro.cpp: the studio's splash at launch, then the End User License Agreement until it's agreed to
+// intro.cpp: the studio's splash at launch, then the End User License Agreement until it's agreed to once
 void introStart(bool eulaOnly);   // the splash then the agreement (if not yet agreed); eulaOnly: just the agreement
 void introForceEula();            // (screenshots) the agreement, agreed or not
 bool introActive();

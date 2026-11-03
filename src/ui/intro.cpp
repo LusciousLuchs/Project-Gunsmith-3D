@@ -1,5 +1,5 @@
 // Gunsmith3D - what the game shows at launch, before the main menu: the studio's splash, then the End User License
-// Agreement (once per agreement text: see eula.inc).
+// Agreement, until the player has agreed to it once.
 #include "ui/ui.hpp"
 #include "app/settings.hpp"
 #include "raylib.h"
@@ -26,7 +26,7 @@ std::string fingerprint() {   // which agreement was agreed to: a hash of its te
     std::snprintf(b, sizeof b, "%016llx", (unsigned long long)h);
     return b;
 }
-bool agreed() { return CFG.eulaAgreed == fingerprint(); }
+bool agreed() { return !CFG.eulaAgreed.empty(); }   // agreed once: never asked again (the text agreed to is kept on record)
 
 void spaced(ImDrawList* dl, ImFont* f, float size, float cx, float y, const char* s, float gap, ImU32 col) {   // letter-spaced, centred
     float w = 0;
