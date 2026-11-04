@@ -381,6 +381,7 @@ void buildInput(bool overUI) {
                 if (hh.kind >= 1 && hh.kind <= 4 && hh.i >= 0) { A.sel = {2, hh.i, -1}; A.selVs.clear(); }
                 return;
             }
+            if (hh.kind == 11) { faceHandleDrag(hh.i, hh.v, shift); A.armedKind = -1; A.dragKind = 0; return; }   // a face: pushed until the mouse is let go
             A.dragKind = 1; A.dragH = hh; A.dragMoved = false; A.dragPress = m; A.dragLive = false; A.dragExtrude = false;
             if (hh.kind == 8 && hh.i >= 0 && hh.i < (int)A.design.bodies.size() && A.design.bodies[hh.i].roundPath.size() < 2)
                 A.design.bodies[hh.i].roundPath = autoRoundPath(A.design.bodies[hh.i], A.design.breech.cart);   // moving an automatic layout: from here on it's yours

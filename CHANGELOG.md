@@ -8,6 +8,18 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.8-alpha
+
+### Push and pull any face, right from Select
+- **The selected part's faces get arrow dots.** Turn the view so you see the part at an angle, and every face you can see gets an arrow dot in its middle: the top, the bottom, the ends, a slanted side, and the front or back. Click a dot, then drag it.
+  - The top, bottom, ends and sides push out or in.
+  - The front and back faces make the part thicker or thinner.
+  - Hold Shift as you drag a side to extrude it into a new step.
+- Before, only the side outline had handles in the Select tool, and the other faces needed the separate Faces tool and three clicks.
+- **The Faces tool is quicker too:** the first click on a face picks the part and that face together, then you drag it.
+- The dots hide when you look straight at a face (as in the flat side view), so dragging the middle of a part still moves the part.
+- Round and tilted parts still can't have their faces pushed: change their outline in the side view, or their thickness and tilt in the panel.
+
 ## 0.3.7-alpha
 
 ### Scale tool

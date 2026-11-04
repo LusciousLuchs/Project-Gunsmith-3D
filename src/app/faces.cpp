@@ -326,9 +326,8 @@ void facesInput(bool overUI) {
     if (A.faceHover.body < 0) return;
     if (IsKeyPressed(KEY_E) && !ImGui::GetIO().WantCaptureKeyboard) { begin(A.faceHover, true, true); return; }
     if (A.tool == Tool::Faces && !overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        if (!(A.sel.kind == 1 && A.sel.idx == A.faceHover.body)) {   // the first click picks the part; then a face
-            A.sel = {1, A.faceHover.body, -1}; A.selVs.clear(); A.facePicked = {}; A.cornerPicked = false;
-            toast("Selected. Now click one of its faces or corners to pick it, and drag it.");
+        if (!(A.sel.kind == 1 && A.sel.idx == A.faceHover.body)) {   // the first click picks the part and that face together
+            A.sel = {1, A.faceHover.body, -1}; A.selVs.clear(); A.facePicked = A.faceHover; A.cornerPicked = false;
             return;
         }
         const auto& fp = A.facePicked;
@@ -338,6 +337,73 @@ void facesInput(bool overUI) {
         }
         begin(A.faceHover, false, shift);
     }
+}
+
+// ---------------------------------------------------------------- push handles in the Select tool
+// A handle in the middle of every face of the selected part that looks your way: the top, the bottom, the ends and
+// any slanted side, and the front or back face (its thickness). Click one to pick it, then drag it out or in.
+namespace {
+struct FaceHandle { int v; Vector3 c, n; };   // v: the side wall's edge, or -1 the near face, -2 the far face
+std::vector<FaceHandle> faceHandleList(int i) {
+    std::vector<FaceHandle> out;
+    const BodyDef& d = A.design.bodies[i];
+    if (!editable(d)) return out;
+    std::vector<P3d> RN, RF;
+    depthRings(d, RN, RF);
+    int n = (int)d.pts.size();
+    if ((int)RN.size() != n || (int)RF.size() != n) return out;
+    for (int e = 0; e < n; e++) {
+        int e2 = (e + 1) % n;
+        Vector3 c = Vector3Scale(Vector3Add(Vector3Add(ringW(i, RN[e]), ringW(i, RN[e2])), Vector3Add(ringW(i, RF[e]), ringW(i, RF[e2]))), 0.25f);
+        out.push_back({e, c, worldNormal(d, {i, 0, e, {}})});
+    }
+    for (int k = 0; k < 2; k++) {
+        const auto& R = k == 0 ? RN : RF;
+        Vector3 c{0, 0, 0};
+        for (auto& p : R) c = Vector3Add(c, ringW(i, p));
+        out.push_back({k == 0 ? -1 : -2, Vector3Scale(c, 1.f / n), {0, 0, k == 0 ? 1.f : -1.f}});
+    }
+    return out;
+}
+}  // namespace
+void faceHandles() {
+    if (A.mode != Mode::Build || A.tool != Tool::Select || A.faceDragging || A.dragKind != 0) return;
+    if (!(A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size())) return;
+    if (!A.selVs.empty()) return;   // (corners picked: their own handles are what you're working with)
+    int i = A.sel.idx;
+    Vector2 m = GetMousePosition();
+    Color c{255, 205, 60, 255};
+    for (auto& h : faceHandleList(i)) {
+        Vector3 toEye = Vector3Normalize(Vector3Subtract(A.cam.position, h.c));
+        float facing = Vector3DotProduct(h.n, toEye);
+        // facing away or seen edge on: nothing to grab. Looked at square on (the side view): no handle either, so a
+        // drag in the middle of the part still moves the part, and pushing straight at you wouldn't show anyway
+        if (facing < 0.25f || facing > 0.92f) continue;
+        Vector2 s = toScreen(h.c), s1 = toScreen(Vector3Add(h.c, Vector3Scale(h.n, 6 * U)));
+        Vector2 dir = Vector2Subtract(s1, s);
+        float l = Vector2Length(dir);
+        bool picked = A.armedKind == 11 && A.armedI == i && A.armedV == h.v;
+        bool hot = Vector2Distance(s, m) < 9 || picked;
+        if (l > 2) {   // a short arrow, out of the face
+            Vector2 u = Vector2Scale(dir, 1 / l), tip = Vector2Add(s, Vector2Scale(u, 20));
+            DrawLineEx(s, tip, hot ? 2.5f : 1.5f, c);
+            Vector2 side{-u.y * 4.5f, u.x * 4.5f}, back = Vector2Subtract(tip, Vector2Scale(u, 7));
+            DrawTriangle(tip, Vector2Add(back, side), Vector2Subtract(back, side), c);
+            DrawTriangle(tip, Vector2Subtract(back, side), Vector2Add(back, side), c);
+        }
+        DrawCircleV(s, hot ? 6.f : 4.5f, Color{20, 24, 32, 230});
+        DrawCircleLinesV(s, hot ? 6.f : 4.5f, c);
+        if (hot) {
+            const char* what = h.v == -1 || h.v == -2 ? "This face: drag to make it thicker or thinner" : "This face: drag to push it out or in";
+            DrawText(picked ? "Picked: press again and drag (Shift: extrude a new step)" : what, (int)s.x + 10, (int)s.y + 8, 14, c);
+        }
+        A.handles.push_back({s, 11, i, h.v});
+    }
+}
+void faceHandleDrag(int body, int v, bool extrude) {
+    if (body < 0 || body >= (int)A.design.bodies.size()) return;
+    for (auto& h : faceHandleList(body))
+        if (h.v == v) { begin(App::FacePick{body, v >= 0 ? 0 : v == -1 ? 1 : 2, v >= 0 ? v : -1, h.c}, false, extrude); return; }
 }
 
 void drawFaces() {

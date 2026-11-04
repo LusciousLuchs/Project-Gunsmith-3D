@@ -214,7 +214,7 @@ void spawnSpareMag() {
 }
 
 const char* TOOL_HINT[] = {
-    "Click anything (a part, a corner, a spring end, a track point) to pick it; drag it after that to move it: X, Y or Z while dragging keeps it to one axis. Squares are corners (right-click removes one). Diamonds move an edge, Shift-drag extrudes it, right-click splits it in half.",
+    "Click anything (a part, a corner, a spring end, a track point) to pick it; drag it after that to move it: X, Y or Z while dragging keeps it to one axis. Turn the view: the selected part's faces (top, bottom, ends, front, back) get arrow dots to push or pull them. Squares are corners (right-click removes one). Diamonds move an edge, Shift-drag extrudes it, right-click splits it in half.",
     "Click to place corners. Click the first one again, or press Enter, to close the part.",
     "Click where two parts overlap to pin them so they pivot. Over one part, it pins it to the ground.",
     "Click one part, then another: they become one solid piece. Nothing is added to the gun.",
