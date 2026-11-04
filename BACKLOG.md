@@ -37,6 +37,35 @@ What's there already is noted; the rest is new work.
 
 - **Signing the Windows build** (so it runs without the blue SmartScreen prompt): not for now. Options when wanted: Microsoft Trusted Signing (about $10 a month, identity checks, US/Canada so far) or a code-signing certificate ($100-400 a year).
 
+## Map editing tools: levels and NPCs (the owner's plan, 0.3.9)
+
+The goal: guns, the places to use them, and things to fight, all made by players. Think a flatscreen H3VR: build any
+level and any enemy, from realistic soldiers to things from somewhere else. Under **Map editing tools** on the main
+menu: the **Level editor** (the map editor) and the **NPC editor**. The tools are generic; what players build with them
+is up to them, and the game's own examples stay original.
+
+- [x] **Menu:** Map editing tools, with Level editor and NPC editor (0.3.9).
+- [x] **NPC bodies:** any number of bones, each hanging off another anywhere along it; length, thickness at each end,
+  shape (rounded, box, ball), colour; posed by bend, turn and twist or by dragging a bone's end; mirror a limb to the
+  other side; weak spots and armour per bone. Starter bodies: human, hound, six-legged crawler, blank. Saved in user/npcs (0.3.9).
+- [x] **Fight settings saved with it:** health, speed, attack (up close, with a gun, explodes), damage, reach, sight,
+  behaviour (stand, wander, chase, guard), team (0.3.9). Not used yet.
+- [ ] **NPCs on maps:** a spawn point entity in the level editor (which NPC, how many, when), placed like the player start.
+- [ ] **NPCs alive on the range:** walk the map (navigation over the brushes), see the player (sight distance, line of
+  sight), act on their behaviour, attack (melee reach and damage, explode, or shoot their gun through the same
+  ballistics as the player's).
+- [ ] **Getting hit:** bullets hit bones (each bone a capsule), damage by bone (weak spots x3, armour), death, ragdoll
+  (the bones go limp under gravity), bodies cleared after a while.
+- [ ] **The player can be hurt:** health, a damage flash, death and restart.
+- [ ] **Movement from the pose tools:** walk, run and attack cycles as keyframes on the bones (the animation timeline
+  from the hand animations), with automatic leg stepping for any number of legs as a default.
+- [ ] **Hands and held guns for NPCs:** a hand on any bone, holding a blueprint the way the player's pose holds it.
+- [ ] **Level logic:** waves (rounds of spawns that grow), triggers (walk into an area, open a door), doors, pickups
+  (ammo, guns, health), objectives, a score.
+- [ ] **Level editor additions:** props and lights, more brush shapes, sounds, sharing maps and NPCs as files.
+- [ ] **NPC editor additions:** textures on bones (the same pictures as parts), bones shaped like parts (draw an outline,
+  like the gun designer), eyes and glows, sounds.
+
 ## Next
 
 - **Firing range**: first person, walking the range with your gun, using its poses; weighty handling (inertia, sway, time to aim), holstering, recoil from the bench, live-fire jams from the measured jam rate.

@@ -1,0 +1,56 @@
+// Gunsmith3D - NPC designs (the NPC editor, under Map editing tools): an enemy or character built like the posing
+// mannequin, but free: any number of bones, each a shaped piece hanging off another, posed where you want it, so it
+// can be a soldier, a hound, a crawler with six legs, or something stranger. Plus what it's like in a fight (health,
+// speed, how it attacks). Saved as JSON in user/npcs.
+//
+// Not alive yet: the editor builds and poses them; walking, fighting and spawning them on maps comes next (BACKLOG).
+#pragma once
+#include <string>
+#include <vector>
+
+struct NpcBone {
+    std::string name = "Bone";
+    int parent = -1;              // -1: the root (only bone 0)
+    double at = 1;                // where it hangs off its parent: 0 the parent's start, 1 its end
+    double side = 0;              // and how far across from there (mm, + to its right)
+    double len = 200;             // mm
+    double r0 = 40, r1 = 35;      // thickness (radius) at its start and its end, mm
+    double bend = 0, turn = 0, twist = 0;   // degrees from its parent's direction: bend forward (+) or back, turn
+                                            // to the side (+ its right), twist about its own length
+    std::string shape = "capsule";          // capsule, box, ball
+    std::string color = "#8a8f98";
+    bool vital = false;           // a weak spot: hits here do triple damage (a head, a glowing core)
+    double armor = 0;             // 0 .. 1: how much of a hit it stops
+};
+
+struct NpcDef {
+    std::string name = "New NPC";
+    std::vector<NpcBone> bones;   // bones[0] is the root
+    double rootHeight = 950;      // mm above the ground where the root starts
+    double rootBend = 0, rootTurn = 0;   // the root's own direction: 0, 0 = straight up
+    // in a fight (used once NPCs come alive on maps)
+    double health = 100;
+    double speed = 1.4;           // m/s
+    std::string attack = "melee"; // melee, ranged, explode
+    double damage = 20;           // per hit (melee, explode)
+    double reach = 1.5;           // m: how close it has to be to attack (ranged: how far it shoots)
+    std::string gun;              // ranged: the blueprint it carries (user/guns)
+    double sight = 30;            // m: how far it notices you
+    std::string behaviour = "chase";   // stand, wander, chase, guard
+    int team = 1;                 // who it fights (you are 0)
+};
+
+std::string npcToJson(const NpcDef& n);
+bool npcFromJson(const std::string& text, NpcDef& n, std::string* err = nullptr);
+const std::vector<std::pair<std::string, std::string>>& npcPresets();   // key, label
+NpcDef npcPreset(const std::string& key);   // human, hound, crawler, blank
+
+// Where every bone is: world millimetres, y up, the NPC standing at the origin facing +z. ax/ay/az: the bone's own
+// axes (az... ay points along it).
+struct NpcBoneAt { double a[3], b[3], x[3], y[3], z[3]; };
+std::vector<NpcBoneAt> npcPose(const NpcDef& n);
+// Aim bone i so it points along `dir` (world), keeping its twist: what dragging a bone's end does in the editor
+void npcAimBone(NpcDef& n, int i, const double dir[3]);
+void npcMirrorBone(NpcDef& n, int i);       // a copy of bone i and everything below it, on the other side
+void npcRemoveBone(NpcDef& n, int i);       // and everything below it (not the root)
+double npcHeight(const NpcDef& n);          // mm, ground to the highest point

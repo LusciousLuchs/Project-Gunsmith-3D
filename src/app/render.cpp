@@ -213,10 +213,13 @@ static void drawOutline(int i, Matrix M, Color c) {
     for (size_t k = 0; k < n; k++) {
         DrawLine3D(f[k], f[(k + 1) % n], c);
         DrawLine3D(b[k], b[(k + 1) % n], c);
-        // depth edges only at real corners, not along curves
+        // depth edges at real corners, not along curves: where the outline turns, and at every corner drawn (even in a
+        // straight line, like the seam an extrusion leaves)
         V2 a = o[(k + n - 1) % n], p = o[k], q = o[(k + 1) % n];
         double t1 = std::atan2(p.y - a.y, p.x - a.x), t2 = std::atan2(q.y - p.y, q.x - p.x);
-        if (std::fabs(std::remainder(t2 - t1, 2 * PI)) > 25 * DEG2RAD) DrawLine3D(f[k], b[k], c);
+        bool corner = std::fabs(std::remainder(t2 - t1, 2 * PI)) > 25 * DEG2RAD;
+        if (!corner) for (auto& dp : d.pts) if (std::fabs(dp.x - p.x) < 1e-3 && std::fabs(dp.y - p.y) < 1e-3) { corner = true; break; }
+        if (corner) DrawLine3D(f[k], b[k], c);
     }
 }
 // Lathe-turned cartridge meshes, built from the cartridge's profile. Axis along +X, head at x = 0.

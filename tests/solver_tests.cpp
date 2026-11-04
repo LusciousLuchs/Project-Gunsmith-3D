@@ -1,5 +1,6 @@
 // Headless checks that each example action actually cycles. Run: ./gunsmith3d_tests
 #include "solver.hpp"
+#include "npc.hpp"
 #include "reliability.hpp"
 #include "version.hpp"
 #include "carve.hpp"
@@ -1803,6 +1804,29 @@ static void magazineShaping() {
     CHECK(back.bodies[mi].gen.byHand && back.bodies[mi].roundPath.size() >= 2, "the hand-made shape and the rounds' path are saved");
     CHECK(autoRoundPath(loadPreset("tilting").bodies[mi], f.breech.cart).size() >= 2, "an automatic layout has a feed spot and a direction to drag");
 }
+static void npcDesigns() {
+    std::printf("npcDesigns\n");
+    for (auto& [k, label] : npcPresets()) {
+        NpcDef n = npcPreset(k);
+        auto P = npcPose(n);
+        double low = 1e9;
+        for (auto& b : P) low = std::min({low, b.a[1], b.b[1]});
+        CHECK(!n.bones.empty() && low > -60, (label + ": stands on the ground, not through it").c_str());
+    }
+    NpcDef h = npcPreset("human");
+    CHECK(std::fabs(npcHeight(h) - 1780) < 120, "the human is about a person's height");
+    NpcDef back;
+    CHECK(npcFromJson(npcToJson(h), back) && back.bones.size() == h.bones.size() && back.bones[3].vital == h.bones[3].vital && back.name == h.name, "an NPC is saved and read back whole");
+    int n0 = (int)h.bones.size();
+    npcMirrorBone(h, 4);   // the left arm (3 bones) copied
+    CHECK((int)h.bones.size() == n0 + 3, "mirroring a limb copies it and everything on it");
+    npcRemoveBone(h, n0);
+    CHECK((int)h.bones.size() == n0, "deleting a bone takes what hangs off it too");
+    double dir[3] = {0, 0, 1};   // point the left forearm straight forward
+    npcAimBone(h, 5, dir);
+    auto P = npcPose(h);
+    CHECK(P[5].y[2] > 0.999, "dragging a bone's end points it where you drag");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -1878,6 +1902,7 @@ int main() {
     poseAndGunMoves();
     gasAndOpenBolt();
     magazineShaping();
+    npcDesigns();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

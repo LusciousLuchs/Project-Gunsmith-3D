@@ -1,6 +1,7 @@
 // Gunsmith3D - Gunsmith3D entry point: command line, window, main loop.
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/npcedit.hpp"
 #include "app/gfx.hpp"
 #include "app/audio.hpp"
 #include "app/view.hpp"
@@ -46,7 +47,7 @@ int main(int argc, char** argv) {
     std::string rangeArg;
     int settingsPage = 0;
     bool useSettings = false;
-    std::string mapArg; bool walkArg = false;
+    std::string mapArg; bool walkArg = false, npcArg = false;
     bool tutListArg = false; int tutArg = 0;
     int magCapArg = 0; double magCurveArg = -999; std::string cartArg;
     for (int i = 1; i < argc; i++) {
@@ -89,6 +90,7 @@ int main(int argc, char** argv) {
         else if (a == "--settingspage") { settingsArg = true; settingsPage = std::atoi(next().c_str()); }
         else if (a == "--pause") pauseArg = true;          // (screenshots) open the pause menu
         else if (a == "--benchpick") benchArg = true;      // (screenshots) open the test-bench picker
+        else if (a == "--npcedit") npcArg = true;
         else if (a == "--mapedit") mapArg = next();         // (screenshots) open the map editor: builtin, new, or a file
         else if (a == "--walk") walkArg = true;            // (screenshots) walk the map
         else if (a == "--tutorials") tutListArg = true;    // (screenshots) open the list of tutorials
@@ -173,6 +175,7 @@ int main(int argc, char** argv) {
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();
+    if (npcArg) { if (const char* k = std::getenv("GUNSMITH_NPC")) NE.npc = npcPreset(k); enterNpcEditor(); if (const char* k = std::getenv("GUNSMITH_NPC")) { NE.npc = npcPreset(k); NE.sel = 0; npcFrame(); } }
     if (!mapArg.empty()) {
         enterMapEditor();
         if (mapArg == "builtin") meLoadBuiltin(); else if (mapArg == "new") meNew(); else meOpen(mapArg);
@@ -193,7 +196,7 @@ int main(int argc, char** argv) {
     }
     // a normal launch: the studio's splash, then the agreement until it's agreed to (screenshot runs skip them)
     if (introArg == 2) introForceEula();
-    else if (introArg == 1 || (!frames && !direct && mapArg.empty() && !tutListArg && tutArg <= 0 && !settingsArg && rangeArg.empty())) introStart(false);
+    else if (introArg == 1 || (!frames && !direct && mapArg.empty() && !npcArg && !tutListArg && tutArg <= 0 && !settingsArg && rangeArg.empty())) introStart(false);
     if (tutArg > 0) startTutorial(tutArg - 1);
 
     int frame = 0;
@@ -244,6 +247,23 @@ int main(int argc, char** argv) {
             rlImGuiBegin();
             if (!ME.walking) { mapToolbar(); mapPanel(); }
             tutorialPanel();
+            if (A.showTutorials) tutorialsWindow();
+            else if (modal) pauseMenu();
+            toastOverlay();
+            rlImGuiEnd();
+            EndDrawing();
+            frame++;
+            if (frames && frame >= frames) { if (!shotPath.empty()) TakeScreenshot(shotPath.c_str()); break; }
+            continue;
+        }
+        if (A.screen == Screen::NpcEditor) {
+            bool modal = A.showPause || A.showSettings || A.showTutorials;
+            npcEditorUpdate(dt, modal);
+            BeginDrawing();
+            ClearBackground(Color{30, 34, 41, 255});
+            npcEditorRender();
+            rlImGuiBegin();
+            npcToolbar(); npcPanel();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
             toastOverlay();
@@ -348,6 +368,7 @@ int main(int argc, char** argv) {
     }
     relShutdown();
     if (A.screen == Screen::MapEditor) leaveMapEditor();
+    if (A.screen == Screen::NpcEditor) leaveNpcEditor();
     if (A.saveDue && CFG.autosave != AutosaveEvery::Off) save();
     saveSettings();
     rlImGuiShutdown();

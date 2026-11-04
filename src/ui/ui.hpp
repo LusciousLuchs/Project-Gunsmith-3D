@@ -41,6 +41,8 @@ void heading(const char* t);                 // a quiet fixed heading
 bool dangerButton(const char* label, ImVec2 size = {0, 0});
 void hintOverlay();
 void toastOverlay();
+void npcToolbar();                // the NPC editor (panel_npc.cpp)
+void npcPanel();
 void styleUI();
 // intro.cpp: the studio's splash at launch, then the End User License Agreement until it's agreed to once
 void introStart(bool eulaOnly);   // the splash then the agreement (if not yet agreed); eulaOnly: just the agreement

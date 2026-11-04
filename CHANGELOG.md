@@ -8,6 +8,31 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.3.9-alpha
+
+### Any face, Sprocket-style
+- **Every face of the selected part works like its outline does.** Point at any face (top, bottom, an end, a side, the front or the back) and it's washed in yellow. Click to pick it, then press it again and drag to push or pull it.
+  - **Shift-drag a face to extrude it** into a new step.
+  - A drag anywhere else on the part still moves the part.
+  - **Alt-click** picks the part behind (this used to be a plain click).
+- **The corners on the far face** (circles) can be picked and dragged too, to shape the part in depth.
+- The arrow dots from 0.3.8 are gone: the faces themselves are the handles now.
+
+### Extruding works the way you'd expect
+- It always added the step, but the new corners sat in line with the old face, no seam was drawn, and nothing was left selected, so it looked like a plain push.
+- Now the seam shows as a line at every corner, and the new face stays picked, so you can push it further straight away. Its two new corners are selected too: drag them, or Scale them, to taper the new step.
+
+### Map editing tools: the Level editor and a new NPC editor
+- **Map editing tools** on the main menu opens the **Level editor** (the map editor) and the new **NPC editor**.
+- **The NPC editor builds enemies and characters from bones.** Use as many as you like, each hanging off another anywhere along it:
+  - Set its length, how thick it is at each end, its shape (rounded, box or ball) and its colour.
+  - **Pose a bone** with Bend, Turn and Twist, or click the dot at its end and drag it (Shift stretches it).
+  - **Mirror it** copies a limb and everything on it to the other side. Weak spots (triple damage) and armour are set per bone.
+- **Start from** a human, a four-legged hound, a six-legged crawler, or a single bone.
+- **How it fights** is saved with it: health, speed, attack (up close, with one of your guns, or exploding), damage, reach, how far it sees, behaviour and team.
+- Saved in **user/npcs**, with Undo and Redo.
+- **Not alive yet:** NPCs can't be placed on maps, move or fight. The plan for that (spawning, walking, attacking, getting hit, waves) is on the to-do list in BACKLOG.md.
+
 ## 0.3.8-alpha
 
 ### Push and pull any face, right from Select

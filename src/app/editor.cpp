@@ -226,7 +226,8 @@ void buildInput(bool overUI) {
     if (A.tool == Tool::Carve || A.carveDrag) { carveInput(overUI); return; }
     if (A.tool == Tool::Engrave || A.engraving) { engraveInput(overUI); return; }
     if (A.tool == Tool::Scale) { scaleInput(overUI); return; }
-    if (A.tool == Tool::Faces || A.faceDragging) { facesInput(overUI); return; }
+    if (A.tool == Tool::Faces || (A.faceDragging && A.tool != Tool::Select)) { facesInput(overUI); return; }
+    if (selectFacesInput(overUI)) return;
     if (A.tool == Tool::Select && A.sel.kind == 1 && A.dragKind == 0 && IsKeyPressed(KEY_E)) { facesInput(overUI); if (A.faceDragging) return; }
     Vector2 m = GetMousePosition();
     V2 w = snapMM(mouseMM(0));
@@ -381,7 +382,6 @@ void buildInput(bool overUI) {
                 if (hh.kind >= 1 && hh.kind <= 4 && hh.i >= 0) { A.sel = {2, hh.i, -1}; A.selVs.clear(); }
                 return;
             }
-            if (hh.kind == 11) { faceHandleDrag(hh.i, hh.v, shift); A.armedKind = -1; A.dragKind = 0; return; }   // a face: pushed until the mouse is let go
             A.dragKind = 1; A.dragH = hh; A.dragMoved = false; A.dragPress = m; A.dragLive = false; A.dragExtrude = false;
             if (hh.kind == 8 && hh.i >= 0 && hh.i < (int)A.design.bodies.size() && A.design.bodies[hh.i].roundPath.size() < 2)
                 A.design.bodies[hh.i].roundPath = autoRoundPath(A.design.bodies[hh.i], A.design.breech.cart);   // moving an automatic layout: from here on it's yours
@@ -404,6 +404,11 @@ void buildInput(bool overUI) {
             return;
         }
         auto hits = bodiesUnderMouse();  // nearest first
+        if (A.sel.kind == 1 && A.faceHover.body == A.sel.idx && A.sel.idx >= 0) {   // a face of the selected part (any side: top, end, back) counts
+            bool there = false;
+            for (auto& h : hits) if (h.body == A.sel.idx) there = true;
+            if (!there) hits.insert(hits.begin(), Hit{A.sel.idx, 0.f, w});
+        }
         if (!hits.empty()) {
             // the selected part (or its welded piece) under the cursor: a drag moves it, and a plain click picks the
             // next part behind it. Anything else: the first click only selects it, and doesn't move it.
@@ -416,12 +421,22 @@ void buildInput(bool overUI) {
             }
             A.armedKind = -1;
             if (pos >= 0) {
+                // on a face of the selected part that's picked: push it (Shift: extrude). Anywhere else on it: a drag
+                // moves the part, a click picks the face there (Alt-click: the part behind it)
+                const App::FacePick& fh = A.faceHover;
+                const App::FacePick& fp = A.facePicked;
+                if (fh.body == A.sel.idx && fh.body >= 0 && fp.body == fh.body && fp.kind == fh.kind && fp.edge == fh.edge) {
+                    facePushStart(fh, shift);
+                    A.dragKind = 0;
+                    return;
+                }
+                A.pressFace = fh.body == A.sel.idx ? fh : App::FacePick{};
                 A.dragKind = 2; A.dragStart = w; A.dragLast = {0, 0}; A.dragMoved = false; A.dragPress = m; A.dragLive = false;
                 A.pressNext = hits.size() > 1 ? hits[(pos + 1) % hits.size()].body : -1;
             } else {
                 A.sel = {1, hits[0].body, -1}; A.selVs.clear(); A.selCarve = -1;
                 A.dragKind = 0;
-                if (hits.size() > 1) toast("Selected " + A.design.bodies[hits[0].body].name + ". Click it again for the part behind it (" + std::to_string(hits.size()) + " here). Drag to move it.");
+                if (hits.size() > 1) toast("Selected " + A.design.bodies[hits[0].body].name + ". Alt-click it for the part behind it (" + std::to_string(hits.size()) + " here). Drag to move it.");
             }
             return;
         }
@@ -604,8 +619,13 @@ void buildInput(bool overUI) {
             }
         } else {
             if (A.dragMoved) commit();
-            else if (A.dragKind == 2 && A.pressNext >= 0 && A.pressNext < (int)A.design.bodies.size()) {  // a click: the next one behind
+            else if (A.dragKind == 2 && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT) || A.pressFace.body < 0) &&
+                     A.pressNext >= 0 && A.pressNext < (int)A.design.bodies.size()) {  // an Alt-click (or not on a face): the next one behind
                 A.sel = {1, A.pressNext, -1}; A.selVs.clear(); A.selCarve = -1;
+            } else if (A.dragKind == 2 && A.pressFace.body >= 0) {   // a click on a face of the selected part: it's picked
+                A.facePicked = A.pressFace;
+                static bool told = false;
+                if (!told) { told = true; toast("Face picked. Press it again and drag to push or pull it (Shift: extrude a new step)."); }
             }
             A.pressNext = -1;
             A.dragKind = 0; A.axisLock = 0;

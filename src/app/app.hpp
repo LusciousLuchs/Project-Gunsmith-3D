@@ -20,7 +20,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
-enum class Screen { Menu, Workshop, MapEditor, Range };  // the main menu, the designer / test bench, the map editor, or the firing range
+enum class Screen { Menu, Workshop, MapEditor, Range, NpcEditor };  // the main menu, the designer / test bench, the map editor, or the firing range
 enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Scale, Count };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction, 11 a face to push (v: edge, -1 near, -2 far)
@@ -93,6 +93,8 @@ struct App {
     FacePick faceHover, faceDrag, facePicked;   // facePicked: clicked once, a second press drags it
     bool faceDragging = false, faceFollow = false, faceExtruded = false;   // follow: E pressed, finish with a click
     bool faceLive = false;
+    bool faceExtrudedWall = false;       // the face being drawn out is a side wall that just got two new corners
+    FacePick pressFace;                  // the face of the selected part under the mouse when it was pressed (a click picks it)
     bool cornerPicked = false;           // cornerDrag was clicked once: a second press drags it               // a face or corner drag has gone past the few-pixel dead zone
     std::vector<V2> faceOrig; double faceOrigZ = 0, faceOrigThick = 0; std::vector<CarveDef> faceOrigCarves;
     Vector2 faceStart{};

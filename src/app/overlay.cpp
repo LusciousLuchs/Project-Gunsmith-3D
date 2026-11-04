@@ -125,7 +125,6 @@ void drawOverlay() {
                 viewText(t.c_str(), s.x + 2, s.y - 4, 10, Color{30, 32, 36, 255});
             }
     }
-    faceHandles();
     drawScaleOverlay();
     if (A.mode == Mode::Build && A.measured && (A.tool == Tool::Measure || A.shaping)) {  // the measuring line
         Vector2 a = toScreen(W3(A.measureA, 0)), b = toScreen(W3(A.measureB, 0));

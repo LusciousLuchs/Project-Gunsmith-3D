@@ -1,6 +1,7 @@
 // Gunsmith3D - Main menu, pause menu, settings, and choosing a gun for the test bench.
 #include "app/paths.hpp"
 #include "app/app.hpp"
+#include "app/npcedit.hpp"
 #include "app/audio.hpp"
 #include "app/keys.hpp"
 #include "app/mapedit.hpp"
@@ -83,7 +84,16 @@ void mainMenu() {
     menuItem("Career", false, "coming later");
     if (menuItem("Sandbox")) enterWorkshop(false);
     if (menuItem("Firing range")) A.showRangePicker = true;
-    if (menuItem("Map editor")) enterMapEditor();
+    {   // the tools for making places to shoot and things to shoot at
+        static bool mapTools = false;
+        if (menuItem(mapTools ? "Map editing tools  -" : "Map editing tools  +")) mapTools = !mapTools;
+        if (mapTools) {
+            ImGui::Indent(22 * S());
+            if (menuItem("Level editor", true, "build maps")) enterMapEditor();
+            if (menuItem("NPC editor", true, "build enemies")) enterNpcEditor();
+            ImGui::Unindent(22 * S());
+        }
+    }
     if (menuItem("Test bench")) A.showBenchPicker = true;
     if (menuItem("Settings")) A.showSettings = true;
     if (menuItem("Discord", true, "join the community")) OpenURL(DISCORD_URL);
@@ -111,6 +121,7 @@ void pauseMenu() {
     if (ImGui::Button("Settings", bw)) { uiTick(); A.showSettings = true; }
     if (ImGui::Button(A.screen == Screen::Range ? "Leave the range" : A.benchOnly ? "Leave the bench" : "Main menu", bw)) { uiTick(); backToMenu(); }
     if (A.screen == Screen::MapEditor) ImGui::TextDisabled("Your map is autosaved.");
+    if (A.screen == Screen::NpcEditor) ImGui::TextDisabled("Your NPC is kept as it is for next time.");
     if (ImGui::Button("Quit to desktop", bw)) A.quit = true;
     ImGui::End();
 }

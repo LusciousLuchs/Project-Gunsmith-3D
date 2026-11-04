@@ -125,6 +125,12 @@ The panel on the right has four tabs:
 
 In the view, click anything (a part, a corner, an edge, a spring end, a track point, a pin, the breech face or muzzle, a face, a hand in Pose) to pick it, then drag it to move it: the first click never moves anything. Drag a number sideways to scrub it, or click it without dragging to type an exact value. Sliders take a double-click (or Ctrl+click) to type. Joints that belong to the selected part are drawn clearly in the view; the rest stay faint until you hover them.
 
+## Map editing tools
+
+On the main menu, **Map editing tools** holds the **Level editor** (build maps from brushes) and the **NPC editor**.
+
+The NPC editor builds enemies and characters from bones: add as many as you like, each hanging off another, set each one's length, thickness, shape and colour, and pose it by dragging its end. Mirror a limb to the other side, and mark weak spots and armour. Start from a human, a hound, a crawler or a single bone. How it fights (health, speed, attack, behaviour) is saved with it in user/npcs. Bringing NPCs to life on maps is next.
+
 ## The firing range
 
 Pick where to shoot (the practice range, your map editor's map, or a saved map) and the gun to take. The gun in your hands is the same simulation as the test bench, so it feeds, extracts and jams for real.
