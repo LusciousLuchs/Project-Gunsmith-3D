@@ -7,6 +7,7 @@
 #include "npc.hpp"
 #include "player.hpp"
 #include "design.hpp"
+#include "nav.hpp"
 #include <string>
 #include <vector>
 
@@ -33,6 +34,10 @@ struct Actor {
     double hitFlash = 0;             // a moment of colour when hit
     bool heard = false;              // it heard you (a shot, or being hit): it turns toward you and comes to look
     int side = 0; double sideT = 0;  // going round something in its way: which side it chose, and for how long
+    // its route (nav.hpp): the points to walk through, the next one, where it was going when it planned it
+    std::vector<gmap::V3> path; int pathAt = 0; gmap::V3 pathGoal;
+    bool pathOk = false, pathReaches = false;   // planned from where it stands; ends where it wanted to go
+    double replanT = 0, planAge = 0, stuckT = 0;
     // a gun made for NPCs (Design::npcGun), loaded from its blueprint
     bool hasGun = false;
     NpcGunDef gun;
@@ -51,8 +56,11 @@ struct Event {
 // Make an actor standing at a spawn point. `gun`: its NPC gun's blueprint if it carries one (else nullptr).
 Actor spawn(const NpcDef& def, gmap::V3 pos, double yawDeg, const Design* gun);
 // One step: `eye` is where the player's eye is (they look for it), `feet` where they stand, `alive` whether they're alive.
+// `navs`: the map's path-finding grids (they find their way round the map); without, they head straight for where
+// they're going and only step round what's right in front of them.
 void think(std::vector<Actor>& actors, const gmap::Map& map, gmap::V3 eye, gmap::V3 feet, bool alive, double dt,
-           std::vector<Event>& out, unsigned& rng);
+           std::vector<Event>& out, unsigned& rng, nav::Cache* navs = nullptr);
+nav::Agent agentOf(const Actor& a);   // its size, for path-finding
 // Damage a bullet does: by its energy (J), 1 point per 20 J, weak spots x3, armour stops its share
 double bulletDamage(double massKg, double speed, bool vital, double armor);
 // A loud noise at `at` (a gunshot): everything alive within `radius` metres hears it and comes to look

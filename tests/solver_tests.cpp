@@ -11,6 +11,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <memory>
 #include <string>
 
@@ -1905,6 +1906,65 @@ static void npcsAlive() {
     double top = 0; for (auto& b : npcai::bones(D[0])) top = std::max({top, b.a.y, b.b.y});
     CHECK(top < 0.6, "and it falls down");
 }
+static void npcPaths() {
+    std::printf("npcPaths\n");
+    NpcDef h = npcPreset("human"); h.behaviour = "chase"; h.attack = "melee"; h.reach = 1.2; h.speed = 2.5;
+    gmap::Map floor; floor.brushes.push_back(gmap::makeBox({-30, -1, -30}, {30, 0, 30}, 0));
+    // run until it strikes (or time runs out); where it ended
+    auto chase = [&](const gmap::Map& m, gmap::V3 start, gmap::V3 you, double secs, bool useNav, bool& struck) {
+        std::vector<npcai::Actor> A{npcai::spawn(h, start, 0, nullptr)};
+        nav::Cache C; unsigned rng = 3; std::vector<npcai::Event> ev; struck = false;
+        for (int k = 0; k < secs * 60 && !struck; k++) {
+            if (k % 120 == 0) npcai::hear(A, you, 100);   // (you keep shooting)
+            ev.clear();
+            npcai::think(A, m, you + gmap::V3{0, 1.62, 0}, you, true, 1.0 / 60, ev, rng, useNav ? &C : nullptr);
+            for (auto& e : ev) if (e.kind == npcai::Event::Melee) struck = true;
+        }
+        return A[0].body.feet;
+    };
+    // a long wall with the way round at one end: it has to walk 14 m away from you first
+    gmap::Map wall = floor;
+    wall.brushes.push_back(gmap::makeBox({4, 0, -20}, {4.4, 3, 12}, 0));
+    bool struck = false, struckNav = false;
+    chase(wall, {0, 0, 0}, {9, 0, 0}, 30, false, struck);
+    chase(wall, {0, 0, 0}, {9, 0, 0}, 30, true, struckNav);
+    std::printf("  (a 32 m wall between: without paths %s, with paths %s)\n", struck ? "reached you" : "stuck", struckNav ? "reached you" : "stuck");
+    CHECK(struckNav, "it finds the way round a long wall");
+    // a U: the way out is behind it
+    gmap::Map cup = floor;
+    cup.brushes.push_back(gmap::makeBox({3, 0, -4}, {3.4, 3, 4}, 0));
+    cup.brushes.push_back(gmap::makeBox({-6, 0, -4.4}, {3.4, 3, -4}, 0));
+    cup.brushes.push_back(gmap::makeBox({-6, 0, 4}, {3.4, 3, 4.4}, 0));
+    chase(cup, {0, 0, 0}, {8, 0, 0}, 30, false, struck);
+    chase(cup, {0, 0, 0}, {8, 0, 0}, 30, true, struckNav);
+    std::printf("  (in a dead end, you beyond its far wall: without paths %s, with paths %s)\n", struck ? "reached you" : "stuck", struckNav ? "reached you" : "stuck");
+    CHECK(struckNav, "and out of a dead end, backwards");
+    // upstairs: a platform 2.4 m up, stairs at one end
+    gmap::Map up = floor;
+    up.brushes.push_back(gmap::makeBox({6, 0, -3}, {10, 2.4, 5}, 0));
+    for (auto& b : gmap::makeStairs({1, 0, 3.2}, {6, 2.4, 5}, 12, 0, 0)) up.brushes.push_back(b);
+    gmap::V3 end = chase(up, {0, 0, -2}, {8, 2.4, 0}, 30, true, struckNav);
+    std::printf("  (you upstairs: it ended at height %.2f m)\n", end.y);
+    CHECK(struckNav && end.y > 2.0, "it climbs the stairs to reach you upstairs");
+    // you on a box it can't climb: it comes as close as it can and waits
+    gmap::Map box = floor;
+    box.brushes.push_back(gmap::makeBox({6, 0, -1}, {8, 2, 1}, 0));
+    end = chase(box, {0, 0, 0}, {7, 2, 0}, 12, true, struckNav);
+    double gap = std::hypot(end.x - 7, end.z);
+    std::printf("  (you on a 2 m box: it waits %.1f m from you)\n", gap);
+    CHECK(gap < 2.0, "out of reach, it waits as close as it can get");
+    // down: it steps off a ledge to come to you
+    gmap::Map ledge = floor;
+    ledge.brushes.push_back(gmap::makeBox({-4, 0, -4}, {4, 1.5, 4}, 0));
+    end = chase(ledge, {0, 1.5, 0}, {9, 0, 0}, 20, true, struckNav);
+    CHECK(struckNav, "it drops off a ledge to reach you below");
+    // the grids are quick to make: the practice range
+    auto t0 = std::chrono::steady_clock::now();
+    nav::Grid G = nav::build(gmap::builtinRange(), {0.2, 1.8, 0.45});
+    double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    std::printf("  (practice range grid: %zu spots, %.0f ms)\n", G.nodes(), ms);
+    CHECK(G.nodes() > 20000 && ms < 2000, "a map's path grid takes moments to make");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -1983,6 +2043,7 @@ int main() {
     npcDesigns();
     mapsCarryNpcs();
     npcsAlive();
+    npcPaths();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

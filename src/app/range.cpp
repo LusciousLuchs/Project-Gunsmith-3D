@@ -48,6 +48,7 @@ struct Range {
     int cur = -1;                        // -1: empty hands
     std::vector<WorldGun> ground;
     std::vector<npcai::Actor> actors;    // the NPCs on the map, alive or fallen
+    nav::Cache nav;                      // their path-finding grids, one per NPC size
     unsigned rng = 12345;
     double health = 100;                 // yours
     bool dead = false;
@@ -378,6 +379,7 @@ static void placeNpcs() {
             R.actors.push_back(npcai::spawn(n, p, e.yaw, hasGun ? &gun : nullptr));
         }
     }
+    for (auto& a : R.actors) R.nav.get(R.map, npcai::agentOf(a));   // (their paths worked out now, not mid-fight)
 }
 // you died: everything back to how the map starts
 static void restartLevel() {
@@ -414,6 +416,7 @@ void enterRange(const Design& gun, const gmap::Map& map) {
     mapGfxInit();
     R = Range();
     R.map = map;
+    R.nav.clear();
     installMapNpcs(R.map);   // the NPCs this map brought with it
     mapBuildMeshes(R.map);
     gmap::playerSpawn(R.pl, R.map);
@@ -595,7 +598,7 @@ void rangeUpdate(float dt, bool modal) {
         std::vector<npcai::Event> ev;
         double roll;
         V3 eye = gmap::playerEye(R.pl, R.map, &roll);
-        npcai::think(R.actors, R.map, eye, R.pl.feet, !R.dead, dt, ev, R.rng);
+        npcai::think(R.actors, R.map, eye, R.pl.feet, !R.dead, dt, ev, R.rng, &R.nav);
         for (auto& e : ev) {
             if (e.kind == npcai::Event::Shot) {
                 const auto& a = R.actors[e.actor];

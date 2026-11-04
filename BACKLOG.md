@@ -61,9 +61,9 @@ is up to them, and the game's own examples stay original.
   Still to do: spawning groups during play (from a spawner).
 - [x] **NPCs alive on the range:** walk (the player's movement, sized to them), go round what's in their way, see the
   player (sight distance, facing, line of sight), hear gunshots (50 m) and alert each other, act on their behaviour,
-  attack (melee, explode, or shoot their NPC gun through the same ballistics as the player's) (0.4.1). Still to do:
-  real path-finding over the map (they steer round obstacles but can't plan a long way round; wide NPCs get stuck at
-  narrow gaps), taking cover, attack animations.
+  attack (melee, explode, or shoot their NPC gun through the same ballistics as the player's) (0.4.1). Path-finding
+  over the whole map, upper floors, stairs and drops, a grid per NPC size (0.4.2). Still to do: jumping up onto
+  things, doors, NPCs keeping out of each other's way (they can bunch up in one spot), taking cover, attack animations.
 - [x] **Getting hit:** bullets hit bones (each bone a capsule), damage by the bullet's energy (weak spots x3, armour),
   death: the NPC falls over stiffly (0.4.1). Still to do: a ragdoll (the bones going limp), bodies cleared after a while.
 - [x] **The player can be hurt:** 100 health, a red flash, death and restart; NPC guns' *Damage to you* (0.4.1).

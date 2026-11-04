@@ -8,6 +8,18 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.2-alpha
+
+### NPCs find their way
+- **Path-finding:** NPCs now plan a route to you across the whole map: round long walls, out of dead ends, through doorways and mazes, **up stairs and ramps to upper floors**, and **off ledges** to drop down to you. They re-plan as you move.
+- **Out of reach** (you're on something they can't climb): they come as close as they can and wait there.
+- **Routes fit the NPC:** each NPC size gets its own map of where it fits, so a big NPC goes the long way round where a small one takes a narrow gap. Every map works out these routes in a moment when you start playing it.
+- **They hunt longer:** after hearing or seeing you they keep looking for 15 seconds (was 7).
+- **Small NPCs climb stairs:** every NPC now steps up at least 25 cm. A sprawling NPC's body counts as about half as wide as it is tall, not as wide as its legs reach, so a crawler fits through doors.
+- **Fix:** a shooter NPC whose gun can't be found now fights with its hands at arm's length (it used to hit you from its gun's range).
+- **Faster:** walking and collision for you and the NPCs is many times quicker on maps with lots of blocks.
+- **NPC maze test**, a new example map in user/maps: a maze with a balcony up a flight of stairs. You start on the balcony and two grunts and a crawler have to find their way to you.
+
 ## 0.4.1-alpha
 
 ### NPCs come alive

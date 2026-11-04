@@ -45,6 +45,9 @@ struct Face {
 };
 struct Brush {
     std::vector<Face> faces;
+    // (brushBounds remembers its answer until the faces' planes change: collision asks it constantly)
+    mutable double boundsCache[6] = {0, 0, 0, 0, 0, 0};
+    mutable unsigned long long boundsKey = 0;
 };
 struct Entity {
     std::string type = "player_start";   // player_start, target_paper, npc_spawn (an NPC stands here), gun_spawner

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 namespace gmap {
 using json = nlohmann::json;
@@ -99,12 +100,26 @@ void brushClean(Brush& b) {
 }
 
 void brushBounds(const Brush& b, V3& mn, V3& mx) {
+    unsigned long long key = 1469598103934665603ull ^ b.faces.size();   // a fingerprint of the planes (FNV-1a)
+    for (auto& f : b.faces)
+        for (double v : {f.n.x, f.n.y, f.n.z, f.d}) {
+            unsigned long long bits; std::memcpy(&bits, &v, 8);
+            for (int k = 0; k < 8; k++) { key ^= (bits >> (k * 8)) & 0xff; key *= 1099511628211ull; }
+        }
+    if (key == 0) key = 1;
+    if (b.boundsKey == key) {
+        mn = {b.boundsCache[0], b.boundsCache[1], b.boundsCache[2]}; mx = {b.boundsCache[3], b.boundsCache[4], b.boundsCache[5]};
+        return;
+    }
     mn = {1e30, 1e30, 1e30}; mx = {-1e30, -1e30, -1e30};
     for (size_t i = 0; i < b.faces.size(); i++)
         for (auto& p : facePolygon(b, (int)i)) {
             mn = {std::min(mn.x, p.x), std::min(mn.y, p.y), std::min(mn.z, p.z)};
             mx = {std::max(mx.x, p.x), std::max(mx.y, p.y), std::max(mx.z, p.z)};
         }
+    double c[6] = {mn.x, mn.y, mn.z, mx.x, mx.y, mx.z};
+    std::memcpy(b.boundsCache, c, sizeof c);
+    b.boundsKey = key;
 }
 V3 brushCentre(const Brush& b) { V3 mn, mx; brushBounds(b, mn, mx); return (mn + mx) * 0.5; }
 

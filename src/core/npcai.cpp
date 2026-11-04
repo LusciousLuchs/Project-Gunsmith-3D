@@ -61,9 +61,9 @@ Actor spawn(const NpcDef& def, V3 pos, double yawDeg, const Design* gun) {
         for (const double* p : {P[i].a, P[i].b}) w = std::max(w, std::max(std::fabs(p[0]), std::fabs(p[2])) / 1000 * 0.6);
     a.tune.standH = std::clamp(h, 0.3, 5.0);
     a.tune.standEye = a.tune.standH * 0.88;
-    a.tune.halfWidth = std::clamp(w, 0.18, 0.9);
+    a.tune.halfWidth = std::clamp(w, 0.18, std::clamp(h * 0.5, 0.25, 0.9));   // (its body, not its legs' sprawl: a crawler squeezes through doors)
     a.tune.walk = a.tune.sprint = std::max(0.0, def.speed);
-    a.tune.stepHeight = std::clamp(a.tune.standH * 0.25, 0.15, 0.6);
+    a.tune.stepHeight = std::clamp(a.tune.standH * 0.25, 0.25, 0.6);   // (even a small one takes a stair)
     a.tune.accel = 10;
     a.body.feet = pos + V3{0, 0.02, 0};   // (a hair above the floor, or it starts stuck in it)
     a.body.yaw = yawDeg * PI_A / 180;
@@ -92,6 +92,7 @@ bool hurt(Actor& a, double damage, V3 dir) {
 }
 
 double height(const Actor& a) { return a.tune.standH; }
+nav::Agent agentOf(const Actor& a) { return {a.tune.halfWidth, a.tune.standH, a.tune.stepHeight}; }
 
 NpcDef posed(const Actor& a) {
     NpcDef n = a.def;
@@ -138,7 +139,7 @@ std::vector<BoneAt> bones(const Actor& a) {
     return out;
 }
 
-void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bool alive, double dt, std::vector<Event>& out, unsigned& rng) {
+void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bool alive, double dt, std::vector<Event>& out, unsigned& rng, nav::Cache* navs) {
     for (size_t idx = 0; idx < actors.size(); idx++) {
         Actor& a = actors[idx];
         a.hitFlash = std::max(0.0, a.hitFlash - dt);
@@ -162,14 +163,16 @@ void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bo
             a.sinceSeen = 0;
         } else {
             a.sinceSeen += dt;
-            if (a.sinceSeen > 7 || !alive) a.aware = false;
+            if (a.sinceSeen > 15 || !alive) a.aware = false;   // (it hunts for you a while before it gives up)
         }
         a.heard = false;
         a.react = std::max(0.0, a.react - dt);
         // where it wants to be
         const std::string& beh = a.def.behaviour;
         bool ranged = a.def.attack == "ranged" && a.hasGun, explode = a.def.attack == "explode";
-        double keep = ranged ? std::max(2.0, a.def.reach * 0.6) : explode ? 0.3 : std::max(0.5, a.def.reach * 0.7);
+        // (a shooter whose gun couldn't be found fights with its hands, at arm's length, not at its gun's range)
+        double armReach = a.def.attack == "ranged" ? 1.2 : a.def.reach;
+        double keep = ranged ? std::max(2.0, a.def.reach * 0.6) : explode ? 0.3 : std::max(0.5, armReach * 0.7);
         V3 target = a.body.feet; bool move = false;
         if (a.aware && beh != "stand") {
             target = a.lastSeen;
@@ -179,17 +182,58 @@ void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bo
             a.wanderT -= dt;
             if (a.wanderT <= 0 || gmap::len(flat(a.wanderTo - a.body.feet)) < 0.5) {
                 double r = 6 * std::sqrt(rnd(rng)), t = rnd(rng) * 2 * PI_A;
-                a.wanderTo = a.home + V3{std::cos(t) * r, 0, std::sin(t) * r};
+                V3 to = a.home + V3{std::cos(t) * r, 0, std::sin(t) * r};
                 a.wanderT = 3 + rnd(rng) * 4;
+                if (navs) {   // somewhere it can stand
+                    const nav::Grid& G = navs->get(map, agentOf(a));
+                    int n = nav::nearestNode(G, V3{to.x, a.body.feet.y, to.z}, 1.5);
+                    if (n >= 0) to = G.at(n); else { to = a.wanderTo; a.wanderT = 0.5; }
+                }
+                a.wanderTo = to;
             }
             target = a.wanderTo; move = true;
         } else if (!a.aware && beh == "guard" && gmap::len(flat(a.home - a.body.feet)) > 0.8) { target = a.home; move = true; }
         // which way it walks (round what's in its way), and turns toward: that way, or you when it stands and sees you
         V3 way{0, 0, 0};
+        a.planAge += dt;
         if (move) {
-            V3 to = flat(target - a.body.feet);
+            V3 goTo = target;
+            bool stop = false;
+            bool onRoute = false;
+            if (navs) {   // along its route
+                const nav::Grid& G = navs->get(map, agentOf(a));
+                a.replanT -= dt;
+                bool moved = gmap::len(flat(target - a.pathGoal)) > 1.0 && a.planAge > 0.3;
+                if (!a.pathOk || a.replanT <= 0 || moved || a.stuckT > 1.0) {
+                    a.pathOk = nav::findPath(G, a.body.feet, target, a.path, &a.pathReaches);
+                    a.pathAt = 1; a.pathGoal = target; a.planAge = 0; a.stuckT = 0;
+                    a.replanT = (a.aware ? 0.8 : 3.0) + rnd(rng) * 0.5;
+                }
+                if (a.pathOk) {
+                    double close = std::max(0.35, G.cell);
+                    int last = (int)a.path.size() - 1;
+                    // on to the next point once it's at this one (or nearly, if it can walk straight on from here)
+                    while (a.pathAt < last) {
+                        double dd = gmap::len(flat(a.path[a.pathAt] - a.body.feet));
+                        if (dd < 0.15 || (dd < close && nav::straightWalk(G, a.body.feet, a.path[a.pathAt + 1]))) a.pathAt++;
+                        else break;
+                    }
+                    // (and on past a corner once it can walk straight to the point after)
+                    if (a.pathAt < last && a.path[a.pathAt + 1].y > a.body.feet.y - G.agent.step && nav::straightWalk(G, a.body.feet, a.path[a.pathAt + 1])) a.pathAt++;
+                    onRoute = true;
+                    if (last <= 0 || a.pathAt > last) stop = !a.pathReaches;
+                    else {
+                        goTo = a.path[a.pathAt];
+                        // the end of a route that can't get all the way: it waits there
+                        if (a.pathAt == last && !a.pathReaches && gmap::len(flat(goTo - a.body.feet)) < close) stop = true;
+                    }
+                }
+            }
+            V3 to = flat(goTo - a.body.feet);
             double d = gmap::len(to);
-            if (d > 1e-6) way = steer(a, map, to * (1 / d), d, dt);
+            // on a route it follows it (the route already goes round things); otherwise it steps round what's in front
+            if (!stop && d > 1e-6) way = onRoute ? to * (1 / d) : steer(a, map, to * (1 / d), d, dt);
+            if (stop) move = false;
         }
         V3 face = move ? way : seen ? flat(feet - a.body.feet) : flat(target - a.body.feet);
         if (gmap::len(face) > 0.05) {
@@ -204,6 +248,7 @@ void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bo
             in.forward = std::cos(d) * k; in.right = std::sin(d) * k;
         }
         gmap::playerStep(a.body, map, in, dt, a.tune);
+        a.stuckT = move && gmap::len(flat(a.body.vel)) < 0.15 ? a.stuckT + dt : 0;   // (pressing on and getting nowhere: plan again)
         a.walkPhase += gmap::len(flat(a.body.vel)) * dt * 2 * PI_A / std::max(0.4, a.tune.standH * 0.9);
         // attacking
         if (!alive || !a.aware || a.react > 0) { a.burstLeft = 0; continue; }
@@ -237,7 +282,7 @@ void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bo
                 }
             }
         } else {   // up close: when you're in reach
-            if (a.cool <= 0 && flatDist <= std::max(0.6, a.def.reach) && std::fabs(eye.y - me.y) < a.tune.standH + 1) {
+            if (a.cool <= 0 && flatDist <= std::max(0.6, armReach) && std::fabs(eye.y - me.y) < a.tune.standH + 1) {
                 out.push_back({Event::Melee, (int)idx, me, gmap::norm(flat(feet - a.body.feet)), a.def.damage, 0});
                 a.cool = 1.1;
             }
