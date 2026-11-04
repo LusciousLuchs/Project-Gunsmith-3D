@@ -1,6 +1,7 @@
 // Headless checks that each example action actually cycles. Run: ./gunsmith3d_tests
 #include "solver.hpp"
 #include "npc.hpp"
+#include "map.hpp"
 #include "reliability.hpp"
 #include "version.hpp"
 #include "carve.hpp"
@@ -1827,6 +1828,29 @@ static void npcDesigns() {
     auto P = npcPose(h);
     CHECK(P[5].y[2] > 0.999, "dragging a bone's end points it where you drag");
 }
+static void mapsCarryNpcs() {
+    std::printf("mapsCarryNpcs\n");
+    gmap::Map m = gmap::builtinRange();
+    gmap::Entity e; e.type = "npc_spawn"; e.ref = "Crawler"; e.count = 4; e.pos = {10, 0, 2}; e.yaw = 180;
+    gmap::Entity g; g.type = "gun_spawner"; g.pos = {1, 0, 1};
+    m.ents.push_back(e); m.ents.push_back(g);
+    m.npcs = {{"Crawler", npcToJson(npcPreset("crawler"))}};
+    gmap::Map back;
+    CHECK(gmap::mapFromJson(gmap::mapToJson(m), back), "a map with NPCs and a gun spawner saves and loads");
+    int spawns = 0, spawners = 0;
+    for (auto& x : back.ents) { if (x.type == "npc_spawn" && x.ref == "Crawler" && x.count == 4) spawns++; if (x.type == "gun_spawner") spawners++; }
+    CHECK(spawns == 1 && spawners == 1, "its NPC spawn (which and how many) and gun spawner come back");
+    NpcDef c;
+    CHECK(back.npcs.size() == 1 && npcFromJson(back.npcs[0].second, c) && c.bones.size() == npcPreset("crawler").bones.size(), "the map file carries a full copy of its NPC");
+    gmap::Map old;
+    CHECK(gmap::mapFromJson(gmap::mapToJson(gmap::builtinRange()), old) && old.npcs.empty(), "maps without NPCs are as before");
+    // guns made for NPCs
+    Design d = loadPreset("blowback");
+    CHECK(!d.npcGun.on, "guns are for players unless marked");
+    d.npcGun.on = true; d.npcGun.rpm = 600; d.npcGun.burst = 3; d.npcGun.spread = 4;
+    Design db; designFromJson(designToJson(d), db);
+    CHECK(db.npcGun.on && db.npcGun.rpm == 600 && db.npcGun.burst == 3 && db.npcGun.spread == 4, "an NPC gun keeps its rate, burst and spread");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -1903,6 +1927,7 @@ int main() {
     gasAndOpenBolt();
     magazineShaping();
     npcDesigns();
+    mapsCarryNpcs();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

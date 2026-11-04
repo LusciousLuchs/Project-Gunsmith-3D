@@ -14,7 +14,7 @@ enum class Act {
     // map editor
     Redo, FlyDown, FlyUp, MapRotate, MapHollow, MapWalk, MapTopView, MapFocus,
     // test bench (added later, so kept at the end: settings files store keys by name)
-    FillMags, WorkAction, Inspect,
+    FillMags, WorkAction, Inspect, Use, DropGun,
     Count
 };
 

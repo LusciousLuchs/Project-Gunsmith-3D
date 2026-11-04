@@ -7,6 +7,7 @@
 #include "app/gfx.hpp"
 #include "app/keys.hpp"
 #include "app/mapgfx.hpp"
+#include "app/npcedit.hpp"
 #include "app/scene.hpp"
 #include "app/settings.hpp"
 #include "imgui.h"
@@ -132,6 +133,7 @@ void meSnapshot() {
 static void writeAutosave() {
     std::error_code ec;
     fs::create_directories(MAP_DIR, ec);
+    embedMapNpcs(ME.map);   // (the NPCs its spawn points use go with it)
     std::ofstream(MAP_AUTOSAVE) << gmap::mapToJson(ME.map);
 }
 void meChanged() {
@@ -168,6 +170,7 @@ bool meSave() {
     std::string path = std::string(MAP_DIR) + "/" + fileName(ME.map.name) + ".gsmap";
     std::ofstream out(path);
     if (!out) { ME.status = "Couldn't write " + path; return false; }
+    embedMapNpcs(ME.map);   // the NPCs its spawn points use travel in the file
     out << gmap::mapToJson(ME.map);
     ME.dirty = false;
     ME.status = "Saved to " + path;
@@ -184,6 +187,63 @@ bool meOpen(const std::string& path) {
     meChanged(); ME.dirty = false;
     meFocus();
     ME.status = "Opened " + path;
+    if (int k = installMapNpcs(ME.map)) { ME.status += TextFormat(" (and %d of its NPCs, now in user/npcs)", k); toast(TextFormat("This map brought %d NPC%s with it: they're in the NPC editor now.", k, k == 1 ? "" : "s")); }
+    return true;
+}
+bool meSaveGroup(const std::string& name) {
+    if (ME.sel.empty() && ME.ent < 0) { toast("Select what goes in the group first (Shift-click adds brushes)."); return false; }
+    gmap::Map g;
+    g.name = name.empty() ? "Group" : name;
+    for (int i : ME.sel) g.brushes.push_back(ME.map.brushes[i]);
+    if (ME.ent >= 0 && ME.ent < (int)ME.map.ents.size() && ME.map.ents[ME.ent].type != "player_start") g.ents.push_back(ME.map.ents[ME.ent]);
+    // stored round the middle of its floor, so it can be put down anywhere
+    V3 mn{1e30, 1e30, 1e30}, mx{-1e30, -1e30, -1e30};
+    for (auto& b : g.brushes) { V3 a, c; gmap::brushBounds(b, a, c); mn = {std::min(mn.x, a.x), std::min(mn.y, a.y), std::min(mn.z, a.z)}; mx = {std::max(mx.x, c.x), std::max(mx.y, c.y), std::max(mx.z, c.z)}; }
+    for (auto& e : g.ents) { mn = {std::min(mn.x, e.pos.x), std::min(mn.y, e.pos.y), std::min(mn.z, e.pos.z)}; mx = {std::max(mx.x, e.pos.x), std::max(mx.y, e.pos.y), std::max(mx.z, e.pos.z)}; }
+    V3 o{(mn.x + mx.x) / 2, mn.y, (mn.z + mx.z) / 2};
+    for (auto& b : g.brushes) gmap::translate(b, -o);
+    for (auto& e : g.ents) e.pos -= o;
+    embedMapNpcs(g);
+    std::error_code ec;
+    fs::create_directories(GROUPS_DIR, ec);
+    std::string file = safeFileName(g.name);
+    std::ofstream out(std::string(GROUPS_DIR) + "/" + file + ".json");
+    if (!out) { toast("Couldn't save the group."); return false; }
+    out << gmap::mapToJson(g);
+    toast("Saved the group " + file + " (" + std::to_string(g.brushes.size()) + " brushes" + (g.ents.empty() ? "" : ", 1 object") + "). Place it again from the panel.");
+    return true;
+}
+std::vector<std::string> meGroupFiles() {
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (auto& e : fs::directory_iterator(GROUPS_DIR, ec)) if (e.path().extension() == ".json") out.push_back(e.path().stem().string());
+    std::sort(out.begin(), out.end());
+    return out;
+}
+bool mePlaceGroup(const std::string& name) {
+    std::ifstream in(std::string(GROUPS_DIR) + "/" + name + ".json");
+    std::stringstream ss; ss << in.rdbuf();
+    gmap::Map g;
+    if (!gmap::mapFromJson(ss.str(), g)) { toast("That group couldn't be read."); return false; }
+    // where: the floor in the middle of the view (or the ground a little ahead)
+    CamB cb = camBasis();
+    V3 o = ME.top ? ME.topC + V3{0, 50, 0} : ME.cam, d = ME.top ? V3{0, -1, 0} : cb.fwd;
+    gmap::Hit h = gmap::rayMap(ME.map, o, d, 200);
+    V3 at = h.brush >= 0 ? o + d * h.t : V3{o.x + cb.fwd.x * 8, 0, o.z + cb.fwd.z * 8};
+    if (h.brush < 0 && std::fabs(d.y) > 1e-3) { double t = -o.y / d.y; if (t > 0 && t < 200) at = o + d * t; }
+    at = {snapG(at.x), h.brush >= 0 ? at.y : 0, snapG(at.z)};
+    meSnapshot();
+    ME.sel.clear(); ME.ent = -1;
+    for (auto b : g.brushes) { gmap::translate(b, at); ME.map.brushes.push_back(b); ME.sel.push_back((int)ME.map.brushes.size() - 1); }
+    for (auto e : g.ents) { e.pos += at; ME.map.ents.push_back(e); if (ME.sel.empty()) ME.ent = (int)ME.map.ents.size() - 1; }
+    for (auto& np : g.npcs) {   // the NPCs it uses come along
+        bool have = false;
+        for (auto& k : ME.map.npcs) if (k.first == np.first) have = true;
+        if (!have) ME.map.npcs.push_back(np);
+    }
+    installMapNpcs(g);
+    meChanged();
+    toast("Placed " + name + ". It's selected: drag it where you want it.");
     return true;
 }
 std::vector<std::string> meMapFiles() {
@@ -562,6 +622,21 @@ static void toolInput() {
             ME.clipPts.push_back(s);
             break;
         }
+        case MTool::Npc: case MTool::Spawner: {   // an NPC standing here, or a stand to take guns from
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            if (ME.tool == MTool::Npc && ME.npcPick.empty()) { toast("Pick which NPC in the panel first (make one in the NPC editor)."); break; }
+            meSnapshot();
+            gmap::Entity e;
+            e.type = ME.tool == MTool::Npc ? "npc_spawn" : "gun_spawner";
+            e.ref = ME.tool == MTool::Npc ? ME.npcPick : "";
+            e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);   // facing you
+            ME.map.ents.push_back(e);
+            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meChanged();
+            break;
+        }
         case MTool::Start: {
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
@@ -719,6 +794,26 @@ static void drawFaceFill(const gmap::Brush& b, int fi, Color c) {
     V3 off = b.faces[fi].n * 0.004;
     for (size_t k = 1; k + 1 < p.size(); k++) DrawTriangle3D(rv(p[0] + off), rv(p[k] + off), rv(p[k + 1] + off), c);
 }
+static void drawSpawner(const gmap::Entity& e, bool sel) {   // a crate on legs with a screen: the gun spawner
+    Color c = sel ? Color{255, 205, 60, 255} : Color{70, 120, 170, 255};
+    V3 p = e.pos;
+    double y = e.yaw * DEG2RAD;
+    Matrix R = MatrixRotateY((float)-y);
+    drawBox(rv(p + V3{0, 0.45, 0}), {0.9f, 0.9f, 0.6f}, Color{60, 66, 74, 255}, R);
+    drawBox(rv(p + V3{0, 0.92, 0}), {0.95f, 0.06f, 0.65f}, c, R);
+    V3 f{std::cos(y), 0, std::sin(y)};
+    drawBox(rv(p + V3{0, 1.25, 0} + f * 0.05), {0.7f, 0.45f, 0.04f}, Color{30, 40, 52, 255}, MatrixMultiply(MatrixRotateZ(0), R));
+}
+static void drawNpcSpawn(const gmap::Entity& e, bool sel) {
+    NpcDef n;
+    if (npcByName(ME.map, e.ref, n)) drawNpcAt(n, rv(e.pos), (float)e.yaw, 0.001f, -1);
+    else drawCyl(rv(e.pos), rv(e.pos + V3{0, 1.7, 0}), 0.25f, Color{200, 80, 70, 255}, 0.6f, nullptr);   // (its NPC is missing)
+    if (sel) {
+        rlDisableDepthMask();
+        drawCyl(rv(e.pos), rv(e.pos + V3{0, 0.05, 0}), 0.6f, Color{255, 205, 60, 255}, 0.5f, nullptr);
+        rlEnableDepthMask();
+    }
+}
 static void drawStart(const gmap::Entity& e, bool sel) {
     Color c = sel ? Color{255, 205, 60, 255} : Color{90, 220, 140, 255};
     V3 p = e.pos;
@@ -740,6 +835,8 @@ static const char* HINT[] = {
     "Drag to draw stairs. They climb away from where you're looking.",
     "Click two points on a face to cut along that line. Tab keeps the other side, Enter cuts, Shift+Enter splits in two.",
     "Click to place the player start, facing the way you're looking.",
+    "Click to place the NPC chosen in the panel. It stands there facing you; set how many in the panel.",
+    "Click to place a gun spawner: on the map, walk up to it and press F to take any of your guns.",
 };
 
 static void drawEditor3D() {
@@ -796,7 +893,12 @@ static void drawEditor3D() {
         }
     }
     // entities
-    for (size_t i = 0; i < ME.map.ents.size(); i++) if (ME.map.ents[i].type == "player_start") drawStart(ME.map.ents[i], (int)i == ME.ent);
+    for (size_t i = 0; i < ME.map.ents.size(); i++) {
+        const auto& e = ME.map.ents[i];
+        if (e.type == "player_start") drawStart(e, (int)i == ME.ent);
+        else if (e.type == "npc_spawn") drawNpcSpawn(e, (int)i == ME.ent);
+        else if (e.type == "gun_spawner") drawSpawner(e, (int)i == ME.ent);
+    }
     (void)b;
 }
 

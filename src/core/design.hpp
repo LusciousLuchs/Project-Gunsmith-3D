@@ -334,6 +334,15 @@ std::string animSlotName(const struct Design& d, const std::string& slot);
 double animLength(const Animation& a);
 AnimHands animAt(const struct Design& d, const Animation& a, double t);
 Animation defaultInspect(const struct Design& d);   // a plain look over the gun (it's brought up and turned), for a gun with no "inspect"
+// A gun made for NPCs to carry (like the simple guns enemies carry in some games): never reloaded, never runs out, not
+// animated or simulated part by part; it just fires this fast, this wide, with its cartridge's bullet. Players can't
+// take one.
+struct NpcGunDef {
+    bool on = false;
+    double rpm = 300;      // shots a minute while the NPC holds the trigger
+    int burst = 1;         // shots per pull (1: single shots)
+    double spread = 2;     // degrees: how wide its shots go (NPC guns are meant to be a bit bad)
+};
 struct Design {
     std::string name = "Untitled action";
     double speed = 0.02;                 // slow-motion speed for shots
@@ -342,6 +351,7 @@ struct Design {
     std::vector<JointDef> joints;
     BreechDef breech;
     Pose pose;                           // how it's held (nothing placed in older blueprints)
+    NpcGunDef npcGun;                    // made for NPCs only (off in older blueprints)
     std::map<std::string, Animation> anims;   // by slot: "work_action", "inspect", "reload", "reload_empty", "clear_jam", "control:<part id>"
     // where the blueprint came from (filled in when loading; saving always writes the current version)
     int format = 1;                      // blueprint format number (GUNSMITH_BLUEPRINT_FORMAT when saved)

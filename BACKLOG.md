@@ -50,7 +50,15 @@ is up to them, and the game's own examples stay original.
   other side; weak spots and armour per bone. Starter bodies: human, hound, six-legged crawler, blank. Saved in user/npcs (0.3.9).
 - [x] **Fight settings saved with it:** health, speed, attack (up close, with a gun, explodes), damage, reach, sight,
   behaviour (stand, wander, chase, guard), team (0.3.9). Not used yet.
-- [ ] **NPCs on maps:** a spawn point entity in the level editor (which NPC, how many, when), placed like the player start.
+- [x] **NPCs on maps:** the NPC tool in the level editor (which NPC, how many); a map file carries copies of the NPCs it
+  uses, installed into user/npcs when it's opened or played; on the range they stand where placed and bullets report
+  which bone they hit (0.4.0). Still to do: when they appear (at the start, in waves, by triggers).
+- [x] **NPC guns:** Firing > Made for NPCs (rate of fire, shots per pull, spread; no reloading, never runs out, not
+  simulated); kept out of the player's gun lists; chosen in the NPC editor (0.4.0). Still to do: NPCs firing them.
+- [x] **Inventory and gun spawners:** carry 4 guns (wheel, G drops, F uses), guns dropped on the ground keep their state;
+  the gun spawner stand on any map (0.4.0). Still to do: the dropped gun drawn as itself, not a case; ammo pickups.
+- [x] **Groups:** save selected brushes and an object as a group in user/groups; place it again in any map (0.4.0).
+  Still to do: spawning groups during play (from a spawner).
 - [ ] **NPCs alive on the range:** walk the map (navigation over the brushes), see the player (sight distance, line of
   sight), act on their behaviour, attack (melee reach and damage, explode, or shoot their gun through the same
   ballistics as the player's).

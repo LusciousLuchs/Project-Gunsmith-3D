@@ -14,6 +14,8 @@
 #include "app/keys.hpp"
 #include "app/mapgfx.hpp"
 #include "app/mapedit.hpp"
+#include "app/npcedit.hpp"
+#include "imgui.h"
 #include "app/paths.hpp"
 #include "app/render.hpp"
 #include "app/settings.hpp"
@@ -27,15 +29,28 @@
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
+#include <filesystem>
 
 using gmap::V3;
+double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut);   // the closest two segments come (below)
 
 namespace {
 struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; };
 struct Impact { V3 p, n; bool steel = false; double r = 0.005; };
 struct Target { V3 c, n; double size = 0.6; };
+struct Carried { Design d; std::unique_ptr<sim::Sim> S; };   // a gun you carry (the one in your hands lives in A.design / A.S)
+struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; };   // one lying on the ground
+struct NpcBoneHit { V3 a, b; double r; std::string npc, bone; bool vital; };   // a bone of an NPC standing on the map
+struct NpcHere { NpcDef def; V3 pos; double yaw; };
 struct Range {
     gmap::Map map;
+    std::vector<Carried> inv;            // the guns you carry, up to 4; inv[cur] is the one in your hands (empty here)
+    int cur = -1;                        // -1: empty hands
+    std::vector<WorldGun> ground;
+    std::vector<NpcHere> npcs;
+    std::vector<NpcBoneHit> npcBones;
+    bool spawnerOpen = false;
+    std::string prompt;                  // "F: ..." near something you can use
     gmap::Player pl;
     gmap::Stance want = gmap::Stance::Stand;
     float aim = 0;                       // 0 from the hip .. 1 aiming down the gun
@@ -171,6 +186,23 @@ void stepBullets(double dt) {
             V3 nv = b.v + acc * h;
             V3 step = (b.v + nv) * (0.5 * h);
             double L = gmap::len(step);
+            if (L > 1e-9 && !R.npcBones.empty()) {   // an NPC's bone in the way? (they don't take damage yet: it says where it hit)
+                const NpcBoneHit* hitB = nullptr; double bestS = 2;
+                for (auto& nb : R.npcBones) {
+                    double sAlong;
+                    if (segSeg(b.p, b.p + step, nb.a, nb.b, &sAlong) < nb.r && sAlong < bestS) { bestS = sAlong; hitB = &nb; }
+                }
+                if (hitB) {
+                    gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L);
+                    if (mh.brush < 0 || mh.t / L > bestS) {   // (and not a wall in front of it)
+                        R.lastHit = "Hit the " + hitB->npc + ": " + hitB->bone + (hitB->vital ? "  (weak spot!)" : "");
+                        R.lastHitT = 3;
+                        R.impacts.push_back({b.p + step * bestS, gmap::norm(-step), false, 0.006});
+                        b.life = -1;
+                        break;
+                    }
+                }
+            }
             if (L > 1e-9) {
                 gmap::Hit hit = gmap::rayMap(R.map, b.p, step * (1 / L), L);
                 if (hit.brush >= 0) {
@@ -232,25 +264,15 @@ void reload() {
 
 bool inRange() { return A.screen == Screen::Range; }
 
-void enterRange(const Design& gun, const gmap::Map& map) {
-    if (!A.stash) A.stash = std::make_unique<Design>(A.design);
-    A.design = gun;
-    syncBarrels(A.design);
-    A.screen = Screen::Range;
-    A.showPause = A.showSettings = A.showBenchPicker = A.showRangePicker = false;
-    A.mode = Mode::Test;
-    restartTest();
-    mapGfxInit();
-    R = Range();
-    R.map = map;
-    mapBuildMeshes(R.map);
-    gmap::playerSpawn(R.pl, R.map);
-    findTargets();
+// the gun now in your hands (A.design / A.S): how it sits, how heavy it is, where its sights are
+static void armGun() {
+    R.kickPitch = R.kickYaw = R.kickBack = R.kickVel = 0;
+    A.shells.clear(); A.puffs.clear();
+    if (!A.S || A.design.bodies.empty()) { R.twoHands = false; R.mass = 0.3; return; }
     R.twoHands = heldWith(A.design) == "two hands";
-    if (A.S)   // loose rounds laid out on the bench have no bench to lie on here (R loads a single shot directly)
-        for (auto& b : A.S->bodies) if (!b.gone && b.isRound && !b.isCase && b.rs == sim::RS::Loose) sim::retireBody(*A.S, b);
+    for (auto& b : A.S->bodies) if (!b.gone && b.isRound && !b.isCase && b.rs == sim::RS::Loose) sim::retireBody(*A.S, b);   // (no bench here)
     R.mass = 0;
-    if (A.S) for (auto& b : A.S->bodies) if (!b.gone && !b.isRound && !b.isCase && b.tmpl.empty() && b.m < 50) R.mass += b.m;
+    for (auto& b : A.S->bodies) if (!b.gone && !b.isRound && !b.isCase && b.tmpl.empty() && b.m < 50) R.mass += b.m;
     R.mass = std::clamp(R.mass, 0.3, 15.0);
     {   // the line of sight: just over the top of the gun. Sighted in at 25 m (one hand) or 100 m (in the shoulder).
         const auto& br = A.design.breech;
@@ -265,12 +287,147 @@ void enterRange(const Design& gun, const gmap::Map& map) {
         double h = std::max(0.0, (br.face.y - R.sightY) / 1000.0), zd = R.twoHands ? 100.0 : 25.0, v = std::max(50.0, br.cart.velocity);
         R.zero = std::atan(h / zd) + 0.5 * 9.81 * (zd / v) * (zd / v) / zd;
     }
+}
+// hands: put the gun in your hands back in its slot, and take slot k (-1: nothing)
+static void holdSlot(int k) {
+    if (R.cur >= 0 && R.cur < (int)R.inv.size()) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); }
+    else { A.design = Design(); A.S.reset(); }
+    R.cur = k >= 0 && k < (int)R.inv.size() ? k : -1;
+    if (R.cur >= 0) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); }
+    else { A.design = Design(); A.S.reset(); }
+    armGun();
+}
+// a new gun into your hands (a free slot, or in place of the one you hold, which is dropped)
+static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr) {
+    if (R.inv.size() >= 4 && R.cur >= 0) {   // full: what you hold goes on the ground
+        holdSlot(R.cur);   // (back in its slot)
+        WorldGun w; w.d = std::move(R.inv[R.cur].d); w.S = std::move(R.inv[R.cur].S);
+        w.pos = R.pl.feet + gmap::playerForward(R.pl) * 0.6; w.pos.y = R.pl.feet.y; w.yaw = R.pl.yaw * RAD2DEG;
+        R.ground.push_back(std::move(w));
+        R.inv.erase(R.inv.begin() + R.cur);
+        R.cur = -1;
+        A.design = Design(); A.S.reset();
+    }
+    holdSlot(-1);   // empty hands
+    Carried c; c.d = d; syncBarrels(c.d);
+    R.inv.push_back(std::move(c));
+    int k = (int)R.inv.size() - 1;
+    R.cur = k;
+    std::swap(A.design, R.inv[k].d);
+    if (S) A.S = std::move(S); else restartTest();
+    A.mode = Mode::Test;
+    armGun();
+}
+// the gun in your hands, put down on the ground in front of you
+static void dropGun() {
+    if (R.cur < 0) return;
+    WorldGun w; w.d = A.design; w.S = std::move(A.S);
+    V3 f = gmap::playerForward(R.pl); f.y = 0; f = gmap::norm(f);
+    w.pos = R.pl.feet + f * 0.7; w.pos.y = R.pl.feet.y; w.yaw = R.pl.yaw * RAD2DEG + 90;
+    R.ground.push_back(std::move(w));
+    R.inv.erase(R.inv.begin() + R.cur);
+    A.design = Design(); A.S.reset();
+    R.cur = -1;
+    holdSlot(R.inv.empty() ? -1 : 0);
+    if (R.cur >= 0) {}   // (holdSlot put the first one in your hands)
+}
+
+// NPCs on the map: standing at their spawn points (they don't move or fight yet), their bones ready to be hit
+static void placeNpcs() {
+    R.npcs.clear(); R.npcBones.clear();
+    for (auto& e : R.map.ents) {
+        if (e.type != "npc_spawn" || e.ref.empty()) continue;
+        NpcDef n;
+        if (!npcByName(R.map, e.ref, n)) continue;
+        double y = e.yaw * DEG2RAD;
+        V3 f{std::cos(y), 0, std::sin(y)}, side{-f.z, 0, f.x};
+        for (int k = 0; k < std::min(e.count, 50); k++) {   // more than one: side by side in rows
+            int row = k / 5, col = k % 5;
+            V3 p = e.pos + side * ((col - std::min(e.count - row * 5, 5) / 2.0 + 0.5) * 1.1) - f * (row * 1.4);
+            R.npcs.push_back({n, p, e.yaw});
+            // its bones in the map (as drawNpcAt places them)
+            auto P = npcPose(n);
+            double th = (90 - e.yaw) * DEG2RAD, c0 = std::cos(th), s0 = std::sin(th);
+            auto place = [&](const double q[3]) { double x = q[0] / 1000, yy = q[1] / 1000, z = q[2] / 1000; return V3{p.x + x * c0 + z * s0, p.y + yy, p.z - x * s0 + z * c0}; };
+            for (size_t i = 0; i < P.size(); i++)
+                R.npcBones.push_back({place(P[i].a), place(P[i].b), std::max(n.bones[i].r0, n.bones[i].r1) / 1000, n.name, n.bones[i].name, n.bones[i].vital});
+        }
+    }
+}
+// the closest a bullet's step passes to a bone (segment to segment)
+double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut) {
+    V3 d1 = q1 - p1, d2 = q2 - p2, r = p1 - p2;
+    double a = gmap::dot(d1, d1), e = gmap::dot(d2, d2), f = gmap::dot(d2, r), s, t;
+    if (a < 1e-12) { s = 0; t = e > 1e-12 ? std::clamp(f / e, 0.0, 1.0) : 0; }
+    else {
+        double c = gmap::dot(d1, r);
+        if (e < 1e-12) { t = 0; s = std::clamp(-c / a, 0.0, 1.0); }
+        else {
+            double b = gmap::dot(d1, d2), den = a * e - b * b;
+            s = den > 1e-12 ? std::clamp((b * f - c * e) / den, 0.0, 1.0) : 0;
+            t = (b * s + f) / e;
+            if (t < 0) { t = 0; s = std::clamp(-c / a, 0.0, 1.0); } else if (t > 1) { t = 1; s = std::clamp((b - c) / a, 0.0, 1.0); }
+        }
+    }
+    if (tOut) *tOut = s;
+    return gmap::len((p1 + d1 * s) - (p2 + d2 * t));
+}
+
+void enterRange(const Design& gun, const gmap::Map& map) {
+    if (!A.stash) A.stash = std::make_unique<Design>(A.design);
+    A.screen = Screen::Range;
+    A.showPause = A.showSettings = A.showBenchPicker = A.showRangePicker = false;
+    A.mode = Mode::Test;
+    mapGfxInit();
+    R = Range();
+    R.map = map;
+    installMapNpcs(R.map);   // the NPCs this map brought with it
+    mapBuildMeshes(R.map);
+    gmap::playerSpawn(R.pl, R.map);
+    findTargets();
+    placeNpcs();
+    A.design = Design(); A.S.reset();
+    takeGun(gun);
     R.lastYaw = R.pl.yaw; R.lastPitch = R.pl.pitch;
     DisableCursor();
+}
+bool rangeSpawnerOpen() { return inRange() && R.spawnerOpen; }
+// the gun spawner's list: your guns and the examples (guns made for NPCs aren't for you)
+void rangeSpawnerWindow() {
+    if (!R.spawnerOpen) return;
+    float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+    ImGui::SetNextWindowPos({W / 2, H / 2}, ImGuiCond_Always, {0.5f, 0.5f});
+    ImGui::SetNextWindowSize({460 * CFG.uiScale, 520 * CFG.uiScale});
+    ImGui::Begin("Gun spawner", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoResize);
+    ImGui::TextDisabled("Take a gun. You can carry 4: the mouse wheel changes guns, G drops one.");
+    ImGui::BeginChild("##sp", {0, -40 * CFG.uiScale});
+    auto take = [&](const Design& d) { takeGun(d); R.spawnerOpen = false; toast("Took the " + d.name + "."); };
+    ImGui::SeparatorText("Examples");
+    for (auto& p : presetList()) {
+        if (std::string(p.key) == "blank") continue;
+        if (ImGui::Selectable(p.label)) { take(loadPreset(p.key)); break; }
+    }
+    ImGui::SeparatorText("Your blueprints");
+    std::error_code ec;
+    std::vector<std::string> files;
+    for (auto& e : std::filesystem::directory_iterator(GUNS_DIR, ec)) if (e.path().extension() == ".json") files.push_back(e.path().string());
+    std::sort(files.begin(), files.end());
+    for (auto& f : files) {
+        std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
+        Design d;
+        if (!designFromJson(ss.str(), d)) continue;
+        std::string label = std::filesystem::path(f).stem().string();
+        if (d.npcGun.on) { ImGui::TextDisabled("%s  (made for NPCs)", label.c_str()); continue; }
+        if (ImGui::Selectable(label.c_str())) { take(d); break; }
+    }
+    ImGui::EndChild();
+    if (ImGui::Button("Close (Esc)", {-1, 0}) || IsKeyPressed(KEY_ESCAPE)) R.spawnerOpen = false;
+    ImGui::End();
 }
 void leaveRange() {
     EnableCursor();
     R.bullets.clear(); R.impacts.clear();
+    R.inv.clear(); R.ground.clear(); R.npcs.clear(); R.npcBones.clear(); R.cur = -1; R.spawnerOpen = false;
     mapRestoreLook();
     rangeMapChanged();
 }
@@ -283,8 +440,46 @@ void rangeUpdate(float dt, bool modal) {
         holdFire = true; skipLook = true;
         return;
     }
+    if (R.spawnerOpen) {   // choosing a gun at a spawner: the mouse is for the list
+        if (IsCursorHidden()) EnableCursor();
+        if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); }
+        holdFire = true; skipLook = true;
+        return;
+    }
     if (!IsCursorHidden()) { DisableCursor(); skipLook = true; }
     if (IsKeyPressed(KEY_ESCAPE)) { A.showPause = true; return; }   // (the mouse is freed next frame, once)
+    {   // your guns: the wheel changes them, G drops the one in your hands, F uses what's in front of you
+        float wh = GetMouseWheelMove();
+        if (wh != 0 && R.inv.size() > 1) {
+            int n = (int)R.inv.size(), k = R.cur < 0 ? 0 : ((R.cur + (wh < 0 ? 1 : -1)) % n + n) % n;
+            holdSlot(k);
+        }
+        if (actPressed(Act::DropGun) && R.cur >= 0) dropGun();
+        R.prompt.clear();
+        V3 me = R.pl.feet, fw = gmap::playerForward(R.pl);
+        int spawner = -1, ground = -1;
+        double best = 1e9;
+        for (size_t i = 0; i < R.map.ents.size(); i++) {
+            if (R.map.ents[i].type != "gun_spawner") continue;
+            V3 d = R.map.ents[i].pos - me; d.y = 0;
+            double l = gmap::len(d);
+            if (l < 1.8 && l < best) { best = l; spawner = (int)i; }
+        }
+        for (size_t i = 0; i < R.ground.size(); i++) {
+            V3 d = R.ground[i].pos - me; d.y = 0;
+            double l = gmap::len(d);
+            if (l < 1.6 && gmap::dot(gmap::norm(d), V3{fw.x, 0, fw.z}) > 0.2 && l < best) { best = l; ground = (int)i; spawner = -1; }
+        }
+        if (ground >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": pick up the " + R.ground[ground].d.name;
+        else if (spawner >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": take a gun";
+        if (actPressed(Act::Use)) {
+            if (ground >= 0) {
+                WorldGun w = std::move(R.ground[ground]);
+                R.ground.erase(R.ground.begin() + ground);
+                takeGun(w.d, std::move(w.S));
+            } else if (spawner >= 0) { R.spawnerOpen = true; EnableCursor(); return; }
+        }
+    }
     // back from the menu: the click on Resume isn't a shot, and the mouse coming back to the middle isn't a turn
     if (holdFire && !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) holdFire = false;
     R.t += dt;
@@ -417,6 +612,18 @@ void rangeRender() {
             DrawTriangle3D(rv(o), rv(o + s * (im.r * std::cos(a1)) + t * (im.r * std::sin(a1))), rv(o + s * (im.r * std::cos(a0)) + t * (im.r * std::sin(a0))), c);
         }
     }
+    // NPCs standing on the map, gun spawners, guns on the ground
+    for (auto& n : R.npcs) drawNpcAt(n.def, rv(n.pos), (float)n.yaw, 0.001f, -1);
+    for (auto& e : R.map.ents) {
+        if (e.type != "gun_spawner") continue;
+        Matrix Ry = MatrixRotateY((float)(-e.yaw * DEG2RAD));
+        drawBox(rv(e.pos + V3{0, 0.45, 0}), {0.9f, 0.9f, 0.6f}, Color{60, 66, 74, 255}, Ry);
+        drawBox(rv(e.pos + V3{0, 0.92, 0}), {0.95f, 0.06f, 0.65f}, Color{70, 120, 170, 255}, Ry);
+        double y = e.yaw * DEG2RAD;
+        drawBox(rv(e.pos + V3{0, 1.25, 0} + V3{std::cos(y), 0, std::sin(y)} * 0.05), {0.7f, 0.45f, 0.04f}, Color{40, 90, 130, 255}, Ry);
+    }
+    for (auto& g : R.ground)   // a gun case on the floor (the gun itself is drawn once it's in your hands)
+        drawBox(rv(g.pos + V3{0, 0.06, 0}), {0.75f, 0.12f, 0.28f}, Color{58, 52, 44, 255}, MatrixRotateY((float)(-g.yaw * DEG2RAD)));
     // bullets in flight: a faint streak
     for (auto& b : R.bullets) DrawLine3D(rv(b.p), rv(b.p - b.v * 0.004), Color{255, 236, 190, 120});
     // the gun, in the hands
@@ -429,7 +636,7 @@ void rangeRender() {
     rlDrawRenderBatchActive();
     rlPushMatrix();
     rlMultMatrixf(MatrixToFloat(R.G));
-    drawGunOnly();
+    if (R.cur >= 0) drawGunOnly();
     rlDrawRenderBatchActive();
     rlPopMatrix();
     EndMode3D();
@@ -440,6 +647,25 @@ void rangeRender() {
 void rangeHud() {
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight(), cx = W / 2, cy = H / 2;
     if (R.aim < 0.5f) { DrawCircleV({cx, cy}, 2.5f, Color{255, 255, 255, 200}); DrawCircleLinesV({cx, cy}, 2.5f, Color{0, 0, 0, 120}); }
+    {   // what you carry, and what you can use
+        float y = H - 70 - 22 * (float)R.inv.size();
+        for (size_t i = 0; i < R.inv.size(); i++) {
+            bool on = (int)i == R.cur;
+            std::string t = std::to_string(i + 1) + "  " + (on ? A.design.name : R.inv[i].d.name);
+            viewText(t.c_str(), 24, y + 22 * i, on ? 15 : 13, on ? Color{255, 205, 60, 255} : Color{210, 214, 220, 190});
+        }
+        if (R.inv.empty()) viewText("Empty hands", 24, H - 92, 13, Color{210, 214, 220, 190});
+        if (!R.prompt.empty()) {
+            float tw = viewTextWidth(R.prompt.c_str(), 16);
+            DrawRectangleRounded({cx - tw / 2 - 12, cy + 70, tw + 24, 30}, 0.4f, 6, Color{20, 23, 28, 190});
+            viewText(R.prompt.c_str(), cx - tw / 2, cy + 76, 16, Color{255, 230, 160, 255});
+        }
+        if (R.lastHitT > 0 && !A.S) {
+            float a = std::min(1.f, R.lastHitT);
+            float tw = viewTextWidth(R.lastHit.c_str(), 18);
+            viewText(R.lastHit.c_str(), cx - tw / 2, cy + 40, 18, Color{255, 220, 120, (unsigned char)(255 * a)});
+        }
+    }
     if (!A.S) return;
     auto& S = *A.S;
     // rounds: in the magazine, and one in the chamber
@@ -467,7 +693,7 @@ void rangeHud() {
         viewText(R.lastHit.c_str(), cx - tw / 2, cy + 40, 18, Color{255, 220, 120, (unsigned char)(255 * a)});
     }
     if (CFG.hints) {
-        const char* help = "Left mouse fires, right mouse aims.  R reloads, B works the action, I inspects.  WASD to walk.  Esc for the menu.";
+        const char* help = "Left mouse fires, right mouse aims.  R reloads, B works the action, I inspects.  Wheel: change guns, G drops, F uses.  Esc for the menu.";
         float hw = viewTextWidth(help, 13);
         DrawRectangleRounded({cx - hw / 2 - 12, 14, hw + 24, 24}, 0.4f, 6, Color{20, 23, 28, 150});
         viewText(help, cx - hw / 2, 19, 13, Color{235, 238, 242, 230});

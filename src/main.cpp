@@ -192,7 +192,12 @@ int main(int argc, char** argv) {
         Design rd = loadPreset(rangeArg);
         std::ifstream rin(rangeArg);
         if (rin) { std::stringstream ss; ss << rin.rdbuf(); designFromJson(ss.str(), rd); }
-        enterRange(rd, gmap::builtinRange());
+        gmap::Map rm = gmap::builtinRange();
+        if (const char* mf = std::getenv("GUNSMITH_RANGEMAP")) {   // (screenshots) a map file instead of the practice range
+            std::ifstream min(mf); std::stringstream ms; ms << min.rdbuf();
+            gmap::Map m2; if (gmap::mapFromJson(ms.str(), m2)) rm = m2;
+        }
+        enterRange(rd, rm);
     }
     // a normal launch: the studio's splash, then the agreement until it's agreed to (screenshot runs skip them)
     if (introArg == 2) introForceEula();
@@ -231,6 +236,7 @@ int main(int argc, char** argv) {
             rlImGuiBegin();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
+            else rangeSpawnerWindow();
             toastOverlay();
             rlImGuiEnd();
             EndDrawing();

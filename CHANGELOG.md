@@ -8,6 +8,29 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.0-alpha
+
+### Maps bring their NPCs
+- **Place NPCs in the Level editor:** the NPC tool (ghost icon) places the NPC chosen in the panel, standing where you click, facing you. Set how many in its panel.
+- **A map file carries a copy of every NPC it uses.** Share a map, and its enemies go with it: opening it (or playing it) puts any NPCs you don't have yet into user/npcs, ready in the NPC editor.
+- **On the range, NPCs stand where they were placed.** Several in a spawn stand side by side in rows.
+- **Bullets hit their bones:** a shot that hits says which NPC and which bone ("Hit the Crawler: Head (weak spot!)"). They don't take damage, move or fight yet: that's next on the to-do list.
+
+### Guns made for NPCs
+- **Gun designer > Firing > Made for NPCs:** a gun for NPCs to carry, simple and a bit bad on purpose. It never needs reloading and never runs out. It isn't worked part by part or animated: it fires its cartridge's bullet at a set rate of fire, shots per pull and spread. The parts you draw are just its look.
+- **NPC editor > In a fight > With a gun** lists only these guns.
+- **Players can't take them:** they're left out of the range's gun list and the gun spawner (shown as *made for NPCs*).
+
+### Your inventory, and gun spawners
+- **Carry up to 4 guns on the range.** The mouse wheel changes guns, **G** drops the one in your hands, and **F** uses what's in front of you. Your guns are listed bottom left.
+- A dropped gun lies on the ground in a case, just as you left it (loaded, cocked or jammed). **F** picks it up again.
+- **Gun spawner** (crate icon in the Level editor): a stand you place on any map. Walk up to it and press **F** to take any of your blueprints or the examples. With 4 guns already, the one in your hands is put down for it.
+- New keys (change them in Settings > Controls): **Use (F)** and **Drop the gun (G)**.
+
+### Groups: save objects as one and place them again
+- **Level editor > Edit > Groups:** select brushes (Shift-click adds more) and an object (an NPC or a gun spawner), name it, and **Save the selection as a group**. It goes in user/groups.
+- **Place** puts a copy where you're looking, already selected so you can drag it into place. It works in any map, and the NPCs it uses come with it.
+
 ## 0.3.9-alpha
 
 ### Any face, Sprocket-style

@@ -47,9 +47,12 @@ struct Brush {
     std::vector<Face> faces;
 };
 struct Entity {
-    std::string type = "player_start";
+    std::string type = "player_start";   // player_start, target_paper, npc_spawn (an NPC stands here), gun_spawner
+                                         // (a stand the player uses to take guns)
     V3 pos;
     double yaw = 0;       // degrees; 0 looks along +X
+    std::string ref;      // npc_spawn: which NPC (its name in the map's own copies, or in user/npcs)
+    int count = 1;        // npc_spawn: how many
 };
 struct Look {
     double sunYaw = 35, sunPitch = 55;      // degrees: where the sunlight comes from
@@ -64,6 +67,8 @@ struct Map {
     std::vector<Brush> brushes;
     std::vector<Entity> ents;
     Look look;
+    // the NPCs the map uses, carried in the map file (name, the NPC's own JSON), so a shared map brings its enemies
+    std::vector<std::pair<std::string, std::string>> npcs;
 };
 
 // ---- brush geometry

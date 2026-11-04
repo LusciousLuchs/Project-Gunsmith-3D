@@ -24,7 +24,7 @@ static void moveOver(const char* from, const char* to) {
 
 void setupUserFolders() {
     std::error_code ec;
-    for (const char* d : {GUNS_DIR, MAPS_DIR, TEXTURES_DIR, PARTS_DIR, NPCS_DIR}) fs::create_directories(d, ec);
+    for (const char* d : {GUNS_DIR, MAPS_DIR, TEXTURES_DIR, PARTS_DIR, NPCS_DIR, GROUPS_DIR}) fs::create_directories(d, ec);
     moveOver("blueprints", GUNS_DIR);  // where earlier versions kept them
     moveOver("maps", MAPS_DIR);
 }

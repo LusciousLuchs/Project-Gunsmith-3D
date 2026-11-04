@@ -345,8 +345,18 @@ std::string mapToJson(const Map& m) {
     }
     j["brushes"] = bs;
     json es = json::array();
-    for (auto& e : m.ents) es.push_back({{"type", e.type}, {"pos", v3j(e.pos)}, {"yaw", e.yaw}});
+    for (auto& e : m.ents) {
+        json je = {{"type", e.type}, {"pos", v3j(e.pos)}, {"yaw", e.yaw}};
+        if (!e.ref.empty()) je["ref"] = e.ref;
+        if (e.count != 1) je["count"] = e.count;
+        es.push_back(je);
+    }
     j["entities"] = es;
+    if (!m.npcs.empty()) {
+        json np = json::object();
+        for (auto& [name, text] : m.npcs) { json v = json::parse(text, nullptr, false); if (!v.is_discarded()) np[name] = v; }
+        j["npcs"] = np;
+    }
     return j.dump(1);
 }
 
@@ -383,8 +393,12 @@ bool mapFromJson(const std::string& s, Map& out) {
             e.type = je.value("type", "player_start");
             e.pos = jv3(je.at("pos"));
             e.yaw = je.value("yaw", 0.0);
+            e.ref = je.value("ref", "");
+            e.count = std::max(1, je.value("count", 1));
             m.ents.push_back(e);
         }
+        if (j.contains("npcs") && j["npcs"].is_object())
+            for (auto& [name, v] : j["npcs"].items()) m.npcs.push_back({name, v.dump()});
         out = m;
         return true;
     } catch (...) {

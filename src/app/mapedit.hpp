@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner };
 
 struct MapEd {
     gmap::Map map;
@@ -39,6 +39,7 @@ struct MapEd {
     bool walking = false;
     gmap::Player pl;
     std::string status;                    // one-line message in the panel
+    std::string npcPick;                   // the NPC the NPC spawn tool places (its name)
 };
 extern MapEd ME;
 
@@ -62,6 +63,10 @@ void meNew();
 void meLoadBuiltin();
 bool meSave();                             // to user/maps/<name>.gsmap
 bool meOpen(const std::string& path);
+// groups: the selected brushes (and the selected object) saved as one, placed again as many times as you like
+bool meSaveGroup(const std::string& name); // to user/groups/<name>.json
+std::vector<std::string> meGroupFiles();   // their names
+bool mePlaceGroup(const std::string& name);   // in front of the camera, selected so it can be moved straight away
 std::vector<std::string> meMapFiles();
 void meWalk(bool fromCamera);
 void meFocus();

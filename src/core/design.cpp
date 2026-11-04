@@ -1023,6 +1023,7 @@ std::string designToJson(const Design& d, bool pretty) {
             }
         }
         if (!P.empty()) o["pose"] = P;
+        if (d.npcGun.on) o["npcGun"] = {{"rpm", d.npcGun.rpm}, {"burst", d.npcGun.burst}, {"spread", d.npcGun.spread}};
         json An = json::object();
         for (auto& [slot, a] : d.anims) {
             if (a.keys.empty()) continue;
@@ -1320,6 +1321,13 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             if (jh.contains("pocket") && jh["pocket"].is_array() && jh["pocket"].size() == 3)
                 for (int q = 0; q < 3; q++) b.pocket[q] = jh["pocket"][q].get<double>();
         }
+    }
+    if (o.contains("npcGun") && o["npcGun"].is_object()) {
+        auto& g = o["npcGun"];
+        d.npcGun.on = true;
+        d.npcGun.rpm = std::clamp(opt<double>(g, "rpm", 300.0), 1.0, 3000.0);
+        d.npcGun.burst = std::clamp(opt<int>(g, "burst", 1), 1, 50);
+        d.npcGun.spread = std::clamp(opt<double>(g, "spread", 2.0), 0.0, 45.0);
     }
     if (o.contains("anims") && o["anims"].is_object())
         for (auto& [slot, ks] : o["anims"].items()) {

@@ -179,10 +179,12 @@ void rangePicker() {
     ImGui::SeparatorText("Your blueprints");
     if (files.empty()) ImGui::TextDisabled("None saved yet. Save one from the Sandbox.");
     for (auto& f : files) {
-        if (!ImGui::Selectable(f.stem().string().c_str())) continue;
         std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
         Design d;
-        if (designFromJson(ss.str(), d)) go(d);
+        bool ok = designFromJson(ss.str(), d);
+        if (ok && d.npcGun.on) { ImGui::TextDisabled("%s  (made for NPCs)", f.stem().string().c_str()); continue; }
+        if (!ImGui::Selectable(f.stem().string().c_str())) continue;
+        if (ok) go(d);
         else toast("That blueprint couldn't be read.");
     }
     ImGui::EndChild();

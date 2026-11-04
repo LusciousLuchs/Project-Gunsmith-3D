@@ -147,7 +147,16 @@ void npcPanel() {
         int at = n.attack == "ranged" ? 1 : n.attack == "explode" ? 2 : 0;
         prop("Attacks");
         if (ImGui::Combo("##natt", &at, "Up close\0With a gun\0Explodes\0")) { n.attack = at == 1 ? "ranged" : at == 2 ? "explode" : "melee"; done = true; }
-        if (at == 1) { prop("Gun", "A blueprint from user/guns."); inputText("##ngun", n.gun); fin(); }
+        if (at == 1) {   // a gun made for NPCs (Firing > Made for NPCs in the gun designer)
+            prop("Gun", "A gun made for NPCs: in the gun designer, Firing > Made for NPCs.\nIt never needs reloading and never runs out.");
+            if (ImGui::BeginCombo("##ngun", n.gun.empty() ? "Choose..." : n.gun.c_str())) {
+                static std::vector<std::string> guns; static double when = -10;
+                if (GetTime() - when > 2) { guns = npcGunFiles(); when = GetTime(); }
+                if (guns.empty()) ImGui::TextDisabled("None yet. In the gun designer, tick Firing > Made for NPCs and save it.");
+                for (auto& g : guns) if (ImGui::Selectable(g.c_str(), n.gun == g)) { n.gun = g; done = true; }
+                ImGui::EndCombo();
+            }
+        }
         else { pNum("Damage", n.damage, 1, "%.0f"); fin(); }
         pNum(at == 1 ? "Shoots from" : "Reach", n.reach, 0.1, "%.1f m"); fin();
         pNum("Sees you at", n.sight, 1, "%.0f m"); fin();

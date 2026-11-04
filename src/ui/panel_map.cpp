@@ -3,6 +3,7 @@
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "app/mapedit.hpp"
+#include "app/npcedit.hpp"
 #include "app/mapgfx.hpp"
 #include "app/settings.hpp"
 #include "ui/ui.hpp"
@@ -65,7 +66,8 @@ void mapToolbar() {
         {ICON_FA_ARROW_POINTER, "Select, move and resize", MTool::Select}, {ICON_FA_SQUARE, "Box brush", MTool::Box},
         {ICON_FA_CARET_UP, "Ramp (wedge) brush", MTool::Wedge}, {ICON_FA_CIRCLE, "Cylinder brush", MTool::Cylinder},
         {ICON_FA_STAIRS, "Stairs", MTool::Stairs}, {ICON_FA_SCISSORS, "Clip: cut brushes along a line", MTool::Clip},
-        {ICON_FA_PERSON, "Player start", MTool::Start}};
+        {ICON_FA_PERSON, "Player start", MTool::Start}, {ICON_FA_GHOST, "NPC: place an NPC from the NPC editor", MTool::Npc},
+        {ICON_FA_BOX_OPEN, "Gun spawner: a stand players take guns from", MTool::Spawner}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -113,8 +115,25 @@ static void editTab() {
     auto& M = ME.map;
     if (ME.ent >= 0 && ME.ent < (int)M.ents.size()) {
         auto& e = M.ents[ME.ent];
+        if (e.type == "npc_spawn") {
+            heading("NPC");
+            ImGui::TextDisabled("An NPC stands here. (They don't move or fight yet: coming next.)");
+            prop("Which");
+            if (ImGui::BeginCombo("##npcref", e.ref.empty() ? "Choose..." : e.ref.c_str())) {
+                for (auto& f : npcFiles()) if (ImGui::Selectable(f.c_str(), e.ref == f)) { meSnapshot(); e.ref = f; meChanged(); }
+                ImGui::EndCombo();
+            }
+            double cnt = e.count;
+            prop("How many");
+            if (ImGui::InputDouble("##npccount", &cnt, 1, 5, "%.0f")) { meSnapshot(); e.count = std::clamp((int)std::lround(cnt), 1, 200); meChanged(); }
+            ImGui::TextDisabled("Saved with the map: a copy of this NPC goes in the map file.");
+        } else if (e.type == "gun_spawner") {
+            heading("Gun spawner");
+            ImGui::TextDisabled("Walk up to it on the map and press F: take any of your guns.");
+        } else {
         heading("Player start");
         ImGui::TextDisabled("Where you appear when you walk the map.");
+        }
         static bool editing = false;
         prop("Facing");
         float yaw = (float)e.yaw;
@@ -230,7 +249,33 @@ static void editTab() {
     }
 }
 
+static void groupTools() {   // groups of objects: save the selection as one, place it again
+    heading("Groups");
+    static char gname[64] = "My group";
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputText("##gname", gname, sizeof gname);
+    if (ImGui::Button("Save the selection as a group", {-1, 0})) meSaveGroup(gname);
+    if (tipHover()) ImGui::SetTooltip("The selected brushes (Shift-click adds more) and the selected object (an NPC, a gun spawner),\nsaved as one group in user/groups. Place it again in this map or any other.");
+    auto groups = meGroupFiles();
+    if (!groups.empty()) {
+        prop("Place");
+        if (ImGui::BeginCombo("##gplace", "Choose a group...")) {
+            for (auto& g : groups) if (ImGui::Selectable(g.c_str())) mePlaceGroup(g);
+            ImGui::EndCombo();
+        }
+    }
+}
 static void toolOptions() {
+    if (ME.tool == MTool::Npc) {
+        prop("NPC");
+        if (ImGui::BeginCombo("##npcpick", ME.npcPick.empty() ? "Choose..." : ME.npcPick.c_str())) {
+            auto files = npcFiles();
+            if (files.empty()) ImGui::TextDisabled("None yet: make one in the NPC editor.");
+            for (auto& f : files) if (ImGui::Selectable(f.c_str(), ME.npcPick == f)) ME.npcPick = f;
+            ImGui::EndCombo();
+        }
+        ImGui::TextDisabled("A copy of each NPC you place is saved in the map file.");
+    }
     if (ME.tool == MTool::Cylinder) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); typeable(); }
     if (ME.tool == MTool::Stairs) { prop("Steps"); ImGui::SliderInt("##steps", &ME.stairSteps, 2, 32); typeable(); }
 }
@@ -361,7 +406,7 @@ void mapPanel() {
     }
     ImGui::BeginChild("##mapbody");
     switch (tab) {
-    case 0: editTab(); toolOptions(); break;
+    case 0: editTab(); toolOptions(); ImGui::Dummy({0, 6 * S()}); groupTools(); break;
     case 1: texturesTab(); break;
     case 2: mapTab(); break;
     case 3: fileTab(); break;

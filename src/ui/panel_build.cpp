@@ -1410,6 +1410,23 @@ static void firingTab() {
         }
         tutAnchor("firing:gas");
     }
+    if (section("Made for NPCs", D.npcGun.on)) {
+        auto& g = D.npcGun;
+        if (pCheck("NPC gun", g.on, "For NPCs to carry, like the simple guns enemies carry in some games.\n"
+                                    "It never needs reloading and never runs out, isn't worked part by part, and isn't animated:\n"
+                                    "it just fires its cartridge's bullet this fast and this wide. Players can't take one.")) editedAny = true;
+        if (g.on) {
+            pNum("Rate of fire", g.rpm, 10, "%.0f a minute", "How fast it fires while the NPC holds the trigger."); g.rpm = std::clamp(g.rpm, 1.0, 3000.0);
+            if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+            double b = g.burst;
+            if (pNum("Shots per pull", b, 1, "%.0f", "1: single shots. More: bursts.")) g.burst = std::clamp((int)std::lround(b), 1, 50);
+            if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+            pNum("Spread", g.spread, 0.1, "%.1f\xc2\xb0", "How wide its shots go. NPC guns are meant to be a bit bad: about 2 for a rifle, 5 for a cheap SMG.");
+            g.spread = std::clamp(g.spread, 0.0, 45.0);
+            if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+            muted("Give it to an NPC in the NPC editor (In a fight > With a gun). The parts you drew are just its look.");
+        } else muted("Off: a normal gun, for players.");
+    }
     ImGui::Dummy({0, 6 * S()});
     if (dangerButton("Remove firing system", {-1, 0})) { br.on = false; commit(); }
 }

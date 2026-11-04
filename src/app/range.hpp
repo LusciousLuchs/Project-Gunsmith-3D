@@ -10,3 +10,5 @@ void rangeUpdate(float dt, bool modal);
 void rangeRender();                                         // the 3D view
 void rangeHud();                                            // 2D, after it
 void rangeMapChanged();                                     // (map editor) its meshes must be built again
+bool rangeSpawnerOpen();                                    // choosing a gun at a gun spawner
+void rangeSpawnerWindow();                                  // its list (ImGui)

@@ -7,6 +7,7 @@
 #include "raymath.h"
 #include "rlgl.h"
 #include "imgui.h"
+#include "map.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -112,6 +113,18 @@ std::vector<std::string> npcFiles() {
     std::sort(out.begin(), out.end());
     return out;
 }
+std::vector<std::string> npcGunFiles() {
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (auto& e : fs::directory_iterator(GUNS_DIR, ec)) {
+        if (e.path().extension() != ".json") continue;
+        std::ifstream in(e.path()); std::stringstream ss; ss << in.rdbuf();
+        Design d;
+        if (designFromJson(ss.str(), d) && d.npcGun.on) out.push_back(e.path().stem().string());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
 bool npcSave(const std::string& name) {
     std::string n = safeFileName(name.empty() ? NE.npc.name : name);
     if (n.empty()) n = "NPC";
@@ -201,6 +214,71 @@ void npcEditorUpdate(float dt, bool modal) {
     else if (b < 0) NE.endPicked = false;
 }
 
+void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float k, int highlight) {
+    auto P = npcPose(n);
+    // the NPC's own frame faces +z; turned so that it faces yawDeg (0 along +x)
+    float th = (90 - yawDeg) * DEG2RAD, c0 = std::cos(th), s0 = std::sin(th);
+    auto place = [&](const double p[3]) { float x = (float)p[0] * k, y = (float)p[1] * k, z = (float)p[2] * k;
+        return Vector3{origin.x + x * c0 + z * s0, origin.y + y, origin.z - x * s0 + z * c0}; };
+    auto axis = [&](const double v[3]) { return Vector3{(float)v[0] * c0 + (float)v[2] * s0, (float)v[1], -(float)v[0] * s0 + (float)v[2] * c0}; };
+    for (size_t i = 0; i < P.size(); i++) {
+        const NpcBone& b = n.bones[i];
+        Color c = hexColor(b.color);
+        if ((int)i == highlight) c = Color{(unsigned char)std::min(255, c.r + 50), (unsigned char)std::min(255, c.g + 40), (unsigned char)std::min(255, c.b + 10), 255};
+        Vector3 a = place(P[i].a), e = place(P[i].b);
+        float r0 = (float)b.r0 * k, r1 = (float)b.r1 * k;
+        if (b.shape == "box" || b.shape == "ball") {
+            Vector3 X = axis(P[i].x), Y = axis(P[i].y), Z = axis(P[i].z);
+            Matrix R = {X.x, Y.x, Z.x, 0, X.y, Y.y, Z.y, 0, X.z, Y.z, Z.z, 0, 0, 0, 0, 1};
+            Vector3 mid = Vector3Lerp(a, e, 0.5f);
+            float L = (float)b.len * k;
+            if (b.shape == "box") drawBox(mid, {(r0 + r1), L, (r0 + r1)}, c, R);
+            else drawMesh(G.sphere, MatrixMultiply(MatrixMultiply(MatrixScale((r0 + r1) / 2, L / 2, (r0 + r1) / 2), R), MatrixTranslate(mid.x, mid.y, mid.z)), c);
+        } else {   // a tapered capsule: a few rings, rounded ends
+            const int N = 6;
+            for (int q = 0; q < N; q++) {
+                float t0 = (float)q / N, t1 = (float)(q + 1) / N;
+                drawCyl(Vector3Lerp(a, e, t0), Vector3Lerp(a, e, t1), r0 + (r1 - r0) * (t0 + t1) / 2, c);
+            }
+            drawSphereLit(a, r0, c);
+            drawSphereLit(e, r1, c);
+        }
+    }
+}
+
+bool npcByName(const gmap::Map& m, const std::string& name, NpcDef& out) {
+    for (auto& [nm, text] : m.npcs) if (nm == name && npcFromJson(text, out)) return true;
+    std::ifstream in(std::string(NPCS_DIR) + "/" + safeFileName(name) + ".json");
+    if (!in) return false;
+    std::stringstream ss; ss << in.rdbuf();
+    return npcFromJson(ss.str(), out);
+}
+void embedMapNpcs(gmap::Map& m) {
+    std::vector<std::pair<std::string, std::string>> keep;
+    for (auto& e : m.ents) {
+        if (e.type != "npc_spawn" || e.ref.empty()) continue;
+        bool have = false;
+        for (auto& k : keep) if (k.first == e.ref) have = true;
+        if (have) continue;
+        std::ifstream in(std::string(NPCS_DIR) + "/" + safeFileName(e.ref) + ".json");   // the latest version, if it's here
+        if (in) { std::stringstream ss; ss << in.rdbuf(); NpcDef t; if (npcFromJson(ss.str(), t)) { keep.push_back({e.ref, ss.str()}); continue; } }
+        for (auto& [nm, text] : m.npcs) if (nm == e.ref) { keep.push_back({nm, text}); break; }   // else the copy it came with
+    }
+    m.npcs = keep;
+}
+int installMapNpcs(const gmap::Map& m) {
+    int n = 0;
+    std::error_code ec;
+    fs::create_directories(NPCS_DIR, ec);
+    for (auto& [nm, text] : m.npcs) {
+        std::string path = std::string(NPCS_DIR) + "/" + safeFileName(nm) + ".json";
+        if (fs::exists(path, ec)) continue;
+        std::ofstream(path) << text;
+        n++;
+    }
+    return n;
+}
+
 void npcEditorRender() {
     updateCam();
     float vw = viewW(), vh = (float)GetScreenHeight() - TOOLBAR_H;
@@ -226,29 +304,7 @@ void npcEditorRender() {
     for (int k = 0; k <= 18; k += 5) drawCyl({-12, (float)k, 0}, {-11.4f, (float)k, 0}, 0.05f, Color{200, 120, 60, 255});
     // the bones
     auto P = npcPose(NE.npc);
-    for (size_t i = 0; i < P.size(); i++) {
-        const NpcBone& b = NE.npc.bones[i];
-        Color c = hexColor(b.color);
-        if ((int)i == NE.sel) c = Color{(unsigned char)std::min(255, c.r + 50), (unsigned char)std::min(255, c.g + 40), (unsigned char)std::min(255, c.b + 10), 255};
-        Vector3 a = W(P[i].a), e = W(P[i].b);
-        float r0 = (float)b.r0 * S, r1 = (float)b.r1 * S;
-        if (b.shape == "box" || b.shape == "ball") {
-            Matrix R = {(float)P[i].x[0], (float)P[i].y[0], (float)P[i].z[0], 0, (float)P[i].x[1], (float)P[i].y[1], (float)P[i].z[1], 0,
-                        (float)P[i].x[2], (float)P[i].y[2], (float)P[i].z[2], 0, 0, 0, 0, 1};
-            Vector3 mid = Vector3Lerp(a, e, 0.5f);
-            float L = (float)b.len * S;
-            if (b.shape == "box") drawBox(mid, {(r0 + r1), L, (r0 + r1)}, c, R);
-            else drawMesh(G.sphere, MatrixMultiply(MatrixMultiply(MatrixScale((r0 + r1) / 2, L / 2, (r0 + r1) / 2), R), MatrixTranslate(mid.x, mid.y, mid.z)), c);
-        } else {   // a tapered capsule: a few rings, rounded ends
-            const int N = 6;
-            for (int k = 0; k < N; k++) {
-                float t0 = (float)k / N, t1 = (float)(k + 1) / N;
-                drawCyl(Vector3Lerp(a, e, t0), Vector3Lerp(a, e, t1), r0 + (r1 - r0) * (t0 + t1) / 2, c);
-            }
-            drawSphereLit(a, r0, c);
-            drawSphereLit(e, r1, c);
-        }
-    }
+    drawNpcAt(NE.npc, {0, 0, 0}, 90, S, NE.sel);
     EndMode3D();
     rlViewport(0, 0, GetRenderWidth(), GetRenderHeight());   // (back to the whole window for the panels)
     // the selected bone: its end's dot (drag it to aim the bone) and its name
