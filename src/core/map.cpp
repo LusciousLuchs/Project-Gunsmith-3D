@@ -357,6 +357,11 @@ std::string mapToJson(const Map& m) {
         for (auto& [name, text] : m.npcs) { json v = json::parse(text, nullptr, false); if (!v.is_discarded()) np[name] = v; }
         j["npcs"] = np;
     }
+    if (!m.npcGuns.empty()) {
+        json ng = json::object();
+        for (auto& [name, text] : m.npcGuns) { json v = json::parse(text, nullptr, false); if (!v.is_discarded()) ng[name] = v; }
+        j["npcGuns"] = ng;
+    }
     return j.dump(1);
 }
 
@@ -399,6 +404,8 @@ bool mapFromJson(const std::string& s, Map& out) {
         }
         if (j.contains("npcs") && j["npcs"].is_object())
             for (auto& [name, v] : j["npcs"].items()) m.npcs.push_back({name, v.dump()});
+        if (j.contains("npcGuns") && j["npcGuns"].is_object())
+            for (auto& [name, v] : j["npcGuns"].items()) m.npcGuns.push_back({name, v.dump()});
         out = m;
         return true;
     } catch (...) {

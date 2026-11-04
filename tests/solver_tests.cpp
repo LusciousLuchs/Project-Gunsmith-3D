@@ -1,6 +1,7 @@
 // Headless checks that each example action actually cycles. Run: ./gunsmith3d_tests
 #include "solver.hpp"
 #include "npc.hpp"
+#include "npcai.hpp"
 #include "map.hpp"
 #include "reliability.hpp"
 #include "version.hpp"
@@ -1851,6 +1852,59 @@ static void mapsCarryNpcs() {
     Design db; designFromJson(designToJson(d), db);
     CHECK(db.npcGun.on && db.npcGun.rpm == 600 && db.npcGun.burst == 3 && db.npcGun.spread == 4, "an NPC gun keeps its rate, burst and spread");
 }
+static void npcsAlive() {
+    std::printf("npcsAlive\n");
+    gmap::Map m; m.brushes.push_back(gmap::makeBox({-50, -1, -50}, {50, 0, 50}, 0));   // a flat floor
+    unsigned rng = 1;
+    std::vector<npcai::Event> ev;
+    gmap::V3 youFeet{10, 0, 0}, youEye{10, 1.62, 0};
+    // a chaser: it sees you, walks to you, hits you
+    NpcDef h = npcPreset("human"); h.behaviour = "chase"; h.attack = "melee"; h.reach = 1.2; h.damage = 25;
+    std::vector<npcai::Actor> A{npcai::spawn(h, {0, 0, 0}, 0, nullptr)};
+    double meleeAt = -1, d0 = 10;
+    for (int k = 0; k < 600 && meleeAt < 0; k++) {
+        ev.clear(); npcai::think(A, m, youEye, youFeet, true, 1.0 / 60, ev, rng);
+        for (auto& e : ev) if (e.kind == npcai::Event::Melee) meleeAt = k / 60.0;
+    }
+    double d1 = gmap::len(gmap::V3{youFeet.x - A[0].body.feet.x, 0, youFeet.z - A[0].body.feet.z});
+    std::printf("  (walked from %.0f m to %.1f m, first blow after %.1f s)\n", d0, d1, meleeAt);
+    CHECK(A[0].aware && d1 < 1.3, "a chasing NPC sees you and walks up to you");
+    CHECK(meleeAt > 0 && meleeAt < 9, "and strikes when you're in reach");
+    // a wall between: it doesn't see you
+    gmap::Map walled = m; walled.brushes.push_back(gmap::makeBox({4, 0, -10}, {4.5, 4, 10}, 0));
+    std::vector<npcai::Actor> B{npcai::spawn(h, {0, 0, 0}, 0, nullptr)};
+    for (int k = 0; k < 120; k++) { ev.clear(); npcai::think(B, walled, youEye, youFeet, true, 1.0 / 60, ev, rng); }
+    CHECK(!B[0].aware, "with a wall in between it doesn't notice you");
+    // but a gunshot carries: it hears you and comes round the wall's end
+    gmap::Map shortWall = m; shortWall.brushes.push_back(gmap::makeBox({4, 0, -2}, {4.5, 4, 2}, 0));
+    std::vector<npcai::Actor> B2{npcai::spawn(h, {0, 0, 0}, 0, nullptr)};
+    npcai::hear(B2, youFeet, 50);
+    bool struck = false;
+    for (int k = 0; k < 900 && !struck; k++) { ev.clear(); npcai::think(B2, shortWall, youEye, youFeet, true, 1.0 / 60, ev, rng); for (auto& e : ev) if (e.kind == npcai::Event::Melee) struck = true; }
+    std::printf("  (heard a shot, went round a 4 m wall: %s, ended %.1f m away)\n", struck ? "struck" : "didn't reach", gmap::len(youFeet - B2[0].body.feet));
+    CHECK(struck, "it hears a gunshot and walks round what's in its way to reach you");
+    // a shooter with a gun made for NPCs
+    Design g = loadPreset("tilting"); g.npcGun.on = true; g.npcGun.rpm = 300; g.npcGun.burst = 3;
+    NpcDef s = npcPreset("human"); s.behaviour = "stand"; s.attack = "ranged"; s.reach = 40;
+    std::vector<npcai::Actor> C{npcai::spawn(s, {0, 0, 0}, 0, &g)};
+    int shots = 0;
+    for (int k = 0; k < 300; k++) { ev.clear(); npcai::think(C, m, youEye, youFeet, true, 1.0 / 60, ev, rng); for (auto& e : ev) if (e.kind == npcai::Event::Shot) shots++; }
+    std::printf("  (%d shots in 5 s)\n", shots);
+    CHECK(shots >= 6 && shots <= 25, "an NPC with a gun shoots at you in bursts");
+    // damage: a 9 mm in the chest, and in the head
+    double body = npcai::bulletDamage(0.00745, 360, false, 0), head = npcai::bulletDamage(0.00745, 360, true, 0);
+    std::printf("  (9 mm: %.0f to the body, %.0f to the head)\n", body, head);
+    CHECK(body > 15 && body < 40 && std::fabs(head - body * 3) < 1e-6, "damage follows the bullet's energy, weak spots x3");
+    CHECK(npcai::bulletDamage(0.004, 940, false, 0.5) < npcai::bulletDamage(0.004, 940, false, 0), "armour stops its share");
+    npcai::Actor v = npcai::spawn(h, {0, 0, 0}, 0, nullptr);
+    bool killed = false;
+    for (int k = 0; k < 10 && !killed; k++) killed = npcai::hurt(v, body, {1, 0, 0});
+    CHECK(killed && v.dead, "enough hits kill it");
+    std::vector<npcai::Actor> D{v};
+    for (int k = 0; k < 60; k++) { ev.clear(); npcai::think(D, m, youEye, youFeet, true, 1.0 / 60, ev, rng); }
+    double top = 0; for (auto& b : npcai::bones(D[0])) top = std::max({top, b.a.y, b.b.y});
+    CHECK(top < 0.6, "and it falls down");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -1928,6 +1982,7 @@ int main() {
     magazineShaping();
     npcDesigns();
     mapsCarryNpcs();
+    npcsAlive();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

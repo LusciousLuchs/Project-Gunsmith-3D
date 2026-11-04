@@ -254,17 +254,28 @@ bool npcByName(const gmap::Map& m, const std::string& name, NpcDef& out) {
     return npcFromJson(ss.str(), out);
 }
 void embedMapNpcs(gmap::Map& m) {
-    std::vector<std::pair<std::string, std::string>> keep;
+    std::vector<std::pair<std::string, std::string>> keep, guns;
+    auto readFile = [](const std::string& path, std::string& out) { std::ifstream in(path); if (!in) return false; std::stringstream ss; ss << in.rdbuf(); out = ss.str(); return true; };
     for (auto& e : m.ents) {
         if (e.type != "npc_spawn" || e.ref.empty()) continue;
         bool have = false;
         for (auto& k : keep) if (k.first == e.ref) have = true;
         if (have) continue;
-        std::ifstream in(std::string(NPCS_DIR) + "/" + safeFileName(e.ref) + ".json");   // the latest version, if it's here
-        if (in) { std::stringstream ss; ss << in.rdbuf(); NpcDef t; if (npcFromJson(ss.str(), t)) { keep.push_back({e.ref, ss.str()}); continue; } }
-        for (auto& [nm, text] : m.npcs) if (nm == e.ref) { keep.push_back({nm, text}); break; }   // else the copy it came with
+        std::string text;
+        NpcDef t;
+        if (readFile(std::string(NPCS_DIR) + "/" + safeFileName(e.ref) + ".json", text) && npcFromJson(text, t)) keep.push_back({e.ref, text});   // the latest version, if it's here
+        else for (auto& [nm, tx] : m.npcs) if (nm == e.ref) { keep.push_back({nm, tx}); npcFromJson(tx, t); break; }   // else the copy it came with
+        if (t.attack == "ranged" && !t.gun.empty()) {   // and the gun it carries
+            bool got = false;
+            for (auto& g : guns) if (g.first == t.gun) got = true;
+            if (got) continue;
+            std::string gt;
+            if (readFile(std::string(GUNS_DIR) + "/" + t.gun + ".json", gt)) guns.push_back({t.gun, gt});
+            else for (auto& [nm, tx] : m.npcGuns) if (nm == t.gun) { guns.push_back({nm, tx}); break; }
+        }
     }
     m.npcs = keep;
+    m.npcGuns = guns;
 }
 int installMapNpcs(const gmap::Map& m) {
     int n = 0;
@@ -276,7 +287,19 @@ int installMapNpcs(const gmap::Map& m) {
         std::ofstream(path) << text;
         n++;
     }
+    for (auto& [nm, text] : m.npcGuns) {   // their guns, into user/guns
+        std::string path = std::string(GUNS_DIR) + "/" + nm + ".json";
+        if (fs::exists(path, ec)) continue;
+        std::ofstream(path) << text;
+    }
     return n;
+}
+bool npcGunByName(const gmap::Map& m, const std::string& name, Design& out) {
+    for (auto& [nm, text] : m.npcGuns) if (nm == name && designFromJson(text, out)) return true;
+    std::ifstream in(std::string(GUNS_DIR) + "/" + name + ".json");
+    if (!in) return false;
+    std::stringstream ss; ss << in.rdbuf();
+    return designFromJson(ss.str(), out);
 }
 
 void npcEditorRender() {

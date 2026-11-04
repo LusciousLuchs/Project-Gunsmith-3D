@@ -8,6 +8,22 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.1-alpha
+
+### NPCs come alive
+- **They walk the map** at the speed you set in the NPC editor, sized to their body, stepping up stairs like you do, and they **go round what's in their way** (a wall, a bench) by trying the nearest clear way to one side.
+- **They notice you:** within their sight distance, in front of them (or right behind them, if you're close), with nothing in between. **Gunshots carry:** everything within 50 m hears your shot and comes to look, and an NPC that spots you alerts the others near it.
+- **They act on their behaviour:** *stand* holds its spot, *wander* strolls about until it sees you, *chase* comes for you, *guard* won't stray more than 8 m from its post.
+- **They attack:** *up close* hits you when you're in reach (about once a second); *with a gun* fires its NPC gun at its rate of fire, shots per pull and spread (wider while it moves), from about 0.4 to 0.8 s after it first sees you; *explode* runs at you, glows and goes off, hurting you and any NPC nearby.
+
+### Damage and death
+- **Your bullets hurt them by their energy:** a 9 mm in the chest does about 24 of an NPC's health, three times that on a weak spot; armour stops its share. The hit and the kill show top right ("Killed the Grunt"), and the top of the screen counts the NPCs left.
+- **At no health they fall over** toward where the shot came from, and lie there.
+
+### Your health
+- **You have 100 health,** shown bottom left. Getting hit flashes the screen red. An NPC's bullets hurt you by their energy too, scaled down for play (about 8 a hit for a 9 mm, 55 for a full-power rifle), or by the gun's new **Damage to you** setting (Firing > Made for NPCs).
+- **At zero you die:** click (or Space) to try again, which puts you back at the start with full health and every NPC back in its place.
+
 ## 0.4.0-alpha
 
 ### Maps bring their NPCs

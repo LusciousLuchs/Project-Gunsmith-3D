@@ -54,17 +54,20 @@ is up to them, and the game's own examples stay original.
   uses, installed into user/npcs when it's opened or played; on the range they stand where placed and bullets report
   which bone they hit (0.4.0). Still to do: when they appear (at the start, in waves, by triggers).
 - [x] **NPC guns:** Firing > Made for NPCs (rate of fire, shots per pull, spread; no reloading, never runs out, not
-  simulated); kept out of the player's gun lists; chosen in the NPC editor (0.4.0). Still to do: NPCs firing them.
+  simulated); kept out of the player's gun lists; chosen in the NPC editor (0.4.0); NPCs fire them (0.4.1).
 - [x] **Inventory and gun spawners:** carry 4 guns (wheel, G drops, F uses), guns dropped on the ground keep their state;
   the gun spawner stand on any map (0.4.0). Still to do: the dropped gun drawn as itself, not a case; ammo pickups.
 - [x] **Groups:** save selected brushes and an object as a group in user/groups; place it again in any map (0.4.0).
   Still to do: spawning groups during play (from a spawner).
-- [ ] **NPCs alive on the range:** walk the map (navigation over the brushes), see the player (sight distance, line of
-  sight), act on their behaviour, attack (melee reach and damage, explode, or shoot their gun through the same
-  ballistics as the player's).
-- [ ] **Getting hit:** bullets hit bones (each bone a capsule), damage by bone (weak spots x3, armour), death, ragdoll
-  (the bones go limp under gravity), bodies cleared after a while.
-- [ ] **The player can be hurt:** health, a damage flash, death and restart.
+- [x] **NPCs alive on the range:** walk (the player's movement, sized to them), go round what's in their way, see the
+  player (sight distance, facing, line of sight), hear gunshots (50 m) and alert each other, act on their behaviour,
+  attack (melee, explode, or shoot their NPC gun through the same ballistics as the player's) (0.4.1). Still to do:
+  real path-finding over the map (they steer round obstacles but can't plan a long way round; wide NPCs get stuck at
+  narrow gaps), taking cover, attack animations.
+- [x] **Getting hit:** bullets hit bones (each bone a capsule), damage by the bullet's energy (weak spots x3, armour),
+  death: the NPC falls over stiffly (0.4.1). Still to do: a ragdoll (the bones going limp), bodies cleared after a while.
+- [x] **The player can be hurt:** 100 health, a red flash, death and restart; NPC guns' *Damage to you* (0.4.1).
+  Still to do: health pickups, healing.
 - [ ] **Movement from the pose tools:** walk, run and attack cycles as keyframes on the bones (the animation timeline
   from the hand animations), with automatic leg stepping for any number of legs as a default.
 - [ ] **Hands and held guns for NPCs:** a hand on any bone, holding a blueprint the way the player's pose holds it.

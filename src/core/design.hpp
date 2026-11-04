@@ -342,6 +342,7 @@ struct NpcGunDef {
     double rpm = 300;      // shots a minute while the NPC holds the trigger
     int burst = 1;         // shots per pull (1: single shots)
     double spread = 2;     // degrees: how wide its shots go (NPC guns are meant to be a bit bad)
+    double damage = 0;     // to the player per hit (0: from its bullet's energy, 1 point per 60 J)
 };
 struct Design {
     std::string name = "Untitled action";

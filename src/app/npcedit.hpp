@@ -2,6 +2,7 @@
 // pose them, and set how it fights. The look and the pose are done here; bringing them to life on maps comes next.
 #pragma once
 #include "npc.hpp"
+#include "design.hpp"
 #include <string>
 #include <vector>
 
@@ -39,4 +40,5 @@ void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float unitsPerMm, 
 namespace gmap { struct Map; }
 bool npcByName(const gmap::Map& m, const std::string& name, NpcDef& out);   // the map's own copy, else user/npcs
 void embedMapNpcs(gmap::Map& m);       // before saving a map: copies of the NPCs its spawn points use
-int installMapNpcs(const gmap::Map& m);   // after opening one: its NPCs into user/npcs (those not there yet); how many
+int installMapNpcs(const gmap::Map& m);   // after opening one: its NPCs into user/npcs (and their guns into user/guns), those not there yet; how many
+bool npcGunByName(const gmap::Map& m, const std::string& name, Design& out);   // an NPC's gun: the map's copy, else user/guns

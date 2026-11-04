@@ -69,6 +69,7 @@ struct Map {
     Look look;
     // the NPCs the map uses, carried in the map file (name, the NPC's own JSON), so a shared map brings its enemies
     std::vector<std::pair<std::string, std::string>> npcs;
+    std::vector<std::pair<std::string, std::string>> npcGuns;   // and the guns made for NPCs they carry (name, blueprint JSON)
 };
 
 // ---- brush geometry

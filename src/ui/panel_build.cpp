@@ -1424,6 +1424,10 @@ static void firingTab() {
             pNum("Spread", g.spread, 0.1, "%.1f\xc2\xb0", "How wide its shots go. NPC guns are meant to be a bit bad: about 2 for a rifle, 5 for a cheap SMG.");
             g.spread = std::clamp(g.spread, 0.0, 45.0);
             if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+            pNum("Damage to you", g.damage, 1, g.damage > 0 ? "%.0f a hit" : "from its bullet", "How much of your 100 health a hit takes.\n"
+                 "0: worked out from its cartridge's bullet (about 8 for a 9 mm, 30 for an intermediate rifle round, 55 for a full-power one).");
+            g.damage = std::clamp(g.damage, 0.0, 1000.0);
+            if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
             muted("Give it to an NPC in the NPC editor (In a fight > With a gun). The parts you drew are just its look.");
         } else muted("Off: a normal gun, for players.");
     }

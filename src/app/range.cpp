@@ -21,6 +21,7 @@
 #include "app/settings.hpp"
 #include "app/units.hpp"
 #include "player.hpp"
+#include "npcai.hpp"
 #include "raymath.h"
 #include "rlgl.h"
 #include <algorithm>
@@ -35,20 +36,23 @@ using gmap::V3;
 double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut);   // the closest two segments come (below)
 
 namespace {
-struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; };
+struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; double mass = 0.008; int npc = -1; double dmg = 0; };   // dmg: an NPC gun's set damage to you (0: by energy)   // npc: fired by that NPC (-1: by you)
 struct Impact { V3 p, n; bool steel = false; double r = 0.005; };
 struct Target { V3 c, n; double size = 0.6; };
 struct Carried { Design d; std::unique_ptr<sim::Sim> S; };   // a gun you carry (the one in your hands lives in A.design / A.S)
 struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; };   // one lying on the ground
-struct NpcBoneHit { V3 a, b; double r; std::string npc, bone; bool vital; };   // a bone of an NPC standing on the map
-struct NpcHere { NpcDef def; V3 pos; double yaw; };
+
 struct Range {
     gmap::Map map;
     std::vector<Carried> inv;            // the guns you carry, up to 4; inv[cur] is the one in your hands (empty here)
     int cur = -1;                        // -1: empty hands
     std::vector<WorldGun> ground;
-    std::vector<NpcHere> npcs;
-    std::vector<NpcBoneHit> npcBones;
+    std::vector<npcai::Actor> actors;    // the NPCs on the map, alive or fallen
+    unsigned rng = 12345;
+    double health = 100;                 // yours
+    bool dead = false;
+    float hurtT = 0, deadT = 0;          // a red flash when you're hurt; how long since you died
+    std::string feed; float feedT = 0;   // "Killed the ..." messages
     bool spawnerOpen = false;
     std::string prompt;                  // "F: ..." near something you can use
     gmap::Player pl;
@@ -165,7 +169,7 @@ void fireBullets(int chamber) {
     V3 side = gmap::norm(gmap::cross(dir, {0, 1, 0})), upv = gmap::cross(side, dir);
     for (int i = 0; i < n; i++) {
         V3 d = gmap::norm(dir + side * rnd(spread) + upv * rnd(spread));
-        R.bullets.push_back({m, d * cart.velocity, k, 0, 0});
+        R.bullets.push_back({m, d * cart.velocity, k, 0, 0, mass, -1});
     }
     // recoil: the cartridge's push against the gun's weight, felt less in the shoulder than in one hand
     double v = cart.impulse() / std::max(0.3, R.mass);
@@ -186,18 +190,44 @@ void stepBullets(double dt) {
             V3 nv = b.v + acc * h;
             V3 step = (b.v + nv) * (0.5 * h);
             double L = gmap::len(step);
-            if (L > 1e-9 && !R.npcBones.empty()) {   // an NPC's bone in the way? (they don't take damage yet: it says where it hit)
-                const NpcBoneHit* hitB = nullptr; double bestS = 2;
-                for (auto& nb : R.npcBones) {
-                    double sAlong;
-                    if (segSeg(b.p, b.p + step, nb.a, nb.b, &sAlong) < nb.r && sAlong < bestS) { bestS = sAlong; hitB = &nb; }
+            if (L > 1e-9 && b.npc < 0 && !R.actors.empty()) {   // your bullet: an NPC's bone in the way?
+                int ha = -1, hb = -1; double bestS = 2;
+                for (size_t ai = 0; ai < R.actors.size(); ai++) {
+                    const auto& act = R.actors[ai];
+                    if (act.dead && act.deadT > 30) continue;
+                    V3 c = act.body.feet + V3{0, npcai::height(act) / 2, 0};   // (only near ones are looked at bone by bone)
+                    if (gmap::len(c - b.p) > L + npcai::height(act) + 3) continue;
+                    for (auto& nb : npcai::bones(act)) {
+                        double sAlong;
+                        if (segSeg(b.p, b.p + step, nb.a, nb.b, &sAlong) < nb.r && sAlong < bestS) { bestS = sAlong; ha = (int)ai; hb = nb.bone; }
+                    }
                 }
-                if (hitB) {
+                if (ha >= 0) {
                     gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L);
                     if (mh.brush < 0 || mh.t / L > bestS) {   // (and not a wall in front of it)
-                        R.lastHit = "Hit the " + hitB->npc + ": " + hitB->bone + (hitB->vital ? "  (weak spot!)" : "");
-                        R.lastHitT = 3;
+                        auto& act = R.actors[ha];
+                        const NpcBone& bone = act.def.bones[hb];
+                        double dmg = npcai::bulletDamage(b.mass, gmap::len(b.v), bone.vital, bone.armor);
+                        bool wasDead = act.dead;
+                        bool killed = npcai::hurt(act, dmg, step);
+                        R.lastHit = (wasDead ? "Hit the fallen " : "Hit the ") + act.def.name + ": " + bone.name + (bone.vital ? " (weak spot!)" : "") + TextFormat("  -%.0f", dmg);
+                        R.lastHitT = 2;
+                        if (killed) { R.feed = "Killed the " + act.def.name; R.feedT = 3; }
                         R.impacts.push_back({b.p + step * bestS, gmap::norm(-step), false, 0.006});
+                        b.life = -1;
+                        break;
+                    }
+                }
+            }
+            if (L > 1e-9 && b.npc >= 0 && !R.dead) {   // their bullet: you in the way? (a body from your feet to your eye)
+                V3 feet = R.pl.feet, eye = feet + V3{0, R.pl.eye + 0.12, 0};
+                double sAlong;
+                if (segSeg(b.p, b.p + step, feet + V3{0, 0.25, 0}, eye - V3{0, 0.1, 0}, &sAlong) < 0.28) {
+                    gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L);
+                    if (mh.brush < 0 || mh.t / L > sAlong) {
+                        double v2 = gmap::len(b.v);
+                        double dmg = b.dmg > 0 ? b.dmg : 0.5 * b.mass * v2 * v2 / 60;   // (an NPC's gun hurts you less than its bullet's energy would say: a game, not a simulation)
+                        R.health -= dmg; R.hurtT = 0.35;
                         b.life = -1;
                         break;
                     }
@@ -334,25 +364,28 @@ static void dropGun() {
 
 // NPCs on the map: standing at their spawn points (they don't move or fight yet), their bones ready to be hit
 static void placeNpcs() {
-    R.npcs.clear(); R.npcBones.clear();
+    R.actors.clear();
     for (auto& e : R.map.ents) {
         if (e.type != "npc_spawn" || e.ref.empty()) continue;
         NpcDef n;
         if (!npcByName(R.map, e.ref, n)) continue;
+        Design gun; bool hasGun = n.attack == "ranged" && !n.gun.empty() && npcGunByName(R.map, n.gun, gun) && gun.npcGun.on;
         double y = e.yaw * DEG2RAD;
         V3 f{std::cos(y), 0, std::sin(y)}, side{-f.z, 0, f.x};
         for (int k = 0; k < std::min(e.count, 50); k++) {   // more than one: side by side in rows
             int row = k / 5, col = k % 5;
             V3 p = e.pos + side * ((col - std::min(e.count - row * 5, 5) / 2.0 + 0.5) * 1.1) - f * (row * 1.4);
-            R.npcs.push_back({n, p, e.yaw});
-            // its bones in the map (as drawNpcAt places them)
-            auto P = npcPose(n);
-            double th = (90 - e.yaw) * DEG2RAD, c0 = std::cos(th), s0 = std::sin(th);
-            auto place = [&](const double q[3]) { double x = q[0] / 1000, yy = q[1] / 1000, z = q[2] / 1000; return V3{p.x + x * c0 + z * s0, p.y + yy, p.z - x * s0 + z * c0}; };
-            for (size_t i = 0; i < P.size(); i++)
-                R.npcBones.push_back({place(P[i].a), place(P[i].b), std::max(n.bones[i].r0, n.bones[i].r1) / 1000, n.name, n.bones[i].name, n.bones[i].vital});
+            R.actors.push_back(npcai::spawn(n, p, e.yaw, hasGun ? &gun : nullptr));
         }
     }
+}
+// you died: everything back to how the map starts
+static void restartLevel() {
+    gmap::playerSpawn(R.pl, R.map);
+    R.health = 100; R.dead = false; R.deadT = 0; R.hurtT = 0;
+    R.bullets.clear();
+    placeNpcs();
+    R.lastYaw = R.pl.yaw; R.lastPitch = R.pl.pitch;
 }
 // the closest a bullet's step passes to a bone (segment to segment)
 double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut) {
@@ -427,7 +460,7 @@ void rangeSpawnerWindow() {
 void leaveRange() {
     EnableCursor();
     R.bullets.clear(); R.impacts.clear();
-    R.inv.clear(); R.ground.clear(); R.npcs.clear(); R.npcBones.clear(); R.cur = -1; R.spawnerOpen = false;
+    R.inv.clear(); R.ground.clear(); R.actors.clear(); R.cur = -1; R.spawnerOpen = false;
     mapRestoreLook();
     rangeMapChanged();
 }
@@ -506,13 +539,15 @@ void rangeUpdate(float dt, bool modal) {
     if (in.jump && R.want != gmap::Stance::Stand) { R.want = gmap::Stance::Stand; in.jump = false; }
     in.want = R.want;
     in.lean = (actDown(Act::LeanRight) ? 1 : 0) - (actDown(Act::LeanLeft) ? 1 : 0);
+    if (R.dead) { in = gmap::PlayerInput(); in.want = gmap::Stance::Prone; }   // (down)
     gmap::playerStep(R.pl, R.map, in, dt);
     // aiming: right mouse; a heavy gun comes up more slowly
     bool aimWant = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
     float rate = 1.f / (0.12f + (float)R.mass * 0.05f);
     R.aim = std::clamp(R.aim + (aimWant ? rate : -rate) * dt, 0.f, 1.f);
     // the gun: the trigger is the left mouse button; R reloads, B works the action
-    if (A.S) {
+    if (A.S && R.dead) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); sim::run(*A.S, dt, 1200); A.S->events.clear(); }
+    if (A.S && !R.dead) {
         auto& S = *A.S;
         bool trig = IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !holdFire;
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !holdFire) S.pressed = true;   // (as on the bench: a fresh pull of the trigger)
@@ -537,6 +572,7 @@ void rangeUpdate(float dt, bool modal) {
             if (e.kind == sim::Ev::Bang) {
                 A.flash = 0.06f;
                 if (SFX.ok && A.sound) PlaySound(SFX.bang);
+                npcai::hear(R.actors, R.pl.feet, 50);   // a gunshot carries: NPCs within 50 m come to look
                 bool any = false;
                 for (size_t k = 0; k <= br.more.size(); k++) {
                     bool fired = k < S.chambers.size() ? std::fabs(S.chambers[k].shotT - e.t) < 1e-9 : k == 0;
@@ -555,6 +591,42 @@ void rangeUpdate(float dt, bool modal) {
     R.kickVel += (-R.kickPitch * 160 - R.kickVel * 18) * dt;
     R.kickYaw *= std::exp(-dt * 9);
     R.kickBack *= std::exp(-dt * 14);
+    {   // the NPCs: they look for you, move, and attack
+        std::vector<npcai::Event> ev;
+        double roll;
+        V3 eye = gmap::playerEye(R.pl, R.map, &roll);
+        npcai::think(R.actors, R.map, eye, R.pl.feet, !R.dead, dt, ev, R.rng);
+        for (auto& e : ev) {
+            if (e.kind == npcai::Event::Shot) {
+                const auto& a = R.actors[e.actor];
+                const Cartridge& c = a.cart;
+                double mass = c.bulletMass / 1000, dia = c.bulletDia / 1000;
+                double k = 0.5 * 1.2 * 0.3 * 3.14159 * dia * dia / 4 / std::max(1e-4, mass);
+                R.bullets.push_back({e.from, e.dir * std::max(50.0, c.velocity), k, 0, 0, mass, e.actor, a.gun.damage});
+                if (SFX.ok && A.sound) { float d = (float)gmap::len(e.from - eye); SetSoundVolume(SFX.bang, std::clamp(6.f / (d + 4), 0.08f, 0.8f)); PlaySound(SFX.bang); SetSoundVolume(SFX.bang, 1); }
+            } else if (e.kind == npcai::Event::Melee && !R.dead) {
+                R.health -= e.damage; R.hurtT = 0.4;
+                R.kickYaw += 0.04; R.kickPitch += 0.02;   // (knocked about)
+            } else if (e.kind == npcai::Event::Explode) {
+                double d = gmap::len(eye - e.from);
+                if (!R.dead && d < e.radius) { R.health -= e.damage * (1 - d / e.radius); R.hurtT = 0.5; }
+                for (auto& o : R.actors) {   // and whatever else is near
+                    V3 c = o.body.feet + V3{0, npcai::height(o) / 2, 0};
+                    double dd = gmap::len(c - e.from);
+                    if (&o != &R.actors[e.actor] && dd < e.radius) npcai::hurt(o, e.damage * (1 - dd / e.radius), c - e.from);
+                }
+                A.flash = 0.15f;
+                if (SFX.ok && A.sound) PlaySound(SFX.bang);
+            }
+        }
+        if (!R.dead && R.health <= 0) { R.health = 0; R.dead = true; R.deadT = 0; if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); } }
+        if (R.dead) {
+            R.deadT += dt;
+            if (R.deadT > 1.2 && (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER))) restartLevel();
+        }
+        R.hurtT = std::max(0.f, R.hurtT - dt);
+        R.feedT = std::max(0.f, R.feedT - dt);
+    }
     stepBullets(dt);
     R.lastHitT = std::max(0.f, R.lastHitT - dt);
     A.flash = std::max(0.f, A.flash - dt);
@@ -613,7 +685,25 @@ void rangeRender() {
         }
     }
     // NPCs standing on the map, gun spawners, guns on the ground
-    for (auto& n : R.npcs) drawNpcAt(n.def, rv(n.pos), (float)n.yaw, 0.001f, -1);
+    for (auto& a : R.actors) {
+        if (!a.dead) {
+            drawNpcAt(npcai::posed(a), rv(a.body.feet), (float)(a.body.yaw * RAD2DEG), 0.001f, -1);
+            if (a.hasGun && a.def.attack == "ranged") {   // its gun: a dark block held out in front (NPC guns are simple)
+                V3 fwd{std::cos(a.body.yaw), 0, std::sin(a.body.yaw)};
+                V3 g = a.body.feet + V3{0, a.tune.standEye * 0.78, 0} + fwd * 0.3;
+                drawBox(rv(g + fwd * 0.12), {0.42f, 0.09f, 0.06f}, Color{34, 36, 40, 255}, MatrixRotateY((float)-a.body.yaw));
+            }
+            if (a.fuse >= 0) drawSphereLit(rv(a.body.feet + V3{0, npcai::height(a) * 0.5, 0}), (float)(0.25 + 0.15 * std::sin(R.t * 40)), Color{255, 120, 40, 255}, 0.5f);
+        } else if (a.deadT < 9) {   // fallen: each bone where it lies (a burst one, nothing)
+            for (auto& b : npcai::bones(a)) {
+                const NpcBone& bn = a.def.bones[b.bone];
+                Color c = hexColor(bn.color);
+                drawCyl(rv(b.a), rv(b.b), (float)((bn.r0 + bn.r1) / 2000), c);
+                drawSphereLit(rv(b.a), (float)(bn.r0 / 1000), c);
+                drawSphereLit(rv(b.b), (float)(bn.r1 / 1000), c);
+            }
+        }
+    }
     for (auto& e : R.map.ents) {
         if (e.type != "gun_spawner") continue;
         Matrix Ry = MatrixRotateY((float)(-e.yaw * DEG2RAD));
@@ -647,6 +737,38 @@ void rangeRender() {
 void rangeHud() {
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight(), cx = W / 2, cy = H / 2;
     if (R.aim < 0.5f) { DrawCircleV({cx, cy}, 2.5f, Color{255, 255, 255, 200}); DrawCircleLinesV({cx, cy}, 2.5f, Color{0, 0, 0, 120}); }
+    {   // your health; a red edge when you're hurt; and dying
+        if (R.hurtT > 0) {
+            unsigned char al = (unsigned char)std::min(160.f, R.hurtT * 420);
+            DrawRectangleGradientH(0, 0, (int)(W * 0.18f), (int)H, Color{170, 20, 16, al}, Color{170, 20, 16, 0});
+            DrawRectangleGradientH((int)(W * 0.82f), 0, (int)(W * 0.18f), (int)H, Color{170, 20, 16, 0}, Color{170, 20, 16, al});
+        }
+        if (!R.actors.empty() || R.health < 100) {
+            float bw = 220, bx = 24, by = H - 128;
+            DrawRectangleRounded({bx, by, bw, 12}, 0.5f, 6, Color{20, 23, 28, 190});
+            float f = (float)std::clamp(R.health / 100, 0.0, 1.0);
+            Color hc = f > 0.5f ? Color{110, 210, 120, 230} : f > 0.25f ? Color{230, 190, 70, 240} : Color{230, 70, 60, 250};
+            if (f > 0) DrawRectangleRounded({bx, by, bw * f, 12}, 0.5f, 6, hc);
+            viewText(TextFormat("Health %.0f", std::max(0.0, R.health)), bx, by - 18, 12, Color{230, 233, 238, 220});
+            int alive = 0; for (auto& a : R.actors) if (!a.dead) alive++;
+            if (!R.actors.empty()) viewText(TextFormat("%d of %d NPCs left", alive, (int)R.actors.size()), W - 200, 54, 13, Color{230, 233, 238, 220});
+        }
+        if (R.feedT > 0) {
+            float tw = viewTextWidth(R.feed.c_str(), 16);
+            viewText(R.feed.c_str(), W - tw - 24, 76, 16, Color{255, 150, 120, (unsigned char)(255 * std::min(1.f, R.feedT))});
+        }
+        if (R.dead) {
+            DrawRectangle(0, 0, (int)W, (int)H, Color{60, 0, 0, (unsigned char)std::min(170.f, R.deadT * 200)});
+            const char* t = "You died";
+            float tw = viewTextWidth(t, 40);
+            viewText(t, cx - tw / 2, cy - 50, 40, Color{255, 230, 225, 255});
+            if (R.deadT > 1.2) {
+                const char* t2 = "Click to try again";
+                float tw2 = viewTextWidth(t2, 16);
+                viewText(t2, cx - tw2 / 2, cy + 10, 16, Color{255, 230, 225, 220});
+            }
+        }
+    }
     {   // what you carry, and what you can use
         float y = H - 70 - 22 * (float)R.inv.size();
         for (size_t i = 0; i < R.inv.size(); i++) {
