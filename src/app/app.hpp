@@ -80,6 +80,8 @@ struct App {
     bool carveThrough = false;
     int selCarve = -1;                   // with a part selected: one of its carves
     bool carveDrag = false; int carveBody = -1; Vector3 carveP{}, carveN{};  // pressed on this surface point (world)
+    bool carveMove = false; int carveMoveIdx = -1;   // dragging one of the selected part's cuts by its dot
+    CarveDef carveMoving; double carveGrab[3] = {0, 0, 0};   // ...where it is now, and where on it it was grabbed
     // the Engrave tool: draw lines or write text on a part's surface (looks only)
     int scaleHandle = -1;                // Scale tool: the box handle picked (a second press drags it)
     bool scaleDepth = true;              // a corner drag (keeping proportions) scales the thickness too

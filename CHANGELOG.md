@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.3-alpha
+
+### Carves snap
+- **Placing a cut snaps it:** to the part's middle (along, up and down, or across its thickness), into line with the part's other cuts, and into line with the part's corners when the cursor is close to one. Otherwise it snaps to the grid (the Snap step in the top bar). A pink guide line shows what it lined up with. Hold **Alt** to place it freely.
+- **Move a cut by dragging its dot** (Carve tool, with the part selected). It slides across the face it goes into, with the same snapping. A plain click on the dot picks the cut, to change it in the panel.
+- Dragging out a cut's size snaps to the grid step too.
+
 ## 0.4.2-alpha
 
 ### NPCs find their way

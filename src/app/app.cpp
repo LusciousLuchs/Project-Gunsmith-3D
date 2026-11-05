@@ -231,7 +231,7 @@ const char* TOOL_HINT[] = {
     "Drag a line across a part to cut it into pieces.",
     "Drag the mirror axis. A mirrored copy of the selected part appears across it.",
     "Click along the inside of the magazine, starting where rounds are fed from. Enter (or a double-click) finishes.",
-    "Click a part's surface to cut into it there, or drag to size the cut. It goes straight in from that face: turn the view to cut from any side. Shape and depth are in the panel.",
+    "Click a part's surface to cut into it there, or drag to size the cut. It goes straight in from that face: turn the view to cut from any side. It snaps to the part's middle, in line with its other cuts, and to the grid (hold Alt to place it freely). Drag a cut's dot to move it.",
     "",   // (grip markers: replaced by Pose on the test bench)
     "Drag from the breech end to the muzzle. Its cartridge, rifling and length are in its panel.",
     "Drag between two points to measure the length, how far across and up, and the angle. Snaps to corners and joints.",
