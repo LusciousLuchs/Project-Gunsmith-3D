@@ -7,6 +7,7 @@
 #include "app/mapgfx.hpp"
 #include "app/settings.hpp"
 #include "ui/ui.hpp"
+#include "npcai.hpp"
 #include "imgui.h"
 #include "rlImGui.h"
 #include "extras/IconsFontAwesome6.h"
@@ -117,7 +118,7 @@ static void editTab() {
         auto& e = M.ents[ME.ent];
         if (e.type == "npc_spawn") {
             heading("NPC");
-            ImGui::TextDisabled("An NPC stands here. (They don't move or fight yet: coming next.)");
+            ImGui::TextDisabled("NPCs start here.");
             prop("Which");
             if (ImGui::BeginCombo("##npcref", e.ref.empty() ? "Choose..." : e.ref.c_str())) {
                 for (auto& f : npcFiles()) if (ImGui::Selectable(f.c_str(), e.ref == f)) { meSnapshot(); e.ref = f; meChanged(); }
@@ -125,7 +126,10 @@ static void editTab() {
             }
             double cnt = e.count;
             prop("How many");
-            if (ImGui::InputDouble("##npccount", &cnt, 1, 5, "%.0f")) { meSnapshot(); e.count = std::clamp((int)std::lround(cnt), 1, 200); meChanged(); }
+            if (ImGui::InputDouble("##npccount", &cnt, 1, 5, "%.0f")) { meSnapshot(); e.count = std::clamp((int)std::lround(cnt), 1, npcai::NPC_LIMIT); meChanged(); }
+            int total = npcai::npcCount(M);
+            if (total > npcai::NPC_LIMIT) ImGui::TextColored({1.0f, 0.55f, 0.3f, 1}, "This map has %d NPCs: only %d come at once. The first spawn points placed come first.", total, npcai::NPC_LIMIT);
+            else ImGui::TextDisabled("%d of the %d NPCs a map can have.", total, npcai::NPC_LIMIT);
             ImGui::TextDisabled("Saved with the map: a copy of this NPC goes in the map file.");
         } else if (e.type == "gun_spawner") {
             heading("Gun spawner");

@@ -1964,6 +1964,22 @@ static void npcPaths() {
     double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
     std::printf("  (practice range grid: %zu spots, %.0f ms)\n", G.nodes(), ms);
     CHECK(G.nodes() > 20000 && ms < 2000, "a map's path grid takes moments to make");
+    // a crowd: the limit's worth of NPCs chasing you round the practice range stays quick
+    {
+        gmap::Map R = gmap::builtinRange();
+        std::vector<npcai::Actor> A;
+        for (int i = 0; i < npcai::NPC_LIMIT; i++) A.push_back(npcai::spawn(h, {15.0 + (i % 10) * 3, 0, -9.0 + (i / 10) * 2}, 180, nullptr));
+        nav::Cache C; unsigned rng = 1; std::vector<npcai::Event> ev;
+        for (auto& a : A) C.get(R, npcai::agentOf(a));
+        double total = 0;
+        for (int k = 0; k < 300; k++) {
+            auto t1 = std::chrono::steady_clock::now();
+            ev.clear(); npcai::think(A, R, {-3, 1.62, 0}, {-3, 0, 0}, true, 1.0 / 60, ev, rng, &C);
+            total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+        }
+        std::printf("  (%d NPCs chasing you: %.2f ms a frame)\n", npcai::NPC_LIMIT, total / 300);
+        CHECK(total / 300 < 8, "the most NPCs a map can have think and move in well under a frame");
+    }
 }
 static void controlButtons() {
     std::printf("controlButtons\n");

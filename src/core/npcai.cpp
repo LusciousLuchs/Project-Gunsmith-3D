@@ -50,6 +50,12 @@ void hear(std::vector<Actor>& actors, V3 at, double radius) {
         if (!a.dead && gmap::len(a.body.feet - at) <= radius) a.heard = true;
 }
 
+int npcCount(const gmap::Map& m) {
+    int n = 0;
+    for (auto& e : m.ents) if (e.type == "npc_spawn" && !e.ref.empty()) n += std::max(0, e.count);
+    return n;
+}
+
 Actor spawn(const NpcDef& def, V3 pos, double yawDeg, const Design* gun) {
     Actor a;
     a.def = def;
@@ -141,7 +147,13 @@ std::vector<BoneAt> bones(const Actor& a) {
 }
 
 void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bool alive, double dt, std::vector<Event>& out, unsigned& rng, nav::Cache* navs) {
-    for (size_t idx = 0; idx < actors.size(); idx++) {
+    // route planning is the costly part: only a few NPCs plan a frame (taking turns), the rest keep their old route
+    // a moment longer, so a crowd that all want new routes at once doesn't stall the game
+    int plansLeft = 3;
+    static size_t turn = 0;
+    turn++;
+    for (size_t n = 0; n < actors.size(); n++) {
+        size_t idx = (n + turn) % actors.size();   // (a different one goes first each frame)
         Actor& a = actors[idx];
         a.hitFlash = std::max(0.0, a.hitFlash - dt);
         if (a.dead) { a.deadT += dt; a.body.vel = {0, 0, 0}; continue; }
@@ -205,7 +217,8 @@ void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bo
                 const nav::Grid& G = navs->get(map, agentOf(a));
                 a.replanT -= dt;
                 bool moved = gmap::len(flat(target - a.pathGoal)) > 1.0 && a.planAge > 0.3;
-                if (!a.pathOk || a.replanT <= 0 || moved || a.stuckT > 1.0) {
+                if ((!a.pathOk || a.replanT <= 0 || moved || a.stuckT > 1.0) && plansLeft > 0) {
+                    plansLeft--;
                     a.pathOk = nav::findPath(G, a.body.feet, target, a.path, &a.pathReaches);
                     a.pathAt = 1; a.pathGoal = target; a.planAge = 0; a.stuckT = 0;
                     a.replanT = (a.aware ? 0.8 : 3.0) + rnd(rng) * 0.5;

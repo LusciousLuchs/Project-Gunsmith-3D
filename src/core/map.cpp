@@ -100,11 +100,12 @@ void brushClean(Brush& b) {
 }
 
 void brushBounds(const Brush& b, V3& mn, V3& mx) {
-    unsigned long long key = 1469598103934665603ull ^ b.faces.size();   // a fingerprint of the planes (FNV-1a)
+    unsigned long long key = 1469598103934665603ull ^ b.faces.size();   // a fingerprint of the planes (whole words mixed)
     for (auto& f : b.faces)
         for (double v : {f.n.x, f.n.y, f.n.z, f.d}) {
             unsigned long long bits; std::memcpy(&bits, &v, 8);
-            for (int k = 0; k < 8; k++) { key ^= (bits >> (k * 8)) & 0xff; key *= 1099511628211ull; }
+            key = (key ^ bits) * 0x9E3779B97F4A7C15ull;
+            key ^= key >> 29;
         }
     if (key == 0) key = 1;
     if (b.boundsKey == key) {

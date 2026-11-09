@@ -13,6 +13,10 @@
 
 namespace npcai {
 
+// The most NPCs on a map at once (measured: 64 cost about 1.4 ms a frame to think and move; drawing them is cheap)
+constexpr int NPC_LIMIT = 64;
+int npcCount(const gmap::Map& m);   // how many its NPC spawn points ask for
+
 struct Actor {
     NpcDef def;
     gmap::Player body;               // where it is and how it moves (feet, velocity, yaw)

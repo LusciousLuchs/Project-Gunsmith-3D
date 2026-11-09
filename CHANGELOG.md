@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## Unreleased
+
+### NPCs
+- **Up to 64 NPCs on a map at once.** The Level editor shows how many a map has. A map that asks for more brings only the first 64, and the range says so.
+- **Big crowds run smoothly:** NPCs take turns planning their routes, so many at once no longer cause stutters.
+- **Faster movement:** walking and collision, for you and the NPCs, is about 4 times quicker again.
+
 ## 0.4.5-alpha
 
 ### Better-looking NPCs

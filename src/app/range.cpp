@@ -373,13 +373,15 @@ static void placeNpcs() {
         Design gun; bool hasGun = n.attack == "ranged" && !n.gun.empty() && npcGunByName(R.map, n.gun, gun) && gun.npcGun.on;
         double y = e.yaw * DEG2RAD;
         V3 f{std::cos(y), 0, std::sin(y)}, side{-f.z, 0, f.x};
-        for (int k = 0; k < std::min(e.count, 50); k++) {   // more than one: side by side in rows
+        for (int k = 0; k < e.count && (int)R.actors.size() < npcai::NPC_LIMIT; k++) {   // more than one: side by side in rows (up to the limit)
             int row = k / 5, col = k % 5;
             V3 p = e.pos + side * ((col - std::min(e.count - row * 5, 5) / 2.0 + 0.5) * 1.1) - f * (row * 1.4);
             R.actors.push_back(npcai::spawn(n, p, e.yaw, hasGun ? &gun : nullptr));
         }
     }
     for (auto& a : R.actors) R.nav.get(R.map, npcai::agentOf(a));   // (their paths worked out now, not mid-fight)
+    int asked = npcai::npcCount(R.map);
+    if (asked > npcai::NPC_LIMIT) { R.feed = TextFormat("This map asks for %d NPCs: only the first %d came (the most at once)", asked, npcai::NPC_LIMIT); R.feedT = 6; }
 }
 // you died: everything back to how the map starts
 static void restartLevel() {
