@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- version: the one place to change it. See CHANGELOG.md.
 #   0.1.0-dev: the editor and test bench worked out (dev1 to dev25).
 #   0.2.x-alpha: barrels, posing, and first-person shooting.
-project(Gunsmith3D VERSION 0.4.3 LANGUAGES C CXX)
+project(Gunsmith3D VERSION 0.4.4 LANGUAGES C CXX)
 set(GUNSMITH_STAGE "alpha" CACHE STRING "Release stage: dev, alpha, beta, rc, or empty for a release")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -64,6 +64,10 @@ if(GIT_FOUND AND EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/.git)
                   OUTPUT_VARIABLE GUNSMITH_BUILD OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
 endif()
 configure_file(src/core/version.hpp.in ${CMAKE_CURRENT_BINARY_DIR}/generated/version.hpp @ONLY)
+# the main menu's "What's new" comes from the changelog (CMake runs again when it changes)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/CHANGELOG.md GS_CHANGELOG)
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/CHANGELOG.md)
+configure_file(src/ui/changelog.inc.in ${CMAKE_CURRENT_BINARY_DIR}/generated/changelog.inc @ONLY)
 message(STATUS "Gunsmith3D ${GUNSMITH_VERSION} ${GUNSMITH_BUILD}")
 
 find_package(Threads REQUIRED)   # the reliability test runs on a worker thread

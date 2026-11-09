@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.4-alpha
+
+### What's new, on the main menu
+- The main menu shows this version's changes in the top right corner. **Earlier updates** opens the ones before.
+
+### Built-in NPCs from your designs
+- NPCs made in the NPC editor can now ship with the game as built-in starting points. They're listed first under **New** in the NPC editor, by their own names. Send the NPC files from user/npcs to be added.
+
 ## 0.4.3-alpha
 
 ### Carves snap

@@ -122,14 +122,25 @@ double npcHeight(const NpcDef& n) {
     return top;
 }
 
+#include "builtin_npcs.inc"   // the owner's own NPCs (assets/npcs, embedded by tools/embed_npcs.py)
+
 const std::vector<std::pair<std::string, std::string>>& npcPresets() {
-    static const std::vector<std::pair<std::string, std::string>> v = {
-        {"human", "Human"}, {"hound", "Hound (four legs)"}, {"crawler", "Crawler (six legs)"}, {"blank", "Blank (one bone)"}};
+    static std::vector<std::pair<std::string, std::string>> v;
+    if (v.empty()) {
+        for (auto& [file, text] : BUILTIN_NPCS) {   // the built-in designs first, by their own names
+            NpcDef n;
+            if (npcFromJson(text, n)) v.push_back({"builtin:" + file, n.name.empty() ? file : n.name});
+        }
+        v.insert(v.end(), {{"human", "Human"}, {"hound", "Hound (four legs)"}, {"crawler", "Crawler (six legs)"}, {"blank", "Blank (one bone)"}});
+    }
     return v;
 }
 
 NpcDef npcPreset(const std::string& key) {
     NpcDef n;
+    if (key.rfind("builtin:", 0) == 0)
+        for (auto& [file, text] : BUILTIN_NPCS)
+            if ("builtin:" + file == key && npcFromJson(text, n)) return n;
     const std::string skin = "#c8a088", cloth = "#4f5d52", dark = "#30353b";
     if (key == "hound") {   // the body lies forward; legs hang from its ends
         n.name = "Hound"; n.rootHeight = 560; n.rootBend = 90; n.health = 60; n.speed = 6; n.damage = 15; n.reach = 1.2;

@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -60,6 +61,83 @@ static void dimBackground(float a = 0.55f) {
 }
 static constexpr ImGuiWindowFlags PLAIN = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
 
+// ---------------------------------------------------------------- what's new (from CHANGELOG.md, built in)
+#include "changelog.inc"
+namespace {
+struct Release { std::string title; std::vector<std::string> lines; };
+const std::vector<Release>& releases() {
+    static std::vector<Release> out;
+    if (!out.empty()) return out;
+    std::string line;
+    const char* p = CHANGELOG_TEXT;
+    while (*p) {
+        const char* e = std::strchr(p, '\n');
+        line.assign(p, e ? e - p : std::strlen(p));
+        p = e ? e + 1 : p + line.size();
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("## ", 0) == 0) { out.push_back({line.substr(3), {}}); continue; }
+        if (out.empty()) continue;   // (the explanation of version numbers at the top)
+        std::string t;
+        for (size_t i = 0; i < line.size(); i++) {   // markdown's ** and ` are left out
+            if (line[i] == '`') continue;
+            if (line[i] == '*' && i + 1 < line.size() && line[i + 1] == '*') { i++; continue; }
+            t += line[i];
+        }
+        out.back().lines.push_back(t);
+    }
+    return out;
+}
+void releaseText(const Release& r) {
+    for (auto& l : r.lines) {
+        if (l.empty()) continue;
+        if (l.rfind("### ", 0) == 0) {
+            ImGui::Dummy({0, 4 * S()});
+            ImGui::PushFont(gFontBold, 15.0f);
+            ImGui::TextUnformatted(l.c_str() + 4);
+            ImGui::PopFont();
+        } else if (l.rfind("- ", 0) == 0) {
+            ImGui::Bullet(); ImGui::SameLine();
+            ImGui::TextWrapped("%s", l.c_str() + 2);
+        } else if (l.rfind("  ", 0) == 0) {   // a bullet's continued line, or one under it
+            ImGui::Indent(18 * S());
+            std::string t = l.substr(l.find_first_not_of(' '));
+            if (t.rfind("- ", 0) == 0) { ImGui::Bullet(); ImGui::SameLine(); t = t.substr(2); }
+            ImGui::TextWrapped("%s", t.c_str());
+            ImGui::Unindent(18 * S());
+        } else ImGui::TextWrapped("%s", l.c_str());
+    }
+}
+// The box in the top right corner of the main menu: this version's changes, and the ones before on request
+void whatsNew() {
+    const auto& R = releases();
+    if (R.empty()) return;
+    float w = std::min(440 * S(), GetScreenWidth() * 0.36f), m = 24 * S();
+    static bool older = false;
+    ImGui::SetNextWindowPos({GetScreenWidth() - w - m, m});
+    ImGui::SetNextWindowSize({w, older ? GetScreenHeight() - 2 * m : 0});
+    ImGui::SetNextWindowSizeConstraints({w, 0}, {w, GetScreenHeight() * (older ? 1.0f : 0.62f) - 2 * m});
+    ImGui::SetNextWindowBgAlpha(0.82f);
+    ImGui::Begin("##whatsnew", nullptr, PLAIN | (older ? 0 : ImGuiWindowFlags_AlwaysAutoResize));
+    ImGui::PushFont(gFontBold, 18.0f);
+    ImGui::Text("What's new in %s", R[0].title.c_str());
+    ImGui::PopFont();
+    ImGui::Separator();
+    releaseText(R[0]);
+    ImGui::Dummy({0, 6 * S()});
+    if (ImGui::SmallButton(older ? "Hide earlier updates" : "Earlier updates")) older = !older;
+    if (older)
+        for (size_t k = 1; k < R.size(); k++) {
+            ImGui::Dummy({0, 8 * S()});
+            ImGui::PushFont(gFontBold, 16.0f);
+            ImGui::TextUnformatted(R[k].title.c_str());
+            ImGui::PopFont();
+            ImGui::Separator();
+            releaseText(R[k]);
+        }
+    ImGui::End();
+}
+}  // namespace
+
 // ---------------------------------------------------------------- main menu
 void mainMenu() {
     if (A.showSettings) { settingsWindow(); return; }
@@ -102,6 +180,7 @@ void mainMenu() {
     ImGui::SetCursorPos({x, GetScreenHeight() - 34 * S()});
     ImGui::TextDisabled("%s", version::text());
     ImGui::End();
+    whatsNew();
 }
 
 // ---------------------------------------------------------------- pause menu
