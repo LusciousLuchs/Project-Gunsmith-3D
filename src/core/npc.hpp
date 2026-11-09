@@ -17,8 +17,13 @@ struct NpcBone {
     double r0 = 40, r1 = 35;      // thickness (radius) at its start and its end, mm
     double bend = 0, turn = 0, twist = 0;   // degrees from its parent's direction: bend forward (+) or back, turn
                                             // to the side (+ its right), twist about its own length
-    std::string shape = "capsule";          // capsule, box, ball
+    std::string shape = "capsule";          // capsule (rounded ends), cylinder, box, ball (an egg the bone's length),
+                                            // wedge (a box thinning to an edge at its end)
+    double width = 1, depth = 1;  // its cross-section stretched side to side and front to back (1 = round)
+    double bulge = 0;             // swelling in the middle of its length (0.3: a muscle; negative: pinched)
     std::string color = "#8a8f98";
+    std::string texture;          // a picture on it (user/textures or a built-in finish; "" = plain colour), tinted by
+    double texScale = 150;        // the colour; mm one copy of it covers
     bool vital = false;           // a weak spot: hits here do triple damage (a head, a glowing core)
     double armor = 0;             // 0 .. 1: how much of a hit it stops
 };
@@ -54,3 +59,6 @@ void npcAimBone(NpcDef& n, int i, const double dir[3]);
 void npcMirrorBone(NpcDef& n, int i);       // a copy of bone i and everything below it, on the other side
 void npcRemoveBone(NpcDef& n, int i);       // and everything below it (not the root)
 double npcHeight(const NpcDef& n);          // mm, ground to the highest point
+// How thick a bone is at t (0 its start .. 1 its end), before width and depth: its taper and bulge (mm)
+double npcBoneRadius(const NpcBone& b, double t);
+double npcBoneReach(const NpcBone& b);      // the most it sticks out from its middle line anywhere (mm), for hits

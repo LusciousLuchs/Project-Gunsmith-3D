@@ -697,14 +697,9 @@ void rangeRender() {
                 drawBox(rv(g + fwd * 0.12), {0.42f, 0.09f, 0.06f}, Color{34, 36, 40, 255}, MatrixRotateY((float)-a.body.yaw));
             }
             if (a.fuse >= 0) drawSphereLit(rv(a.body.feet + V3{0, npcai::height(a) * 0.5, 0}), (float)(0.25 + 0.15 * std::sin(R.t * 40)), Color{255, 120, 40, 255}, 0.5f);
-        } else if (a.deadT < 9) {   // fallen: each bone where it lies (a burst one, nothing)
-            for (auto& b : npcai::bones(a)) {
-                const NpcBone& bn = a.def.bones[b.bone];
-                Color c = hexColor(bn.color);
-                drawCyl(rv(b.a), rv(b.b), (float)((bn.r0 + bn.r1) / 2000), c);
-                drawSphereLit(rv(b.a), (float)(bn.r0 / 1000), c);
-                drawSphereLit(rv(b.b), (float)(bn.r1 / 1000), c);
-            }
+        } else if (a.deadT < 9) {   // fallen: turned over about its feet toward where the hit came from (a burst one, nothing)
+            V3 ax = gmap::cross(V3{0, 1, 0}, a.fallDir);
+            drawNpcAt(a.def, rv(a.body.feet), (float)(a.body.yaw * RAD2DEG), 0.001f, -1, rv(ax), (float)npcai::fallAngle(a));
         }
     }
     for (auto& e : R.map.ents) {

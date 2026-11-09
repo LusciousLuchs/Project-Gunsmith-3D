@@ -4,6 +4,7 @@
 #include "app/gfx.hpp"
 #include "app/paths.hpp"
 #include "app/settings.hpp"
+#include "app/usertex.hpp"
 #include "raymath.h"
 #include "rlgl.h"
 #include "imgui.h"
@@ -14,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 NpcEdit NE;
@@ -214,34 +216,162 @@ void npcEditorUpdate(float dt, bool modal) {
     else if (b < 0) NE.endPicked = false;
 }
 
-void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float k, int highlight) {
+// ---------------------------------------------------------------- how a bone looks
+// Each bone is a smooth mesh in its own frame (millimetres; y along it from its start, x its right, z its front):
+// rings round its length, each ring the cross-section (round, or a rounded square for boxes and wedges) stretched by
+// its width and depth, swelled by its bulge, closed by rounded or flat ends. Built once per shape and size and kept.
+namespace {
+Mesh buildBoneMesh(const NpcBone& b) {
+    const int SEG = 28;
+    const double PI_D = 3.14159265358979;
+    std::string sh = b.shape;
+    bool squarish = sh == "box" || sh == "wedge";
+    double ex = squarish ? 6 : 2;   // the cross-section: an ellipse, or a rounded square
+    struct Ring { double y, r, dk; };   // where along, its radius, its depth factor (a wedge thins out)
+    std::vector<Ring> rings;
+    const int BODY = 14, CAP = 7;
+    double L = b.len;
+    if (sh == "ball") {
+        double R = (b.r0 + b.r1) / 2;
+        for (int j = 0; j <= BODY + 4; j++) {
+            double ph = PI_D * j / (BODY + 4);
+            rings.push_back({L / 2 - std::cos(ph) * L / 2, std::sin(ph) * R * (1 + b.bulge * std::sin(ph)), 1});
+        }
+    } else {
+        if (sh == "capsule")
+            for (int j = 0; j < CAP; j++) { double ph = PI_D / 2 * j / CAP; rings.push_back({-b.r0 * std::cos(ph), b.r0 * std::sin(ph), 1}); }
+        for (int j = 0; j <= BODY; j++) {
+            double t = (double)j / BODY;
+            rings.push_back({L * t, npcBoneRadius(b, t), sh == "wedge" ? std::max(0.03, 1 - t) : 1.0});
+        }
+        if (sh == "capsule")
+            for (int j = 1; j <= CAP; j++) { double ph = PI_D / 2 * j / CAP; rings.push_back({L + b.r1 * std::sin(ph), b.r1 * std::cos(ph), 1}); }
+    }
+    double perim = 0;   // (texture: one copy across texScale mm, round the widest ring)
+    for (auto& r : rings) perim = std::max(perim, 2 * PI_D * r.r * (b.width + b.depth) / 2);
+    std::vector<float> P, N, T;
+    std::vector<unsigned short> I;
+    auto cs = [&](double th, double& cx, double& cz) {
+        double c = std::cos(th), s = std::sin(th);
+        cx = (c < 0 ? -1 : 1) * std::pow(std::fabs(c), 2 / ex);
+        cz = (s < 0 ? -1 : 1) * std::pow(std::fabs(s), 2 / ex);
+    };
+    for (auto& r : rings)
+        for (int q = 0; q <= SEG; q++) {
+            double th = 2 * PI_D * q / SEG, cx, cz;
+            cs(th, cx, cz);
+            P.insert(P.end(), {(float)(cx * r.r * b.width), (float)r.y, (float)(cz * r.r * b.depth * r.dk)});
+            N.insert(N.end(), {0, 0, 0});
+            T.insert(T.end(), {(float)(perim / b.texScale * q / SEG), (float)(r.y / b.texScale)});
+        }
+    int W = SEG + 1;
+    for (size_t j = 0; j + 1 < rings.size(); j++)
+        for (int q = 0; q < SEG; q++) {
+            unsigned short a = (unsigned short)(j * W + q), c = (unsigned short)(a + W);
+            I.insert(I.end(), {a, c, (unsigned short)(a + 1), (unsigned short)(a + 1), c, (unsigned short)(c + 1)});   // (counter-clockwise from outside)
+        }
+    // smooth normals: each corner's faces added up (by area), the seam's two copies shared
+    auto V = [&](int k) { return Vector3{P[k * 3], P[k * 3 + 1], P[k * 3 + 2]}; };
+    for (size_t t = 0; t < I.size(); t += 3) {
+        Vector3 n = Vector3CrossProduct(Vector3Subtract(V(I[t + 1]), V(I[t])), Vector3Subtract(V(I[t + 2]), V(I[t])));
+        for (int k = 0; k < 3; k++) { N[I[t + k] * 3] += n.x; N[I[t + k] * 3 + 1] += n.y; N[I[t + k] * 3 + 2] += n.z; }
+    }
+    for (size_t j = 0; j < rings.size(); j++)
+        for (int k = 0; k < 3; k++) { float s = N[(j * W) * 3 + k] + N[(j * W + SEG) * 3 + k]; N[(j * W) * 3 + k] = N[(j * W + SEG) * 3 + k] = s; }
+    // a pole (a ring shrunk to a point): pointing straight out along the bone
+    for (size_t j = 0; j < rings.size(); j++)
+        if (rings[j].r < 1e-6)
+            for (int q = 0; q <= SEG; q++) { size_t v = (j * W + q) * 3; N[v] = 0; N[v + 1] = j == 0 ? -1.f : 1.f; N[v + 2] = 0; }
+    for (size_t v = 0; v < N.size(); v += 3) {
+        float l = std::sqrt(N[v] * N[v] + N[v + 1] * N[v + 1] + N[v + 2] * N[v + 2]);
+        if (l > 1e-12f) { N[v] /= l; N[v + 1] /= l; N[v + 2] /= l; } else N[v + 1] = 1;
+    }
+    // flat ends (cylinders, boxes, wedges): a disc at each end, its own corners so it stays sharp
+    if (sh == "cylinder" || squarish)
+        for (int end = 0; end < 2; end++) {
+            const Ring& r = end == 0 ? rings.front() : rings.back();
+            if (r.r < 1e-6) continue;
+            float ny = end == 0 ? -1.f : 1.f;
+            unsigned short c0 = (unsigned short)(P.size() / 3);
+            P.insert(P.end(), {0, (float)r.y, 0}); N.insert(N.end(), {0, ny, 0}); T.insert(T.end(), {0, 0});
+            for (int q = 0; q <= SEG; q++) {
+                double th = 2 * PI_D * q / SEG, cx, cz;
+                cs(th, cx, cz);
+                float x = (float)(cx * r.r * b.width), z = (float)(cz * r.r * b.depth * r.dk);
+                P.insert(P.end(), {x, (float)r.y, z}); N.insert(N.end(), {0, ny, 0});
+                T.insert(T.end(), {(float)(x / b.texScale), (float)(z / b.texScale)});
+            }
+            for (int q = 0; q < SEG; q++) {
+                unsigned short a = (unsigned short)(c0 + 1 + q);
+                if (end == 0) I.insert(I.end(), {c0, a, (unsigned short)(a + 1)});
+                else I.insert(I.end(), {c0, (unsigned short)(a + 1), a});
+            }
+        }
+    Mesh m{};
+    m.vertexCount = (int)P.size() / 3;
+    m.triangleCount = (int)I.size() / 3;
+    m.vertices = (float*)MemAlloc((unsigned)(P.size() * sizeof(float)));
+    m.normals = (float*)MemAlloc((unsigned)(N.size() * sizeof(float)));
+    m.texcoords = (float*)MemAlloc((unsigned)(T.size() * sizeof(float)));
+    m.indices = (unsigned short*)MemAlloc((unsigned)(I.size() * sizeof(unsigned short)));
+    std::copy(P.begin(), P.end(), m.vertices);
+    std::copy(N.begin(), N.end(), m.normals);
+    std::copy(T.begin(), T.end(), m.texcoords);
+    std::copy(I.begin(), I.end(), m.indices);
+    UploadMesh(&m, false);
+    return m;
+}
+struct CachedMesh { Mesh mesh; double used; };
+std::unordered_map<std::string, CachedMesh> gBoneMeshes;
+const Mesh& boneMesh(const NpcBone& b) {
+    char key[200];
+    std::snprintf(key, sizeof key, "%s|%.2f|%.2f|%.2f|%.3f|%.3f|%.3f|%.1f", b.shape.c_str(), b.len, b.r0, b.r1, b.width, b.depth, b.bulge, b.texScale);
+    auto it = gBoneMeshes.find(key);
+    if (it == gBoneMeshes.end()) {
+        if (gBoneMeshes.size() > 400)   // (sizes tried while editing, long gone: let them go)
+            for (auto e = gBoneMeshes.begin(); e != gBoneMeshes.end();)
+                if (GetTime() - e->second.used > 3) { UnloadMesh(e->second.mesh); e = gBoneMeshes.erase(e); } else ++e;
+        it = gBoneMeshes.emplace(key, CachedMesh{buildBoneMesh(b), 0}).first;
+    }
+    it->second.used = GetTime();
+    return it->second.mesh;
+}
+}  // namespace
+
+void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float k, int highlight, Vector3 fallAxis, float fallAngle) {
     auto P = npcPose(n);
-    // the NPC's own frame faces +z; turned so that it faces yawDeg (0 along +x)
+    // the NPC's own frame faces +z; turned so that it faces yawDeg (0 along +x); fallen: turned about its feet
     float th = (90 - yawDeg) * DEG2RAD, c0 = std::cos(th), s0 = std::sin(th);
-    auto place = [&](const double p[3]) { float x = (float)p[0] * k, y = (float)p[1] * k, z = (float)p[2] * k;
-        return Vector3{origin.x + x * c0 + z * s0, origin.y + y, origin.z - x * s0 + z * c0}; };
     auto axis = [&](const double v[3]) { return Vector3{(float)v[0] * c0 + (float)v[2] * s0, (float)v[1], -(float)v[0] * s0 + (float)v[2] * c0}; };
+    Matrix fall = fallAngle != 0 && Vector3Length(fallAxis) > 1e-6f ? MatrixRotate(Vector3Normalize(fallAxis), fallAngle) : MatrixIdentity();
+    Matrix toWorld = MatrixMultiply(fall, MatrixTranslate(origin.x, origin.y, origin.z));
+    auto frame = [&](int i, const double at[3], Vector3 X, Vector3 Y, Vector3 Z) {
+        Vector3 a = axis(at);
+        Matrix R = {X.x, Y.x, Z.x, 0, X.y, Y.y, Z.y, 0, X.z, Y.z, Z.z, 0, 0, 0, 0, 1};
+        (void)i;
+        return MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixScale(k, k, k), R), MatrixTranslate(a.x * k, a.y * k, a.z * k)), toWorld);
+    };
     for (size_t i = 0; i < P.size(); i++) {
         const NpcBone& b = n.bones[i];
         Color c = hexColor(b.color);
         if ((int)i == highlight) c = Color{(unsigned char)std::min(255, c.r + 50), (unsigned char)std::min(255, c.g + 40), (unsigned char)std::min(255, c.b + 10), 255};
-        Vector3 a = place(P[i].a), e = place(P[i].b);
-        float r0 = (float)b.r0 * k, r1 = (float)b.r1 * k;
-        if (b.shape == "box" || b.shape == "ball") {
-            Vector3 X = axis(P[i].x), Y = axis(P[i].y), Z = axis(P[i].z);
-            Matrix R = {X.x, Y.x, Z.x, 0, X.y, Y.y, Z.y, 0, X.z, Y.z, Z.z, 0, 0, 0, 0, 1};
-            Vector3 mid = Vector3Lerp(a, e, 0.5f);
-            float L = (float)b.len * k;
-            if (b.shape == "box") drawBox(mid, {(r0 + r1), L, (r0 + r1)}, c, R);
-            else drawMesh(G.sphere, MatrixMultiply(MatrixMultiply(MatrixScale((r0 + r1) / 2, L / 2, (r0 + r1) / 2), R), MatrixTranslate(mid.x, mid.y, mid.z)), c);
-        } else {   // a tapered capsule: a few rings, rounded ends
-            const int N = 6;
-            for (int q = 0; q < N; q++) {
-                float t0 = (float)q / N, t1 = (float)(q + 1) / N;
-                drawCyl(Vector3Lerp(a, e, t0), Vector3Lerp(a, e, t1), r0 + (r1 - r0) * (t0 + t1) / 2, c);
-            }
-            drawSphereLit(a, r0, c);
-            drawSphereLit(e, r1, c);
+        Vector3 X = axis(P[i].x), Y = axis(P[i].y), Z = axis(P[i].z);
+        Matrix M = frame((int)i, P[i].a, X, Y, Z);
+        const Mesh& mesh = boneMesh(b);
+        if (!b.texture.empty()) drawMeshTex(mesh, M, c, userTexture(b.texture));
+        else drawMesh(mesh, M, c);
+        // a joint: a bone with flat or square ends, hanging off the end of another, gets a rounded knuckle where they
+        // meet, so an elbow or a knee bends without a gap
+        if (i > 0 && b.at > 0.97 && std::fabs(b.side) < 1 && b.shape != "capsule" && b.shape != "ball") {
+            const NpcBone& pb = n.bones[b.parent];
+            double r = std::min(b.r0, npcBoneRadius(pb, 1)) * 0.98;
+            Matrix J = MatrixMultiply(MatrixMultiply(MatrixScale((float)(r * std::min(b.width, pb.width)), (float)r, (float)(r * std::min(b.depth, pb.depth))),
+                                                     Matrix{X.x, Y.x, Z.x, 0, X.y, Y.y, Z.y, 0, X.z, Y.z, Z.z, 0, 0, 0, 0, 1}),
+                                      MatrixTranslate(0, 0, 0));
+            Vector3 a = axis(P[i].a);
+            J = MatrixMultiply(MatrixMultiply(J, MatrixScale(k, k, k)), MatrixMultiply(MatrixTranslate(a.x * k, a.y * k, a.z * k), toWorld));
+            if (!b.texture.empty()) drawMeshTex(G.sphere, J, c, userTexture(b.texture));
+            else drawMesh(G.sphere, J, c);
         }
     }
 }

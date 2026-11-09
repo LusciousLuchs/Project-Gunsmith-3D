@@ -72,5 +72,6 @@ struct BoneAt { gmap::V3 a, b; double r; int bone; };
 std::vector<BoneAt> bones(const Actor& a);
 NpcDef posed(const Actor& a);        // its NPC with this moment's leg swing applied (for drawing)
 double height(const Actor& a);       // metres
+double fallAngle(const Actor& a);    // radians it has fallen over so far (about its feet, toward fallDir)
 
 }  // namespace npcai

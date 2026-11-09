@@ -122,6 +122,16 @@ double npcHeight(const NpcDef& n) {
     return top;
 }
 
+double npcBoneRadius(const NpcBone& b, double t) {
+    double r = b.r0 + (b.r1 - b.r0) * t;
+    return std::max(0.0, r * (1 + b.bulge * std::sin(3.14159265358979 * std::clamp(t, 0.0, 1.0))));
+}
+double npcBoneReach(const NpcBone& b) {
+    double r = 0;
+    for (int k = 0; k <= 8; k++) r = std::max(r, npcBoneRadius(b, k / 8.0));
+    return r * std::max(b.width, b.depth);
+}
+
 #include "builtin_npcs.inc"   // the owner's own NPCs (assets/npcs, embedded by tools/embed_npcs.py)
 
 const std::vector<std::pair<std::string, std::string>>& npcPresets() {
@@ -174,19 +184,22 @@ NpcDef npcPreset(const std::string& key) {
         return n;
     }
     if (key == "blank") { n.name = "New NPC"; n.bones = {bone("Body", -1, 0, 0, 400, 80, 80, 0, 0, "#8a8f98")}; return n; }
-    // a person standing: hips up through the chest to the head, arms down, legs down
+    // a person standing: hips up through the chest to the head, arms down, legs down. Shaped: a flattened chest
+    // wider at the shoulders, an egg of a head, muscles that swell, flat hands, boots that thin to the toe.
+    auto look = [](NpcBone b, double width, double depth, double bulge) { b.width = width; b.depth = depth; b.bulge = bulge; return b; };
+    const std::string trousers = "#3a3f36", boots = "#26231f", shirt = cloth;
     n.name = "Human";
     n.bones = {
-        bone("Pelvis", -1, 0, 0, 150, 120, 125, 0, 0, cloth),
-        bone("Chest", 0, 1, 0, 330, 130, 155, 0, 0, cloth),
-        bone("Neck", 1, 1, 0, 90, 45, 45, 0, 0, skin),
-        bone("Head", 2, 1, 0, 210, 90, 85, 0, 0, skin, "ball", true),
-        bone("Upper arm (left)", 1, 0.92, -185, 300, 48, 40, 0, 172, cloth),
-        bone("Forearm (left)", 4, 1, 0, 270, 38, 30, 12, 0, skin),
-        bone("Hand (left)", 5, 1, 0, 100, 30, 22, 0, 0, skin),
-        bone("Thigh (left)", 0, 0, -95, 450, 75, 55, 0, 178, dark),
-        bone("Shin (left)", 7, 1, 0, 430, 52, 40, -4, 0, dark),
-        bone("Foot (left)", 8, 1, 0, 220, 38, 32, 90, 0, "#22262b", "box"),
+        look(bone("Pelvis", -1, 0, 0, 150, 115, 125, 0, 0, trousers, "box"), 1.3, 0.78, 0),
+        look(bone("Chest", 0, 1, 0, 330, 118, 150, 0, 0, shirt, "box"), 1.18, 0.66, 0.1),
+        look(bone("Neck", 1, 1, 0, 95, 46, 42, 0, 0, skin, "cylinder"), 1, 1, 0),
+        look(bone("Head", 2, 1, 0, 225, 92, 92, 4, 0, skin, "ball", true), 0.84, 1, 0.05),
+        look(bone("Upper arm (left)", 1, 0.9, -205, 300, 50, 41, 0, 172, shirt), 1, 1, 0.16),
+        look(bone("Forearm (left)", 4, 1, 0, 265, 41, 30, 12, 0, skin), 1, 0.9, 0.14),
+        look(bone("Hand (left)", 5, 1, 0, 95, 31, 26, 0, 0, skin, "box"), 1.05, 0.45, 0.1),
+        look(bone("Thigh (left)", 0, 0, -100, 450, 80, 54, 0, 178, trousers), 1, 1, 0.1),
+        look(bone("Shin (left)", 7, 1, 0, 430, 53, 38, -4, 0, trousers), 1, 1, 0.2),
+        look(bone("Foot (left)", 8, 1, 0, 235, 46, 40, 90, 0, boots, "wedge"), 0.85, 1.0, 0),
     };
     npcMirrorBone(n, 4); npcMirrorBone(n, 7);
     n.rootHeight = 920;
@@ -202,6 +215,13 @@ std::string npcToJson(const NpcDef& n) {
     for (auto& b : n.bones)
         B.push_back({{"name", b.name}, {"parent", b.parent}, {"at", b.at}, {"side", b.side}, {"len", b.len}, {"r0", b.r0}, {"r1", b.r1},
                      {"bend", b.bend}, {"turn", b.turn}, {"twist", b.twist}, {"shape", b.shape}, {"color", b.color}, {"vital", b.vital}, {"armor", b.armor}});
+    for (size_t i = 0; i < n.bones.size(); i++) {   // (the newer looks only when used, so older games read the file the same)
+        const NpcBone& b = n.bones[i];
+        if (b.width != 1) B[i]["width"] = b.width;
+        if (b.depth != 1) B[i]["depth"] = b.depth;
+        if (b.bulge != 0) B[i]["bulge"] = b.bulge;
+        if (!b.texture.empty()) { B[i]["texture"] = b.texture; B[i]["texScale"] = b.texScale; }
+    }
     o["bones"] = B;
     o["fight"] = {{"health", n.health}, {"speed", n.speed}, {"attack", n.attack}, {"damage", n.damage}, {"reach", n.reach},
                   {"gun", n.gun}, {"sight", n.sight}, {"behaviour", n.behaviour}, {"team", n.team}};
@@ -224,6 +244,9 @@ bool npcFromJson(const std::string& text, NpcDef& out, std::string* err) {
         b.bend = num(jb, "bend", 0); b.turn = num(jb, "turn", 0); b.twist = num(jb, "twist", 0);
         b.shape = str(jb, "shape", "capsule"); b.color = str(jb, "color", "#8a8f98");
         b.vital = jb.contains("vital") && jb["vital"].is_boolean() && jb["vital"].get<bool>(); b.armor = std::clamp(num(jb, "armor", 0), 0.0, 1.0);
+        b.width = std::clamp(num(jb, "width", 1), 0.05, 10.0); b.depth = std::clamp(num(jb, "depth", 1), 0.05, 10.0);
+        b.bulge = std::clamp(num(jb, "bulge", 0), -0.9, 3.0);
+        b.texture = str(jb, "texture", ""); b.texScale = std::clamp(num(jb, "texScale", 150), 1.0, 5000.0);
         n.bones.push_back(b);
     }
     if (n.bones.empty()) { if (err) *err = "it has no bones"; return false; }

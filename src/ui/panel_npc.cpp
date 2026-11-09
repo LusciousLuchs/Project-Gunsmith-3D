@@ -118,14 +118,34 @@ void npcPanel() {
         pNumU("Length", b.len, 2, Q::Length, 0); b.len = std::max(1.0, b.len); fin();
         pNumU("Thick at start", b.r0, 1, Q::Length, 0, "Its radius where it starts."); b.r0 = std::max(0.5, b.r0); fin();
         pNumU("Thick at end", b.r1, 1, Q::Length, 0, "Its radius where it ends."); b.r1 = std::max(0.5, b.r1); fin();
-        int sh = b.shape == "box" ? 1 : b.shape == "ball" ? 2 : 0;
-        prop("Shape");
-        if (ImGui::Combo("##bshape", &sh, "Rounded\0Box\0Ball\0")) { b.shape = sh == 1 ? "box" : sh == 2 ? "ball" : "capsule"; done = true; }
+        static const char* shapes[] = {"capsule", "cylinder", "box", "ball", "wedge"};
+        int sh = 0;
+        for (int k = 0; k < 5; k++) if (b.shape == shapes[k]) sh = k;
+        prop("Shape", "Rounded: round ends. Cylinder: flat ends. Box: a rounded square across.\nBall: an egg as long as the bone. Wedge: a box thinning to an edge at its end (a foot, a blade).");
+        if (ImGui::Combo("##bshape", &sh, "Rounded\0Cylinder\0Box\0Ball / egg\0Wedge\0")) { b.shape = shapes[sh]; done = true; }
+        double wp = b.width * 100, dp = b.depth * 100, bp = b.bulge * 100;
+        if (pNum("Width", wp, 1, "%.0f%%", "Stretches it side to side: 50% is half as wide (a flat chest, a hand).")) b.width = std::clamp(wp / 100, 0.05, 10.0);
+        fin();
+        if (pNum("Depth", dp, 1, "%.0f%%", "Stretches it front to back.")) b.depth = std::clamp(dp / 100, 0.05, 10.0);
+        fin();
+        if (pNum("Bulge", bp, 1, "%+.0f%%", "Swells its middle (a calf, a bicep, a belly). Negative pinches it in.")) b.bulge = std::clamp(bp / 100, -0.9, 3.0);
+        fin();
         Color c = hexColor(b.color);
         float col[3] = {c.r / 255.f, c.g / 255.f, c.b / 255.f};
         prop("Colour");
         if (ImGui::ColorEdit3("##bcol", col, ImGuiColorEditFlags_NoInputs)) b.color = colorHex(col);
         fin();
+        prop("Picture", "A picture on the bone: one of the gun finishes, or your own from user/textures. Its colour tints it (white shows it true).");
+        if (texturePicker(b.texture)) done = true;
+        if (!b.texture.empty()) { pNumU("Picture size", b.texScale, 5, Q::Length, 0, "How big one copy of the picture is before it repeats."); b.texScale = std::clamp(b.texScale, 1.0, 5000.0); fin(); }
+        if (ImGui::Button("Use this look on its mirror twin", {-1, 0})) {   // the same bone on the other side: same look
+            std::string nm = b.name, other = nm;
+            auto swap = [&](const char* x, const char* y) { size_t q = nm.find(x); if (q != std::string::npos) other = nm.substr(0, q) + y + nm.substr(q + std::strlen(x)); };
+            swap("(left)", "(right)"); if (other == nm) swap("(right)", "(left)");
+            for (auto& o : n.bones)
+                if (&o != &b && o.name == other) { o.shape = b.shape; o.width = b.width; o.depth = b.depth; o.bulge = b.bulge; o.color = b.color; o.texture = b.texture; o.texScale = b.texScale; o.r0 = b.r0; o.r1 = b.r1; o.len = b.len; done = true; }
+        }
+        if (tipHover()) ImGui::SetTooltip("Copies shape, size, colour and picture to the bone with the same name on the other side: (left) and (right).");
         heading("Pose");
         ImGui::TextDisabled("Or drag the dot at its end in the view.");
         pNum("Bend", b.bend, 1, "%.0f\xc2\xb0", "Forward (+) or back, from the bone it hangs off."); fin();

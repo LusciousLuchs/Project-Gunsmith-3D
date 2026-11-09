@@ -8,6 +8,19 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.5-alpha
+
+### Better-looking NPCs
+- **Smooth bones:** every bone is now a smooth, finely shaded shape instead of a few stacked rings.
+- **More shapes:** Rounded, Cylinder, Box (a rounded square), Ball / egg and Wedge (a box thinning to an edge: feet, blades, beaks).
+- **Width, Depth and Bulge** for every bone: flatten a chest or a hand, widen the hips, swell a calf or a bicep, pinch a waist.
+- **Pictures on bones:** the gun finishes and your own pictures from user/textures, with a picture size. The colour tints it.
+- **Smooth joints:** bones with flat or square ends get a rounded knuckle where they meet the bone they hang off, so elbows and knees bend without a gap.
+- **Use this look on its mirror twin** copies a bone's shape, size, colour and picture to its (left) / (right) partner.
+- **A new Human starter:** a flattened chest wider at the shoulders, an egg-shaped head, muscles that swell, flat hands and boots. The example maps use it.
+- Fallen NPCs keep their looks as they lie.
+- Fix: NPCs could fail to find their way up some stairs.
+
 ## 0.4.4-alpha
 
 ### What's new, on the main menu

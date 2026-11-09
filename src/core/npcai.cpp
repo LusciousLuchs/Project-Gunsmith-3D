@@ -92,6 +92,7 @@ bool hurt(Actor& a, double damage, V3 dir) {
 }
 
 double height(const Actor& a) { return a.tune.standH; }
+double fallAngle(const Actor& a) { return a.dead ? std::min(1.0, a.deadT / 0.7) * 1.45 : 0; }
 nav::Agent agentOf(const Actor& a) { return {a.tune.halfWidth, a.tune.standH, a.tune.stepHeight}; }
 
 NpcDef posed(const Actor& a) {
@@ -124,7 +125,7 @@ std::vector<BoneAt> bones(const Actor& a) {
     double yawDeg = a.body.yaw * 180 / PI_A;
     double th = (90 - yawDeg) * PI_A / 180, c0 = std::cos(th), s0 = std::sin(th);
     // fallen: turned about its feet, toward where the hit came from
-    double fall = a.dead ? std::min(1.0, a.deadT / 0.7) * 1.45 : 0;
+    double fall = fallAngle(a);
     V3 axis = gmap::cross(V3{0, 1, 0}, a.fallDir);
     auto place = [&](const double q[3]) {
         V3 p{q[0] / 1000 * c0 + q[2] / 1000 * s0, q[1] / 1000, -q[0] / 1000 * s0 + q[2] / 1000 * c0};
@@ -135,7 +136,7 @@ std::vector<BoneAt> bones(const Actor& a) {
         }
         return a.body.feet + p;
     };
-    for (size_t i = 0; i < P.size(); i++) out.push_back({place(P[i].a), place(P[i].b), std::max(n.bones[i].r0, n.bones[i].r1) / 1000, (int)i});
+    for (size_t i = 0; i < P.size(); i++) out.push_back({place(P[i].a), place(P[i].b), npcBoneReach(n.bones[i]) / 1000, (int)i});
     return out;
 }
 

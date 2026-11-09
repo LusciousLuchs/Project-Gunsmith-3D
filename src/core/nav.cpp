@@ -152,7 +152,7 @@ Grid build(const gmap::Map& m, const Agent& a) {
                 if (s.ny < 0.7) continue;   // too steep to stand on
                 bool buried = false;
                 for (auto& o : spans)
-                    if (o.bot < s.top - 1e-3 && o.top > s.top + 1e-3) { buried = true; break; }
+                    if (o.bot < s.top + 1e-3 && o.top > s.top + 1e-3) { buried = true; break; }   // (a block standing on it covers it too)
                 if (buried) continue;
                 bool dup = false;
                 for (double f : floors) if (std::fabs(f - s.top) < 0.03) dup = true;
