@@ -1981,6 +1981,27 @@ static void npcPaths() {
         CHECK(total / 300 < 8, "the most NPCs a map can have think and move in well under a frame");
     }
 }
+static void armFreedom() {
+    std::printf("armFreedom\n");
+    Design d = loadPreset("boltaction");
+    AnimKey k1; k1.t = 0.6; k1.firing = d.pose.firing; k1.support = d.pose.support;
+    k1.support.on = false; k1.support.free = true; k1.support.pos[0] = -120; k1.support.pos[1] = -470; k1.support.pos[2] = -170; k1.support.twist = 30;
+    k1.firing.elbow = 40; k1.firing.dz = 6;
+    AnimKey k2 = k1; k2.t = 1.3; k2.support = d.pose.support;
+    d.anims["reload"].keys = {k1, k2};
+    Design r;
+    CHECK(designFromJson(designToJson(d, true), r), "a gun with placed hands loads");
+    const AnimKey& rk = r.anims["reload"].keys[0];
+    CHECK(rk.support.free && !rk.support.on && rk.support.pos[1] == -470 && rk.support.twist == 30, "a hand placed off the gun keeps its place and roll");
+    CHECK(rk.firing.elbow == 40 && rk.firing.dz == 6 && rk.firing.on, "the elbow's swing and the hand's lift are kept");
+    AnimHands h = animAt(r, r.anims["reload"], 0.3);
+    CHECK(h.uS > 0 && h.uS < 1 && h.toS.free, "on its way off the gun, the support hand is between the gun and its place");
+    CHECK(h.firing.elbow > 0 && h.firing.elbow < 40, "the elbow swings smoothly toward its key");
+    // older blueprints: no new fields, nothing changes
+    Design old = loadPreset("boltaction"), o2;
+    designFromJson(designToJson(old, true), o2);
+    CHECK(o2.pose.firing.elbow == 0 && o2.pose.firing.twist == 0 && o2.pose.firing.dz == 0 && !o2.pose.support.free, "older poses load unchanged");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -2060,6 +2081,7 @@ int main() {
     mapsCarryNpcs();
     npcsAlive();
     npcPaths();
+    armFreedom();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

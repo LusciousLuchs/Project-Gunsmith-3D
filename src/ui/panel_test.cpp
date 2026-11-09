@@ -113,6 +113,27 @@ static void reliabilitySection() {
 static bool detail(StatsDetail d) { return (int)CFG.stats >= (int)d; }
 
 static void muted(const char* t) { ImGui::PushTextWrapPos(0); ImGui::TextDisabled("%s", t); ImGui::PopTextWrapPos(); }
+// The arm's freedom: the elbow's swing, the wrist's roll, the hand lifted off the gun, or placed anywhere off it.
+// Returns true when something was let go of (so it goes on the undo list).
+static bool armFreedom(HandHold& h, const char* which) {
+    if (std::string(which) == "butt") return false;
+    bool done = false;
+    auto fin = [&]() { if (ImGui::IsItemDeactivatedAfterEdit()) done = true; };
+    if (!h.on) {
+        if (pCheck("Placed (not hanging)", h.free, "Off the gun, the hand hangs at the side. Placed: it's wherever you put it\n(a pouch, a vest, holding a magazine up). Or drag the blue dot at the hand.")) done = true;
+        if (h.free) {
+            pNumU("Forward", h.pos[0], 5, Q::Length, -1, "The wrist, from the aiming eye: + forward.", SIGNED); fin();
+            pNumU("Up", h.pos[1], 5, Q::Length, -1, "+ up (it's usually below the eye: negative).", SIGNED); fin();
+            pNumU("Right", h.pos[2], 5, Q::Length, -1, "+ to the right.", SIGNED); fin();
+        }
+    }
+    pNum("Elbow", h.elbow, 1, "%.0f\xc2\xb0", "Swings the elbow round (+ up and out, - down and in). Or drag the blue dot at the elbow."); fin();
+    h.elbow = std::clamp(h.elbow, -180.0, 180.0);
+    pNum("Wrist roll", h.twist, 1, "%.0f\xc2\xb0", h.on ? "Rolls the hand about the grip (to come over the top, or under)." : "Rolls the hand about the forearm."); fin();
+    h.twist = std::clamp(h.twist, -180.0, 180.0);
+    if (h.on) { pNumU("Off the gun's side", h.dz, 1, Q::Length, -1, "Lifts the hand away from the side of the gun (a loose hold, fingers off a part).", SIGNED); fin(); }
+    return done;
+}
 static void handControls(const char* title, HandHold& h, const char* which, const char* tip) {
     ImGui::PushID(which);
     bool on = h.on;
@@ -128,6 +149,10 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
         commit();
     }
     if (tip && tipHover()) ImGui::SetTooltip("%s", tip);
+    if (std::string(which) != "butt" && ImGui::TreeNode(h.on ? "Arm and wrist" : "Where the hand is")) {
+        if (armFreedom(h, which)) commit();
+        ImGui::TreePop();
+    }
     if (h.on) {
         if (std::string(which) != "butt") {
             bool firing = std::string(which) == "firing";
@@ -267,9 +292,14 @@ static void animSection() {
         prop("Magazine", "What happens to the magazine as the hands reach this key.\nDrop: it's let go and falls out (or slides out sideways).\nFresh one in: a full magazine goes into the well.");
         if (ImGui::Combo("##aev", &ev, "Nothing\0Drop it\0Fresh one in\0")) { kk.event = ev == 1 ? "dropmag" : ev == 2 ? "freshmag" : ""; edit = true; }
         tutAnchor("anim:mag");
+        if (ImGui::TreeNode("Arms at this key")) {   // elbows, wrists, hands placed off the gun
+            ImGui::TextDisabled("Firing hand"); ImGui::PushID("fk"); edit |= armFreedom(kk.firing, "firing"); ImGui::PopID();
+            ImGui::TextDisabled("Support hand"); ImGui::PushID("sk"); edit |= armFreedom(kk.support, "support"); ImGui::PopID();
+            ImGui::TreePop();
+        }
         // the gun itself at this key: lifted to look at, tipped to see into the port
         if (ImGui::TreeNodeEx("The gun at this key", ImGuiTreeNodeFlags_DefaultOpen)) {
-            muted("Moves the whole gun from where the hold has it, about the firing hand. Both hands go with it.");
+            muted("Moves the whole gun from where the hold has it, about the firing hand. Hands on it go with it. Or drag the pink Gun dot to move it, and the Aim dot to point it (Shift: roll).");
             bool g = false;
             g |= pNumU("Forward", kk.gun[0], 1, Q::Length, -1, "+ away from you.", SIGNED);
             g |= pNumU("Up", kk.gun[1], 1, Q::Length, -1, "+ up.", SIGNED);

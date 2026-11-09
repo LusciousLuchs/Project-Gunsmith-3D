@@ -42,7 +42,7 @@ double curve(double t, const std::vector<Pt>& P, size_t i, double (*get)(const H
     double u2 = u * u, u3 = u2 * u;
     return (2 * u3 - 3 * u2 + 1) * p0 + (u3 - 2 * u2 + u) * m0 + (-2 * u3 + 3 * u2) * p1 + (u3 - u2) * m1;
 }
-HandHold handAt(const HandHold& base, const std::vector<AnimKey>& keys, bool firing, double t, double end) {
+HandHold handAt(const HandHold& base, const std::vector<AnimKey>& keys, bool firing, double t, double end, HandHold* from, HandHold* to, double* uOut) {
     // the points this hand passes: the hold, every key where the hand is on the gun, the hold again
     std::vector<HandHold> holds;
     std::vector<double> times;
@@ -52,7 +52,28 @@ HandHold handAt(const HandHold& base, const std::vector<AnimKey>& keys, bool fir
     size_t i = 0;
     while (i + 2 < holds.size() && t >= times[i + 1]) i++;
     const HandHold &a = holds[i], &b = holds[i + 1];
-    if (!a.on || !b.on) return t - times[i] < times[i + 1] - t ? a : b;   // off the gun: it lets go or takes hold at the nearer key
+    double ue = smooth(std::clamp((t - times[i]) / std::max(1e-6, times[i + 1] - times[i]), 0.0, 1.0));
+    if (!a.on && !b.on && a.free && b.free) {   // placed off the gun at both keys: a curve through those places
+        size_t lo = i, hi = i + 1;
+        while (lo > 0 && !holds[lo - 1].on && holds[lo - 1].free) lo--;
+        while (hi + 1 < holds.size() && !holds[hi + 1].on && holds[hi + 1].free) hi++;
+        std::vector<Pt> P;
+        for (size_t k = lo; k <= hi; k++) P.push_back({times[k], &holds[k]});
+        size_t j = i - lo;
+        HandHold out = ue < 0.5 ? a : b;
+        out.pos[0] = curve(t, P, j, [](const HandHold& h) { return h.pos[0]; });
+        out.pos[1] = curve(t, P, j, [](const HandHold& h) { return h.pos[1]; });
+        out.pos[2] = curve(t, P, j, [](const HandHold& h) { return h.pos[2]; });
+        out.elbow = a.elbow + (b.elbow - a.elbow) * ue;
+        out.twist = a.twist + (b.twist - a.twist) * ue;
+        return out;
+    }
+    if (!a.on || !b.on) {   // off the gun: it lets go or takes hold at the nearer key (the drawing moves it between)
+        if (from) *from = a;
+        if (to) *to = b;
+        if (uOut) *uOut = ue;
+        return t - times[i] < times[i + 1] - t ? a : b;
+    }
     // the run of keys around this one where the hand stays on the gun: the curve goes through them
     size_t lo = i, hi = i + 1;
     while (lo > 0 && holds[lo - 1].on) lo--;
@@ -65,6 +86,9 @@ HandHold handAt(const HandHold& base, const std::vector<AnimKey>& keys, bool fir
     out.at.y = curve(t, P, j, [](const HandHold& h) { return h.at.y; });
     double u = smooth(std::clamp((t - times[i]) / std::max(1e-6, times[i + 1] - times[i]), 0.0, 1.0));
     out.angle = a.angle + std::remainder(b.angle - a.angle, 360.0) * u;
+    out.elbow = a.elbow + (b.elbow - a.elbow) * u;
+    out.twist = a.twist + (b.twist - a.twist) * u;
+    out.dz = a.dz + (b.dz - a.dz) * u;
     if (a.digitsSet || b.digitsSet) {   // the fingers: from one key's to the next's
         DigitPose da[DIGIT_COUNT], db[DIGIT_COUNT];
         digitsOf(a, firing ? "firing" : "support", da);
@@ -100,8 +124,8 @@ AnimHands animAt(const Design& d, const Animation& a, double t) {
     if (a.keys.empty()) return o;
     double end = animLength(a);
     t = std::clamp(t, 0.0, end);
-    o.firing = handAt(d.pose.firing, a.keys, true, t, end);
-    o.support = handAt(d.pose.support, a.keys, false, t, end);
+    o.firing = handAt(d.pose.firing, a.keys, true, t, end, &o.fromF, &o.toF, &o.uF);
+    o.support = handAt(d.pose.support, a.keys, false, t, end, &o.fromS, &o.toS, &o.uS);
     for (auto& k : a.keys) if (k.t <= t + 1e-9) { o.gripF = k.gripF; o.gripS = k.gripS; }   // the latest key so far says
     if (t > a.keys.back().t + 1e-9) o.gripF = o.gripS = false;                               // (going back to the hold: let go)
     // the turn of a gripped part (a bolt): eased from key to key while both keys turn it

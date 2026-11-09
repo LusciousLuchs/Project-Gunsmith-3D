@@ -1002,7 +1002,12 @@ std::string designToJson(const Design& d, bool pretty) {
     {
         json P = json::object();
         auto hand = [](const HandHold& h) {
-            json o{{"part", h.part}, {"at", v2j(h.at)}, {"angle", h.angle}};
+            json o;
+            if (!h.on && h.free) o = json{{"free", {h.pos[0], h.pos[1], h.pos[2]}}};   // placed off the gun
+            else o = json{{"part", h.part}, {"at", v2j(h.at)}, {"angle", h.angle}};
+            if (h.elbow != 0) o["elbow"] = h.elbow;
+            if (h.twist != 0) o["twist"] = h.twist;
+            if (h.dz != 0 && h.on) o["dz"] = h.dz;
             if (h.digitsSet) {
                 json a = json::array();
                 for (auto& d : h.digits) a.push_back({d.bend[0], d.bend[1], d.bend[2], d.spread, d.oppose});
@@ -1010,8 +1015,8 @@ std::string designToJson(const Design& d, bool pretty) {
             }
             return o;
         };
-        if (d.pose.firing.on) P["firing"] = hand(d.pose.firing);
-        if (d.pose.support.on) P["support"] = hand(d.pose.support);
+        if (d.pose.firing.on || d.pose.firing.free) P["firing"] = hand(d.pose.firing);
+        if (d.pose.support.on || d.pose.support.free) P["support"] = hand(d.pose.support);
         if (d.pose.butt.on) P["butt"] = hand(d.pose.butt);
         for (int h = 0; h < HOLD_COUNT; h++) {
             const BodyHold& b = d.pose.hold[h];
@@ -1031,8 +1036,8 @@ std::string designToJson(const Design& d, bool pretty) {
             json ks = json::array();
             for (auto& k : a.keys) {
                 json jk{{"t", k.t}};
-                if (k.firing.on) jk["firing"] = hand(k.firing);
-                if (k.support.on) jk["support"] = hand(k.support);
+                if (k.firing.on || k.firing.free) jk["firing"] = hand(k.firing);
+                if (k.support.on || k.support.free) jk["support"] = hand(k.support);
                 if (k.gripF) jk["gripF"] = true;
                 if (k.gripS) jk["gripS"] = true;
                 if (!k.event.empty()) jk["event"] = k.event;
@@ -1293,7 +1298,14 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         if (r.cartImpulse) applyCartridge(r);
     }
     auto readHand = [&](const json& jh, HandHold& h, const char* which) {
-        if (!jh.is_object() || !jh.contains("at") || !jh["at"].is_array()) return;
+        if (!jh.is_object()) return;
+        h.elbow = opt<double>(jh, "elbow", 0.0); h.twist = opt<double>(jh, "twist", 0.0); h.dz = opt<double>(jh, "dz", 0.0);
+        if (jh.contains("free") && jh["free"].is_array() && jh["free"].size() == 3) {   // placed off the gun
+            h.on = false; h.free = true;
+            for (int q = 0; q < 3; q++) h.pos[q] = jh["free"][q].get<double>();
+            return;
+        }
+        if (!jh.contains("at") || !jh["at"].is_array()) return;
         h.on = true; h.part = opt<std::string>(jh, "part", ""); h.at = j2v(jh["at"]);
         h.angle = opt<double>(jh, "angle", defaultHandAngle(which));
         if (jh.contains("digits") && jh["digits"].is_array() && jh["digits"].size() == DIGIT_COUNT) {

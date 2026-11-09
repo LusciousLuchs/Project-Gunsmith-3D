@@ -13,19 +13,29 @@
 
 Ray mouseRay();  // (view.cpp)
 
+// the hands as shown, and (an animation taking one onto or off the gun) the two places it's moving between
+struct ViewHands { Pose P; HandHold from[2], to[2]; double u[2] = {-1, -1}; };
+
 // The pose as shown: the hold's hands, or an animation's where it has got to (playing on the gun, or on the
 // timeline being edited). The butt and the body always stay as posed.
-Pose viewPose() {
-    Pose P = A.design.pose;
-    if (A.S && sim::animPlaying(*A.S)) {
-        AnimHands h = sim::animHandsNow(*A.S);
-        P.firing = h.firing; P.support = h.support;
-    } else if (A.posing && A.animEdit) {
+ViewHands viewHands() {
+    ViewHands V;
+    V.P = A.design.pose;
+    AnimHands h;
+    bool anim = false;
+    if (A.S && sim::animPlaying(*A.S)) { h = sim::animHandsNow(*A.S); anim = true; }
+    else if (A.posing && A.animEdit) {
         auto it = A.design.anims.find(A.animSlot);
-        if (it != A.design.anims.end()) { AnimHands h = animAt(A.design, it->second, A.animT); P.firing = h.firing; P.support = h.support; }
+        if (it != A.design.anims.end()) { h = animAt(A.design, it->second, A.animT); anim = true; }
     }
-    return P;
+    if (anim) {
+        V.P.firing = h.firing; V.P.support = h.support;
+        V.from[0] = h.fromF; V.to[0] = h.toF; V.u[0] = h.uF;
+        V.from[1] = h.fromS; V.to[1] = h.toS; V.u[1] = h.uS;
+    }
+    return V;
 }
+Pose viewPose() { return viewHands().P; }
 // the gun as an animation moves it from the hold (playing on the gun, or on the timeline being edited); false: not moved
 bool viewGun(double g[6]) {
     for (int q = 0; q < 6; q++) g[q] = 0;
@@ -51,6 +61,13 @@ int animKeyAt(const Animation& a, double t) {   // the key at this moment on the
 }
 // The hand that dragging edits: the hold's, or (editing an animation) the key's at the timeline's moment, made there
 // from where the hands are then if there's no key yet. 0 firing, 1 support, 2 butt.
+AnimKey* editKey() {
+    if (!A.animEdit) return nullptr;
+    Animation& a = A.design.anims[A.animSlot];
+    int k = animKeyAt(a, A.animT);
+    if (k < 0) { editHand(0); k = animKeyAt(a, A.animT); }
+    return k >= 0 ? &a.keys[k] : nullptr;
+}
 HandHold* editHand(int which) {
     auto& P = A.design.pose;
     if (which == 2 || !A.animEdit) return which == 0 ? &P.firing : which == 1 ? &P.support : &P.butt;
@@ -102,19 +119,34 @@ V2 wristOff(double angleDeg) {
     return score(n1) >= score(n2) ? n1 : n2;
 }
 
+// the arms' lengths (mm): the mannequin's, or the player's character's
+double gUpperArm = UPPER_ARM, gForearm = FOREARM;
 struct Arm { Vector3 s, e, w; double shortBy = 0; };
-Arm reach(Vector3 s, Vector3 target, Vector3 pole) {
+// Two bones from the shoulder to the wrist. The elbow points along `pole`, swung round the shoulder-wrist line by
+// `elbowDeg` (+ up). An arm that's short first pushes its shoulder forward toward the hand (up to 70 mm), as people do.
+Arm reach(Vector3 s, Vector3 target, Vector3 pole, double elbowDeg = 0, Vector3 up = {0, 1, 0}) {
     Arm A_{s, s, target, 0};
-    float L1 = (float)UPPER_ARM * U, L2 = (float)FOREARM * U;
+    float L1 = (float)gUpperArm * U, L2 = (float)gForearm * U;
     Vector3 d = Vector3Subtract(target, s);
     float dist = Vector3Length(d);
     if (dist < 1e-4f) return A_;
+    if (dist > L1 + L2 - 1e-3f) {   // the shoulder comes forward
+        float push = std::min(dist - (L1 + L2) + 1e-3f, 70.f * U);
+        s = Vector3Add(s, Vector3Scale(d, push / dist));
+        A_.s = s;
+        d = Vector3Subtract(target, s);
+        dist = Vector3Length(d);
+    }
     Vector3 dir = Vector3Scale(d, 1 / dist);
     if (dist > L1 + L2 - 1e-3f) { A_.shortBy = (dist - (L1 + L2)) / U; dist = L1 + L2 - 1e-3f; A_.w = Vector3Add(s, Vector3Scale(dir, dist)); }
     float a = (L1 * L1 - L2 * L2 + dist * dist) / (2 * dist), h = std::sqrt(std::max(0.f, L1 * L1 - a * a));
     Vector3 p = Vector3Subtract(pole, Vector3Scale(dir, Vector3DotProduct(pole, dir)));
     if (Vector3Length(p) < 1e-5f) p = {0, -1, 0};
     p = Vector3Normalize(p);
+    if (elbowDeg != 0) {   // swung round the shoulder-wrist line, + toward up
+        float sg = Vector3DotProduct(Vector3CrossProduct(dir, p), up) >= 0 ? 1.f : -1.f;
+        p = Vector3RotateByAxisAngle(p, dir, sg * (float)(elbowDeg * DEG2RAD));
+    }
     A_.e = Vector3Add(Vector3Add(s, Vector3Scale(dir, a)), Vector3Scale(p, h));
     return A_;
 }
@@ -138,24 +170,41 @@ HandFrame handFrame(const HandHold& h, int side) {
     // the index finger's end of the grip line: the higher one (or the one toward the muzzle)
     V2 toPinky = (-(-g.y) + 0.3 * (-g.x)) >= (-g.y + 0.3 * g.x) ? g : V2{-g.x, -g.y};
     f.on = true;
-    f.o = {h.at.x + n.x * 12, h.at.y + n.y * 12, zc + side * (half + 12)};
+    f.o = {h.at.x + n.x * 12, h.at.y + n.y * 12, zc + side * (half + 12 + h.dz)};   // (dz: lifted off the gun's side)
     f.X = {-n.x, -n.y, 0}; f.Y = {0, 0, (double)-side}; f.Z = {toPinky.x, toPinky.y, 0};
+    if (h.twist != 0) {   // rolled about the grip line (Z)
+        double c = std::cos(h.twist * DEG2RAD), s = std::sin(h.twist * DEG2RAD);
+        HV X = f.X, Y = f.Y;
+        f.X = {X.x * c + Y.x * s, X.y * c + Y.y * s, X.z * c + Y.z * s};
+        f.Y = {-X.x * s + Y.x * c, -X.y * s + Y.y * c, -X.z * s + Y.z * c};
+    }
     return f;
 }
-Vector3 handPt(const HandFrame& f, HV p) {
-    return gunPt({f.o.x + f.X.x * p.x + f.Y.x * p.y + f.Z.x * p.z, f.o.y + f.X.y * p.x + f.Y.y * p.y + f.Z.y * p.z}, f.o.z + f.X.z * p.x + f.Y.z * p.y + f.Z.z * p.z);
+// a hand's frame in the world: a point in hand space (mm) is o + x p.x + y p.y + z p.z
+struct WF { Vector3 o, x, y, z; };
+Vector3 handPt(const WF& f, HV p) {
+    return Vector3Add(f.o, Vector3Add(Vector3Scale(f.x, (float)p.x), Vector3Add(Vector3Scale(f.y, (float)p.y), Vector3Scale(f.z, (float)p.z))));
 }
-struct HandGeo { bool on = false; Vector3 c, wrist; HandFrame f; std::vector<HandBone> bones; };
-HandGeo handGeo(const HandHold& h, int side) {
-    HandGeo g;
-    if (!h.on) return g;
-    g.f = handFrame(h, side);
-    g.on = true;
+WF worldFrame(const HandFrame& f) {
+    auto G = [](HV p) { return gunPt({p.x, p.y}, p.z); };
+    Vector3 o = G(f.o);
+    return {o, Vector3Subtract(G({f.o.x + f.X.x, f.o.y + f.X.y, f.o.z + f.X.z}), o), Vector3Subtract(G({f.o.x + f.Y.x, f.o.y + f.Y.y, f.o.z + f.Y.z}), o),
+            Vector3Subtract(G({f.o.x + f.Z.x, f.o.y + f.Z.y, f.o.z + f.Z.z}), o)};
+}
+struct HandGeo { bool on = false; Vector3 c, wrist; WF f; std::vector<HandBone> bones; };
+void finishGeo(HandGeo& g, const HandHold& h, int side) {
     DigitPose dg[DIGIT_COUNT];
     digitsOf(h, side > 0 ? "firing" : "support", dg);
     g.bones = handBones(dg);
     g.c = handPt(g.f, {0, 0, 0});
     g.wrist = handPt(g.f, handWrist());
+}
+HandGeo handGeo(const HandHold& h, int side) {   // a hand on the gun
+    HandGeo g;
+    if (!h.on) return g;
+    g.f = worldFrame(handFrame(h, side));
+    g.on = true;
+    finishGeo(g, h, side);
     return g;
 }
 void capsule(Vector3 a, Vector3 b, float r, Color c) { drawCyl(a, b, r, c); drawSphereLit(a, r, c); drawSphereLit(b, r, c); }
@@ -279,17 +328,6 @@ void poseView() {
     A.yaw = 0.95f; A.pitch = 0.22f;
 }
 
-void poseFocusHand(int hand) {
-    const Pose P = viewPose();
-    HandGeo g = handGeo(hand == 0 ? P.firing : P.support, hand == 0 ? 1 : -1);
-    if (!g.on) return;
-    A.poseHand = hand;
-    A.target = g.c;
-    A.dist = 420 * U;
-    A.ortho = false;
-    A.yaw = hand == 0 ? 0.6f : -2.4f;  // from the side the hand is on
-    A.pitch = 0.25f;
-}
 void enterPose() {
     A.posing = true;
     A.running = false;
@@ -298,22 +336,96 @@ void enterPose() {
 }
 void leavePose() { A.posing = false; A.poseDrag = -1; fitView(); }
 
-static Arm armTo(const Frame& F, const HandGeo& g, bool right) {
-    Vector3 s = right ? bp(F, -140, -215, 153) : bp(F, -140, -215, -217);
-    Vector3 pole = Vector3Add(Vector3Scale(F.u, -1), Vector3Add(Vector3Scale(F.r, right ? 0.7f : -0.7f), Vector3Scale(F.f, -0.3f)));
-    if (!g.on) {  // a free arm hangs at the side
-        Arm a{s, bp(F, -150, -500, right ? 175 : -239), bp(F, -110, -770, right ? 175 : -239), 0};
-        return a;
+// The shoulders (body frame mm): the mannequin's, or the character's
+double gShoulder[2][3] = {{-140, -215, 153}, {-140, -215, -217}};
+static Vector3 shoulderPt(const Frame& F, bool right) { const double* s = gShoulder[right ? 0 : 1]; return bp(F, s[0], s[1], s[2]); }
+static Vector3 elbowPole(const Frame& F, bool right) {
+    return Vector3Add(Vector3Scale(F.u, -1), Vector3Add(Vector3Scale(F.r, right ? 0.7f : -0.7f), Vector3Scale(F.f, -0.3f)));
+}
+// where a hand off the gun goes: placed, or hanging at the side
+static Vector3 offGunWrist(const Frame& F, const HandHold& h, bool right) {
+    if (h.free) return bp(F, h.pos[0], h.pos[1], h.pos[2]);
+    const double* s = gShoulder[right ? 0 : 1];
+    return bp(F, s[0] + 30, s[1] - 555, s[2] + (right ? 22 : -22));
+}
+// which way round a hand is built (its frame's handedness), so a hand off the gun matches the same hand on it
+static float handedness(int side) {
+    const HandHold& h = side > 0 ? A.design.pose.firing : A.design.pose.support;
+    if (h.on) { WF f = worldFrame(handFrame(h, side)); return Vector3DotProduct(f.x, Vector3CrossProduct(f.y, f.z)) >= 0 ? 1.f : -1.f; }
+    return (float)-side;
+}
+// a hand off the gun: its fingers carry on from the forearm, the palm turned toward the body, rolled by its twist
+static HandGeo freeGeo(const Frame& F, const HandHold& h, int side, const Arm& a) {
+    HandGeo g;
+    g.on = true;
+    Vector3 X = Vector3Normalize(Vector3Subtract(a.w, a.e));
+    Vector3 Y0 = side > 0 ? Vector3Negate(F.r) : F.r;
+    Vector3 Y = Vector3Subtract(Y0, Vector3Scale(X, Vector3DotProduct(X, Y0)));
+    if (Vector3Length(Y) < 1e-4f) Y = F.f;
+    Y = Vector3Normalize(Y);
+    if (h.twist != 0) Y = Vector3RotateByAxisAngle(Y, X, (float)(h.twist * DEG2RAD));
+    Vector3 Z = Vector3CrossProduct(X, Y);
+    if (handedness(side) < 0) Z = Vector3Negate(Z);
+    g.f = {{0, 0, 0}, Vector3Scale(X, U), Vector3Scale(Y, U), Vector3Scale(Z, U)};
+    HV hw = handWrist();
+    g.f.o = Vector3Subtract(a.w, Vector3Add(Vector3Scale(g.f.x, (float)hw.x), Vector3Add(Vector3Scale(g.f.y, (float)hw.y), Vector3Scale(g.f.z, (float)hw.z))));
+    finishGeo(g, h, side);
+    return g;
+}
+struct Limb { Arm arm; HandGeo g; };
+static Limb limbFor(const Frame& F, const HandHold& h, int side) {
+    bool right = side > 0;
+    Limb L;
+    if (h.on) {
+        L.g = handGeo(h, side);
+        L.arm = reach(shoulderPt(F, right), L.g.wrist, elbowPole(F, right), h.elbow, F.u);
+    } else {
+        L.arm = reach(shoulderPt(F, right), offGunWrist(F, h, right), elbowPole(F, right), h.elbow, F.u);
+        L.g = freeGeo(F, h, side, L.arm);
     }
-    return reach(s, g.wrist, pole);
+    return L;
+}
+// a side's arm as shown: where its hand is, or (an animation taking it onto or off the gun) on its way between two
+static Limb sideLimb(const Frame& F, const ViewHands& V, int k) {
+    int side = k == 0 ? 1 : -1;
+    const HandHold& h = k == 0 ? V.P.firing : V.P.support;
+    if (V.u[k] < 0) return limbFor(F, h, side);
+    Limb a = limbFor(F, V.from[k], side), b = limbFor(F, V.to[k], side);
+    float u = (float)V.u[k];
+    Limb L = u < 0.5f ? a : b;   // (the fingers: the nearer key's)
+    auto lerp3 = [&](Vector3 p, Vector3 q) { return Vector3Lerp(p, q, u); };
+    Vector3 wrist = lerp3(a.g.wrist, b.g.wrist);
+    Vector3 X = Vector3Normalize(lerp3(a.g.f.x, b.g.f.x)), Y = lerp3(a.g.f.y, b.g.f.y);
+    Y = Vector3Normalize(Vector3Subtract(Y, Vector3Scale(X, Vector3DotProduct(X, Y))));
+    Vector3 Z = Vector3CrossProduct(X, Y);
+    if (Vector3DotProduct(Z, lerp3(a.g.f.z, b.g.f.z)) < 0) Z = Vector3Negate(Z);
+    L.g.f = {{0, 0, 0}, Vector3Scale(X, U), Vector3Scale(Y, U), Vector3Scale(Z, U)};
+    HV hw = handWrist();
+    L.g.f.o = Vector3Subtract(wrist, Vector3Add(Vector3Scale(L.g.f.x, (float)hw.x), Vector3Add(Vector3Scale(L.g.f.y, (float)hw.y), Vector3Scale(L.g.f.z, (float)hw.z))));
+    L.g.c = handPt(L.g.f, {0, 0, 0}); L.g.wrist = wrist;
+    double elbow = V.from[k].elbow + (V.to[k].elbow - V.from[k].elbow) * u;
+    L.arm = reach(shoulderPt(F, side > 0), wrist, elbowPole(F, side > 0), elbow, F.u);
+    return L;
+}
+
+void poseFocusHand(int hand) {
+    HandGeo g = sideLimb(bodyFrame(), viewHands(), hand == 0 ? 0 : 1).g;
+    if (!g.on) return;
+    A.poseHand = hand;
+    A.target = g.c;
+    A.dist = 420 * U;
+    A.ortho = false;
+    A.yaw = hand == 0 ? 0.6f : -2.4f;  // from the side the hand is on
+    A.pitch = 0.25f;
 }
 
 PoseReport poseReport() {
     PoseReport R;
     Frame F = bodyFrame();
     const Pose P = viewPose();
-    R.rightShort = armTo(F, handGeo(P.firing, 1), true).shortBy;
-    R.leftShort = armTo(F, handGeo(P.support, -1), false).shortBy;
+    ViewHands V = viewHands();
+    R.rightShort = sideLimb(F, V, 0).arm.shortBy;
+    R.leftShort = sideLimb(F, V, 1).arm.shortBy;
     if (P.butt.on) {
         Vector3 pocket = pocketPt(F), b = gunPt(P.butt.at, partZ(P.butt.part));
         R.buttOff = Vector3Distance(pocket, b) / U;
@@ -368,10 +480,11 @@ void drawPoseBody() {
         DrawLine3D(e, Vector3Add(e, Vector3Scale(d, 6000 * U)), Color{255, 80, 70, 255});
     }
     // arms and hands
+    ViewHands VH = viewHands();
     for (int side = 0; side < 2; side++) {
-        bool right = side == 0;
-        HandGeo g = handGeo(right ? P.firing : P.support, right ? 1 : -1);
-        Arm a = armTo(F, g, right);
+        Limb LB = sideLimb(F, VH, side);
+        HandGeo& g = LB.g;
+        Arm& a = LB.arm;
         bool strain = a.shortBy > 0.5;
         drawSphereLit(a.s, 54 * U, strain ? STRAIN : SHIRT);   // the shoulder
         limb(SH.upper, a.s, a.e, strain ? STRAIN : SKIN);
@@ -401,8 +514,25 @@ void drawPoseBody() {
     }
 }
 
+// the gun's own handles in an animation: its middle (move it) and its muzzle (aim it)
+static Vector3 gunMidWorld() {
+    double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (auto& b : A.design.bodies) if (!b.magazine) for (auto& q : b.pts) { x0 = std::min(x0, q.x); x1 = std::max(x1, q.x); y0 = std::min(y0, q.y); y1 = std::max(y1, q.y); }
+    if (x0 > x1) return gunPt({0, 0}, 0);
+    return gunPt({(x0 + x1) / 2, (y0 + y1) / 2 - 40}, 0);
+}
+static Vector3 muzzleWorld() {
+    const auto& br = A.design.breech;
+    if (br.on && br.hasMuzzle) return gunPt(br.muzzle, 0);
+    double x1 = -1e9, y = 0;
+    for (auto& b : A.design.bodies) for (auto& q : b.pts) if (q.x > x1) { x1 = q.x; y = q.y; }
+    return gunPt({x1, y}, 0);
+}
+
 // ---------------------------------------------------------------- handles
 namespace {
+Vector3 dragN, dragP0;          // a free drag: the plane it moves in (facing the camera at the press), and where it began
+double dragStart[6];            // ...and the gun's move at the press
 struct PH { Vector2 s; int id; };  // 0/1 firing middle/end, 2/3 support, 4/5 butt, 6 the head
 std::vector<PH> handles;
 }
@@ -433,7 +563,7 @@ void drawPoseOverlay() {
     }
     // the picked hand's fingertips: drag one and it follows the mouse (Shift: just curl it)
     if (A.poseHand >= 0) {
-        HandGeo g = handGeo(A.poseHand == 0 ? P.firing : P.support, A.poseHand == 0 ? 1 : -1);
+        HandGeo g = sideLimb(bodyFrame(), viewHands(), A.poseHand == 0 ? 0 : 1).g;
         if (g.on)
             for (auto& b : g.bones)
                 if (b.digit >= 0 && b.seg == 2) {
@@ -447,6 +577,26 @@ void drawPoseOverlay() {
                 }
     }
     Frame F = bodyFrame();
+    {   // the elbows (drag one to swing it round), and hands off the gun (drag one to place it anywhere: a pouch, the
+        // magazine on a vest, the charging handle's far side)
+        ViewHands VH = viewHands();
+        const Color EL{120, 190, 255, 255};
+        for (int k = 0; k < 2; k++) {
+            const HandHold& h = k == 0 ? VH.P.firing : VH.P.support;
+            Limb L = sideLimb(F, VH, k);
+            bool hot = A.posePicked == 8 + k || A.poseDrag == 8 + k;
+            dot(toScreen(L.arm.e), 8 + k, EL, hot ? "Elbow: drag to swing it round" : nullptr);
+            if (!h.on) {
+                bool hh = A.posePicked == 10 + k || A.poseDrag == 10 + k;
+                dot(toScreen(L.g.wrist), 10 + k, EL, hh ? "Drag to place the hand anywhere" : (k == 0 ? "Firing hand (off the gun)" : "Support hand (off the gun)"));
+            }
+        }
+    }
+    if (A.animEdit) {   // the gun itself at this moment of the animation: move it, aim it
+        const Color GC{255, 140, 210, 255};
+        dot(toScreen(gunMidWorld()), 12, GC, A.posePicked == 12 || A.poseDrag == 12 ? "Gun: drag to move it" : "Gun");
+        dot(toScreen(muzzleWorld()), 13, GC, A.posePicked == 13 || A.poseDrag == 13 ? "Aim: drag to point the gun (Shift: roll it)" : "Aim");
+    }
     dot(toScreen(bp(F, -90, 140, -32)), 6, Color{232, 161, 58, 255}, "Drag to move the body");
     if (P.butt.on) dot(toScreen(pocketPt(F)), 7, Color{232, 161, 58, 255}, "Shoulder");
     {   // name the line of sight, a little way out past the eye
@@ -473,6 +623,13 @@ void poseInput(bool overUI) {
         // the first click picks a dot; press on it again to drag it, so picking never moves anything
         if (id < 0 || id != A.posePicked) { A.posePicked = id; return; }
         A.poseDrag = id; A.posePress = m; A.poseLive = false;
+        {   // a free drag starts: the plane facing the camera through what's dragged
+            Ray r = mouseRay();
+            dragN = Vector3Negate(r.direction);
+            if (id == 10 || id == 11) { ViewHands VH = viewHands(); dragP0 = sideLimb(bodyFrame(), VH, id - 10).g.wrist; }
+            if (id == 12) dragP0 = gunMidWorld();
+            if (id == 12 || id == 13) { double g[6]; viewGun(g); for (int q = 0; q < 6; q++) dragStart[q] = g[q]; }
+        }
         return;
     }
     if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { if (A.poseLive) commit(); A.poseDrag = -1; return; }
@@ -494,7 +651,7 @@ void poseInput(bool overUI) {
         }
         // the tip follows the mouse: along the mouse's line of sight, at the tip's present depth if it can reach that,
         // or else the nearest depth it can reach (so dragging over the palm brings the thumb onto the palm)
-        HandGeo g = handGeo(h, side);
+        HandGeo g = limbFor(bodyFrame(), h, side).g;
         if (!g.on) return;
         Vector3 o = handPt(g.f, {0, 0, 0});   // handPt is affine: origin plus three columns
         Vector3 cx = Vector3Subtract(handPt(g.f, {1, 0, 0}), o), cy = Vector3Subtract(handPt(g.f, {0, 1, 0}), o), cz = Vector3Subtract(handPt(g.f, {0, 0, 1}), o);
@@ -514,6 +671,61 @@ void poseInput(bool overUI) {
         if (t <= 0) return;
         Vector3 hp = Vector3Add(ro, Vector3Scale(rd, (float)t));
         reachDigit(h.digits, digit, {hp.x, hp.y, hp.z});
+        return;
+    }
+    if (A.poseDrag >= 8 && A.poseDrag <= 13) {
+        Ray rr = mouseRay();
+        auto onDragPlane = [&](Vector3& out) {
+            float den = Vector3DotProduct(rr.direction, dragN);
+            if (std::fabs(den) < 1e-6f) return false;
+            float t = Vector3DotProduct(Vector3Subtract(dragP0, rr.position), dragN) / den;
+            if (t < 0) return false;
+            out = Vector3Add(rr.position, Vector3Scale(rr.direction, t));
+            return true;
+        };
+        Frame F = bodyFrame();
+        if (A.poseDrag == 8 || A.poseDrag == 9) {   // swing the elbow round the shoulder-wrist line
+            int k = A.poseDrag - 8, side = k == 0 ? 1 : -1;
+            HandHold& h = *editHand(k);
+            Limb L = limbFor(F, h, side);
+            Vector3 s = L.arm.s, w = L.arm.w, dir = Vector3Normalize(Vector3Subtract(w, s));
+            Vector3 pole = elbowPole(F, side > 0);
+            Vector3 p0 = Vector3Normalize(Vector3Subtract(pole, Vector3Scale(dir, Vector3DotProduct(pole, dir))));
+            Vector3 c = Vector3Lerp(s, w, 0.5f);
+            float den = Vector3DotProduct(rr.direction, dir);
+            Vector3 q;
+            if (std::fabs(den) > 1e-4f) q = Vector3Add(rr.position, Vector3Scale(rr.direction, Vector3DotProduct(Vector3Subtract(c, rr.position), dir) / den));
+            else q = Vector3Add(rr.position, Vector3Scale(rr.direction, Vector3Distance(rr.position, c)));
+            Vector3 v = Vector3Subtract(q, c);
+            v = Vector3Subtract(v, Vector3Scale(dir, Vector3DotProduct(v, dir)));
+            if (Vector3Length(v) < 1e-5f) return;
+            v = Vector3Normalize(v);
+            double th = std::atan2(Vector3DotProduct(Vector3CrossProduct(p0, v), dir), Vector3DotProduct(p0, v)) * RAD2DEG;
+            float sg = Vector3DotProduct(Vector3CrossProduct(dir, p0), F.u) >= 0 ? 1.f : -1.f;
+            h.elbow = std::round(std::remainder(th * sg, 360.0));
+            return;
+        }
+        if (A.poseDrag == 10 || A.poseDrag == 11) {   // place the hand: off the gun, anywhere
+            HandHold& h = *editHand(A.poseDrag - 10);
+            Vector3 q;
+            if (!onDragPlane(q)) return;
+            Vector3 d = Vector3Scale(Vector3Subtract(q, F.o), 1 / U);
+            h.on = false; h.free = true;
+            h.pos[0] = std::round(Vector3DotProduct(d, F.f)); h.pos[1] = std::round(Vector3DotProduct(d, F.u)); h.pos[2] = std::round(Vector3DotProduct(d, F.r));
+            return;
+        }
+        AnimKey* k = editKey();
+        if (!k) return;
+        if (A.poseDrag == 12) {   // move the gun (its hands go with it)
+            Vector3 q;
+            if (!onDragPlane(q)) return;
+            Vector3 d = Vector3Scale(Vector3Subtract(q, dragP0), 1 / U);
+            k->gun[0] = std::round(dragStart[0] + d.x); k->gun[1] = std::round(dragStart[1] + d.y); k->gun[2] = std::round(dragStart[2] + d.z);
+            return;
+        }
+        Vector2 md = Vector2Subtract(GetMousePosition(), A.posePress);   // aim it: across turns, up and down raises; Shift rolls
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) k->gun[5] = std::round(dragStart[5] + md.x * 0.4);
+        else { k->gun[4] = std::round(dragStart[4] + md.x * 0.35); k->gun[3] = std::round(dragStart[3] - md.y * 0.35); }
         return;
     }
     Ray r = mouseRay();

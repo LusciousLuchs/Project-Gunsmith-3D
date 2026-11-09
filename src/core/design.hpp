@@ -292,6 +292,12 @@ struct HandHold {
     std::string part;
     V2 at;                 // the middle of the hand, or of the butt (design mm)
     double angle = 105;    // the line the fingers wrap round (or the butt pad's line), degrees: 0 toward the muzzle, 90 down
+    // more freedom (all 0 / off: as before)
+    double elbow = 0;      // degrees: the elbow swung round the line from shoulder to wrist (+ up and out)
+    double twist = 0;      // degrees: the hand rolled about the grip line (on the gun) or about the forearm (off it)
+    double dz = 0;         // mm: on the gun, lifted off its side (away from the gun)
+    bool free = false;     // off the gun (on = false) and placed somewhere: the wrist at `pos` (else it hangs at the side)
+    double pos[3] = {0, -500, 0};   // free: the wrist, body frame mm (forward, up, right of the aiming eye)
 };
 struct BodyHold {
     bool set = false;      // false: worked out from the gun (holdOf)
@@ -320,7 +326,12 @@ struct AnimKey {
     double gun[6] = {0, 0, 0, 0, 0, 0};
 };
 struct Animation { std::vector<AnimKey> keys; };   // kept in time order
-struct AnimHands { HandHold firing, support; bool gripF = false, gripS = false; double turn = -1; double gun[6] = {0, 0, 0, 0, 0, 0}; };
+struct AnimHands {
+    HandHold firing, support; bool gripF = false, gripS = false; double turn = -1; double gun[6] = {0, 0, 0, 0, 0, 0};
+    // a hand going onto or off the gun (or between two places off it): the hand above is the nearer key's (what the
+    // physics uses); for drawing, it moves from `from` toward `to` by `u` (-1: not moving between the two)
+    HandHold fromF, toF, fromS, toS; double uF = -1, uS = -1;
+};
 bool gunMoved(const double g[6]);
 const char* holdName(int h);
 const char* holdKey(int h);

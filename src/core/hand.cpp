@@ -108,10 +108,10 @@ std::vector<HandBone> handBones(const DigitPose digits[DIGIT_COUNT]) {
 
 void digitLimits(int digit, double lo[5], double hi[5]) {
     if (digit == DIGIT_THUMB) {   // spread, root, knuckle, tip, across the palm
-        const double l[5] = {-20, -20, -15, -25, 0}, h[5] = {70, 55, 70, 85, 100};
+        const double l[5] = {-30, -30, -25, -35, -10}, h[5] = {80, 65, 80, 90, 110};   // (a little past a real hand's: more room to pose)
         for (int i = 0; i < 5; i++) lo[i] = l[i], hi[i] = h[i];
     } else {
-        const double l[5] = {-25, -25, 0, -10, 0}, h[5] = {25, 95, 110, 90, 0};
+        const double l[5] = {-30, -35, -5, -20, 0}, h[5] = {30, 100, 115, 95, 0};
         for (int i = 0; i < 5; i++) lo[i] = l[i], hi[i] = h[i];
     }
 }
