@@ -2,6 +2,7 @@
 #include "hand.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/npcedit.hpp"
 #include "app/render.hpp"
 #include "app/reltest.hpp"
 #include "app/settings.hpp"
@@ -333,6 +334,9 @@ static void posePanel() {
     ImGui::PushFont(gFontBold, 18.0f); ImGui::TextUnformatted("Pose"); ImGui::PopFont();
     std::string held = heldWith(A.design);
     ImGui::TextDisabled("%s", held.empty() ? "Place the firing hand to hold it." : ("Held with " + held + (P.butt.on ? ", against the shoulder." : ".")).c_str());
+    if (playerCharacter()) {
+        if (pCheck("My character", CFG.poseCharacter, "On: your character (main menu > Your character) holds the gun, with its own arm lengths.\nOff: the plain mannequin.")) saveSettings();
+    } else muted("Make your own character on the main menu (Your character) and it holds the gun here instead of the mannequin.");
     ImGui::Dummy({0, 4 * CFG.uiScale});
     // which hold
     for (int h = 0; h < HOLD_COUNT; h++) {

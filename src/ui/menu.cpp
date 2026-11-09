@@ -193,7 +193,7 @@ void mainMenu() {
     ImGui::SetNextWindowSize({(float)GetScreenWidth(), (float)GetScreenHeight()});
     ImGui::SetNextWindowBgAlpha(0);
     ImGui::Begin("##menu", nullptr, PLAIN | ImGuiWindowFlags_NoBringToFrontOnFocus);
-    float x = 72 * S(), y = GetScreenHeight() * 0.28f;
+    float x = 72 * S(), y = GetScreenHeight() * 0.22f;   // (high enough that the whole list clears the version line)
     ImGui::SetCursorPos({x, y});
     ImGui::PushFont(gFontBold, 46.0f);
     ImGui::TextUnformatted("GUNSMITH3D");
@@ -207,6 +207,7 @@ void mainMenu() {
     menuItem("Career", false, "coming later");
     if (menuItem("Sandbox")) enterWorkshop(false);
     if (menuItem("Firing range")) A.showRangePicker = true;
+    if (menuItem("Your character", true, "who holds your guns")) enterCharacterEditor();
     {   // the tools for making places to shoot and things to shoot at
         static bool mapTools = false;
         if (menuItem(mapTools ? "Map editing tools  -" : "Map editing tools  +")) mapTools = !mapTools;
@@ -246,7 +247,7 @@ void pauseMenu() {
     if (ImGui::Button("Settings", bw)) { uiTick(); A.showSettings = true; }
     if (ImGui::Button(A.screen == Screen::Range ? "Leave the range" : A.benchOnly ? "Leave the bench" : "Main menu", bw)) { uiTick(); backToMenu(); }
     if (A.screen == Screen::MapEditor) ImGui::TextDisabled("Your map is autosaved.");
-    if (A.screen == Screen::NpcEditor) ImGui::TextDisabled("Your NPC is kept as it is for next time.");
+    if (A.screen == Screen::NpcEditor) ImGui::TextDisabled(NE.player ? "Your character is kept." : "Your NPC is kept as it is for next time.");
     if (ImGui::Button("Quit to desktop", bw)) A.quit = true;
     ImGui::End();
 }

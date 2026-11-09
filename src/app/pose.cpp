@@ -7,9 +7,12 @@
 #include "app/view.hpp"
 #include "raymath.h"
 #include "hand.hpp"
+#include "app/npcedit.hpp"
+#include "rlgl.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 Ray mouseRay();  // (view.cpp)
 
@@ -84,6 +87,8 @@ HandHold* editHand(int which) {
     return which == 0 ? &a.keys[k].firing : &a.keys[k].support;
 }
 
+void poseApplyRig();   // (below) the shoulders and arm lengths: the mannequin's, or your character's
+
 // ---------------------------------------------------------------- the body
 // Body frame, millimetres: forward, up, right, from the aiming (right) eye. A grown man, roughly.
 namespace {
@@ -99,6 +104,7 @@ BodyHold& editable() {
 }
 Vector3 eyeWorld(const BodyHold& h) { return W3(h.eye, (float)h.eyeZ * U); }
 Frame bodyFrame() {
+    poseApplyRig();
     BodyHold h = cur();
     double y = h.yaw * DEG2RAD;
     return {eyeWorld(h), {(float)std::cos(y), 0, (float)std::sin(y)}, {0, 1, 0}, {-(float)std::sin(y), 0, (float)std::cos(y)}};
@@ -120,13 +126,13 @@ V2 wristOff(double angleDeg) {
 }
 
 // the arms' lengths (mm): the mannequin's, or the player's character's
-double gUpperArm = UPPER_ARM, gForearm = FOREARM;
+double gUpperArm[2] = {UPPER_ARM, UPPER_ARM}, gForearm[2] = {FOREARM, FOREARM};   // [0] right (firing), [1] left
 struct Arm { Vector3 s, e, w; double shortBy = 0; };
 // Two bones from the shoulder to the wrist. The elbow points along `pole`, swung round the shoulder-wrist line by
 // `elbowDeg` (+ up). An arm that's short first pushes its shoulder forward toward the hand (up to 70 mm), as people do.
-Arm reach(Vector3 s, Vector3 target, Vector3 pole, double elbowDeg = 0, Vector3 up = {0, 1, 0}) {
+Arm reach(Vector3 s, Vector3 target, Vector3 pole, double elbowDeg = 0, Vector3 up = {0, 1, 0}, int armIdx = 0) {
     Arm A_{s, s, target, 0};
-    float L1 = (float)gUpperArm * U, L2 = (float)gForearm * U;
+    float L1 = (float)gUpperArm[armIdx] * U, L2 = (float)gForearm[armIdx] * U;
     Vector3 d = Vector3Subtract(target, s);
     float dist = Vector3Length(d);
     if (dist < 1e-4f) return A_;
@@ -338,6 +344,62 @@ void leavePose() { A.posing = false; A.poseDrag = -1; fitView(); }
 
 // The shoulders (body frame mm): the mannequin's, or the character's
 double gShoulder[2][3] = {{-140, -215, 153}, {-140, -215, -217}};
+
+// ---- your character in place of the mannequin: its body as it stands, placed so its aiming (right) eye is the
+// pose's eye; its arms reach for the hands with its own shoulders and lengths
+struct CharFit {
+    bool ok = false;
+    const NpcDef* n = nullptr;
+    std::vector<NpcBoneAt> P;    // standing (NPC frame, mm: y up, facing +z)
+    double eye[3] = {0, 0, 0};
+    double rs = 1;               // +1: its right is +x
+    int upper[2] = {-1, -1}, fore[2] = {-1, -1}, hand[2] = {-1, -1};   // [0] right, [1] left
+};
+static CharFit charFit() {
+    CharFit c;
+    if (!CFG.poseCharacter) return c;
+    const NpcDef* n = playerCharacter();
+    if (!n) return c;
+    auto find = [&](const char* nm) { for (int i = 0; i < (int)n->bones.size(); i++) if (n->bones[i].name == nm) return i; return -1; };
+    int head = find("Head");
+    c.upper[0] = find("Upper arm (right)"); c.upper[1] = find("Upper arm (left)");
+    c.fore[0] = find("Forearm (right)"); c.fore[1] = find("Forearm (left)");
+    c.hand[0] = find("Hand (right)"); c.hand[1] = find("Hand (left)");
+    if (head < 0 || c.upper[0] < 0 || c.upper[1] < 0 || c.fore[0] < 0 || c.fore[1] < 0) return c;
+    c.n = n;
+    c.P = npcPose(*n);
+    c.rs = c.P[c.upper[0]].a[0] >= c.P[c.upper[1]].a[0] ? 1 : -1;
+    const NpcBone& hb = n->bones[head];
+    const NpcBoneAt& hp = c.P[head];
+    double R = (hb.r0 + hb.r1) / 2 * hb.depth;
+    for (int q = 0; q < 3; q++) c.eye[q] = (hp.a[q] + hp.b[q]) / 2;
+    c.eye[0] += c.rs * 32; c.eye[1] += 8; c.eye[2] += R * 0.82;   // the right eye, on the front of the head
+    c.ok = true;
+    return c;
+}
+// a point / a direction of its own frame, in the pose's body frame (forward, up, right of the eye)
+static void toBody(const CharFit& c, const double q[3], double out[3]) { out[0] = q[2] - c.eye[2]; out[1] = q[1] - c.eye[1]; out[2] = (q[0] - c.eye[0]) * c.rs; }
+static Vector3 charPt(const Frame& F, const CharFit& c, const double q[3]) { double b[3]; toBody(c, q, b); return bp(F, b[0], b[1], b[2]); }
+static Vector3 charDir(const Frame& F, const CharFit& c, const double v[3]) {
+    return Vector3Add(Vector3Scale(F.f, (float)v[2]), Vector3Add(Vector3Scale(F.u, (float)v[1]), Vector3Scale(F.r, (float)(v[0] * c.rs))));
+}
+void poseApplyRig() {
+    CharFit c = charFit();
+    if (!c.ok) {
+        const double s0[2][3] = {{-140, -215, 153}, {-140, -215, -217}};
+        std::memcpy(gShoulder, s0, sizeof gShoulder);
+        gUpperArm[0] = gUpperArm[1] = UPPER_ARM; gForearm[0] = gForearm[1] = FOREARM;
+        return;
+    }
+    for (int k = 0; k < 2; k++) {
+        toBody(c, c.P[c.upper[k]].a, gShoulder[k]);
+        gUpperArm[k] = c.n->bones[c.upper[k]].len;
+        gForearm[k] = c.n->bones[c.fore[k]].len;
+    }
+}
+static Matrix boneM(Vector3 o, Vector3 X, Vector3 Y, Vector3 Z) {   // (X, Y, Z already scaled to world units per mm)
+    return Matrix{X.x, Y.x, Z.x, o.x, X.y, Y.y, Z.y, o.y, X.z, Y.z, Z.z, o.z, 0, 0, 0, 1};
+}
 static Vector3 shoulderPt(const Frame& F, bool right) { const double* s = gShoulder[right ? 0 : 1]; return bp(F, s[0], s[1], s[2]); }
 static Vector3 elbowPole(const Frame& F, bool right) {
     return Vector3Add(Vector3Scale(F.u, -1), Vector3Add(Vector3Scale(F.r, right ? 0.7f : -0.7f), Vector3Scale(F.f, -0.3f)));
@@ -378,9 +440,9 @@ static Limb limbFor(const Frame& F, const HandHold& h, int side) {
     Limb L;
     if (h.on) {
         L.g = handGeo(h, side);
-        L.arm = reach(shoulderPt(F, right), L.g.wrist, elbowPole(F, right), h.elbow, F.u);
+        L.arm = reach(shoulderPt(F, right), L.g.wrist, elbowPole(F, right), h.elbow, F.u, right ? 0 : 1);
     } else {
-        L.arm = reach(shoulderPt(F, right), offGunWrist(F, h, right), elbowPole(F, right), h.elbow, F.u);
+        L.arm = reach(shoulderPt(F, right), offGunWrist(F, h, right), elbowPole(F, right), h.elbow, F.u, right ? 0 : 1);
         L.g = freeGeo(F, h, side, L.arm);
     }
     return L;
@@ -404,7 +466,7 @@ static Limb sideLimb(const Frame& F, const ViewHands& V, int k) {
     L.g.f.o = Vector3Subtract(wrist, Vector3Add(Vector3Scale(L.g.f.x, (float)hw.x), Vector3Add(Vector3Scale(L.g.f.y, (float)hw.y), Vector3Scale(L.g.f.z, (float)hw.z))));
     L.g.c = handPt(L.g.f, {0, 0, 0}); L.g.wrist = wrist;
     double elbow = V.from[k].elbow + (V.to[k].elbow - V.from[k].elbow) * u;
-    L.arm = reach(shoulderPt(F, side > 0), wrist, elbowPole(F, side > 0), elbow, F.u);
+    L.arm = reach(shoulderPt(F, side > 0), wrist, elbowPole(F, side > 0), elbow, F.u, side > 0 ? 0 : 1);
     return L;
 }
 
@@ -441,6 +503,29 @@ void drawPoseBody() {
     // the body's own frame (mm): forward, up, right from the aiming eye; the middle of the body is 32 mm left of it
     Matrix BM{F.f.x * U, F.u.x * U, F.r.x * U, F.o.x, F.f.y * U, F.u.y * U, F.r.y * U, F.o.y, F.f.z * U, F.u.z * U, F.r.z * U, F.o.z, 0, 0, 0, 1};
     auto at = [&](float f, float u, float r) { return MatrixMultiply(MatrixTranslate(f, u, r), BM); };
+    CharFit CF = charFit();
+    // your character: its body as it stands (everything but its arms, which reach for the hands below)
+    std::vector<int> armOf, anchor;      // which arm a bone belongs to (-1: none); the arm bone it rides with
+    std::vector<Matrix> stand;           // each bone's standing frame, in the world
+    float handed = 1;                    // (a mirrored fit draws its meshes inside out unless culling is off)
+    if (CF.ok) {
+        const NpcDef& n = *CF.n;
+        armOf.assign(n.bones.size(), -1); anchor.assign(n.bones.size(), -1);
+        for (int i = 0; i < (int)n.bones.size(); i++) {
+            for (int k = 0; k < 2; k++) if (i == CF.upper[k]) armOf[i] = k;
+            if (armOf[i] < 0 && n.bones[i].parent >= 0) armOf[i] = armOf[n.bones[i].parent];
+            anchor[i] = (i == CF.upper[0] || i == CF.upper[1] || i == CF.fore[0] || i == CF.fore[1]) ? i
+                      : (i == CF.hand[0] ? CF.fore[0] : i == CF.hand[1] ? CF.fore[1] : n.bones[i].parent >= 0 ? anchor[n.bones[i].parent] : -1);
+            const NpcBoneAt& q = CF.P[i];
+            stand.push_back(boneM(charPt(F, CF, q.a), Vector3Scale(charDir(F, CF, q.x), U), Vector3Scale(charDir(F, CF, q.y), U), Vector3Scale(charDir(F, CF, q.z), U)));
+        }
+        Vector3 X = charDir(F, CF, CF.P[0].x), Y = charDir(F, CF, CF.P[0].y), Z = charDir(F, CF, CF.P[0].z);
+        handed = Vector3DotProduct(X, Vector3CrossProduct(Y, Z)) >= 0 ? 1.f : -1.f;
+        if (handed < 0) rlDisableBackfaceCulling();
+        for (int i = 0; i < (int)n.bones.size(); i++)
+            if (armOf[i] < 0) drawNpcBone(n.bones[i], stand[i], hexColor(n.bones[i].color));
+        if (handed < 0) rlEnableBackfaceCulling();
+    } else {
     // torso in a shirt, the neck, the head (eyes, nose), ear defenders on a band over the top
     drawMesh(SH.torso, at(0, 0, -32), SHIRT);
     limb(SH.neck, bp(F, -86, -45, -32), bp(F, -112, -165, -32), SKIN);
@@ -457,7 +542,7 @@ void drawPoseBody() {
         Vector3 p0 = bp(F, -98, 6 + 120 * std::sin(a0), -32 + 98 * std::cos(a0)), p1 = bp(F, -98, 6 + 120 * std::sin(a1), -32 + 98 * std::cos(a1));
         capsule(p0, p1, 8 * U, MUFF);
     }
-    Vector3 sR = bp(F, -140, -215, 153), sL = bp(F, -140, -215, -217);
+    }
     // the shoulder pocket, where a butt beds in
     if (P.butt.on) {
         PoseReport R = poseReport();
@@ -486,10 +571,40 @@ void drawPoseBody() {
         HandGeo& g = LB.g;
         Arm& a = LB.arm;
         bool strain = a.shortBy > 0.5;
+        Color handCol = SKIN;
+        if (CF.ok) {   // its own upper arm and forearm along the arm as it reaches; its gear on them rides along
+            const NpcDef& n = *CF.n;
+            auto segM = [&](int bi, Vector3 from, Vector3 to) {
+                Vector3 Y = Vector3Normalize(Vector3Subtract(to, from));
+                const NpcBoneAt& q = CF.P[bi];
+                Vector3 X0 = charDir(F, CF, q.x);
+                Vector3 X = Vector3Subtract(X0, Vector3Scale(Y, Vector3DotProduct(X0, Y)));
+                if (Vector3Length(X) < 1e-4f) X = Vector3CrossProduct(Y, F.u);
+                X = Vector3Normalize(X);
+                Vector3 Z = Vector3Scale(Vector3CrossProduct(X, Y), handed);
+                return boneM(from, Vector3Scale(X, U), Vector3Scale(Y, U), Vector3Scale(Z, U));
+            };
+            Matrix now[2] = {segM(CF.upper[side], a.s, a.e), segM(CF.fore[side], a.e, a.w)};
+            if (handed < 0) rlDisableBackfaceCulling();
+            for (int i = 0; i < (int)n.bones.size(); i++) {
+                if (armOf[i] != side || i == CF.hand[side]) continue;   // (the hand is drawn with fingers, below)
+                Color c = strain ? STRAIN : hexColor(n.bones[i].color);
+                if (i == CF.upper[side]) drawNpcBone(n.bones[i], now[0], c);
+                else if (i == CF.fore[side]) drawNpcBone(n.bones[i], now[1], c);
+                else if (anchor[i] >= 0) {   // gear: where it sits on its arm bone, as that bone has moved
+                    Matrix an = anchor[i] == CF.upper[side] ? now[0] : now[1];
+                    drawNpcBone(n.bones[i], MatrixMultiply(MatrixMultiply(stand[i], MatrixInvert(stand[anchor[i]])), an), c);
+                }
+            }
+            if (handed < 0) rlEnableBackfaceCulling();
+            if (CF.hand[side] >= 0) handCol = hexColor(n.bones[CF.hand[side]].color);
+        } else {
         drawSphereLit(a.s, 54 * U, strain ? STRAIN : SHIRT);   // the shoulder
         limb(SH.upper, a.s, a.e, strain ? STRAIN : SKIN);
         limb(SH.sleeve, a.s, a.e, strain ? STRAIN : SHIRT);
         limb(SH.fore, a.e, a.w, strain ? STRAIN : SKIN);
+        }
+        const Color SKIN = handCol;   // (the hand: the character's hand colour)
         if (g.on) {
             const HandBone *thumb = nullptr, *palmIndex = nullptr;
             for (auto& b : g.bones) {

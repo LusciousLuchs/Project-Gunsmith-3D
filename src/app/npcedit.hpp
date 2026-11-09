@@ -17,10 +17,16 @@ struct NpcEdit {
     std::string last;                  // the design as last saved to the undo list
     std::string file;                  // its file name in user/npcs (without .json), once saved or opened
     bool dirty = false;
+    bool player = false;               // editing your player character (a human; saved as user/character.json)
 };
 extern NpcEdit NE;
 
 void enterNpcEditor();
+void enterCharacterEditor();           // the same editor, on your player character
+bool npcCoreBone(const std::string& name);   // a human's own bones (the character can't lose them; gear can be added)
+// Your player character, as saved (nullptr: none yet, so the mannequin stands in). Read again when it changes.
+const NpcDef* playerCharacter();
+
 void leaveNpcEditor();
 void npcEditorUpdate(float dt, bool modal);
 void npcEditorRender();
@@ -35,6 +41,8 @@ std::vector<std::string> npcGunFiles(); // the blueprints in user/guns made for 
 // An NPC drawn standing at `origin` (drawing units), facing `yawDeg` (0 along +x, as map entities face), at
 // `unitsPerMm` (the NPC editor: 0.01; maps, in metres: 0.001). `highlight`: a bone drawn brighter (-1: none).
 #include "raylib.h"
+// One bone drawn with M taking its own frame (millimetres; y along it from its start) to the world
+void drawNpcBone(const NpcBone& b, Matrix M, Color c);
 void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float unitsPerMm, int highlight = -1,
                Vector3 fallAxis = {0, 0, 0}, float fallAngle = 0);   // fallen: turned about its feet
 // NPCs and maps: a map carries copies of the NPCs its spawn points use, so a shared map brings its enemies along

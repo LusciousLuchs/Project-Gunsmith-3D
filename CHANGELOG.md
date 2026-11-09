@@ -8,7 +8,20 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
-## Unreleased
+## 0.4.6-alpha
+
+### Your character
+- **Your character** on the main menu: build your own player character with the NPC editor's tools, kept to a human. Shape every bone, colour it, put pictures on it, and **add gear** (a helmet, a vest, pouches, a watch). It's kept as you go.
+- **It holds your guns in Pose** (Test bench > Pose) instead of the mannequin, with its own shoulders and arm lengths, gear riding on its arms. With no character, the mannequin stands in as before. **My character** in the Pose panel switches between them.
+
+### A freer poser
+- **Elbows swing:** drag the blue dot at an elbow to swing it round, or set **Elbow** in the panel.
+- **Wrists roll and lift:** **Wrist roll** turns the hand over or under the grip; **Off the gun's side** loosens the hold.
+- **Hands anywhere:** a hand off the gun can be **placed**, not just hung at the side. Drag its blue dot to a pouch, a vest, or up holding a magazine. In an animation, a hand now **travels smoothly** onto and off the gun instead of jumping.
+- **Shoulders reach:** an arm that's a little short pushes its shoulder forward toward the hand (up to 7 cm), as people do.
+- **Move the gun in animations:** drag the pink **Gun** dot to move it and the **Aim** dot to point it (Shift: roll), for reloads where the gun is brought in and turned for a better grip. The hands on it go with it.
+- **Arms at this key:** the elbows, wrists and placed hands of every animation key, in the panel.
+- Fingers bend a little further than before.
 
 ### Performance overlay
 - **Press F3** (or Settings > Interface > Performance overlay) to see the frame rate and a graph of how long each frame takes. F3 again shows full details, a third time hides it.

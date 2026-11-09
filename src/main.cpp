@@ -37,7 +37,7 @@ int main(int argc, char** argv) {
     installCrashHandler();
     // command-line options for automated screenshots
     std::string presetArg, shotPath, selectArg, demo;
-    bool perfArg = false;
+    bool perfArg = false, charArg = false;
     int frames = 0;
     bool trackDraft = false, carveTool = false;
     float camYaw = -100, camPitch = 0;
@@ -97,6 +97,7 @@ int main(int argc, char** argv) {
         else if (a == "--pause") pauseArg = true;          // (screenshots) open the pause menu
         else if (a == "--benchpick") benchArg = true;      // (screenshots) open the test-bench picker
         else if (a == "--npcedit") npcArg = true;
+        else if (a == "--character") charArg = true;   // (screenshots) the character editor
         else if (a == "--mapedit") mapArg = next();         // (screenshots) open the map editor: builtin, new, or a file
         else if (a == "--walk") walkArg = true;            // (screenshots) walk the map
         else if (a == "--tutorials") tutListArg = true;    // (screenshots) open the list of tutorials
@@ -183,6 +184,7 @@ int main(int argc, char** argv) {
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();
+    if (charArg) enterCharacterEditor();
     if (npcArg) { if (const char* k = std::getenv("GUNSMITH_NPC")) NE.npc = npcPreset(k); enterNpcEditor(); if (const char* k = std::getenv("GUNSMITH_NPC")) { NE.npc = npcPreset(k); NE.sel = 0; npcFrame(); } }
     if (!mapArg.empty()) {
         enterMapEditor();

@@ -26,14 +26,23 @@ void npcToolbar() {
     if (tipHover()) ImGui::SetTooltip("Menu (Esc)");
     ImGui::SameLine(0, 14 * CFG.uiScale);
     ImGui::AlignTextToFramePadding();
-    ImGui::TextDisabled("NPC editor");
+    ImGui::TextDisabled(NE.player ? "Your character" : "NPC editor");
     ImGui::SameLine(0, 18 * CFG.uiScale);
+    if (NE.player) {   // the character is kept as you go; Start again is the only other choice
+        if (ImGui::Button(ICON_FA_ROTATE_LEFT "  Start again")) ImGui::OpenPopup("##charreset");
+        if (ImGui::BeginPopup("##charreset")) {
+            ImGui::TextUnformatted("Start your character again from the plain human? (Undo brings it back.)");
+            if (ImGui::Button("Start again")) { std::string nm = NE.npc.name; NE.npc = npcPreset("human"); NE.npc.name = nm; NE.sel = 0; npcCommit(); npcFrame(); ImGui::CloseCurrentPopup(); }
+            ImGui::EndPopup();
+        }
+    } else {
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save")) {
         if (npcSave(NE.file.empty() ? NE.npc.name : NE.file)) toast("Saved to user/npcs/" + NE.file + ".json");
         else toast("Couldn't save it.");
     }
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Open")) showOpen = true;
+    }
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_ROTATE_LEFT)) npcUndo();
     if (tipHover()) ImGui::SetTooltip("Undo (Ctrl+Z)");
@@ -65,6 +74,13 @@ void npcPanel() {
     ImGui::Begin("##npcpanel", nullptr, FIXED);
     bool done = false;   // an edit finished this frame: it goes on the undo list
     auto fin = [&]() { if (ImGui::IsItemDeactivatedAfterEdit()) done = true; };
+    if (NE.player) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("Your character holds your guns in Pose (Test bench > Pose) instead of the mannequin, with its own arm lengths. "
+                            "Shape it, colour it, put pictures on it, add gear (a helmet, a vest, pouches). It's kept as you go.");
+        ImGui::PopTextWrapPos();
+        ImGui::Dummy({0, 4 * CFG.uiScale});
+    }
     prop("Name"); if (inputText("##nname", n.name)) {} fin();
     ImGui::TextDisabled("%d bones, %.2f m tall", (int)n.bones.size(), npcHeight(n) / 1000);
     ImGui::Dummy({0, 4 * CFG.uiScale});
@@ -83,15 +99,16 @@ void npcPanel() {
         }
         ImGui::EndChild();
         float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
-        if (ImGui::Button("Add a bone", {w3, 0})) {
+        if (ImGui::Button(NE.player ? "Add gear" : "Add a bone", {w3, 0})) {
             NpcBone b; b.parent = NE.sel; b.name = "Bone " + std::to_string(n.bones.size() + 1);
             const NpcBone& p = n.bones[NE.sel];
             b.len = p.len * 0.8; b.r0 = p.r1; b.r1 = p.r1 * 0.8; b.color = p.color;
             n.bones.push_back(b); NE.sel = (int)n.bones.size() - 1; done = true;
         }
-        if (tipHover()) ImGui::SetTooltip("A new bone hanging off the end of the selected one.");
+        if (tipHover()) ImGui::SetTooltip(NE.player ? "A piece of gear hanging off the selected bone (a helmet off the head, a pouch off the pelvis).\nShape and place it like any bone." : "A new bone hanging off the end of the selected one.");
         ImGui::SameLine();
-        ImGui::BeginDisabled(NE.sel == 0);
+        bool core = NE.player && NE.sel < (int)n.bones.size() && npcCoreBone(n.bones[NE.sel].name);   // (a human keeps its own bones)
+        ImGui::BeginDisabled(NE.sel == 0 || core);
         if (ImGui::Button("Mirror it", {w3, 0})) { npcMirrorBone(n, NE.sel); done = true; }
         if (tipHover()) ImGui::SetTooltip("A copy of this bone and everything on it, on the other side (an arm, a leg).");
         ImGui::SameLine();
@@ -102,7 +119,8 @@ void npcPanel() {
     NpcBone& b = n.bones[NE.sel];
     if (section("This bone", true)) {
         prop("Name"); inputText("##bname", b.name); fin();
-        if (NE.sel > 0) {
+        if (NE.player && npcCoreBone(b.name)) ImGui::TextDisabled("One of a human's own bones: shape it, it stays.");
+        if (NE.sel > 0 && !(NE.player && npcCoreBone(b.name))) {
             prop("Hangs off");
             if (ImGui::BeginCombo("##bparent", n.bones[b.parent].name.c_str())) {
                 for (int k = 0; k < NE.sel; k++)
@@ -158,7 +176,7 @@ void npcPanel() {
         if (pNum("Armour", ar, 1, "%.0f%%", "How much of a hit it stops.")) b.armor = std::clamp(ar / 100, 0.0, 1.0);
         fin();
     }
-    if (section("In a fight", false)) {
+    if (!NE.player && section("In a fight", false)) {
         ImGui::PushTextWrapPos(0);
         ImGui::TextDisabled("Saved with it now; used once NPCs come alive on maps (coming next).");
         ImGui::PopTextWrapPos();
@@ -187,12 +205,14 @@ void npcPanel() {
         }
     }
     ImGui::Dummy({0, 8 * CFG.uiScale});
+    if (!NE.player) {
     heading("Save as");
     if (!saveName[0]) std::snprintf(saveName, sizeof saveName, "%s", NE.file.empty() ? n.name.c_str() : NE.file.c_str());
     ImGui::SetNextItemWidth(-1);
     ImGui::InputText("##nsave", saveName, sizeof saveName);
     if (ImGui::Button("Save to user/npcs", {-1, 0})) {
         if (npcSave(saveName)) toast("Saved to user/npcs/" + NE.file + ".json"); else toast("Couldn't save it.");
+    }
     }
     ImGui::End();
     if (done) npcCommit();

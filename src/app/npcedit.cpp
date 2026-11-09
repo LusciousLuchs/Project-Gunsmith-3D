@@ -80,7 +80,7 @@ void snapshotIfChanged() {
     NE.redo.clear();
     NE.last = now;
     NE.dirty = true;
-    std::ofstream(NPC_AUTOSAVE) << now;
+    std::ofstream(NE.player ? CHARACTER_FILE : NPC_AUTOSAVE) << now;   // (the character is simply kept: no save as)
 }
 }  // namespace
 
@@ -164,7 +164,51 @@ void enterNpcEditor() {
     setLighting(Lighting{});
     EnableCursor();
 }
-void leaveNpcEditor() { std::ofstream(NPC_AUTOSAVE) << npcToJson(NE.npc); }
+namespace { NpcEdit npcStash; bool stashed = false; int characterVersion = 0; }
+void leaveNpcEditor() {
+    if (NE.player) {   // the character is kept; the NPC editor comes back as it was
+        std::ofstream(CHARACTER_FILE) << npcToJson(NE.npc);
+        characterVersion++;
+        if (stashed) { NE = npcStash; stashed = false; } else NE = NpcEdit();
+        return;
+    }
+    std::ofstream(NPC_AUTOSAVE) << npcToJson(NE.npc);
+}
+bool npcCoreBone(const std::string& name) {
+    static std::vector<std::string> core;
+    if (core.empty()) for (auto& b : npcPreset("human").bones) core.push_back(b.name);
+    return std::find(core.begin(), core.end(), name) != core.end();
+}
+void enterCharacterEditor() {
+    enterNpcEditor();   // (loads the NPC editor's own work the first time, so it can be set aside)
+    npcStash = NE; stashed = true;
+    NE = NpcEdit();
+    NE.player = true;
+    std::ifstream in(CHARACTER_FILE);
+    std::stringstream ss; ss << in.rdbuf();
+    if (!in || !npcFromJson(ss.str(), NE.npc)) { NE.npc = npcPreset("human"); NE.npc.name = "My character"; }
+    // a human: any of a human's bones missing (an older or hand-edited file) and it starts again from the human
+    for (auto& b : npcPreset("human").bones) {
+        bool has = false;
+        for (auto& o : NE.npc.bones) if (o.name == b.name) has = true;
+        if (!has) { std::string nm = NE.npc.name; NE.npc = npcPreset("human"); NE.npc.name = nm; break; }
+    }
+    NE.last = npcToJson(NE.npc);
+    std::ofstream(CHARACTER_FILE) << NE.last;
+    characterVersion++;
+    npcFrame();
+}
+const NpcDef* playerCharacter() {
+    static NpcDef ch; static bool have = false; static int seen = -1; static double checked = -10;
+    if (NE.player && A.screen == Screen::NpcEditor) return &NE.npc;
+    if (seen != characterVersion || GetTime() - checked > 2) {   // (a file dropped in by hand is picked up too)
+        seen = characterVersion; checked = GetTime();
+        std::ifstream in(CHARACTER_FILE);
+        std::stringstream ss; ss << in.rdbuf();
+        have = in && npcFromJson(ss.str(), ch);
+    }
+    return have ? &ch : nullptr;
+}
 
 void npcEditorUpdate(float dt, bool modal) {
     (void)dt;
@@ -178,7 +222,7 @@ void npcEditorUpdate(float dt, bool modal) {
         bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
         if (ctrl && IsKeyPressed(KEY_Z)) npcUndo();
         if (ctrl && IsKeyPressed(KEY_Y)) npcRedo();
-        if (IsKeyPressed(KEY_DELETE) && NE.sel > 0) { npcRemoveBone(NE.npc, NE.sel); NE.sel = 0; npcCommit(); }
+        if (IsKeyPressed(KEY_DELETE) && NE.sel > 0 && !(NE.player && npcCoreBone(NE.npc.bones[NE.sel].name))) { npcRemoveBone(NE.npc, NE.sel); NE.sel = 0; npcCommit(); }
     }
     // the camera: right drag turns round it, the wheel zooms, middle drag raises and lowers
     if (!overUI) {
@@ -338,6 +382,11 @@ const Mesh& boneMesh(const NpcBone& b) {
 }
 }  // namespace
 
+void drawNpcBone(const NpcBone& b, Matrix M, Color c) {
+    const Mesh& mesh = boneMesh(b);
+    if (!b.texture.empty()) drawMeshTex(mesh, M, c, userTexture(b.texture));
+    else drawMesh(mesh, M, c);
+}
 void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float k, int highlight, Vector3 fallAxis, float fallAngle) {
     auto P = npcPose(n);
     // the NPC's own frame faces +z; turned so that it faces yawDeg (0 along +x); fallen: turned about its feet
