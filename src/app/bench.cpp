@@ -1,5 +1,6 @@
 // Gunsmith3D - Test mode: running the simulation, grabbing parts, shot effects.
 #include "app/app.hpp"
+#include "app/perf.hpp"
 #include "reliability.hpp"
 #include "app/settings.hpp"
 #include "app/audio.hpp"
@@ -90,7 +91,7 @@ void stepSim(float dt) {
     auto& S = *A.S;
     bool slow = CFG.slowOnShot && S.shots > 0 && (S.t - S.fireT) * 1000 < CFG.slowWindowMs;
     double speed = slow ? CFG.slowSpeed : CFG.benchSpeed;
-    sim::run(S, dt * speed, 1200);
+    { perf::Scope t(perf::Physics); perf::substeps(sim::run(S, dt * speed, 1200)); }
     for (auto& p : S.pushers)   // a control held down that doesn't move: say why it might be
         if (p.on && !p.stuckTold && p.heldT > 0.35 && p.moved < 0.0003 && p.key != "fire" && p.b && p.b->d) {
             p.stuckTold = true;

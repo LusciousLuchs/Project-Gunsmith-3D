@@ -3,6 +3,8 @@
 #include "app/app.hpp"
 #include "app/npcedit.hpp"
 #include "app/sysinfo.hpp"
+#include "app/perf.hpp"
+#include "app/keys.hpp"
 #include "app/gfx.hpp"
 #include "app/audio.hpp"
 #include "app/view.hpp"
@@ -35,6 +37,7 @@ int main(int argc, char** argv) {
     installCrashHandler();
     // command-line options for automated screenshots
     std::string presetArg, shotPath, selectArg, demo;
+    bool perfArg = false;
     int frames = 0;
     bool trackDraft = false, carveTool = false;
     float camYaw = -100, camPitch = 0;
@@ -82,6 +85,7 @@ int main(int argc, char** argv) {
         else if (a == "--cart") cartArg = next();
         else if (a == "--reltest") relArg = std::atoi(next().c_str());
         else if (a == "--menu") menuArg = true;
+        else if (a == "--perf") perfArg = true;   // (screenshots) the performance overlay with full details
         else if (a == "--about") { menuArg = true; A.showAbout = true; }   // (screenshots of the About window)
         else if (a == "--solid") solidArg = true;
         else if (a == "--range") rangeArg = next();          // (screenshots) the firing range with an example gun            // (screenshots) every part solid (the x-ray view off)
@@ -111,6 +115,7 @@ int main(int argc, char** argv) {
     if (frames && !useSettings) CFG = Settings();  // automated screenshots use the defaults unless told otherwise
     unsigned flags = FLAG_WINDOW_RESIZABLE | (CFG.msaa ? FLAG_MSAA_4X_HINT : 0) | (CFG.vsync ? FLAG_VSYNC_HINT : 0);
     SetConfigFlags(flags);
+    if (perfArg) CFG.perfOverlay = 2;
     installLogCapture();   // (keeps the graphics driver's report for the About window)
     InitWindow(CFG.resW, CFG.resH, (std::string("Gunsmith3D ") + version::text()).c_str());
     if (!IsWindowReady()) {  // no display (e.g. started over SSH): say so instead of crashing
@@ -209,6 +214,8 @@ int main(int argc, char** argv) {
 
     int frame = 0;
     while (!WindowShouldClose() && !A.quit) {
+        perf::frameStart();
+        if (actPressed(Act::PerfOverlay)) perf::toggle();   // F3: the frame rate and what's slowing the game down
         handleDroppedFiles();  // pictures dropped on the window become textures
         relPoll();
         applyAudio();
@@ -234,13 +241,14 @@ int main(int argc, char** argv) {
             rangeUpdate(dt, modal);
             BeginDrawing();
             ClearBackground(Color{30, 34, 41, 255});
-            rangeRender();
+            { perf::Scope t(perf::Scene); rangeRender(); }
             rangeHud();
             rlImGuiBegin();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
             else rangeSpawnerWindow();
             toastOverlay();
+            perf::overlay();
             rlImGuiEnd();
             EndDrawing();
             frame++;
@@ -252,13 +260,14 @@ int main(int argc, char** argv) {
             mapEditorUpdate(dt, modal);
             BeginDrawing();
             ClearBackground(Color{30, 34, 41, 255});
-            mapEditorRender();
+            { perf::Scope t(perf::Scene); mapEditorRender(); }
             rlImGuiBegin();
             if (!ME.walking) { mapToolbar(); mapPanel(); }
             tutorialPanel();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
             toastOverlay();
+            perf::overlay();
             rlImGuiEnd();
             EndDrawing();
             frame++;
@@ -270,12 +279,13 @@ int main(int argc, char** argv) {
             npcEditorUpdate(dt, modal);
             BeginDrawing();
             ClearBackground(Color{30, 34, 41, 255});
-            npcEditorRender();
+            { perf::Scope t(perf::Scene); npcEditorRender(); }
             rlImGuiBegin();
             npcToolbar(); npcPanel();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
             toastOverlay();
+            perf::overlay();
             rlImGuiEnd();
             EndDrawing();
             frame++;
@@ -287,6 +297,7 @@ int main(int argc, char** argv) {
             ClearBackground(Color{8, 9, 11, 255});
             rlImGuiBegin();
             introFrame(dt);
+            perf::overlay();
             rlImGuiEnd();
             EndDrawing();
             frame++;
@@ -297,14 +308,13 @@ int main(int argc, char** argv) {
             BeginDrawing();
             ClearBackground(Color{14, 16, 19, 255});
             DrawRectangleGradientV(0, 0, GetScreenWidth(), A.vh, Color{40, 46, 56, 255}, Color{16, 18, 22, 255});
-            beginViewport3D();
-            drawScene();
-            endViewport3D();
+            { perf::Scope t(perf::Scene); beginViewport3D(); drawScene(); endViewport3D(); }
             // darken the left, where the menu sits, more than the right
             DrawRectangleGradientH(0, 0, GetScreenWidth(), A.vh, Color{10, 11, 13, 240}, Color{10, 11, 13, 40});
             rlImGuiBegin();
             mainMenu();
             toastOverlay();
+            perf::overlay();
             rlImGuiEnd();
             EndDrawing();
             frame++;
@@ -340,12 +350,15 @@ int main(int argc, char** argv) {
         BeginDrawing();
         ClearBackground(Color{30, 34, 41, 255});
         drawBackdrop(0, TOOLBAR_H, (float)A.vw, (float)A.vh);
+        {
+        perf::Scope sceneT(perf::Scene);   // (drawing the 3D view)
         beginViewport3D();
         if (A.posing || (A.S && sim::animPlaying(*A.S))) {  // the gun at this hold's tilt, and the mannequin holding it
             rlPushMatrix(); rlMultMatrixf(MatrixToFloat(poseGunMatrix())); drawScene(); rlPopMatrix();
             drawPoseBody();
         } else drawScene();
         endViewport3D();
+        }
         if (A.posing) drawPoseOverlay(); else drawOverlay();
         if (A.mode == Mode::Test) DrawRectangleLinesEx({0, TOOLBAR_H, (float)A.vw, (float)A.vh}, 2, Color{232, 161, 58, 90});
 
@@ -366,7 +379,8 @@ int main(int argc, char** argv) {
         if (A.mode == Mode::Test) traceWindow();
         if (editedAny) A.uiDirty = true;
         if (A.uiDirty && !ImGui::IsAnyItemActive()) { commit(); A.uiDirty = false; }
-        rlImGuiEnd();
+        perf::overlay();
+            rlImGuiEnd();
         EndDrawing();
 
         frame++;

@@ -10,6 +10,10 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 
 ## Unreleased
 
+### Performance overlay
+- **Press F3** (or Settings > Interface > Performance overlay) to see the frame rate and a graph of how long each frame takes. F3 again shows full details, a third time hides it.
+- **Full details:** a frame rate graph, where each frame's time goes (the gun's physics, NPCs, drawing the 3D view, the panels, the graphics card and screen) with a hint at what's holding it back, and what's on screen: the design's parts and its **heaviest parts for the physics**, or on a map its blocks, NPCs, bullets in flight and path grids. It never gets in the way of clicks.
+
 ### About
 - **About** on the main menu: the game's version, studio and developer, and what it runs on: the raylib version, the OpenGL version the game uses, and what your PC's graphics driver and card report. **Copy these details** puts it all on the clipboard for bug reports.
 

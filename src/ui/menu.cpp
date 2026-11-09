@@ -457,6 +457,10 @@ void audioPage() {
 }
 
 void interfacePage() {
+    ImGui::SeparatorText("Performance");
+    row("Performance overlay", "The frame rate, a graph of how long each frame takes, and with full details what the time goes on\n"
+                                "(the gun's physics, NPCs, drawing) and the heaviest parts of a design. F3 changes it anywhere.");
+    if (ImGui::Combo("##perfov", &CFG.perfOverlay, "Off\0Frame rate\0Full details\0")) saveSettings();
     ImGui::SeparatorText("Size");
     row("Interface scale", "Makes text, buttons and panels bigger or smaller. Auto picks a size for your screen.\nCtrl + and Ctrl - change it anywhere.");
     {

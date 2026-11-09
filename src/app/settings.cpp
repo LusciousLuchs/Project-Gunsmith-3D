@@ -26,6 +26,7 @@ void loadSettings() {
         CFG.monitor = std::max(0, g("monitor", d.monitor));
         CFG.vsync = g("vsync", d.vsync);
         CFG.fpsCap = std::max(0, g("fpsCap", d.fpsCap));
+        CFG.perfOverlay = std::clamp(g("perfOverlay", d.perfOverlay), 0, 2);
         CFG.uiScale = std::clamp(g("uiScale", d.uiScale), 0.75f, 2.0f);
         CFG.uiScaleAuto = g("uiScaleAuto", std::fabs(CFG.uiScale - 1.0f) < 0.01f);  // (older settings: a scale someone set stays set)
         CFG.msaa = g("msaa", d.msaa);
@@ -68,7 +69,7 @@ void loadSettings() {
 void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
-        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
+        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused},

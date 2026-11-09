@@ -5,6 +5,7 @@
 // and leaves a mark where it lands. Recoil kicks the view by the cartridge's push against the gun's weight, a heavy gun
 // swings more slowly, and one held in one hand kicks more than one in the shoulder.
 #include "app/range.hpp"
+#include "app/perf.hpp"
 #include "app/app.hpp"
 #include "app/pose.hpp"
 #include "app/audio.hpp"
@@ -551,7 +552,7 @@ void rangeUpdate(float dt, bool modal) {
     float rate = 1.f / (0.12f + (float)R.mass * 0.05f);
     R.aim = std::clamp(R.aim + (aimWant ? rate : -rate) * dt, 0.f, 1.f);
     // the gun: the trigger is the left mouse button; R reloads, B works the action
-    if (A.S && R.dead) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); sim::run(*A.S, dt, 1200); A.S->events.clear(); }
+    if (A.S && R.dead) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); { perf::Scope t(perf::Physics); perf::substeps(sim::run(*A.S, dt, 1200)); } A.S->events.clear(); }
     if (A.S && !R.dead) {
         auto& S = *A.S;
         bool trig = IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !holdFire;
@@ -569,7 +570,7 @@ void rangeUpdate(float dt, bool modal) {
         if (sim::hasControl(S, "magrelease")) { sim::setKey(S, "magrelease", held[0]); S.magRelease = false; }
         else S.magRelease = held[0];
         sim::setKey(S, "k1", held[1]); sim::setKey(S, "k2", held[2]); sim::setKey(S, "k3", held[3]); sim::setKey(S, "k4", held[4]);
-        sim::run(S, dt, 1200);
+        { perf::Scope t(perf::Physics); perf::substeps(sim::run(S, dt, 1200)); }
         // a dropped magazine and the spent cases fly with the gun's frame here, so they're cleared once they've fallen away
         sim::tidy(S, dt, 1.2, 0.8, 2);
         const auto& br = A.design.breech;
@@ -600,7 +601,7 @@ void rangeUpdate(float dt, bool modal) {
         std::vector<npcai::Event> ev;
         double roll;
         V3 eye = gmap::playerEye(R.pl, R.map, &roll);
-        npcai::think(R.actors, R.map, eye, R.pl.feet, !R.dead, dt, ev, R.rng, &R.nav);
+        { perf::Scope t(perf::Npcs); npcai::think(R.actors, R.map, eye, R.pl.feet, !R.dead, dt, ev, R.rng, &R.nav); }
         for (auto& e : ev) {
             if (e.kind == npcai::Event::Shot) {
                 const auto& a = R.actors[e.actor];
@@ -823,3 +824,20 @@ void rangeHud() {
 }
 
 void rangeMapChanged() { ME.version++; }   // the map meshes now hold the range's map: the editor builds its own again
+
+// ---------------------------------------------------------------- the performance overlay's details (perf.cpp)
+std::vector<std::pair<std::string, std::string>> rangeDebugLines() {
+    std::vector<std::pair<std::string, std::string>> out;
+    int alive = 0, aware = 0;
+    for (auto& a : R.actors) if (!a.dead) { alive++; if (a.aware) aware++; }
+    out.push_back({"Map", R.map.name});
+    out.push_back({"Blocks", std::to_string(R.map.brushes.size())});
+    out.push_back({"NPCs", TextFormat("%d alive of %d (%d after you), the most %d", alive, (int)R.actors.size(), aware, npcai::NPC_LIMIT)});
+    out.push_back({"Path grids", TextFormat("%d (one per NPC size)", (int)R.nav.grids.size())});
+    out.push_back({"Bullets flying", std::to_string(R.bullets.size())});
+    out.push_back({"Bullet marks", std::to_string(R.impacts.size())});
+    out.push_back({"Guns on the ground", std::to_string(R.ground.size())});
+    if (A.S) out.push_back({"Gun in hand", TextFormat("%s: %d bodies", A.design.name.c_str(), (int)A.S->bodies.size())});
+    out.push_back({"You", TextFormat("at %.1f, %.1f, %.1f m, health %.0f", R.pl.feet.x, R.pl.feet.y, R.pl.feet.z, R.health)});
+    return out;
+}

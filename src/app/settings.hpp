@@ -18,6 +18,7 @@ struct Settings {
     int monitor = 0;
     bool vsync = true;
     int fpsCap = 60;                     // 0 = no cap
+    int perfOverlay = 0;                 // the performance overlay (F3): 0 off, 1 frame rate, 2 full details
     float uiScale = 1.0f;
     bool uiScaleAuto = true;             // pick the scale from the screen's height (until you choose one)
     bool msaa = true;                    // applies after a restart
