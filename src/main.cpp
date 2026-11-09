@@ -2,6 +2,7 @@
 #include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/npcedit.hpp"
+#include "app/sysinfo.hpp"
 #include "app/gfx.hpp"
 #include "app/audio.hpp"
 #include "app/view.hpp"
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
         else if (a == "--cart") cartArg = next();
         else if (a == "--reltest") relArg = std::atoi(next().c_str());
         else if (a == "--menu") menuArg = true;
+        else if (a == "--about") { menuArg = true; A.showAbout = true; }   // (screenshots of the About window)
         else if (a == "--solid") solidArg = true;
         else if (a == "--range") rangeArg = next();          // (screenshots) the firing range with an example gun            // (screenshots) every part solid (the x-ray view off)
         else if (a == "--intro") introArg = 1;              // (screenshots) the launch splash
@@ -109,6 +111,7 @@ int main(int argc, char** argv) {
     if (frames && !useSettings) CFG = Settings();  // automated screenshots use the defaults unless told otherwise
     unsigned flags = FLAG_WINDOW_RESIZABLE | (CFG.msaa ? FLAG_MSAA_4X_HINT : 0) | (CFG.vsync ? FLAG_VSYNC_HINT : 0);
     SetConfigFlags(flags);
+    installLogCapture();   // (keeps the graphics driver's report for the About window)
     InitWindow(CFG.resW, CFG.resH, (std::string("Gunsmith3D ") + version::text()).c_str());
     if (!IsWindowReady()) {  // no display (e.g. started over SSH): say so instead of crashing
         std::fprintf(stderr, "Gunsmith3D could not open a window. Start it from a desktop session (Wayland or X11).\n");
@@ -210,7 +213,7 @@ int main(int argc, char** argv) {
         relPoll();
         applyAudio();
         autosaveTick();
-        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker || A.showTutorials || A.showOpenWindow || A.showRangePicker;
+        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker || A.showTutorials || A.showOpenWindow || A.showRangePicker || A.showAbout;
         bool menu = A.screen == Screen::Menu;
         TOOLBAR_H = menu ? 0.f : TOOLBAR_H_BASE * CFG.uiScale;
         if (relArg > 0 && frame == 2) { REL.rounds = relArg; relStart(); }

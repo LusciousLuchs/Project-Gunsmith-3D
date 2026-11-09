@@ -10,6 +10,9 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 
 ## Unreleased
 
+### About
+- **About** on the main menu: the game's version, studio and developer, and what it runs on: the raylib version, the OpenGL version the game uses, and what your PC's graphics driver and card report. **Copy these details** puts it all on the clipboard for bug reports.
+
 ### NPCs
 - **Up to 64 NPCs on a map at once.** The Level editor shows how many a map has. A map that asks for more brings only the first 64, and the range says so.
 - **Big crowds run smoothly:** NPCs take turns planning their routes, so many at once no longer cause stutters.

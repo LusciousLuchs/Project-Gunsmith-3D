@@ -2,6 +2,8 @@
 #include "app/paths.hpp"
 #include "app/app.hpp"
 #include "app/npcedit.hpp"
+#include "app/sysinfo.hpp"
+#include "app/usertex.hpp"
 #include "app/audio.hpp"
 #include "app/keys.hpp"
 #include "app/mapedit.hpp"
@@ -138,12 +140,55 @@ void whatsNew() {
 }
 }  // namespace
 
+// ---------------------------------------------------------------- about
+// The game's version, who made it, and what it runs on: raylib, the OpenGL it uses and what this PC's driver reports
+void aboutWindow() {
+    dimBackground(0.6f);
+    centerNext(560 * S(), 0);
+    ImGui::Begin("##about", nullptr, PLAIN | ImGuiWindowFlags_AlwaysAutoResize);
+    ImGui::PushFont(gFontBold, 24.0f);
+    ImGui::TextUnformatted("GUNSMITH3D");
+    ImGui::PopFont();
+    ImGui::TextDisabled("Firearm design workshop");
+    ImGui::Dummy({0, 6 * S()});
+    auto row = [](const char* k, const std::string& v) {
+        ImGui::TextDisabled("%s", k);
+        ImGui::SameLine(190 * S());
+        ImGui::TextWrapped("%s", v.empty() ? "(not known)" : v.c_str());
+    };
+    row("Version", version::full());
+    row("Studio", "OAB Foundry");
+    row("Developer", "The One Armed Bandit");
+    ImGui::Dummy({0, 4 * S()});
+    ImGui::SeparatorText("What it runs on");
+    const GpuInfo& g = gpuInfo();
+    row("raylib", RAYLIB_VERSION);
+    row("OpenGL", requestedOpenGL());
+    row("Your driver's OpenGL", g.version);
+    row("Shading language", g.glsl.empty() ? "" : "GLSL " + g.glsl);
+    row("Graphics card", g.renderer.empty() ? "" : g.renderer + (g.vendor.empty() ? "" : " (" + g.vendor + ")"));
+    row("Dear ImGui", IMGUI_VERSION);
+    ImGui::Dummy({0, 4 * S()});
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled("Licences for the libraries and fonts the game uses are in the licenses folder next to the game.");
+    ImGui::PopTextWrapPos();
+    ImGui::Dummy({0, 6 * S()});
+    float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+    if (ImGui::Button("Copy these details", {w3, 0})) { SetClipboardText(aboutText().c_str()); toast("Copied: paste them into a bug report."); }
+    ImGui::SameLine();
+    if (ImGui::Button("Open licenses folder", {w3, 0})) openFolder("licenses");
+    ImGui::SameLine();
+    if (ImGui::Button("Close", {w3, 0}) || (IsKeyPressed(KEY_ESCAPE) && A.modalAtFrameStart)) { uiTick(); A.showAbout = false; }
+    ImGui::End();
+}
+
 // ---------------------------------------------------------------- main menu
 void mainMenu() {
     if (A.showSettings) { settingsWindow(); return; }
     if (A.showBenchPicker) { benchPicker(); return; }
     if (A.showTutorials) { tutorialsWindow(); return; }
     if (A.showRangePicker) { rangePicker(); return; }
+    if (A.showAbout) { aboutWindow(); return; }
     ImGui::SetNextWindowPos({0, 0});
     ImGui::SetNextWindowSize({(float)GetScreenWidth(), (float)GetScreenHeight()});
     ImGui::SetNextWindowBgAlpha(0);
@@ -175,6 +220,7 @@ void mainMenu() {
     if (menuItem("Test bench")) A.showBenchPicker = true;
     if (menuItem("Settings")) A.showSettings = true;
     if (menuItem("Discord", true, "join the community")) OpenURL(DISCORD_URL);
+    if (menuItem("About", true, "version, graphics")) A.showAbout = true;
     if (menuItem("Quit")) A.quit = true;
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, GetScreenHeight() - 34 * S()});
