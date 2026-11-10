@@ -140,16 +140,28 @@ void toolRail() {
     if (A.mode != Mode::Build || A.benchOnly) return;
     float s = CFG.uiScale, m = 10 * s;
     float availH = GetScreenHeight() - TOOLBAR_H - 2 * m - 40 * s;   // keep clear of the hint strip at the bottom
-    float capH = ImGui::GetFontSize() * 0.8f + 6 * s;
-    bool labels = 10 * 50 * s + 3 * capH + 26 * s <= availH;
+    // how tall it is: every tool (counted, so a new tool can't push one off the bottom), three captions, padding
+    const int tools = 1 + (int)(sizeof RAIL_DRAW / sizeof RAIL_DRAW[0]) + (int)(sizeof RAIL_SHAPE / sizeof RAIL_SHAPE[0]) + (int)(sizeof RAIL_JOIN / sizeof RAIL_JOIN[0]);
+    float pad = 5 * s, gapY = 2 * s;
+    auto railH = [&](bool lab) {
+        float bh = lab ? 50 * s : 36 * s;
+        float capH = lab ? ImGui::GetFontSize() * 0.72f + 2 * s + 3 * s : 6 * s;
+        return 2 * pad + tools * (bh + gapY) + 3 * (capH + 2 * gapY);
+    };
+    bool labels = railH(true) <= availH;   // names under the icons if they fit, else icons only
     float w = labels ? 64 * s : 40 * s, h = labels ? 50 * s : 36 * s;
+    float needH = railH(labels), winH = std::min(needH, std::max(availH, 120 * s));
+    bool scroll = needH > winH + 0.5f;     // still too tall (a small window, a big scale): it scrolls with the wheel
+    float sb = 6 * s;
     ImGui::SetNextWindowPos({m, TOOLBAR_H + m});
+    ImGui::SetNextWindowSize({w + 2 * pad + (scroll ? sb + 2 * s : 0), winH});
     ImGui::SetNextWindowBgAlpha(0.88f);
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {5 * s, 5 * s});
-    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, 2 * s});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {pad, pad});
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {0, gapY});
     ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 8 * s);
-    ImGui::Begin("##toolrail", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing);
+    ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, sb);
+    ImGui::Begin("##toolrail", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
+                 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | (scroll ? 0 : ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse));
     auto caption = [&](const char* t) {
         ImGui::Dummy({0, 3 * s});
         if (labels) {
@@ -172,7 +184,7 @@ void toolRail() {
     caption("JOIN");
     for (auto& t : RAIL_JOIN) railButton(t, w, h, labels);
     ImGui::End();
-    ImGui::PopStyleVar(3);
+    ImGui::PopStyleVar(4);
 }
 
 void toolbar() {

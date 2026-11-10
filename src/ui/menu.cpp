@@ -470,7 +470,7 @@ void interfacePage() {
         if (CFG.uiScaleAuto) std::snprintf(cur, sizeof cur, "Auto (%d%%)", (int)std::lround(CFG.uiScale * 100));
         else std::snprintf(cur, sizeof cur, "%d%%", (int)std::lround(CFG.uiScale * 100));
         if (ImGui::BeginCombo("##uis", cur)) {
-            char a[48]; std::snprintf(a, sizeof a, "Auto (%d%% on this screen)", (int)std::lround(autoUiScale() * 100));
+            char a[48]; std::snprintf(a, sizeof a, "Auto (%d%% for this window)", (int)std::lround(autoUiScale() * 100));
             if (ImGui::Selectable(a, CFG.uiScaleAuto)) { CFG.uiScaleAuto = true; setUiScale(autoUiScale(), false); }
             for (float z : sizes) {
                 char l[16]; std::snprintf(l, sizeof l, "%d%%", (int)std::lround(z * 100));

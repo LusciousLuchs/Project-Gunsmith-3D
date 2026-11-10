@@ -252,10 +252,13 @@ void setupImGui() {
     if (CFG.uiScaleAuto) CFG.uiScale = autoUiScale();
     applyUiScale();
 }
-float autoUiScale() {  // about the same physical size on any screen: 1080p 100%, 1440p 125%, 4K 175%
-    int h = GetMonitorHeight(GetCurrentMonitor());
-    if (h <= 0) h = GetScreenHeight();
-    return h >= 2000 ? 1.75f : h >= 1400 ? 1.25f : 1.0f;
+float autoUiScale() {
+    // from the game window itself (not the monitor): the interface is laid out for 1600 x 1080 at 100%, so it grows and
+    // shrinks with the window and always fits. 1080p 100%, 1440p about 133%, 4K 200%, a 1440 x 900 window about 85%.
+    float w = (float)GetScreenWidth(), h = (float)GetScreenHeight();
+    if (w <= 0 || h <= 0) return 1.0f;
+    float s = std::min(h / 1080.f, w / 1600.f);
+    return std::clamp(std::round(s * 20) / 20, 0.75f, 2.0f);
 }
 void setUiScale(float s, bool chosen) {
     CFG.uiScale = std::clamp(std::round(s * 20) / 20, 0.75f, 2.0f);

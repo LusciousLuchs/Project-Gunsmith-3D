@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.8-alpha
+
+### Fixes
+- **The designer's tools on the left no longer run off the bottom** (the Spring tool was hidden). The list now always stops above the hint line: when the names don't fit it shows icons only, and when even that is too tall it scrolls with the mouse wheel.
+- **Automatic interface size follows the game window**, not the monitor: it's worked out from the window's width and height (100% for a 1920 x 1080 window, about 85% for 1440 x 900, about 133% for 2560 x 1440) and updates when you resize the window. A size you choose yourself in Settings stays as you set it.
+
 ## 0.4.7-alpha
 
 ### Share your cartridges
