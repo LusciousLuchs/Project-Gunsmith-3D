@@ -1763,7 +1763,14 @@ static void gasAndOpenBolt() {
         sim::run(*S, 0.2);
         CHECK(S->searHeld && !S->chambered && sim::breechGap(*S) > 20, "an open bolt starts held back, the chamber empty");
         S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true);
-        sim::run(*S, std::string(mode) == "auto" ? 0.25 : 0.08);
+        // every shot with the bolt home against the breech face (not still running in, short of it)
+        double worst = 0; int seen = S->shots;
+        for (int k = 0; k < (std::string(mode) == "auto" ? 4500 : 800); k++) {
+            sim::substep(*S);
+            if (S->shots != seen) { worst = std::max(worst, sim::breechGap(*S)); seen = S->shots; }
+        }
+        std::printf("  (%s: %d shots, the bolt at most %.2f mm off the breech face when each fired)\n", mode, S->shots, worst);
+        CHECK(S->shots > 0 && worst <= 0.15, "an open bolt fires only once it's home against the breech face");
         S->trigger = false; sim::setKey(*S, "fire", false);
         sim::run(*S, 0.2);
         if (std::string(mode) == "semi") CHECK(S->shots == 1 && S->searHeld, "semi: one shot per pull, then the sear holds the bolt open again");

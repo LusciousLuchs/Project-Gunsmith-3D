@@ -1434,7 +1434,16 @@ void substep(Sim& S) {
                 S.searHeld = false; S.boltFree = true; S.searUp = false; S.homeT = -1; S.pressed = false;
                 if (burst) S.burstLeft = std::max(1, br.burst);
             }
+            // home: right up against the breech face (or come to rest on the round it pushed in), not just within the
+            // millimetre of play a closed action is allowed, or it fires while still running in, short of the face
+            bool home = false;
             if (S.boltFree && inBattery(S)) {
+                const Body& Rb = S.BR->root ? *S.BR->root : *S.BR;
+                const Body& Rc = S.CH->root ? *S.CH->root : *S.CH;
+                double rel = std::hypot(Rb.vx - Rc.vx, Rb.vy - Rc.vy);
+                home = gap <= 0.15 || rel < 0.05;
+            }
+            if (home) {
                 if (S.chambered && S.t > S.fireT + dur * 2) {
                     fireChamber(S);
                     if (burst) S.burstLeft--;

@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.9-alpha
+
+### Fixes
+- **Open bolts seat against the breech face before they fire.** They used to fire as soon as the bolt came within a millimetre of the barrel, while still running forward. Now the shot waits until the bolt is home (closed up, or stopped on the round it pushed in). Open-bolt guns may fire a little slower: that's the bolt really closing each time.
+
 ## 0.4.8-alpha
 
 ### Fixes
