@@ -19,7 +19,7 @@
 
 namespace fs = std::filesystem;
 NpcEdit NE;
-static const char* NPC_AUTOSAVE = "user/npcs/_editing.json";   // what's in the editor, kept between sessions
+static std::string npcAutosave() { return std::string(NPCS_DIR) + "/_editing.json"; }   // what's in the editor, kept between sessions
 
 namespace {
 constexpr float S = 0.01f;   // drawing units per millimetre (1 unit = 10 cm)
@@ -80,7 +80,7 @@ void snapshotIfChanged() {
     NE.redo.clear();
     NE.last = now;
     NE.dirty = true;
-    std::ofstream(NE.player ? CHARACTER_FILE : NPC_AUTOSAVE) << now;   // (the character is simply kept: no save as)
+    std::ofstream(NE.player ? CHARACTER_FILE : npcAutosave()) << now;   // (the character is simply kept: no save as)
 }
 }  // namespace
 
@@ -155,7 +155,7 @@ void enterNpcEditor() {
     static bool loaded = false;
     if (!loaded) {   // what was being edited last time, or a person to start from
         loaded = true;
-        std::ifstream in(NPC_AUTOSAVE);
+        std::ifstream in(npcAutosave());
         std::stringstream ss; ss << in.rdbuf();
         if (!in || !npcFromJson(ss.str(), NE.npc)) NE.npc = npcPreset("human");
         NE.last = npcToJson(NE.npc);
@@ -172,7 +172,7 @@ void leaveNpcEditor() {
         if (stashed) { NE = npcStash; stashed = false; } else NE = NpcEdit();
         return;
     }
-    std::ofstream(NPC_AUTOSAVE) << npcToJson(NE.npc);
+    std::ofstream(npcAutosave()) << npcToJson(NE.npc);
 }
 bool npcCoreBone(const std::string& name) {
     static std::vector<std::string> core;

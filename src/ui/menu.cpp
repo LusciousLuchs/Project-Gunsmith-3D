@@ -356,7 +356,7 @@ void benchPicker() {
 
 // ---------------------------------------------------------------- settings
 namespace {
-enum class Page { Display, Audio, Interface, Designer, Bench, Controls };
+enum class Page { Display, Audio, Interface, Designer, Bench, Controls, Files };
 Page page = Page::Display;
 Settings pending;          // display choices not applied yet
 bool pendingInit = false;
@@ -424,6 +424,7 @@ void displayPage() {
         uiTick();
         beforeApply = CFG;
         CFG.windowMode = pending.windowMode; CFG.monitor = pending.monitor; CFG.resW = pending.resW; CFG.resH = pending.resH;
+        if (CFG.windowMode != WindowMode::Windowed) CFG.lastFullMode = (int)CFG.windowMode;   // (what F11 goes back to)
         applyDisplay();
         confirmUntil = GetTime() + 15;
     }
@@ -532,6 +533,53 @@ void benchPage() {
     if (ImGui::Combo("##mlife", &li, "10 seconds\0" "20 seconds\0" "30 seconds\0" "1 minute\0" "2 minutes\0")) { CFG.magLife = ls[li]; dirty = true; }
 }
 
+// Where your files are kept, and choosing another folder for them
+void filesPage() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    ImGui::SeparatorText("Your files");
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled("Your blueprints, levels, rounds, characters, NPCs, textures, parts and groups are kept in one folder, each kind in its own folder inside it.");
+    std::string cur = fs::absolute(userFolder(), ec).string();
+    ImGui::TextUnformatted(cur.c_str());
+    ImGui::PopTextWrapPos();
+    if (ImGui::Button("Open the folder")) openFolder(userFolder());
+    ImGui::SameLine();
+    static char typed[512] = "";
+    static std::string msg;
+    auto useFolder = [&](const std::string& f) {
+        std::string err;
+        if (changeUserFolder(f, err)) {
+            CFG.userDir = f == defaultUserFolder() ? "" : f;
+            saveSettings();
+            A.userCarts = loadUserCartridges();
+            scanUserTextures();
+            msg = err.empty() ? "Your files are now kept in " + f + ". What was in the old folder was copied there (it's still in the old one too)." : err;
+        } else msg = err;
+    };
+    if (ImGui::Button("Use another folder...")) {
+        std::string f;
+        if (pickFolder(f, "Choose the folder for your Gunsmith3D files")) useFolder(f);
+        else if (documentsFolder().empty()) msg = "Type the folder below and press Use it.";
+    }
+    if (tipHover()) ImGui::SetTooltip("Pick any folder (another drive, a cloud-synced folder). Your files are copied there,\nnothing in either folder is overwritten, and the game uses it from then on.");
+    if (!CFG.userDir.empty()) {
+        ImGui::SameLine();
+        if (ImGui::Button("Back to the default")) useFolder(defaultUserFolder());
+    }
+    if (documentsFolder().empty()) {   // (no folder box here: type it)
+        ImGui::SetNextItemWidth(-90 * S());
+        ImGui::InputText("##udir", typed, sizeof typed);
+        ImGui::SameLine();
+        if (ImGui::Button("Use it") && typed[0]) useFolder(typed);
+    }
+    if (!msg.empty()) { ImGui::PushTextWrapPos(0); ImGui::TextColored(colAccent(), "%s", msg.c_str()); ImGui::PopTextWrapPos(); }
+    ImGui::SeparatorText("Settings");
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled("These settings and the designer's autosave are kept in:");
+    ImGui::TextUnformatted(fs::absolute(appFolder().empty() ? "." : appFolder(), ec).string().c_str());
+    ImGui::PopTextWrapPos();
+}
 void controlsPage() {
     ImGui::SeparatorText("Mouse (first person)");
     row("Sensitivity");
@@ -560,7 +608,7 @@ void controlsPage() {
 }
 }  // namespace
 
-void settingsPageIndex(int i) { page = (Page)std::clamp(i, 0, 5); }
+void settingsPageIndex(int i) { page = (Page)std::clamp(i, 0, 6); }
 
 void settingsWindow() {
     dimBackground(0.6f);
@@ -573,7 +621,7 @@ void settingsWindow() {
     // pages down the left, the chosen page on the right
     ImGui::BeginChild("##nav", {170 * S(), -46 * S()});
     struct P { const char* l; Page p; } pages[] = {{"Display", Page::Display}, {"Audio", Page::Audio}, {"Interface", Page::Interface},
-                                                   {"Designer", Page::Designer}, {"Test bench", Page::Bench}, {"Controls", Page::Controls}};
+                                                   {"Designer", Page::Designer}, {"Test bench", Page::Bench}, {"Controls", Page::Controls}, {"Files", Page::Files}};
     for (auto& p : pages) {
         bool on = page == p.p;
         if (on) ImGui::PushStyleColor(ImGuiCol_Text, colAccent());
@@ -590,6 +638,7 @@ void settingsWindow() {
     case Page::Designer: designerPage(); break;
     case Page::Bench: benchPage(); break;
     case Page::Controls: controlsPage(); break;
+    case Page::Files: filesPage(); break;
     }
     ImGui::EndChild();
     ImGui::Separator();

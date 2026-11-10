@@ -240,7 +240,7 @@ void cartridgeDesigner() {
         bool found = false;
         for (auto& u : A.userCarts) if (u.name == c.name) { u = c; found = true; }
         if (!found) A.userCarts.push_back(c);
-        toast(saveUserCartridges(A.userCarts) ? "Saved " + c.name + " to cartridges.json." : "Could not write cartridges.json.");
+        toast(saveUserCartridges(A.userCarts) ? "Saved " + c.name + " to your Rounds folder." : "Could not save it in your Rounds folder.");
     }
     // sharing: a share code (one line to paste anywhere) or a file; either comes back in by pasting or dropping it on the window
     ImGui::Separator();

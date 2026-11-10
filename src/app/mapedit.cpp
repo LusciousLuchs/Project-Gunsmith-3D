@@ -29,7 +29,7 @@ using gmap::norm;
 MapEd ME;
 
 static const char* MAP_DIR = MAPS_DIR;
-static const char* MAP_AUTOSAVE = "user/maps/.autosave.gsmap";
+static std::string mapAutosave() { return std::string(MAPS_DIR) + "/.autosave.gsmap"; }
 
 // ---------------------------------------------------------------- small helpers
 static Vector3 rv(V3 v) { return {(float)v.x, (float)v.y, (float)v.z}; }
@@ -134,7 +134,7 @@ static void writeAutosave() {
     std::error_code ec;
     fs::create_directories(MAP_DIR, ec);
     embedMapNpcs(ME.map);   // (the NPCs its spawn points use go with it)
-    std::ofstream(MAP_AUTOSAVE) << gmap::mapToJson(ME.map);
+    std::ofstream(mapAutosave()) << gmap::mapToJson(ME.map);
 }
 void meChanged() {
     ME.version++;
@@ -187,7 +187,7 @@ bool meOpen(const std::string& path) {
     meChanged(); ME.dirty = false;
     meFocus();
     ME.status = "Opened " + path;
-    if (int k = installMapNpcs(ME.map)) { ME.status += TextFormat(" (and %d of its NPCs, now in user/npcs)", k); toast(TextFormat("This map brought %d NPC%s with it: they're in the NPC editor now.", k, k == 1 ? "" : "s")); }
+    if (int k = installMapNpcs(ME.map)) { ME.status += TextFormat(" (and %d of its NPCs, now in your NPCs folder)", k); toast(TextFormat("This map brought %d NPC%s with it: they're in the NPC editor now.", k, k == 1 ? "" : "s")); }
     return true;
 }
 bool meSaveGroup(const std::string& name) {
@@ -387,7 +387,7 @@ void enterMapEditor() {
     A.screen = Screen::MapEditor;
     A.showPause = A.showSettings = A.showBenchPicker = false;
     if (ME.map.brushes.empty()) {
-        std::ifstream in(MAP_AUTOSAVE);
+        std::ifstream in(mapAutosave());
         std::stringstream ss; ss << in.rdbuf();
         gmap::Map m;
         if (in && gmap::mapFromJson(ss.str(), m)) { ME.map = m; ME.dirty = false; }

@@ -1,5 +1,6 @@
 // Gunsmith3D - Shared app state, small helpers, undo, modes.
 #include "app/app.hpp"
+#include "app/paths.hpp"
 #include "app/npcedit.hpp"
 #include "app/range.hpp"
 #include "app/mapedit.hpp"
@@ -42,7 +43,7 @@ std::string uid() {
 }
 
 void save() {  // the sandbox design: while another gun is on the bench, that's the one kept aside
-    std::ofstream(AUTOSAVE) << designToJson(A.stash ? *A.stash : A.design, true);
+    std::ofstream(autosavePath()) << designToJson(A.stash ? *A.stash : A.design, true);
     A.saveDue = false; A.lastSave = GetTime();
 }
 void autosaveTick() {

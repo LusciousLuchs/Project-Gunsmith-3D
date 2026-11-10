@@ -59,7 +59,9 @@ double spentCaseMass(const Cartridge& c);                   // what's left after
 const char* cartKinds();                                    // "\0"-separated names, in kind-id order
 const char* cartKindId(int i);
 int cartKindIndex(const std::string& id);
-std::vector<Cartridge> loadUserCartridges();                 // cartridges.json next to the program
+std::vector<Cartridge> loadUserCartridges();                 // your cartridges: one .json each in their folder (setUserCartridgesDir),
+                                                             // or cartridges.json next to the program before it is set
+void setUserCartridgesDir(const std::string& dir);         // (the old cartridges.json list is moved in, one file each)
 bool saveUserCartridges(const std::vector<Cartridge>& list);
 // Sharing one cartridge: as a file (JSON with a "gunsmithCartridge" marker) or as a share code, one line of text to
 // paste anywhere ("GS3D-CART1:" then the same JSON, compact, in base64). Reading takes either, or plain cartridge JSON.

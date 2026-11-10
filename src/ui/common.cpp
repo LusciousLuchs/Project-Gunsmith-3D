@@ -89,7 +89,7 @@ bool texturePicker(std::string& file) {
     ImGui::SameLine();
 #endif
     if (ImGui::Button("Open textures folder", {w2, 0})) { scanUserTextures(); openTexturesFolder(); }
-    if (tipHover()) ImGui::SetTooltip("Pictures in user/textures in the game folder show up here (.png, .jpg, .bmp, .tga).\nYou can also drag pictures onto the game window.");
+    if (tipHover()) ImGui::SetTooltip("Pictures in your Textures folder show up here (.png, .jpg, .bmp, .tga).\nYou can also drag pictures onto the game window.");
     return ch;
 }
 bool tipHover() { return CFG.tooltips && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort); }

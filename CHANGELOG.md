@@ -8,6 +8,17 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.10-alpha
+
+### New
+- **Your files now live in Documents.** Blueprints, levels, rounds, your character, NPCs, textures, saved parts and groups go in *Documents/OAB Foundry/Gunsmith/User*, each in its own folder. Settings and the autosave sit one folder up. Files from older versions are moved over the first time you start the game.
+- **Choose where your files go** in Settings > Files: open the folder, pick another one (your files are copied there), or go back to the default.
+- **Each saved round is its own file** in the Rounds folder, ready to share.
+
+### Fixes
+- **F11 switches between windowed and fullscreen** (back to whichever full-screen mode you last used).
+- **Borderless windowed no longer stays on top**, so Alt+Tab works again.
+
 ## 0.4.9-alpha
 
 ### Fixes

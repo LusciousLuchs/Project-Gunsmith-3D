@@ -443,7 +443,7 @@ static void inspectPart(BodyDef& b) {
                 bool go = ImGui::InputText("##pname", nm, sizeof nm, ImGuiInputTextFlags_EnterReturnsTrue);
                 ImGui::SameLine();
                 if (ImGui::Button("Save") || go) {
-                    toast(savePieceToLibrary(D.bodyIndex(b.id), nm) ? std::string("Saved ") + nm + " to your parts (user/parts)." : "Couldn't save it.");
+                    toast(savePieceToLibrary(D.bodyIndex(b.id), nm) ? std::string("Saved ") + nm + " to your parts (your Parts folder)." : "Couldn't save it.");
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
@@ -1483,7 +1483,7 @@ static void blueprintWindow() {
     if (!ImGui::IsPopupOpen("##bpwin")) ImGui::OpenPopup("##bpwin");   // a modal window: on top of everything, the rest dimmed
     if (!ImGui::BeginPopupModal("##bpwin", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings)) return;
     ImGui::PushFont(gFontBold, 20.0f); ImGui::TextUnformatted("Open a blueprint"); ImGui::PopFont();
-    ImGui::TextDisabled("Your saved guns are in the game folder, under user/guns.");
+    ImGui::TextDisabled("Your saved guns are in your Blueprints folder (Settings > Files shows where).");
     ImGui::Dummy({0, 4 * S()});
     std::vector<fs::path> files;
     if (fs::exists(GUNS_DIR))
@@ -1565,7 +1565,7 @@ static void blueprintWindow() {
         if (dangerButton("Delete", {-1, 0})) ImGui::OpenPopup("##bpdel");
         if (ImGui::BeginPopupModal("##bpdel", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
             ImGui::Text("Delete %s?", p.stem().string().c_str());
-            ImGui::TextDisabled("The file is removed from user/guns. This can't be undone.");
+            ImGui::TextDisabled("The file is removed from your Blueprints folder. This can't be undone.");
             ImGui::Dummy({0, 4 * S()});
             if (dangerButton("Delete it", {140 * S(), 0})) {
                 std::error_code ec;
@@ -1589,7 +1589,7 @@ static void blueprintWindow() {
 void fileButtons() {
     float sz = TOOLBAR_H - 14 * S();
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {0, sz})) saveBlueprint();
-    if (tipHover()) ImGui::SetTooltip("Save to user/guns (Ctrl+S, from anywhere).\nSaving as: %s", A.saveName[0] ? A.saveName : safeFileName(A.design.name).c_str());
+    if (tipHover()) ImGui::SetTooltip("Save to your Blueprints folder (Ctrl+S, from anywhere).\nSaving as: %s", A.saveName[0] ? A.saveName : safeFileName(A.design.name).c_str());
     tutAnchor("file:save");
     ImGui::SameLine(0, 2);
     if (ImGui::Button("Save as...", {0, sz})) ImGui::OpenPopup("##saveas");
@@ -1601,7 +1601,7 @@ void fileButtons() {
         bool go = ImGui::InputText("##fname", nm, sizeof nm, ImGuiInputTextFlags_EnterReturnsTrue);
         ImGui::SameLine();
         if (ImGui::Button("Save") || go) { std::snprintf(A.saveName, sizeof A.saveName, "%s", nm); saveBlueprint(); ImGui::CloseCurrentPopup(); }
-        muted("Saved in the game folder, under user/guns.");
+        muted("Saved in your Blueprints folder (Settings > Files shows where).");
         ImGui::EndPopup();
     }
     ImGui::SameLine(0, 2);

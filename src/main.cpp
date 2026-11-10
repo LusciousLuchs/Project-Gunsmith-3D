@@ -110,8 +110,10 @@ int main(int argc, char** argv) {
         return 1;
     }
 #endif
+    initAppFolder();     // Documents/OAB Foundry/Gunsmith on Windows: the settings and autosave (moved over from the game folder)
     loadSettings();
-    setupUserFolders();  // user/guns, user/maps, user/textures (and files moved over from older versions)
+    setUserFolder(CFG.userDir.empty() ? defaultUserFolder() : CFG.userDir);   // your files: Blueprints, Levels, Rounds, ...
+    setupUserFolders();  // (and files moved over from where older versions kept them)
     scanUserTextures();
     if (frames && !useSettings) CFG = Settings();  // automated screenshots use the defaults unless told otherwise
     unsigned flags = FLAG_WINDOW_RESIZABLE | (CFG.msaa ? FLAG_MSAA_4X_HINT : 0) | (CFG.vsync ? FLAG_VSYNC_HINT : 0);
@@ -135,7 +137,7 @@ int main(int argc, char** argv) {
     gSnap = CFG.snap; A.snapOn = CFG.snap > 0;
 
     A.userCarts = loadUserCartridges();
-    std::ifstream in(AUTOSAVE);
+    std::ifstream in(autosavePath());
     if (!in) in.open(OLD_AUTOSAVE);  // carry work over from Action Lab 3D
     bool loaded = false;
     if (in && presetArg.empty()) { std::stringstream ss; ss << in.rdbuf(); loaded = designFromJson(ss.str(), A.design); }
@@ -218,6 +220,7 @@ int main(int argc, char** argv) {
     while (!WindowShouldClose() && !A.quit) {
         perf::frameStart();
         if (actPressed(Act::PerfOverlay)) perf::toggle();
+        if (actPressed(Act::Fullscreen)) toggleFullscreenKey();
         if (CFG.uiScaleAuto && IsWindowResized()) setUiScale(autoUiScale(), false);   // (auto size follows the window)   // F3: the frame rate and what's slowing the game down
         handleDroppedFiles();  // pictures dropped on the window become textures
         relPoll();

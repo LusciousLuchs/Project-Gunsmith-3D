@@ -1,5 +1,6 @@
 // Gunsmith3D - Player settings (see settings.hpp).
 #include "app/settings.hpp"
+#include "app/paths.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "json.hpp"
@@ -11,7 +12,7 @@
 using json = nlohmann::json;
 Settings CFG;
 
-const char* settingsFile() { return "gunsmith3d_settings.json"; }
+const char* settingsFile() { return settingsPath(); }   // (Documents/OAB Foundry/Gunsmith/settings.json on Windows: app/paths.cpp)
 
 void loadSettings() {
     std::ifstream in(settingsFile());
@@ -27,6 +28,8 @@ void loadSettings() {
         CFG.vsync = g("vsync", d.vsync);
         CFG.fpsCap = std::max(0, g("fpsCap", d.fpsCap));
         CFG.perfOverlay = std::clamp(g("perfOverlay", d.perfOverlay), 0, 2);
+        CFG.lastFullMode = std::clamp(g("lastFullMode", d.lastFullMode), 1, 2);
+        CFG.userDir = g("userDir", d.userDir);
         CFG.poseCharacter = g("poseCharacter", d.poseCharacter);
         CFG.uiScale = std::clamp(g("uiScale", d.uiScale), 0.75f, 2.0f);
         CFG.uiScaleAuto = g("uiScaleAuto", std::fabs(CFG.uiScale - 1.0f) < 0.01f);  // (older settings: a scale someone set stays set)
@@ -70,7 +73,7 @@ void loadSettings() {
 void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
-        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"poseCharacter", CFG.poseCharacter}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
+        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused},
@@ -83,6 +86,12 @@ void saveSettings() {
     std::ofstream(settingsFile()) << j.dump(2);
 }
 
+void toggleFullscreenKey() {   // F11: a window, or the full screen (borderless or fullscreen, whichever you used last)
+    if (CFG.windowMode == WindowMode::Windowed) CFG.windowMode = (WindowMode)CFG.lastFullMode;
+    else { CFG.lastFullMode = (int)CFG.windowMode; CFG.windowMode = WindowMode::Windowed; }
+    applyDisplay();
+    saveSettings();
+}
 void applyDisplay() {
     int mc = std::max(1, GetMonitorCount());
     int m = std::clamp(CFG.monitor, 0, mc - 1);
@@ -100,6 +109,8 @@ void applyDisplay() {
     case WindowMode::Borderless:
         SetWindowPosition((int)mp.x + 40, (int)mp.y + 40);  // onto the chosen monitor, then fill it
         ToggleBorderlessWindowed();
+        // raylib makes a borderless window "always on top", so it stays over everything when you Alt+Tab away: undo that
+        ClearWindowState(FLAG_WINDOW_TOPMOST);
         break;
     case WindowMode::Fullscreen:
         SetWindowPosition((int)mp.x + 40, (int)mp.y + 40);

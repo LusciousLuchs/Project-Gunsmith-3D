@@ -37,7 +37,7 @@ void npcToolbar() {
         }
     } else {
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save")) {
-        if (npcSave(NE.file.empty() ? NE.npc.name : NE.file)) toast("Saved to user/npcs/" + NE.file + ".json");
+        if (npcSave(NE.file.empty() ? NE.npc.name : NE.file)) toast("Saved " + NE.file + " to your NPCs folder.");
         else toast("Couldn't save it.");
     }
     ImGui::SameLine();
@@ -54,7 +54,7 @@ void npcToolbar() {
     ImGui::SetNextWindowSize({420 * CFG.uiScale, 0});
     if (ImGui::BeginPopupModal("Open an NPC", nullptr, ImGuiWindowFlags_NoSavedSettings)) {
         auto files = npcFiles();
-        if (files.empty()) ImGui::TextDisabled("Nothing saved in user/npcs yet.");
+        if (files.empty()) ImGui::TextDisabled("Nothing saved in your NPCs folder yet.");
         for (auto& f : files)
             if (ImGui::Selectable(f.c_str())) { if (npcOpen(f)) toast("Opened " + f + "."); ImGui::CloseCurrentPopup(); }
         ImGui::Separator();
@@ -153,7 +153,7 @@ void npcPanel() {
         prop("Colour");
         if (ImGui::ColorEdit3("##bcol", col, ImGuiColorEditFlags_NoInputs)) b.color = colorHex(col);
         fin();
-        prop("Picture", "A picture on the bone: one of the gun finishes, or your own from user/textures. Its colour tints it (white shows it true).");
+        prop("Picture", "A picture on the bone: one of the gun finishes, or your own from your Textures folder. Its colour tints it (white shows it true).");
         if (texturePicker(b.texture)) done = true;
         if (!b.texture.empty()) { pNumU("Picture size", b.texScale, 5, Q::Length, 0, "How big one copy of the picture is before it repeats."); b.texScale = std::clamp(b.texScale, 1.0, 5000.0); fin(); }
         if (ImGui::Button("Use this look on its mirror twin", {-1, 0})) {   // the same bone on the other side: same look
@@ -210,8 +210,8 @@ void npcPanel() {
     if (!saveName[0]) std::snprintf(saveName, sizeof saveName, "%s", NE.file.empty() ? n.name.c_str() : NE.file.c_str());
     ImGui::SetNextItemWidth(-1);
     ImGui::InputText("##nsave", saveName, sizeof saveName);
-    if (ImGui::Button("Save to user/npcs", {-1, 0})) {
-        if (npcSave(saveName)) toast("Saved to user/npcs/" + NE.file + ".json"); else toast("Couldn't save it.");
+    if (ImGui::Button("Save to my NPCs", {-1, 0})) {
+        if (npcSave(saveName)) toast("Saved " + NE.file + " to your NPCs folder."); else toast("Couldn't save it.");
     }
     }
     ImGui::End();

@@ -15,7 +15,6 @@ inline constexpr float U = 0.1f;          // world units per millimetre
 inline constexpr float PANEL_W_BASE = 360.0f, TOOLBAR_H_BASE = 44.0f;
 inline float PANEL_W = PANEL_W_BASE;      // right-hand panel (scaled with the UI)
 inline float TOOLBAR_H = TOOLBAR_H_BASE;  // top bar (0 on the main menu)
-inline constexpr const char* AUTOSAVE = "gunsmith3d_autosave.json";
 inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from before the rename
 
 // ---------------------------------------------------------------- app state

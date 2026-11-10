@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cstring>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 
@@ -377,9 +378,11 @@ bool cartridgeFromText(const std::string& text, Cartridge& out) {
     return true;
 }
 
-std::vector<Cartridge> loadUserCartridges() {
+namespace {
+std::string gCartsDir;   // "": the old cartridges.json list next to the program
+std::vector<Cartridge> readCartList(const char* path) {
     std::vector<Cartridge> out;
-    std::ifstream in("cartridges.json");
+    std::ifstream in(path);
     if (!in) return out;
     std::stringstream ss; ss << in.rdbuf();
     try {
@@ -388,13 +391,69 @@ std::vector<Cartridge> loadUserCartridges() {
     } catch (...) {}
     return out;
 }
+std::string cartFileName(const std::string& name) {
+    std::string o;
+    for (char ch : name) o += (std::strchr("<>:\"/\\|?*", ch) || (unsigned char)ch < 32) ? '-' : ch;
+    while (!o.empty() && (o.back() == ' ' || o.back() == '.')) o.pop_back();
+    return o.empty() ? "Cartridge" : o;
+}
+}  // namespace
+void setUserCartridgesDir(const std::string& dir) {
+    gCartsDir = dir;
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    if (fs::exists("cartridges.json", ec)) {   // the old list: each one into its own file, then the list is retired
+        for (auto& c : readCartList("cartridges.json")) {
+            fs::path p = fs::path(dir) / (cartFileName(c.name) + ".json");
+            if (!fs::exists(p, ec)) std::ofstream(p) << cartridgeFileText(c);
+        }
+        fs::rename("cartridges.json", "cartridges.json.moved", ec);
+    }
+}
+std::vector<Cartridge> loadUserCartridges() {
+    if (gCartsDir.empty()) return readCartList("cartridges.json");
+    namespace fs = std::filesystem;
+    std::vector<Cartridge> out;
+    std::error_code ec;
+    for (auto& e : fs::directory_iterator(gCartsDir, ec)) {
+        if (!e.is_regular_file(ec) || e.path().extension() != ".json") continue;
+        std::ifstream in(e.path()); std::stringstream ss; ss << in.rdbuf();
+        Cartridge c;
+        if (cartridgeFromText(ss.str(), c)) out.push_back(c);
+    }
+    std::sort(out.begin(), out.end(), [](const Cartridge& a, const Cartridge& b) { return a.name < b.name; });
+    return out;
+}
 bool saveUserCartridges(const std::vector<Cartridge>& list) {
-    json j = json::array();
-    for (auto& c : list) j.push_back(cartToJson(c));
-    std::ofstream out("cartridges.json");
-    if (!out) return false;
-    out << j.dump(2);
-    return true;
+    if (gCartsDir.empty()) {
+        json j = json::array();
+        for (auto& c : list) j.push_back(cartToJson(c));
+        std::ofstream out("cartridges.json");
+        if (!out) return false;
+        out << j.dump(2);
+        return true;
+    }
+    // each cartridge its own file; a cartridge file whose cartridge isn't in the list any more is removed
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    fs::create_directories(gCartsDir, ec);
+    bool ok = true;
+    std::vector<std::string> keep;
+    for (auto& c : list) {
+        fs::path p = fs::path(gCartsDir) / (cartFileName(c.name) + ".json");
+        std::ofstream f(p);
+        if (!(f << cartridgeFileText(c))) ok = false;
+        keep.push_back(p.filename().string());
+    }
+    for (auto& e : fs::directory_iterator(gCartsDir, ec)) {
+        if (!e.is_regular_file(ec) || e.path().extension() != ".json") continue;
+        if (std::find(keep.begin(), keep.end(), e.path().filename().string()) != keep.end()) continue;
+        std::ifstream in(e.path()); std::stringstream ss; ss << in.rdbuf(); in.close();
+        Cartridge c;
+        if (cartridgeFromText(ss.str(), c)) fs::remove(e.path(), ec);
+    }
+    return ok;
 }
 // ---------------------------------------------------------------- barrels
 bool barrelEnds(const BodyDef& b, V2& rear, V2& muzzle) {

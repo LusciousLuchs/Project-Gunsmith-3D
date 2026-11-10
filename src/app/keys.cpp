@@ -54,6 +54,7 @@ static const ActInfo ACTS[(int)Act::Count] = {
     {"use", "Use (take guns from a spawner, pick one up)", "First person", KEY_F, false},
     {"dropgun", "Drop the gun in your hands", "First person", KEY_G, false},
     {"perf", "Performance overlay (frame rate, frame time)", "View", KEY_F3, false},
+    {"fullscreen", "Fullscreen / window", "View", KEY_F11, false},
 };
 
 const ActInfo& actInfo(Act a) { return ACTS[(int)a]; }

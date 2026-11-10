@@ -259,7 +259,7 @@ static void groupTools() {   // groups of objects: save the selection as one, pl
     ImGui::SetNextItemWidth(-1);
     ImGui::InputText("##gname", gname, sizeof gname);
     if (ImGui::Button("Save the selection as a group", {-1, 0})) meSaveGroup(gname);
-    if (tipHover()) ImGui::SetTooltip("The selected brushes (Shift-click adds more) and the selected object (an NPC, a gun spawner),\nsaved as one group in user/groups. Place it again in this map or any other.");
+    if (tipHover()) ImGui::SetTooltip("The selected brushes (Shift-click adds more) and the selected object (an NPC, a gun spawner),\nsaved as one group in your Groups folder. Place it again in this map or any other.");
     auto groups = meGroupFiles();
     if (!groups.empty()) {
         prop("Place");
@@ -297,7 +297,7 @@ static void texturesTab() {
 #endif
         if (ImGui::Button("Open textures folder", {w2, 0})) { scanUserTextures(); openTexturesFolder(); }
         ImGui::PushTextWrapPos(0);
-        ImGui::TextDisabled("Your pictures (user/textures in the game folder) come after the built-in ones. You can drag pictures onto the window too.");
+        ImGui::TextDisabled("Your pictures (your Textures folder) come after the built-in ones. You can drag pictures onto the window too.");
         ImGui::PopTextWrapPos();
     }
     ImGui::TextDisabled(ME.sel.empty() ? "Click one to use it for new brushes." : ME.face >= 0 ? "Click one to put it on the selected face." : "Click one to put it on the selection.");
@@ -370,7 +370,7 @@ static void mapTab() {
 
 static void fileTab() {
     heading("Save");
-    ImGui::TextDisabled("Saved in the game folder as user/maps/<name>.gsmap. Maps are plain text, so they're easy to share and edit.");
+    ImGui::TextDisabled("Saved in your Levels folder as <name>.gsmap (Settings > Files shows where). Maps are plain text, so they're easy to share and edit.");
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {-1, 30 * S()})) meSave();
     if (ME.dirty) ImGui::TextColored(colWarn(), "Unsaved changes (an autosave is kept).");
     ImGui::Dummy({0, 6 * S()});

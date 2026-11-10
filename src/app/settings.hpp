@@ -19,6 +19,8 @@ struct Settings {
     bool vsync = true;
     int fpsCap = 60;                     // 0 = no cap
     int perfOverlay = 0;
+    int lastFullMode = 1;
+    std::string userDir;                 // where your files are kept ("": the default, Documents/OAB Foundry/Gunsmith/User on Windows)                // what F11 goes to from a window: 1 borderless, 2 fullscreen (the last one used)
     bool poseCharacter = true;           // Pose mode: your character (if you made one) holds the gun, not the mannequin                 // the performance overlay (F3): 0 off, 1 frame rate, 2 full details
     float uiScale = 1.0f;
     bool uiScaleAuto = true;             // pick the scale from the screen's height (until you choose one)
@@ -64,5 +66,6 @@ extern Settings CFG;
 void loadSettings();
 void saveSettings();
 void applyDisplay();          // window mode, size, monitor, vsync, frame cap
+void toggleFullscreenKey();   // F11: window <-> full screen
 void applyAudio();            // per frame: volumes and mute when unfocused
 const char* settingsFile();
