@@ -126,13 +126,14 @@ void drawOverlay() {
             }
     }
     drawScaleOverlay();
-    if (A.mode == Mode::Build && A.measured && (A.tool == Tool::Measure || A.shaping)) {  // the measuring line
+    if (A.mode == Mode::Build && A.measured && (A.tool == Tool::Measure || A.shaping || A.measureKeep)) {  // the measuring line
         Vector2 a = toScreen(W3(A.measureA, 0)), b = toScreen(W3(A.measureB, 0));
         Color mc{255, 226, 90, 255};
         DrawLineEx(a, b, 2, mc); DrawCircleV(a, 4, mc); DrawCircleV(b, 4, mc);
         double dx = A.measureB.x - A.measureA.x, dy = A.measureA.y - A.measureB.y, L = std::hypot(dx, dy);
         double ang = std::atan2(dy, dx) * 180 / 3.14159265358979;
-        std::string t = fmtQ(Q::Length, L, 2) + "   across " + fmtQ(Q::Length, dx, 2) + "   up " + fmtQ(Q::Length, dy, 2) + "   " + TextFormat("%.1f\xc2\xb0", ang);
+        auto len = [](double v) { return CFG.units == Units::Imperial ? fmtQ(Q::Length, v, 3) + " (" + fracInch(v) + ")" : fmtQ(Q::Length, v, 2); };
+        std::string t = len(L) + "   across " + len(dx) + "   up " + len(dy) + "   " + TextFormat("%.1f\xc2\xb0", ang);
         viewText(t.c_str(), (a.x + b.x) / 2 + 10, (a.y + b.y) / 2 - 22, 13, mc);
     }
     // joints that belong to what you're working on are drawn strongly; the rest stay faint until hovered

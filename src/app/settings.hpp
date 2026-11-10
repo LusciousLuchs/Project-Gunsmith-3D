@@ -39,7 +39,8 @@ struct Settings {
     bool hints = true;                   // the short how-to line over the 3D view
     bool colorblind = false;             // blue/orange instead of green/red for good/bad
     // designer
-    double snap = 0.5;                   // mm, 0 = off
+    double snap = 0.5;                   // mm, the snap step (0 in old settings files = off)
+    bool snapOn = true;
     AutosaveEvery autosave = AutosaveEvery::Change;
     bool orbitMiddle = false;            // orbit with the middle button and pan with the right, instead of the reverse
     float zoomSpeed = 1.0f;

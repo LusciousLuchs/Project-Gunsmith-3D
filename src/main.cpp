@@ -75,6 +75,10 @@ int main(int argc, char** argv) {
         else if (a == "--side") sideArg = true;
         else if (a == "--select") selectArg = next();
         else if (a == "--trackdraft") trackDraft = true;
+        else if (a == "--measure") {   // (screenshots) a measuring line from x1 y1 to x2 y2 (mm), kept shown
+            double v[4]; for (double& k : v) k = std::atof(next().c_str());
+            A.measureA = {v[0], v[1]}; A.measureB = {v[2], v[3]}; A.measured = A.measureKeep = true;
+        }
         else if (a == "--carvetool") carveTool = true;
         else if (a == "--cam") { camYaw = std::atof(next().c_str()); camPitch = std::atof(next().c_str()); }  // (screenshots) camera angles, radians        // (screenshots) pick the Carve tool
         else if (a == "--selcarve") selCarveArg = std::atoi(next().c_str());  // (screenshots) select carve N of the selected part   // (screenshots) start a track on the selected part
@@ -134,7 +138,7 @@ int main(int argc, char** argv) {
     initViewFont();
     initSfx();
     setupImGui();
-    gSnap = CFG.snap; A.snapOn = CFG.snap > 0;
+    gSnap = CFG.snap; A.snapOn = CFG.snapOn;
 
     A.userCarts = loadUserCartridges();
     std::ifstream in(autosavePath());

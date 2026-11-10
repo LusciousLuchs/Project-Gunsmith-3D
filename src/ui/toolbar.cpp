@@ -6,10 +6,12 @@
 #include "app/scene.hpp"
 #include "app/settings.hpp"
 #include "app/view.hpp"
+#include "app/units.hpp"
 #include "ui/ui.hpp"
 #include "imgui.h"
 #include "extras/IconsFontAwesome6.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <cstring>
@@ -25,6 +27,54 @@ static bool iconButton(const char* icon, const char* tip, bool on = false) {
     return r;
 }
 static void gap(float px = 14) { ImGui::SameLine(0, px * CFG.uiScale); }
+
+// Snap: on/off, the step typed in any unit ("1/16 in", "0.5 mm"), common steps in both systems, and mm | in
+static void snapControls(float sz) {
+    if (iconButton(ICON_FA_MAGNET, A.snapOn ? "Snap is on: corners and parts jump to the step beside it" : "Snap is off: corners and parts move freely", A.snapOn)) {
+        A.snapOn = !A.snapOn; CFG.snapOn = A.snapOn; saveSettings();
+    }
+    tutAnchor("snap");
+    ImGui::SameLine(0, 2 * CFG.uiScale);
+    static char buf[48];
+    static bool typing = false;
+    if (!typing) std::snprintf(buf, sizeof buf, "%s", typedQ(Q::Length, gSnap).c_str());
+    float y = ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2;
+    ImGui::SetCursorPosY(y);
+    ImGui::SetNextItemWidth(84 * CFG.uiScale);
+    ImGui::BeginDisabled(!A.snapOn);
+    ImGui::InputText("##snapstep", buf, sizeof buf, ImGuiInputTextFlags_AutoSelectAll);
+    typing = ImGui::IsItemActive();
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        double mm;
+        if (parseQ(Q::Length, buf, mm) && mm > 0) { gSnap = std::clamp(mm, 0.001, 200.0); CFG.snap = gSnap; saveSettings(); }
+        else toast("Couldn't read that snap step. Try 0.5 mm, 1/16 in or 0.02\".");
+    }
+    if (tipHover()) ImGui::SetTooltip("Snap step. Type it in any unit: 0.5 mm, 1/16 in, 0.02\", 1 mm + 1/32 in.\nA number alone is in the unit shown (mm or in, on the right).");
+    ImGui::EndDisabled();
+    ImGui::SameLine(0, 0);
+    ImGui::SetCursorPosY(y);
+    if (ImGui::BeginCombo("##snappick", nullptr, ImGuiComboFlags_NoPreview | ImGuiComboFlags_HeightLarge)) {
+        static const double mm[] = {0.1, 0.25, 0.5, 1, 2, 5, 10};   // (10 mm = 1 cm)
+        static const char* inch[] = {"1/32 in", "1/16 in", "1/8 in", "1/4 in", "1/2 in", "1 in"};
+        bool picked = false;
+        ImGui::TextDisabled("Metric");
+        for (double m : mm) {
+            char l[24]; std::snprintf(l, sizeof l, "%g mm", m);
+            if (ImGui::Selectable(l, A.snapOn && std::fabs(gSnap - m) < 1e-9)) { gSnap = m; A.snapOn = true; picked = true; }
+        }
+        ImGui::TextDisabled("Imperial");
+        for (auto t : inch) {
+            double v = 0; parseQ(Q::Length, t, v);
+            if (ImGui::Selectable(t, A.snapOn && std::fabs(gSnap - v) < 1e-9)) { gSnap = v; A.snapOn = true; picked = true; }
+        }
+        if (picked) { CFG.snap = gSnap; CFG.snapOn = true; saveSettings(); }
+        ImGui::EndCombo();
+    }
+    if (tipHover()) ImGui::SetTooltip("Common snap steps, metric and imperial");
+    ImGui::SameLine(0, 6 * CFG.uiScale);
+    ImGui::SetCursorPosY(y);
+    unitsSwitch(ImGui::GetFrameHeight());
+}
 
 // The workspace look: each choice with a little swatch of its backdrop.
 static void swatch(ImVec2 p, float sw, const SceneLook& L) {
@@ -89,7 +139,7 @@ static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
     {ICON_FA_EXPAND, "Scale", "Make a part bigger or smaller: drag a corner of the box round it (Shift: stretch freely),\nor an edge to stretch it one way. Ctrl scales about its middle. Pins, slots and springs on it go with it.\nOr type exact sizes in its panel. With corners picked, only those corners are scaled.", Tool::Scale, -1},
     {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.\nIt stays a live mirror: change either one and the other follows.", Tool::Mirror, -1},
-    {ICON_FA_RULER, "Measure", "Drag between two points to measure: the length, how far across and up, and the angle.\nSnaps to corners and joints. The line stays until you measure again.", Tool::Measure, -1},
+    {ICON_FA_RULER, "Measure", "Drag between two points to measure: the length, how far across and up, and the angle.\nSnaps to corners and joints. The line stays until you measure again;\ntick Keep it shown (right) to see it while you move parts.", Tool::Measure, -1},
     {ICON_FA_CIRCLE_MINUS, "Carve", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1},
     {ICON_FA_PEN_NIB, "Engrave", "An engraving pen: draw designs or write text on any face of a part,\nlike roll marks, serial numbers or scrollwork. Looks only.", Tool::Engrave, -1}};
 static const RailTool RAIL_JOIN[] = {
@@ -231,16 +281,7 @@ void toolbar() {
         if (iconButton(ICON_FA_ROTATE_RIGHT, "Redo (Ctrl+Y)")) redo();
         ImGui::EndDisabled();
         gap(16);
-        static const double steps[] = {0, 0.1, 0.5, 1, 2, 5};
-        static const char* metric[] = {"Snap off", "Snap 0.1 mm", "Snap 0.5 mm", "Snap 1 mm", "Snap 2 mm", "Snap 5 mm"};
-        static const char* imp[] = {"Snap off", "Snap 0.004 in", "Snap 0.02 in", "Snap 0.04 in", "Snap 0.08 in", "Snap 0.2 in"};
-        int si = 2;
-        for (int k = 0; k < 6; k++) if (std::fabs(gSnap - steps[k]) < 1e-9) si = k;
-        if (!A.snapOn) si = 0;
-        ImGui::SetNextItemWidth(118 * CFG.uiScale);
-        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
-        if (ImGui::Combo("##snap", &si, CFG.units == Units::Imperial ? imp : metric, 6)) { gSnap = steps[si]; A.snapOn = si > 0; CFG.snap = gSnap; saveSettings(); }
-        if (tipHover()) ImGui::SetTooltip("Corners and parts jump to this step when you draw or drag them.");
+        snapControls(sz);
     } else {
         if (accentButton(ICON_FA_PERSON "  Pose", A.posing, {0, sz})) { if (A.posing) { leavePose(); A.running = true; } else { restartTest(); enterPose(); } }
         if (tipHover()) ImGui::SetTooltip("How a person holds this gun: place the hands and the stock's butt on it,\nand stand the body against it for aiming, from the hip and lowered.");
@@ -261,6 +302,9 @@ void toolbar() {
         ImGui::PopStyleColor(3);
         gap(3);
         if (ImGui::Button("Reload", {0, sz})) { if (A.S) { sim::quickReload(*A.S); toast("Reloaded."); } }
+        gap(16);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
+        unitsSwitch(ImGui::GetFrameHeight());
     }
 rightSide:
     // view toggles on the right

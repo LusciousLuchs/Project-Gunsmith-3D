@@ -49,6 +49,8 @@ void loadSettings() {
         CFG.hints = g("hints", d.hints);
         CFG.colorblind = g("colorblind", d.colorblind);
         CFG.snap = std::max(0.0, g("snap", d.snap));
+        CFG.snapOn = g("snapOn", CFG.snap > 0);
+        if (CFG.snap <= 0) CFG.snap = 0.5;
         CFG.autosave = (AutosaveEvery)std::clamp(g("autosave", (int)d.autosave), 0, 3);
         CFG.orbitMiddle = g("orbitMiddle", d.orbitMiddle);
         CFG.zoomSpeed = std::clamp(g("zoomSpeed", d.zoomSpeed), 0.25f, 3.f);
@@ -78,7 +80,7 @@ void saveSettings() {
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused},
         {"units", (int)CFG.units}, {"stats", (int)CFG.stats}, {"tooltips", CFG.tooltips}, {"hints", CFG.hints},
-        {"colorblind", CFG.colorblind}, {"snap", CFG.snap}, {"autosave", (int)CFG.autosave},
+        {"colorblind", CFG.colorblind}, {"snap", CFG.snap}, {"snapOn", CFG.snapOn}, {"autosave", (int)CFG.autosave},
         {"orbitMiddle", CFG.orbitMiddle}, {"zoomSpeed", CFG.zoomSpeed}, {"invertZoom", CFG.invertZoom},
         {"slowOnShot", CFG.slowOnShot}, {"slowSpeed", CFG.slowSpeed}, {"slowWindowMs", CFG.slowWindowMs},
         {"benchSpeed", CFG.benchSpeed}, {"relRounds", CFG.relRounds}, {"maxLooseMags", CFG.maxLooseMags}, {"magLife", CFG.magLife},

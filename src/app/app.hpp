@@ -49,6 +49,7 @@ struct App {
     std::string gripKind = "firing", gripStyle;  // the Grip tool places this kind (and style) of grip
     int chamberEdit = -1;
     V2 measureA, measureB; bool measured = false;  // the Measure tool's last line (mm)
+    bool measureKeep = false;                      // keep showing it with the other tools (moving parts)
     int pressNext = -1;                  // a click (no drag) on the selected part picks this one, behind it
     int axisLock = 0;                    // while dragging: 1 side to side (X), 2 up and down (Y), 3 depth (Z), 0 free
     double zDrag = 0, zDragLast = 0;     // depth dragged so far (Z lock), mm

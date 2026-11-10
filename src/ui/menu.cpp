@@ -480,9 +480,6 @@ void interfacePage() {
             ImGui::EndCombo();
         }
     }
-    ImGui::SeparatorText("Units");
-    row("Measurements", "Metric: mm, g, m/s, J, N.\nImperial: inches, grains (bullets and powder), ounces, ft/s, ft-lbf, lbf.\nOnly what you see changes; the simulation always works the same way.");
-    dirty |= enumCombo("##un", CFG.units, "Metric\0Imperial\0");
     ImGui::SeparatorText("Information");
     row("Statistics shown", "Minimal: just what you need to know.\nStandard: adds recoil, travel and magazine details.\nEngineering: everything, including the motion trace and part speeds.");
     dirty |= enumCombo("##st", CFG.stats, "Minimal\0Standard\0Engineering\0");
@@ -497,13 +494,6 @@ void designerPage() {
     row("Workbench", "A bench under the gun with a ruler, a hammer, a screwdriver and a mug: a sense of real size.");
     dirty |= ImGui::Checkbox("##wb", &CFG.workbench);
     ImGui::SeparatorText("Editing");
-    row("Snap step");
-    static const double steps[] = {0, 0.1, 0.5, 1, 2, 5};
-    int si = 2;
-    for (int i = 0; i < 6; i++) if (std::fabs(CFG.snap - steps[i]) < 1e-9) si = i;
-    const char* metric = "Off\0" "0.1 mm\0" "0.5 mm\0" "1 mm\0" "2 mm\0" "5 mm\0";
-    const char* imp = "Off\0" "0.004 in\0" "0.02 in\0" "0.04 in\0" "0.08 in\0" "0.2 in\0";
-    if (ImGui::Combo("##sn", &si, CFG.units == Units::Imperial ? imp : metric)) { CFG.snap = steps[si]; gSnap = CFG.snap; A.snapOn = si > 0; dirty = true; }
     row("Autosave");
     dirty |= enumCombo("##as", CFG.autosave, "After every change\0Every minute\0Every 5 minutes\0Off\0");
     ImGui::SeparatorText("Camera");

@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.11-alpha
+
+### New
+- **Type your snap step** in the designer's top bar, in any unit: 0.5 mm, 1 cm, 1/32 in, 1 1/2", even 1/4 in + 2 mm. The magnet button turns snapping on and off, and the arrow beside it lists common steps in both systems (down to 1/32 in).
+- **mm | in switch on the toolbar** (designer, test bench and level editor). Flip it at any time: it only changes what's shown. It has moved out of Settings.
+- **Every measurement box takes any unit.** Click a value and type it in millimetres, centimetres, inches or inch fractions (3/8 in), grams, kilograms, grains, ounces or pounds, whatever is shown. Handy for guns that mix metric and imperial.
+- **Measure tool:** a *Keep it shown* tick keeps the measuring line on screen while you move parts with other tools. Lengths are shown in mm, decimal inches and the nearest 1/32 in.
+
 ## 0.4.10-alpha
 
 ### New

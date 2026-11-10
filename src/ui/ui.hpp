@@ -13,6 +13,7 @@ bool bodyCombo(const char* label, std::string& id, bool withWorld);
 void numField(const char* label, double& v, double step, const char* fmt = "%.1f");
 bool numFieldU(const char* label, double& v, double step, Q q, int decimals = -1, double lo = 0);  // shown in the player's units
 void typeable();
+bool unitsSwitch(float height);   // mm | in buttons for the toolbars
 bool texturePicker(std::string& file);  // "Plain" or one of the pictures in user/textures, with add / open folder
                  // after a slider: double-click it to type a value
 bool tipHover();                 // hovered, and tooltips are on

@@ -92,6 +92,9 @@ void mapToolbar() {
     lenDrag("##height", ME.height, ME.grid);
     ME.height = std::max(ME.height, 0.01);
     if (tipHover()) ImGui::SetTooltip("Height of new brushes");
+    gap(8);
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
+    unitsSwitch(ImGui::GetFrameHeight());
     // right side
     float right = 4 * (sz + 4 * S()) + 110 * S() + 10 * S();
     ImGui::SameLine(GetScreenWidth() - right);

@@ -40,14 +40,39 @@ void numField(const char* label, double& v, double step, const char* fmt) {
     ImGui::InputDouble(label, &v, step, step * 10, fmt);
     markEdit();
 }
+// Typing into a unit field: the field being typed in, and what's typed so far
+static ImGuiID gTypingId = 0;
+static char gTyped[96];
+static bool gTypingFocus = false;
 bool numFieldU(const char* label, double& v, double step, Q q, int decimals, double lo) {
+    ImGuiID id = ImGui::GetID(label);
+    if (gTypingId == id) {
+        // typed in either system ("3/8 in", "9.5 mm", "1 in - 2 mm"); a number alone is in the shown unit
+        if (gTypingFocus) { ImGui::SetKeyboardFocusHere(); gTypingFocus = false; }
+        ImGui::InputText(label, gTyped, sizeof gTyped, ImGuiInputTextFlags_AutoSelectAll);
+        bool done = ImGui::IsItemDeactivated(), ch = false;
+        if (done) {
+            double nv;
+            if (!ImGui::IsKeyPressed(ImGuiKey_Escape) && parseQ(q, gTyped, nv)) { v = std::max(lo, nv); editedAny = true; ch = true; }
+            gTypingId = 0;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Type a value in mm or inches (or both: 1/4 in + 2 mm).\nEnter to set, Esc to cancel.");
+        return ch;
+    }
     double d = toDisp(q, v), st = niceStep(q, step), dlo = toDisp(q, lo), dhi = 1e9;
     char fmt[32];
     std::snprintf(fmt, sizeof fmt, "%%.%df %s", decimals >= 0 ? decimals : decimalsOf(q), unitOf(q));
     // drag sideways to scrub the value, or click it (without dragging) to type it
     // (sizes stop at their smallest sensible value, typed or dragged; offsets pass a large negative lo)
-    bool ch = ImGui::DragScalar(label, ImGuiDataType_Double, &d, (float)(st * 0.2), &dlo, &dhi, fmt, ImGuiSliderFlags_AlwaysClamp);
+    bool ch = ImGui::DragScalar(label, ImGuiDataType_Double, &d, (float)(st * 0.2), &dlo, &dhi, fmt,
+                                ImGuiSliderFlags_AlwaysClamp | ImGuiSliderFlags_NoInput);
     if (ch) { v = std::max(lo, fromDisp(q, d)); editedAny = true; }
+    float th = ImGui::GetIO().MouseDragThreshold;
+    bool click = ImGui::IsItemDeactivated() && ImGui::GetIO().MouseDragMaxDistanceSqr[0] < th * th;
+    if (click || (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))) {
+        gTypingId = id; gTypingFocus = true;
+        std::snprintf(gTyped, sizeof gTyped, "%s", typedQ(q, v, decimals >= 0 ? decimals + 1 : -1).c_str());
+    }
     return ch;
 }
 // Sliders only switch to typing on Ctrl+click; let a double-click do it too. Call right after the slider.
@@ -105,6 +130,21 @@ bool accentButton(const char* label, bool on, ImVec2 size) {
     return r;
 }
 
+// mm | in, side by side, for the toolbars: changes what's shown at once (typing takes either, whichever is shown)
+bool unitsSwitch(float h) {
+    bool ch = false, imp = CFG.units == Units::Imperial;
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, {1, 0});
+    float w = 34 * CFG.uiScale, y = ImGui::GetCursorPosY();
+    if (accentButton("mm", !imp, {w, h}) && imp) { CFG.units = Units::Metric; ch = true; }
+    if (tipHover()) ImGui::SetTooltip("Show measurements in metric (mm, g, m/s).\nYou can still type inches into any box: 3/8 in.");
+    ImGui::SameLine();
+    ImGui::SetCursorPosY(y);
+    if (accentButton("in", imp, {w, h}) && !imp) { CFG.units = Units::Imperial; ch = true; }
+    if (tipHover()) ImGui::SetTooltip("Show measurements in imperial (inches, grains, ft/s).\nYou can still type millimetres into any box: 9.5 mm.");
+    ImGui::PopStyleVar();
+    if (ch) saveSettings();
+    return ch;
+}
 
 const char* JT_LABEL(const std::string& t) {
     if (t == "pin") return "Pin"; if (t == "weld") return "Weld"; if (t == "track") return "Track / cam slot"; if (t == "spring") return "Spring";

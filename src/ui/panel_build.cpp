@@ -92,6 +92,23 @@ static void carveToolPanel() {
     editedAny = wasEdited;  // tool settings aren't part of the design
     ImGui::Spacing();
 }
+// The Measure tool: the line's numbers, and keeping it shown while you move parts with the other tools
+static void measureToolPanel() {
+    ImGui::SeparatorText("Measure");
+    if (!A.measured) { muted("Drag between two points to measure them. It snaps to corners and joints."); return; }
+    double dx = A.measureB.x - A.measureA.x, dy = A.measureA.y - A.measureB.y, L = std::hypot(dx, dy);
+    auto row = [](const char* k, double v) {
+        ImGui::TextDisabled("%s", k); ImGui::SameLine(80 * S());
+        ImGui::Text("%.2f mm   %.3f in   %s", v, v / 25.4, fracInch(v).c_str());
+    };
+    row("Length", L); row("Across", dx); row("Up", dy);
+    ImGui::TextDisabled("Angle"); ImGui::SameLine(80 * S()); ImGui::Text("%.1f\xc2\xb0", std::atan2(dy, dx) * 180 / 3.14159265358979);
+    ImGui::Checkbox("Keep it shown##measure", &A.measureKeep);
+    if (tipHover()) ImGui::SetTooltip("Keep the measuring line on screen when you switch tools,\nso you can move a part and see it line up. (It stays where you drew it.)");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Clear##measure")) { A.measured = false; A.measureKeep = false; }
+    ImGui::Spacing();
+}
 // The Scale tool: the box's size, typed; a percentage; and what a corner drag does
 static void scaleToolPanel() {
     auto& D = A.design;
@@ -1652,6 +1669,7 @@ void buildPanel() {
             if (A.tool == Tool::Carve) carveToolPanel();
             if (A.tool == Tool::Engrave) engraveToolPanel();
             if (A.tool == Tool::Scale) scaleToolPanel();
+            if (A.tool == Tool::Measure || (A.measureKeep && A.measured)) measureToolPanel();
             if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) inspectPart(D.bodies[A.sel.idx]);
             else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) inspectJoint(D.joints[A.sel.idx]);
             else {
