@@ -2002,6 +2002,19 @@ static void armFreedom() {
     designFromJson(designToJson(old, true), o2);
     CHECK(o2.pose.firing.elbow == 0 && o2.pose.firing.twist == 0 && o2.pose.firing.dz == 0 && !o2.pose.support.free, "older poses load unchanged");
 }
+static void cartridgeSharing() {
+    std::printf("cartridgeSharing\n");
+    Cartridge c = cartridgePresets()[0];
+    c.name = "Test round"; c.velocity = 433; c.nose = "spitzer"; c.custom = {{1, 2}, {3, 4}};
+    std::string code = cartridgeShareCode(c);
+    std::printf("  (share code: %zu characters)\n", code.size());
+    Cartridge a, b, d;
+    CHECK(cartridgeFromText(code, a) && a.name == "Test round" && a.velocity == 433 && a.custom.size() == 2, "a share code brings the cartridge back exactly");
+    CHECK(cartridgeFromText("  " + code + "\n", d) && d.name == c.name, "with spaces round it too (pasted from a message)");
+    CHECK(cartridgeFromText(cartridgeFileText(c), b) && b.nose == c.nose && b.bulletMass == c.bulletMass, "an exported file brings it back");
+    Cartridge x;
+    CHECK(!cartridgeFromText("GS3D-CART1:notacode!!", x) && !cartridgeFromText("hello", x), "anything else isn't taken for a cartridge");
+}
 static void controlButtons() {
     std::printf("controlButtons\n");
     // a frame, and a button on a short track: it can only slide 4 mm forward from where it sits
@@ -2082,6 +2095,7 @@ int main() {
     npcsAlive();
     npcPaths();
     armFreedom();
+    cartridgeSharing();
     mapTests(failures);
     std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures ? 1 : 0;

@@ -3,6 +3,8 @@
 #include "version.hpp"
 #include "json.hpp"
 #include <algorithm>
+#include <cctype>
+#include <cstring>
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -328,6 +330,53 @@ const std::vector<Cartridge>& cartridgePresets() {
     }();
     return v;
 }
+namespace {
+const char* B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+std::string b64enc(const std::string& in) {
+    std::string out;
+    int val = 0, bits = -6;
+    for (unsigned char ch : in) {
+        val = (val << 8) + ch; bits += 8;
+        while (bits >= 0) { out.push_back(B64[(val >> bits) & 0x3F]); bits -= 6; }
+    }
+    if (bits > -6) out.push_back(B64[((val << 8) >> (bits + 8)) & 0x3F]);
+    while (out.size() % 4) out.push_back('=');
+    return out;
+}
+bool b64dec(const std::string& in, std::string& out) {
+    out.clear();
+    int val = 0, bits = -8;
+    for (unsigned char ch : in) {
+        if (ch == '=' ) break;
+        if (std::isspace(ch)) continue;
+        const char* p = std::strchr(B64, ch);
+        if (!p || !ch) return false;
+        val = (val << 6) + (int)(p - B64); bits += 6;
+        if (bits >= 0) { out.push_back(char((val >> bits) & 0xFF)); bits -= 8; }
+    }
+    return !out.empty();
+}
+const char* CODE_PREFIX = "GS3D-CART1:";
+}  // namespace
+std::string cartridgeFileText(const Cartridge& c) {
+    json j = cartToJson(c);
+    j["gunsmithCartridge"] = 1;
+    return j.dump(2);
+}
+std::string cartridgeShareCode(const Cartridge& c) { return std::string(CODE_PREFIX) + b64enc(cartToJson(c).dump()); }
+bool cartridgeFromText(const std::string& text, Cartridge& out) {
+    std::string t = text;
+    while (!t.empty() && std::isspace((unsigned char)t.front())) t.erase(t.begin());
+    while (!t.empty() && std::isspace((unsigned char)t.back())) t.pop_back();
+    std::string body = t;
+    size_t at = t.find(CODE_PREFIX);
+    if (at != std::string::npos && !b64dec(t.substr(at + std::strlen(CODE_PREFIX)), body)) return false;
+    json j = json::parse(body, nullptr, false);
+    if (j.is_discarded() || !j.is_object() || !j.contains("caseLen") || !j.contains("bulletDia")) return false;
+    out = cartFromJson(j);
+    return true;
+}
+
 std::vector<Cartridge> loadUserCartridges() {
     std::vector<Cartridge> out;
     std::ifstream in("cartridges.json");

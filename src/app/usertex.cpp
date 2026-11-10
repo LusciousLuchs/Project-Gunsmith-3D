@@ -4,6 +4,8 @@
 #include "app/paths.hpp"
 #include "map.hpp"
 #include <algorithm>
+#include <sstream>
+#include <fstream>
 #include <cctype>
 #include <filesystem>
 #include <map>
@@ -78,14 +80,32 @@ std::string importTexture(const std::string& path) {
 void handleDroppedFiles() {
     if (!IsFileDropped()) return;
     FilePathList list = LoadDroppedFiles();
-    int added = 0;
-    std::string last;
+    int added = 0, carts = 0;
+    std::string last, lastCart;
     for (unsigned i = 0; i < list.count; i++) {
+        std::string p = list.paths[i], ext = p.size() > 5 ? p.substr(p.size() - 5) : "";
+        for (auto& ch : ext) ch = (char)std::tolower((unsigned char)ch);
+        if (ext == ".json" || (p.size() > 4 && p.substr(p.size() - 4) == ".txt")) {   // a cartridge (file or share code): into my cartridges
+            std::ifstream in(p); std::stringstream ss; ss << in.rdbuf();
+            Cartridge c;
+            if (cartridgeFromText(ss.str(), c)) {
+                bool found = false;
+                for (auto& u : A.userCarts) if (u.name == c.name) { u = c; found = true; }
+                if (!found) A.userCarts.push_back(c);
+                carts++; lastCart = c.name;
+            }
+            continue;
+        }
         std::string n = importTexture(list.paths[i]);
         if (!n.empty()) { added++; last = n; }
     }
     UnloadDroppedFiles(list);
+    if (carts) {
+        saveUserCartridges(A.userCarts);
+        toast(carts == 1 ? "Added the cartridge " + lastCart + " to your cartridges." : "Added " + std::to_string(carts) + " cartridges to your cartridges.");
+        return;
+    }
     if (added == 1) toast("Added the texture " + last + ". Pick it under Surface on a part, or on the map editor's Textures tab.");
     else if (added > 1) toast("Added " + std::to_string(added) + " textures.");
-    else toast("Only pictures can be dropped here (.png, .jpg, .bmp, .tga).");
+    else toast("Only pictures (.png, .jpg, .bmp, .tga) and cartridge files (.json) can be dropped here.");
 }

@@ -1,11 +1,14 @@
 // Gunsmith3D - Cartridge designer window.
 #include "app/app.hpp"
+#include "app/usertex.hpp"
+#include "app/paths.hpp"
 #include "app/render.hpp"
 #include "ui/ui.hpp"
 #include "app/settings.hpp"
 #include "imgui.h"
 
 #include <algorithm>
+#include <fstream>
 #include <cmath>
 #include <cstdio>
 #include <vector>
@@ -239,6 +242,27 @@ void cartridgeDesigner() {
         if (!found) A.userCarts.push_back(c);
         toast(saveUserCartridges(A.userCarts) ? "Saved " + c.name + " to cartridges.json." : "Could not write cartridges.json.");
     }
+    // sharing: a share code (one line to paste anywhere) or a file; either comes back in by pasting or dropping it on the window
+    ImGui::Separator();
+    ImGui::TextDisabled("Share it");
+    if (ImGui::Button("Copy share code")) { SetClipboardText(cartridgeShareCode(c).c_str()); toast("Copied " + c.name + "'s share code. Paste it anywhere (Discord, a message); in the game, Paste a share code brings it in."); }
+    if (tipHover()) ImGui::SetTooltip("One line of text with the whole cartridge in it.");
+    ImGui::SameLine();
+    if (ImGui::Button("Paste a share code")) {
+        const char* clip = GetClipboardText();
+        Cartridge in;
+        if (clip && cartridgeFromText(clip, in)) { c = in; toast("Loaded " + c.name + ". Save to my cartridges to keep it."); }
+        else toast("The clipboard doesn't hold a cartridge share code.");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Export file")) {
+        std::string path = std::string(CARTS_DIR) + "/" + safeFileName(c.name.empty() ? "Cartridge" : c.name) + ".json";
+        std::ofstream f(path);
+        if (f && (f << cartridgeFileText(c))) toast("Exported to " + path + ". Drop a cartridge file on the game window to bring it in.");
+        else toast("Couldn't write " + path + ".");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Open folder")) openFolder(CARTS_DIR);
     bool mine = false;
     for (auto& u : A.userCarts) if (u.name == c.name) mine = true;
     if (mine) {

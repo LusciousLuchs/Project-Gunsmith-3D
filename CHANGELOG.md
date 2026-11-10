@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.7-alpha
+
+### Share your cartridges
+- **Copy share code** (cartridge designer, at the bottom): the whole cartridge as one line of text to paste anywhere, in Discord or a message. **Paste a share code** brings one in; save it to your cartridges to keep it.
+- **Export file:** saves the cartridge to user/cartridges as a .json file (**Open folder** shows it). **Drop a cartridge file on the game window** and it's added to your cartridges.
+
 ## 0.4.6-alpha
 
 ### Your character
