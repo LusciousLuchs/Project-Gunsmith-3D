@@ -577,7 +577,12 @@ void rangeUpdate(float dt, bool modal) {
         for (auto& e : S.events) {
             if (e.kind == sim::Ev::Bang) {
                 A.flash = 0.06f;
-                if (SFX.ok && A.sound) PlaySound(SFX.bang);
+                {
+                    int heard = 0;
+                    for (size_t k = 0; k <= br.more.size(); k++)
+                        if (k < S.chambers.size() ? std::fabs(S.chambers[k].shotT - e.t) < 1e-9 : k == 0) { playShot(A.design, (int)k, heard ? 0.7f : 1.f); heard++; }
+                    if (!heard) playShot(A.design, 0);
+                }
                 npcai::hear(R.actors, R.pl.feet, 50);   // a gunshot carries: NPCs within 50 m come to look
                 bool any = false;
                 for (size_t k = 0; k <= br.more.size(); k++) {
@@ -586,7 +591,7 @@ void rangeUpdate(float dt, bool modal) {
                 }
                 if (!any && br.hasMuzzle) fireBullets(0);
             }
-            if ((e.kind == sim::Ev::Eject || e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) && SFX.ok && A.sound) PlaySound(SFX.clack);
+            if (e.kind == sim::Ev::Eject || e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) playAction(actionMass(S));
             if (e.kind == sim::Ev::Click && SFX.ok && A.sound) PlaySound(SFX.click);
             if (e.kind == sim::Ev::Malfunction && S.malf != sim::Malf::None && SFX.ok && A.sound) PlaySound(SFX.click);
         }
@@ -609,7 +614,7 @@ void rangeUpdate(float dt, bool modal) {
                 double mass = c.bulletMass / 1000, dia = c.bulletDia / 1000;
                 double k = 0.5 * 1.2 * 0.3 * 3.14159 * dia * dia / 4 / std::max(1e-4, mass);
                 R.bullets.push_back({e.from, e.dir * std::max(50.0, c.velocity), k, 0, 0, mass, e.actor, a.gun.damage});
-                if (SFX.ok && A.sound) { float d = (float)gmap::len(e.from - eye); SetSoundVolume(SFX.bang, std::clamp(6.f / (d + 4), 0.08f, 0.8f)); PlaySound(SFX.bang); SetSoundVolume(SFX.bang, 1); }
+                { float d = (float)gmap::len(e.from - eye); playShotMix(shotMix(c, -1), std::clamp(6.f / (d + 4), 0.08f, 0.8f)); }   // farther: quieter
             } else if (e.kind == npcai::Event::Melee && !R.dead) {
                 R.health -= e.damage; R.hurtT = 0.4;
                 R.kickYaw += 0.04; R.kickPitch += 0.02;   // (knocked about)
@@ -622,7 +627,7 @@ void rangeUpdate(float dt, bool modal) {
                     if (&o != &R.actors[e.actor] && dd < e.radius) npcai::hurt(o, e.damage * (1 - dd / e.radius), c - e.from);
                 }
                 A.flash = 0.15f;
-                if (SFX.ok && A.sound) PlaySound(SFX.bang);
+                playShotMix(shotMix(6000, 300, 60));   // a blast: the rifle recording, deep and loud
             }
         }
         if (!R.dead && R.health <= 0) { R.health = 0; R.dead = true; R.deadT = 0; if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); } }

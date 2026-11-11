@@ -1,5 +1,6 @@
 // Headless checks that each example action actually cycles. Run: ./gunsmith3d_tests
 #include "solver.hpp"
+#include "shotsound.hpp"
 #include "npc.hpp"
 #include "npcai.hpp"
 #include "map.hpp"
@@ -2055,7 +2056,24 @@ static void controlButtons() {
     CHECK(right[0] > 3.5, "pushed along its track, the key slides it all the way");
 }
 
+// Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void shotSounds() {
+    std::printf("Shot sounds\n");
+    auto cart = [](const char* n) { for (auto& c : cartridgePresets()) if (c.name == n) return c; return Cartridge(); };
+    ShotMix p = shotMix(cart(".380 ACP"), 89), r = shotMix(cart("5.56x45mm"), 406);
+    CHECK(p.rifleGain == 0 && std::fabs(p.pistolPitch - 1) < 0.03, ".380 in a short barrel: the pistol recording, as recorded");
+    CHECK(r.pistolGain == 0 && std::fabs(r.riflePitch - 1) < 0.03 && std::fabs(r.blast - 1) < 0.1, "5.56 in 16 inches: the rifle recording, as recorded");
+    CHECK(shotMix(cart("7.62x54mmR"), 700).riflePitch < r.riflePitch - 0.08, "a bigger rifle round sounds lower");
+    CHECK(shotMix(cart(".22 LR"), 150).pistolPitch > p.pistolPitch + 0.05, "a .22 sounds higher than a .380");
+    ShotMix nine = shotMix(cart("9x19mm"), 100);
+    CHECK(nine.pistolGain > nine.rifleGain && nine.rifleGain > 0, "9 mm: mostly pistol, a little rifle");
+    CHECK(shotMix(cart("5.56x45mm"), 180).blast > r.blast * 1.8, "a short barrel on a rifle round: more blast");
+    CHECK(shotMix(400, 420, 100).crackGain > shotMix(400, 300, 100).crackGain, "a supersonic pistol bullet adds the crack");
+    CHECK(actionMix(1.0, -1).pitch < actionMix(0.1, -1).pitch && actionMix(0.25, 8).gain > actionMix(0.25, 1).gain, "heavier parts deeper, faster louder");
+}
+
 int main() {
+    shotSounds();
     tilting();
     longRecoil();
     turnBolt();

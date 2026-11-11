@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.12-alpha
+
+### New
+- **Real gun sounds**, recorded by the developer on their own Thunder .380 and AR-15, replacing the old made-up bang and clack.
+- **Every gun sounds like itself.** The shot is worked out from the cartridge and barrel: bigger rounds are louder and deeper with a longer ring, small ones higher and snappier; pistol rounds use the pistol recordings, rifle rounds the rifle ones, and in-between rounds a mix; a bullet faster than sound adds a crack; a short barrel on a big round adds blast. No two shots in a row sound exactly alike.
+- **The action sounds by weight:** a heavy bolt carrier clacks deeper than a light slide.
+
 ## 0.4.11-alpha
 
 ### New
