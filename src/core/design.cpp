@@ -1150,6 +1150,7 @@ std::string designToJson(const Design& d, bool pretty) {
         if (d.attach.on) {
             const auto& a = d.attach;
             json ja = {{"job", a.job}, {"mount", a.mount}, {"clamp", a.clamp}};
+            if (a.face != "under") ja["face"] = a.face;
             if (a.atSet) ja["at"] = {a.at.x, a.at.y, a.atZ};
             if (a.job == "optic") {
                 const auto& op = a.optic;
@@ -1500,6 +1501,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         a.job = opt<std::string>(ja, "job", "other");
         a.mount = opt<std::string>(ja, "mount", "Picatinny");
         a.clamp = std::clamp(opt<double>(ja, "clamp", 20.0), 3.0, 600.0);
+        a.face = opt<std::string>(ja, "face", "under");
         if (ja.contains("at") && ja["at"].is_array() && ja["at"].size() == 3) { a.atSet = true; a.at = {ja["at"][0].get<double>(), ja["at"][1].get<double>()}; a.atZ = ja["at"][2].get<double>(); }
         if (ja.contains("optic") && ja["optic"].is_object()) {
             auto& jo = ja["optic"];
@@ -1641,7 +1643,13 @@ void autoAttach(Design& d) {
     }
     if (n == 0) { x0 = -20; x1 = 20; y0 = -10; y1 = 10; }
     else zc /= n;
-    if (!a.atSet) { a.at = {(x0 + x1) / 2, y1}; a.atZ = zc; }   // the middle of its underside
+    if (!a.atSet) {   // the middle of the side that meets the mount
+        if (a.face == "top") a.at = {(x0 + x1) / 2, y0};
+        else if (a.face == "rear") a.at = {x0, (y0 + y1) / 2};
+        else if (a.face == "front") a.at = {x1, (y0 + y1) / 2};
+        else a.at = {(x0 + x1) / 2, y1};
+        a.atZ = zc;
+    }
     auto& op = a.optic;
     if (!op.lensSet) {   // through the longest part (a scope's tube, a sight's housing), at its middle height, end to end
         double best = -1, ym = (y0 + y1) / 2;

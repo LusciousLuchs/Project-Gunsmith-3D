@@ -2,6 +2,8 @@
 #include "hand.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "mounts.hpp"
+#include "app/fitbench.hpp"
 #include "app/npcedit.hpp"
 #include "app/render.hpp"
 #include "app/reltest.hpp"
@@ -385,10 +387,89 @@ static void posePanel() {
     ImGui::Dummy({0, 6 * CFG.uiScale});
     if (ImGui::Button("Done posing", {-1, 0})) { leavePose(); A.running = true; }
 }
+// The fitting bench: your attachments, the ones on the gun, loadouts
+static float fS() { return CFG.uiScale; }
+static void fitPanel() {
+    heading("Attachments");
+    muted("Pick one, then click a rail's slot or a matching point on the gun (Shift-click to fit another the same). Right-click stops.");
+    auto files = attachmentFiles();
+    if (files.empty()) muted("Your Attachments folder is empty: make one in the designer with New > A new attachment.");
+    ImGui::BeginChild("##attlist", {0, std::min(200 * fS(), (float)(files.size() + 1) * ImGui::GetTextLineHeightWithSpacing() + 8 * fS())}, ImGuiChildFlags_Borders);
+    for (auto& f : files) {
+        if (ImGui::Selectable(f.c_str(), A.fitPick == f)) {
+            if (A.fitPick == f) A.fitPick.clear();
+            else { Design d; if (loadAttachment(f, d)) { A.fitPick = f; A.fitPickD = d; } else toast("Couldn't read " + f + "."); }
+        }
+        if (ImGui::IsItemHovered() && A.fitPick != f) {
+            Design d;
+            if (loadAttachment(f, d)) ImGui::SetTooltip("%s\nMounts on: %s%s\n%.0f g", attachJobName(d.attach.job), d.attach.mount.c_str(),
+                                                       d.attach.mount == "Picatinny" ? TextFormat(" (%.0f mm of rail)", d.attach.clamp) : "", attachmentMass(d));
+        }
+    }
+    ImGui::EndChild();
+    heading("On this gun");
+    if (A.fitItems.empty()) muted("Nothing yet.");
+    double total = 0;
+    for (int k = 0; k < (int)A.fitItems.size(); k++) {
+        auto& it = A.fitItems[k];
+        total += attachmentMass(it.att);
+        if (ImGui::Selectable(TextFormat("%s##fit%d", it.att.name.c_str(), k), A.fitSel == k)) A.fitSel = A.fitSel == k ? -1 : k;
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", siteLabel(it.site).c_str());
+    }
+    if (!A.fitItems.empty()) ImGui::TextDisabled("Together they weigh %s.", fmtQ(Q::PartMass, total).c_str());
+    if (A.fitSel >= 0 && A.fitSel < (int)A.fitItems.size()) {
+        auto& it = A.fitItems[A.fitSel];
+        ImGui::TextDisabled("%s", siteLabel(it.site).c_str());
+        auto ss = fit::sites(A.design, A.fitItems);
+        const fit::Site* s = nullptr; for (auto& x : ss) if (x.key() == it.site) s = &x;
+        if (s && s->rail) {   // slide it along its rail, a slot at a time
+            float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+            for (int dir : {-1, 1}) {
+                if (dir > 0) ImGui::SameLine();
+                if (ImGui::Button(dir < 0 ? "< A slot back##fs" : "A slot forward >##fs", {w2, 0})) {
+                    double to = fit::snapAlong(*s, it.along + dir * mounts::SLOT_PITCH);
+                    std::string why = fit::check(A.design, A.fitItems, it.att, *s, to, A.fitSel);
+                    if (std::fabs(to - it.along) < 1e-6) toast("That's the end of the rail.");
+                    else if (!why.empty()) toast("It can't go there: " + why + ".");
+                    else { it.along = to; it.xf = fit::place(it.att, *s, to); }
+                }
+            }
+        }
+        if (dangerButton("Take it off", {-1, 0})) {
+            int k = A.fitSel;
+            bool carries = false; for (auto& o : A.fitItems) if (o.site.rfind("a" + std::to_string(k) + ":", 0) == 0) carries = true;
+            if (carries) toast("Take off what's mounted on it first.");
+            else {
+                A.fitItems.erase(A.fitItems.begin() + k);
+                for (auto& o : A.fitItems) if (o.site[0] == 'a') {   // (items on adapters after it shift down one)
+                    int j = std::atoi(o.site.c_str() + 1);
+                    if (j > k) o.site = "a" + std::to_string(j - 1) + o.site.substr(o.site.find(':'));
+                }
+                A.fitSel = -1;
+            }
+        }
+    }
+    heading("Loadouts");
+    static char nm[64] = "";
+    if (ImGui::IsWindowAppearing() || !nm[0]) std::snprintf(nm, sizeof nm, "%s", A.design.name.c_str());
+    ImGui::SetNextItemWidth(-80 * fS());
+    ImGui::InputText("##loadname", nm, sizeof nm);
+    ImGui::SameLine();
+    if (ImGui::Button("Save##load", {-1, 0})) { if (saveLoadout(nm)) toast(std::string("Saved loadout ") + nm + " to your Loadouts folder."); }
+    if (tipHover()) ImGui::SetTooltip("Which attachments go where on this gun. The gun's blueprint isn't changed.");
+    auto lf = loadoutFiles();
+    if (!lf.empty() && ImGui::BeginCombo("##loads", "Load a loadout...")) {
+        for (auto& f : lf) if (ImGui::Selectable(f.c_str())) { loadLoadout(f); A.fitSel = -1; }
+        ImGui::EndCombo();
+    }
+    ImGui::Dummy({0, 6 * fS()});
+    if (ImGui::Button("Done", {-1, 0})) { leaveFitting(); A.running = true; }
+}
 void testPanel() {
     panelHeader();
     if (!A.S) { ImGui::PopItemWidth(); ImGui::End(); return; }
     if (A.posing) { posePanel(); ImGui::PopItemWidth(); ImGui::End(); return; }
+    if (A.fitting) { fitPanel(); ImGui::PopItemWidth(); ImGui::End(); return; }
     auto& S = *A.S;
     bool batt = sim::inBattery(S);
     sim::Body* mag = sim::seatedMag(S);   // removable (latched) or built in

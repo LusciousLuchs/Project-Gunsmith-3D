@@ -5,7 +5,7 @@
 //   Rounds      your cartridges (one .json each)          Characters  your player character
 //   NPCs        NPC designs                  Textures    pictures for parts and map blocks
 //   Parts       parts and assemblies to drop into any gun Groups      groups of map objects
-//   Attachments optics, grips, bayonets... (their own designer)
+//   Attachments optics, grips, bayonets... (their own designer)   Loadouts   attachments fitted to a gun
 // The names below point at those folders once setUserFolder has run (they're plain text for the C file functions).
 #pragma once
 #include <string>
@@ -17,8 +17,9 @@ inline const char* PARTS_DIR = "user/parts";        // your parts library (app/p
 inline const char* NPCS_DIR = "user/npcs";          // your NPC designs (app/npcedit.cpp)
 inline const char* CARTS_DIR = "user/cartridges";   // your cartridges, one .json each
 inline const char* CHARACTER_FILE = "user/character.json";   // your player character (the NPC editor in its character mode)
-inline const char* GROUPS_DIR = "user/groups";
-inline const char* ATTACH_DIR = "user/attachments";   // your attachments (the attachment designer): saved apart from guns      // groups of map objects saved as one, to place again (app/mapedit.cpp)
+inline const char* GROUPS_DIR = "user/groups";      // groups of map objects saved as one, to place again (app/mapedit.cpp)
+inline const char* ATTACH_DIR = "user/attachments";   // your attachments (the attachment designer): saved apart from guns
+inline const char* LOADOUT_DIR = "user/loadouts";     // which attachments go where on a gun (the fitting bench)
 
 void initAppFolder();                  // first thing: where the settings and autosave live (Documents/OAB Foundry/Gunsmith on Windows)
 std::string appFolder();               // that folder ("" = the game folder)

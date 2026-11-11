@@ -1,6 +1,7 @@
 // Gunsmith3D - Gunsmith3D entry point: command line, window, main loop.
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/fitbench.hpp"
 #include "app/npcedit.hpp"
 #include "app/sysinfo.hpp"
 #include "app/perf.hpp"
@@ -48,7 +49,7 @@ int main(int argc, char** argv) {
     bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
     int introArg = 0;
     bool solidArg = false;
-    std::string rangeArg;
+    std::string rangeArg, fittingArg;
     double rangeYaw = 0, rangePitch = 0, rangeArmor = 0; bool rangeShot = false;
     int settingsPage = 0;
     bool useSettings = false;
@@ -76,7 +77,8 @@ int main(int argc, char** argv) {
         else if (a == "--side") sideArg = true;
         else if (a == "--select") selectArg = next();
         else if (a == "--trackdraft") trackDraft = true;
-        else if (a == "--cutpick") A.cutPick = true;   // (screenshots) "Pick cuts in the view" on
+        else if (a == "--cutpick") A.cutPick = true;
+        else if (a == "--fitting") fittingArg = next();   // (screenshots) the fitting bench, with this loadout ("-" for none)   // (screenshots) "Pick cuts in the view" on
         else if (a == "--measure") {   // (screenshots) a measuring line from x1 y1 to x2 y2 (mm), kept shown
             double v[4]; for (double& k : v) k = std::atof(next().c_str());
             A.measureA = {v[0], v[1]}; A.measureB = {v[2], v[3]}; A.measured = A.measureKeep = true;
@@ -166,7 +168,7 @@ int main(int argc, char** argv) {
         fitView();
     }
     // the game opens on the main menu; the screenshot options go straight to the workshop
-    bool direct = !menuArg && (!presetArg.empty() || testArg || sideArg || fireArg || !demo.empty() || designerArg || !selectArg.empty() || relArg > 0 || pauseArg);
+    bool direct = !menuArg && (!presetArg.empty() || !fittingArg.empty() || testArg || sideArg || fireArg || !demo.empty() || designerArg || !selectArg.empty() || relArg > 0 || pauseArg);
     if (direct) enterWorkshop(false);
     if (sideArg) sideView();
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
@@ -185,7 +187,8 @@ int main(int argc, char** argv) {
         A.draftF = sim::polyCentroid(b.pts); A.draft = {A.draftF};
     }
     if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
-    if (testArg || !demo.empty()) setMode(Mode::Test);
+    if (testArg || !demo.empty() || !fittingArg.empty()) setMode(Mode::Test);
+    if (!fittingArg.empty()) { enterFitting(); if (fittingArg != "-") loadLoadout(fittingArg); }
     if (poseArg >= 0 && std::getenv("GUNSMITH_ANIM")) {   // (screenshots) "slot seconds": the animation editor at that moment
         char slot[64] = {0}; double t = 0;
         if (std::sscanf(std::getenv("GUNSMITH_ANIM"), "%63s %lf", slot, &t) >= 1) { A.animEdit = true; A.animSlot = slot; A.animT = t; }
@@ -375,7 +378,7 @@ int main(int argc, char** argv) {
         } else drawScene();
         endViewport3D();
         }
-        if (A.posing) drawPoseOverlay(); else drawOverlay();
+        if (A.posing) drawPoseOverlay(); else { drawOverlay(); drawFitOverlay(); }
         if (A.mode == Mode::Test) DrawRectangleLinesEx({0, TOOLBAR_H, (float)A.vw, (float)A.vh}, 2, Color{232, 161, 58, 90});
 
         rlImGuiBegin();

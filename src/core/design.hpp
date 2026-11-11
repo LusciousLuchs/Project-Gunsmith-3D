@@ -398,6 +398,8 @@ struct AttachDef {
     bool atSet = false;            // false: where it mounts is worked out (the middle of its underside)
     V2 at; double atZ = 0;         // where it meets the rail's top, or the point (design mm)
     double clamp = 20;             // Picatinny: how much rail it takes (mm)
+    std::string face = "under";    // which side meets the mount: under (sits on a rail, as drawn), top (hangs under one: a
+                                   // grip), rear (its back end: onto a muzzle), front
     OpticDef optic;
 };
 std::vector<ReticleMark> defaultReticle(const std::string& opticKind);   // a dot and ring (reflex), a duplex cross (scope)

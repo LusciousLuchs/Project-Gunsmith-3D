@@ -1,5 +1,6 @@
 // Gunsmith3D - Shared app state and helpers used by every module.
 #pragma once
+#include "fitting.hpp"
 #include "raylib.h"
 #include "raymath.h"
 #include "design.hpp"
@@ -54,6 +55,12 @@ struct App {
     int axisLock = 0;                    // while dragging: 1 side to side (X), 2 up and down (Y), 3 depth (Z), 0 free
     double zDrag = 0, zDragLast = 0;     // depth dragged so far (Z lock), mm
     bool posing = false;                 // the bench's pose editor (app/pose.cpp)
+    bool fitting = false;                // the bench's fitting bench: attachments onto the gun's mounts (app/fitbench.cpp)
+    std::vector<fit::Item> fitItems;     // attachments on the gun now (never part of its blueprint; saved as loadouts)
+    std::string fitPick;                 // the attachment being placed ("" = none)
+    Design fitPickD;
+    int fitSel = -1;                     // a fitted one, picked
+    struct { int site = -1; double along = 0; std::string why; bool on = false; } fitHover;   // where the picked one would go
     int poseHold = 0;                    // which hold is being posed (HOLD_AIM ...)
     // recorded animations (Pose > Animations): editing one, which slot, the moment on its timeline shown, and a
     // preview running (hands only, no physics)

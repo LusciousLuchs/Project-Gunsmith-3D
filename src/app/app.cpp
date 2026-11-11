@@ -139,7 +139,7 @@ void setMode(Mode m) {
     if (m == Mode::Test && A.design.attach.on) { toast("This is an attachment: it's tried on a gun's rails and mounts, not on the test bench."); return; }
     A.mode = m;
     A.drafting = false; A.draft.clear(); A.draftHasF = false; A.dragKind = 0;
-    A.posing = false; A.poseDrag = -1;
+    A.posing = false; A.poseDrag = -1; A.fitting = false; A.fitPick.clear();
     if (m == Mode::Test) { buildSim(); A.running = true; }
     else resetSim();
 }

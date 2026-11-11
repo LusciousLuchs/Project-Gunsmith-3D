@@ -8,6 +8,17 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.19-alpha
+
+### New (attachments, part 3: the fitting bench)
+- **Attachments button on the test bench:** pick one from your Attachments folder, then click a rail's slot or a matching attachment point on the gun. A see-through preview shows where it goes: green if it fits, red with the reason if not.
+- **The game checks every fit:** the right kind of mount; a clamp that stays on the rail; no running into another attachment or a solid part of the gun; and nothing in the way of a moving part's travel (a slide, a bolt). Clamps click from slot to slot.
+- **Rail adapters work:** fit one (a side-rail conversion, say) and its own rails and points become places to mount more.
+- **Slide a fitted attachment a slot at a time**, take it off, and see what they all weigh together.
+- **Loadouts:** save which attachments go where on a gun, and load them again; the gun's blueprint is never changed. A loaded loadout is checked again, so a gun you've since changed only gets what still fits.
+- **In the attachment designer:** choose which side of an attachment meets its mount: underneath (sits on a rail), on top (hangs under one, like a grip), or an end (onto a muzzle).
+- Coming next: crates on maps, and attachments doing their job on the range (weight, optics when you aim).
+
 ## 0.4.18-alpha
 
 ### New (attachments, part 2: the attachment designer)

@@ -49,6 +49,7 @@ int gPanelTab = -1;
 static void loadDesign(const Design& nd, const std::string& msg);
 void openExample(const char* key, const char* msg) { loadDesign(loadPreset(key), msg); }
 static void loadDesign(const Design& nd, const std::string& msg) {
+    A.fitItems.clear(); A.fitSel = -1;   // (attachments belong with the gun they were fitted to)
     A.hist.push_back(designToJson(A.design));
     A.future.clear();
     A.design = nd; syncBarrels(A.design); A.lastSnap = designToJson(A.design); A.sel = {}; A.selVs.clear();

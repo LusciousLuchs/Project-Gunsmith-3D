@@ -2,6 +2,7 @@
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/render.hpp"
+#include "app/fitbench.hpp"
 #include "app/settings.hpp"
 #include "carve.hpp"
 #include "app/usertex.hpp"
@@ -59,6 +60,80 @@ bool mainPart(const sim::Body& b) {  // moving parts worth graphing: not magazin
 }
 
 // ---------------------------------------------------------------- 3D scene
+// A part's solid, centred on its outline's middle with y up (world units): its outline extruded (or turned, or shaped in
+// depth), its cuts made (not while `rough`), its picture laid on, and leaned if tilted. Shared by the gun and attachments.
+Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
+    BodyDef d = dIn;   // (a round part's shape is brought up to date on the copy)
+    Mesh mesh{};
+    V2 c = centroidOf(d);
+    std::vector<V2> local;
+    for (auto& p : outlineOf(d)) local.push_back({p.x - c.x, p.y - c.y});
+    if (d.round) {  // turned on a lathe about its long middle line
+        carve::syncRound(d);
+        carve::RoundAxis ax = carve::roundAxis(d);
+        std::vector<char> sm;
+        std::vector<V2> S = carve::roundShape(d, 48, &sm);
+        mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
+    } else if (depthShaped(d)) mesh = depthMesh(d, c);   // shaped in depth: corners on both faces
+    else mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
+    std::vector<CarveDef> cuts = rough ? std::vector<CarveDef>{} : d.carves;
+    V2 rear, muz;
+    if (!rough && barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
+        // chamber's walls are the cartridge physics' business, not the solid's)
+        const Cartridge& ct = d.barrel.cart;
+        double L = std::hypot(muz.x - rear.x, muz.y - rear.y);
+        V2 u{(muz.x - rear.x) / L, (muz.y - rear.y) / L}, n{-u.y, u.x};
+        CarveDef ch; ch.shape = "circle"; ch.at = rear; ch.atZ = 0; ch.dx = u.x; ch.dy = u.y; ch.dz = 0;
+        ch.w = ch.h = std::max(ct.baseDia, ct.shoulderDia) + 0.4; ch.depth = ct.caseLen;
+        cuts.push_back(ch);
+        CarveDef bo = ch; bo.at = muz; bo.dx = -u.x; bo.dy = -u.y; bo.w = bo.h = ct.bulletDia; bo.depth = std::max(1.0, L - ct.caseLen + 0.5);
+        cuts.push_back(bo);
+        // (the rifling is drawn as a spiral along the bore: see drawRifling)
+    }
+    if (!cuts.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
+        std::vector<std::vector<csg::Poly>> cut;
+        for (auto& cv : cuts) {
+            std::vector<csg::Poly> ps;
+            for (auto& q : carve::prismPolys(carve::prism(cv, d), cv)) {
+                std::vector<csg::Vert> vs;
+                for (auto it = q.v.rbegin(); it != q.v.rend(); ++it)  // mirroring y turns the winding round
+                    vs.push_back({{it->p.x - c.x, -(it->p.y - c.y), it->p.z - d.z}, {it->n.x, -it->n.y, it->n.z}});
+                ps.push_back(csg::makePoly(vs));
+            }
+            cut.push_back(ps);
+        }
+        Mesh carved = carveMesh(mesh, cut);
+        UnloadMesh(mesh);
+        mesh = carved;
+    }
+    if (!d.texture.empty()) {  // lay the picture on every face from the side it faces (box mapping), in mm
+        Mesh& m = mesh;
+        double sc = std::max(1.0, d.texScale) * U;
+        for (int v = 0; v < m.vertexCount; v++) {
+            float x = m.vertices[v * 3], y = m.vertices[v * 3 + 1], z = m.vertices[v * 3 + 2];
+            float nx = std::fabs(m.normals[v * 3]), ny = std::fabs(m.normals[v * 3 + 1]), nz = std::fabs(m.normals[v * 3 + 2]);
+            float a, c;
+            if (nz >= nx && nz >= ny) { a = x; c = -y; } else if (ny >= nx) { a = x; c = z; } else { a = z; c = -y; }
+            m.texcoords[v * 2] = (float)(a / sc); m.texcoords[v * 2 + 1] = (float)(c / sc);
+        }
+        UpdateMeshBuffer(m, 1, m.texcoords, m.vertexCount * 2 * sizeof(float), 0);
+    }
+    if (carve::tilted(d)) {  // leaned out of the side view: turn the solid about its middle (mesh axes have y up)
+        double R[3][3]; carve::tiltMatrix(d, R);
+        const double f[3] = {1, -1, 1};
+        Mesh& m = mesh;
+        for (int v = 0; v < m.vertexCount; v++)
+            for (float* arr : {m.vertices, m.normals}) {
+                if (!arr) continue;
+                double p[3] = {arr[v * 3], arr[v * 3 + 1], arr[v * 3 + 2]}, q[3];
+                for (int r = 0; r < 3; r++) { q[r] = 0; for (int c = 0; c < 3; c++) q[r] += f[r] * R[r][c] * f[c] * p[c]; }
+                for (int r = 0; r < 3; r++) arr[v * 3 + r] = (float)q[r];
+            }
+        UpdateMeshBuffer(m, 0, m.vertices, m.vertexCount * 3 * sizeof(float), 0);
+        if (m.normals) UpdateMeshBuffer(m, 2, m.normals, m.vertexCount * 3 * sizeof(float), 0);
+    }
+    return mesh;
+}
 static void ensureMeshes() {
     auto& D = A.design;
     A.meshes.resize(D.bodies.size());
@@ -84,73 +159,8 @@ static void ensureMeshes() {
         } else if (A.meshes[i].ok) A.meshes[i].changedAt = now;
         bool rough = hasCuts && A.meshes[i].ok && now - A.meshes[i].changedAt < SETTLE && A.mode == Mode::Build;
         if (A.meshes[i].ok) UnloadMesh(A.meshes[i].mesh);
-        V2 c = centroidOf(d);
-        std::vector<V2> local;
-        for (auto& p : outlineOf(d)) local.push_back({p.x - c.x, p.y - c.y});
-        if (d.round) {  // turned on a lathe about its long middle line
-            carve::syncRound(d);
-            carve::RoundAxis ax = carve::roundAxis(d);
-            std::vector<char> sm;
-            std::vector<V2> S = carve::roundShape(d, 48, &sm);
-            A.meshes[i].mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
-        } else if (depthShaped(d)) A.meshes[i].mesh = depthMesh(d, c);   // shaped in depth: corners on both faces
-        else A.meshes[i].mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
-        std::vector<CarveDef> cuts = rough ? std::vector<CarveDef>{} : d.carves;
-        V2 rear, muz;
-        if (!rough && barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
-            // chamber's walls are the cartridge physics' business, not the solid's)
-            const Cartridge& ct = d.barrel.cart;
-            double L = std::hypot(muz.x - rear.x, muz.y - rear.y);
-            V2 u{(muz.x - rear.x) / L, (muz.y - rear.y) / L}, n{-u.y, u.x};
-            CarveDef ch; ch.shape = "circle"; ch.at = rear; ch.atZ = 0; ch.dx = u.x; ch.dy = u.y; ch.dz = 0;
-            ch.w = ch.h = std::max(ct.baseDia, ct.shoulderDia) + 0.4; ch.depth = ct.caseLen;
-            cuts.push_back(ch);
-            CarveDef bo = ch; bo.at = muz; bo.dx = -u.x; bo.dy = -u.y; bo.w = bo.h = ct.bulletDia; bo.depth = std::max(1.0, L - ct.caseLen + 0.5);
-            cuts.push_back(bo);
-            // (the rifling is drawn as a spiral along the bore: see drawRifling)
-        }
-        if (!cuts.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
-            std::vector<std::vector<csg::Poly>> cut;
-            for (auto& cv : cuts) {
-                std::vector<csg::Poly> ps;
-                for (auto& q : carve::prismPolys(carve::prism(cv, d), cv)) {
-                    std::vector<csg::Vert> vs;
-                    for (auto it = q.v.rbegin(); it != q.v.rend(); ++it)  // mirroring y turns the winding round
-                        vs.push_back({{it->p.x - c.x, -(it->p.y - c.y), it->p.z - d.z}, {it->n.x, -it->n.y, it->n.z}});
-                    ps.push_back(csg::makePoly(vs));
-                }
-                cut.push_back(ps);
-            }
-            Mesh carved = carveMesh(A.meshes[i].mesh, cut);
-            UnloadMesh(A.meshes[i].mesh);
-            A.meshes[i].mesh = carved;
-        }
-        if (!d.texture.empty()) {  // lay the picture on every face from the side it faces (box mapping), in mm
-            Mesh& m = A.meshes[i].mesh;
-            double sc = std::max(1.0, d.texScale) * U;
-            for (int v = 0; v < m.vertexCount; v++) {
-                float x = m.vertices[v * 3], y = m.vertices[v * 3 + 1], z = m.vertices[v * 3 + 2];
-                float nx = std::fabs(m.normals[v * 3]), ny = std::fabs(m.normals[v * 3 + 1]), nz = std::fabs(m.normals[v * 3 + 2]);
-                float a, c;
-                if (nz >= nx && nz >= ny) { a = x; c = -y; } else if (ny >= nx) { a = x; c = z; } else { a = z; c = -y; }
-                m.texcoords[v * 2] = (float)(a / sc); m.texcoords[v * 2 + 1] = (float)(c / sc);
-            }
-            UpdateMeshBuffer(m, 1, m.texcoords, m.vertexCount * 2 * sizeof(float), 0);
-        }
-        if (carve::tilted(d)) {  // leaned out of the side view: turn the solid about its middle (mesh axes have y up)
-            double R[3][3]; carve::tiltMatrix(d, R);
-            const double f[3] = {1, -1, 1};
-            Mesh& m = A.meshes[i].mesh;
-            for (int v = 0; v < m.vertexCount; v++)
-                for (float* arr : {m.vertices, m.normals}) {
-                    if (!arr) continue;
-                    double p[3] = {arr[v * 3], arr[v * 3 + 1], arr[v * 3 + 2]}, q[3];
-                    for (int r = 0; r < 3; r++) { q[r] = 0; for (int c = 0; c < 3; c++) q[r] += f[r] * R[r][c] * f[c] * p[c]; }
-                    for (int r = 0; r < 3; r++) arr[v * 3 + r] = (float)q[r];
-                }
-            UpdateMeshBuffer(m, 0, m.vertices, m.vertexCount * 3 * sizeof(float), 0);
-            if (m.normals) UpdateMeshBuffer(m, 2, m.normals, m.vertexCount * 3 * sizeof(float), 0);
-        }
+        if (d.round) carve::syncRound(d);   // (a round part's thickness is its width across)
+        A.meshes[i].mesh = buildPartMesh(d, rough);
         A.meshes[i].key = key;
         A.meshes[i].ok = true;
         A.meshes[i].rough = rough;
@@ -691,6 +701,53 @@ static void drawWorkbench() {
     drawCyl(P(gx1 + 230, ty, zm + 20), P(gx1 + 230, ty - 90, zm + 20), 26 * U, Color{176, 60, 48, 255});
     drawCyl(P(gx1 + 230, ty - 90, zm + 20), P(gx1 + 230, ty - 100, zm + 20), 9 * U, grey);
 }
+// ---------------------------------------------------------------- attachments on the gun
+struct AttMeshes { std::string key; std::vector<Mesh> m; };
+static std::map<std::string, AttMeshes> gAttMeshes;
+static const std::vector<Mesh>& attMeshes(const std::string& file, const Design& att) {
+    std::string key = att.name + "#" + std::to_string(att.bodies.size()) + "#" + std::to_string(std::hash<std::string>()(designToJson(att)));
+    auto& e = gAttMeshes[file];
+    if (e.key != key) {
+        for (auto& m : e.m) UnloadMesh(m);
+        e.m.clear();
+        for (auto& b : att.bodies) e.m.push_back(buildPartMesh(b, false));
+        e.key = key;
+    }
+    return e.m;
+}
+static void drawAttachment(const std::string& file, const Design& att, Matrix Mfit, float alpha, Color tint) {
+    const auto& ms = attMeshes(file, att);
+    for (size_t i = 0; i < att.bodies.size() && i < ms.size(); i++) {
+        const BodyDef& b = att.bodies[i];
+        V2 c = centroidOf(b);
+        Matrix M = MatrixMultiply(MatrixTranslate((float)c.x * U, -(float)c.y * U, (float)(b.z * U)), Mfit);
+        Color col = tint.a ? tint : hexColor(b.color);
+        if (!b.texture.empty() && !tint.a) drawMeshTex(ms[i], M, col, userTexture(b.texture), alpha);
+        else drawMesh(ms[i], M, col, alpha);
+    }
+}
+void drawAttachments(const std::vector<RB>& list) {
+    auto delta = [&](const std::string& carrier) {   // a part it rides on that has moved (a slide with a rail): with it
+        int bi = A.design.bodyIndex(carrier);
+        if (bi < 0) return MatrixIdentity();
+        for (auto& r : list) if (r.tmpl == bi) {
+            V2 c = centroidOf(A.design.bodies[bi]);
+            return MatrixMultiply(MatrixInvert(MatrixTranslate((float)c.x * U, -(float)c.y * U, bodyZ(bi))), r.M);
+        }
+        return MatrixIdentity();
+    };
+    for (auto& it : A.fitItems) drawAttachment(it.file, it.att, MatrixMultiply(fitMatrix(it), delta(fitCarrier(it))), 1.f, Color{0, 0, 0, 0});
+    if (A.fitting && !A.fitPick.empty() && A.fitHover.on) {   // where the one being placed would go: green if it can, red if not
+        auto ss = fit::sites(A.design, A.fitItems);
+        if (A.fitHover.site >= 0 && A.fitHover.site < (int)ss.size()) {
+            fit::Item g; g.file = A.fitPick; g.att = A.fitPickD; g.site = ss[A.fitHover.site].key(); g.along = A.fitHover.along;
+            g.xf = fit::place(g.att, ss[A.fitHover.site], g.along);
+            bool ok = A.fitHover.why.empty();
+            drawAttachment(g.file, g.att, MatrixMultiply(fitMatrix(g), delta(fitCarrier(g))), 0.55f, ok ? Color{110, 230, 140, 255} : Color{255, 100, 80, 255});
+        }
+    }
+}
+
 static void drawSceneImpl(bool gunOnly);
 void drawScene() { drawSceneImpl(false); }
 void drawGunOnly() { drawSceneImpl(true); }   // (the firing range: just the gun, every part solid)
@@ -735,6 +792,7 @@ static void drawSceneImpl(bool gunOnly) {
         if (!D.bodies[r.tmpl].texture.empty()) drawMeshTex(A.meshes[r.tmpl].mesh, r.M, c, userTexture(D.bodies[r.tmpl].texture));
         else drawMesh(A.meshes[r.tmpl].mesh, r.M, c);
     }
+    if (A.mode == Mode::Test) drawAttachments(list);   // attachments on the gun (never in the designer: they aren't part of it)
     for (auto& r : list) if (!isGhost(r)) drawMarks(r.tmpl, r.M);   // engravings, on the parts they're cut into
     for (auto& r : list) drawRifling(r.tmpl, r.M);
     drawEngravePreview();

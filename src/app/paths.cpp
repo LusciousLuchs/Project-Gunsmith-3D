@@ -25,7 +25,7 @@ static void moveOver(const char* from, const char* to) {
 
 namespace {
 std::string gApp, gUser, sSettings = "gunsmith3d_settings.json", sAutosave = "gunsmith3d_autosave.json";
-std::string sGuns, sMaps, sTex, sParts, sNpcs, sCarts, sChar, sGroups, sAttach;
+std::string sGuns, sMaps, sTex, sParts, sNpcs, sCarts, sChar, sGroups, sAttach, sLoad;
 void copyIfMissing(const std::string& from, const std::string& to) {
     std::error_code ec;
     if (fs::exists(to, ec) || !fs::exists(from, ec)) return;
@@ -55,9 +55,9 @@ std::string userFolder() { return gUser; }
 void setUserFolder(const std::string& root) {
     gUser = root;
     sGuns = root + "/Blueprints"; sMaps = root + "/Levels"; sTex = root + "/Textures"; sParts = root + "/Parts";
-    sNpcs = root + "/NPCs"; sCarts = root + "/Rounds"; sGroups = root + "/Groups"; sAttach = root + "/Attachments"; sChar = root + "/Characters/character.json";
+    sNpcs = root + "/NPCs"; sCarts = root + "/Rounds"; sGroups = root + "/Groups"; sAttach = root + "/Attachments"; sLoad = root + "/Loadouts"; sChar = root + "/Characters/character.json";
     GUNS_DIR = sGuns.c_str(); MAPS_DIR = sMaps.c_str(); TEXTURES_DIR = sTex.c_str(); PARTS_DIR = sParts.c_str();
-    NPCS_DIR = sNpcs.c_str(); CARTS_DIR = sCarts.c_str(); GROUPS_DIR = sGroups.c_str(); CHARACTER_FILE = sChar.c_str(); ATTACH_DIR = sAttach.c_str();
+    NPCS_DIR = sNpcs.c_str(); CARTS_DIR = sCarts.c_str(); GROUPS_DIR = sGroups.c_str(); CHARACTER_FILE = sChar.c_str(); ATTACH_DIR = sAttach.c_str(); LOADOUT_DIR = sLoad.c_str();
     setUserCartridgesDir(sCarts);
 }
 bool changeUserFolder(const std::string& root, std::string& err) {
@@ -74,7 +74,7 @@ bool changeUserFolder(const std::string& root, std::string& err) {
 
 void setupUserFolders() {
     std::error_code ec;
-    for (const char* d : {GUNS_DIR, MAPS_DIR, TEXTURES_DIR, PARTS_DIR, NPCS_DIR, GROUPS_DIR, CARTS_DIR, ATTACH_DIR}) fs::create_directories(d, ec);
+    for (const char* d : {GUNS_DIR, MAPS_DIR, TEXTURES_DIR, PARTS_DIR, NPCS_DIR, GROUPS_DIR, CARTS_DIR, ATTACH_DIR, LOADOUT_DIR}) fs::create_directories(d, ec);
     fs::create_directories(fs::path(CHARACTER_FILE).parent_path(), ec);
     // files from where earlier versions kept them, in the game folder: moved in (never over a file already there)
     const char* pairs[][2] = {{"blueprints", GUNS_DIR}, {"maps", MAPS_DIR}, {"user/guns", GUNS_DIR}, {"user/maps", MAPS_DIR},

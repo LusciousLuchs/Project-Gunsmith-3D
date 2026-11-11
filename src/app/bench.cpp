@@ -87,7 +87,7 @@ void workAction() {
     A.running = true;
 }
 void stepSim(float dt) {
-    if (!A.S || !A.running || (A.posing && !sim::animPlaying(*A.S))) return;   // (in Pose mode only an animation runs it)
+    if (!A.S || !A.running || A.fitting || (A.posing && !sim::animPlaying(*A.S))) return;   // (fitting: the gun stands still)   // (in Pose mode only an animation runs it)
     auto& S = *A.S;
     bool slow = CFG.slowOnShot && S.shots > 0 && (S.t - S.fireT) * 1000 < CFG.slowWindowMs;
     double speed = slow ? CFG.slowSpeed : CFG.benchSpeed;

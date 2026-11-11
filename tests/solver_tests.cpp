@@ -8,6 +8,7 @@
 #include "version.hpp"
 #include "carve.hpp"
 #include "mounts.hpp"
+#include "fitting.hpp"
 #include "hand.hpp"
 #include <algorithm>
 #include <array>
@@ -2160,6 +2161,64 @@ static void attachmentsData() {
     CHECK(designToJson(g).find("\"attachment\"") == std::string::npos, "guns save as before");
 }
 
+// Fitting attachments: where they sit, and every reason one may not go there
+static void fittingAttachments() {
+    std::printf("Fitting attachments\n");
+    Design gun = loadPreset("boltaction");
+    BodyDef rail = mounts::makeRail({-60, 9}, {100, 9}, 0, 0); rail.id = "rail1"; rail.rail.base = "rcv"; rail.fixed = true;
+    gun.bodies.push_back(rail); weldParts(gun, "rail1", "rcv");
+    MountDef lug; lug.type = "Bayonet lug"; lug.at = {395, 27}; lug.nx = 0; lug.ny = 1; lug.nz = 0;
+    gun.bodies[gun.bodyIndex("barrel")].mounts.push_back(lug);
+    Design dot; dot.name = "Red dot";
+    { BodyDef h; h.id = "h"; h.pts = {{0, -38}, {45, -38}, {45, -10}, {0, -10}}; h.thick = 30; dot.bodies.push_back(h);
+      BodyDef b; b.id = "b"; b.pts = {{8, -10}, {40, -10}, {40, 0}, {8, 0}}; b.thick = 24; dot.bodies.push_back(b); }
+    dot.attach.on = true; dot.attach.job = "optic"; dot.attach.clamp = 22; autoAttach(dot);
+    std::vector<fit::Item> items;
+    auto ss = fit::sites(gun, items);
+    const fit::Site* rs = nullptr; const fit::Site* ls = nullptr;
+    for (auto& x : ss) { if (x.rail) rs = &x; else ls = &x; }
+    CHECK(rs && ls && ss.size() == 2, "the gun offers its rail and its bayonet lug");
+    double mid = fit::snapAlong(*rs, 80);
+    fit::Xf xf = fit::place(dot, *rs, mid);
+    fit::P3 g = xf.apply({dot.attach.at.x, dot.attach.at.y, dot.attach.atZ}, {dot.attach.at.x, dot.attach.at.y, dot.attach.atZ});
+    CHECK(std::fabs(g.y - (9 - 9.4)) < 1e-9 && std::fabs(g.x - (-60 + mid)) < 1e-9 && std::fabs(xf.R[0][0] - 1) < 1e-9 && std::fabs(xf.R[1][1] - 1) < 1e-9,
+          "on the rail: its clamp sits on the rail's top, upright, at a slot");
+    { bool onSlot = false; for (double v : rs->slots) if (std::fabs(v - mid) < 1e-9) onSlot = true;
+      CHECK(onSlot && std::fabs(mid - 80) <= 10.01 / 2 + 1e-6, "clamps snap to the rail's nearest slot"); }
+    CHECK(fit::check(gun, items, dot, *rs, mid).empty(), "a red dot on the rail: it fits");
+    CHECK(!fit::check(gun, items, dot, *rs, rs->slots[0]).empty(), "at the very end: its clamp runs off the rail");
+    fit::Item it; it.file = "dot"; it.att = dot; it.site = rs->key(); it.along = mid; it.xf = xf; items.push_back(it);
+    std::string why = fit::check(gun, items, dot, *rs, fit::snapAlong(*rs, mid + 10));
+    CHECK(why.find("runs into") != std::string::npos, "a second one right next to it: they would overlap");
+    CHECK(fit::check(gun, items, dot, *rs, fit::snapAlong(*rs, mid - 60)).empty(), "far enough along: both fit");
+    CHECK(!fit::check(gun, items, dot, *ls, 0).empty(), "a clamp-on sight on a bayonet lug: the wrong kind of mount");
+    Design bay; bay.name = "Bayonet";
+    { BodyDef bl; bl.id = "bl"; bl.pts = {{0, 0}, {200, 0}, {200, 12}, {0, 12}}; bl.thick = 4; bay.bodies.push_back(bl); }
+    bay.attach.on = true; bay.attach.job = "bayonet"; bay.attach.mount = "bayonet LUG "; bay.attach.face = "top"; autoAttach(bay);
+    CHECK(fit::check(gun, items, bay, *ls, 0).empty(), "a bayonet on the lug (kinds match whatever the capitals): it fits, hanging under the barrel");
+    // a slide on a track that runs forward over the rail: an attachment there would be in its way
+    Design g2; { BodyDef fr; fr.id = "frame"; fr.fixed = true; fr.pts = {{-100, 0}, {150, 0}, {150, 30}, {-100, 30}}; fr.thick = 20; g2.bodies.push_back(fr);
+                 BodyDef sl; sl.id = "slide"; sl.name = "Slide"; sl.pts = {{-90, -40}, {-50, -40}, {-50, -12}, {-90, -12}}; sl.thick = 20; g2.bodies.push_back(sl);
+                 BodyDef r2 = mounts::makeRail({0, 0}, {100, 0}, 0, 0); r2.id = "r2"; r2.fixed = true; g2.bodies.push_back(r2);
+                 JointDef j; j.type = "track"; j.a = "slide"; j.b = "frame"; j.p = {-70, -26}; j.path = {{-70, -26}, {40, -26}}; g2.joints.push_back(j); }
+    auto s2 = fit::sites(g2, {});
+    std::string w2 = fit::check(g2, {}, dot, s2[0], fit::snapAlong(s2[0], 30));
+    CHECK(w2.find("in the way of the Slide") != std::string::npos, "under a slide's travel: in the way of the moving part");
+    // a rail adapter on the lug: it brings its own rail
+    Design ad; ad.name = "Adapter";
+    { BodyDef ab; ab.id = "ab"; ab.pts = {{0, 0}, {60, 0}, {60, 8}, {0, 8}}; ab.thick = 10; ad.bodies.push_back(ab);
+      BodyDef ar = mounts::makeRail({0, 20}, {60, 20}, 1, 0); ar.id = "ar"; ad.bodies.push_back(ar); }
+    ad.attach.on = true; ad.attach.job = "adapter"; ad.attach.mount = "Bayonet lug"; ad.attach.face = "top"; autoAttach(ad);
+    std::vector<fit::Item> two;
+    fit::Item ai; ai.file = "adapter"; ai.att = ad; ai.site = ls->key(); ai.xf = fit::place(ad, *ls, 0); two.push_back(ai);
+    auto s3 = fit::sites(gun, two);
+    bool found = false; for (auto& x : s3) if (x.owner == 0 && x.rail) found = true;
+    CHECK(found, "a rail adapter, once fitted, offers its own rail");
+    std::string gname; std::vector<fit::LoadoutEntry> le;
+    CHECK(fit::loadoutFromJson(fit::loadoutToJson("Bolt-action rifle", items), gname, le) && gname == "Bolt-action rifle" && le.size() == 1 && le[0].site == rs->key() && std::fabs(le[0].along - mid) < 1e-9,
+          "a loadout saves which attachment goes where");
+}
+
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
 static void shotSounds() {
     std::printf("Shot sounds\n");
@@ -2181,6 +2240,7 @@ static void shotSounds() {
 
 int main() {
     shotSounds();
+    fittingAttachments();
     attachmentsData();
     railsAndMounts();
     mirroredCuts();

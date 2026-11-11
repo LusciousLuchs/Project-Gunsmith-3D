@@ -2,6 +2,7 @@
 #include "app/pieces.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/fitbench.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
 #include "app/paths.hpp"
@@ -77,7 +78,8 @@ void handleViewportInput() {
     bool overUI = io.WantCaptureMouse || !mouseInViewport();
     cameraInput(overUI);
     if (A.dragKind == 4 || A.dragKind == 5) return;
-    if (A.mode == Mode::Test && A.posing) poseInput(overUI);
+    if (A.mode == Mode::Test && A.fitting) fitInput(overUI);
+    else if (A.mode == Mode::Test && A.posing) poseInput(overUI);
     else if (A.mode == Mode::Test) testInput(overUI);
     else {
         buildInput(overUI);
