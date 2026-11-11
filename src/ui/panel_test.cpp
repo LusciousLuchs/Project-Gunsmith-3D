@@ -123,9 +123,9 @@ static bool armFreedom(HandHold& h, const char* which) {
     if (!h.on) {
         if (pCheck("Placed (not hanging)", h.free, "Off the gun, the hand hangs at the side. Placed: it's wherever you put it\n(a pouch, a vest, holding a magazine up). Or drag the blue dot at the hand.")) done = true;
         if (h.free) {
-            pNumU("Forward", h.pos[0], 5, Q::Length, -1, "The wrist, from the aiming eye: + forward.", SIGNED); fin();
-            pNumU("Up", h.pos[1], 5, Q::Length, -1, "+ up (it's usually below the eye: negative).", SIGNED); fin();
-            pNumU("Right", h.pos[2], 5, Q::Length, -1, "+ to the right.", SIGNED); fin();
+            pNumU("Forward##hand", h.pos[0], 5, Q::Length, -1, "The wrist, from the aiming eye: + forward.", SIGNED); fin();
+            pNumU("Up##hand", h.pos[1], 5, Q::Length, -1, "+ up (it's usually below the eye: negative).", SIGNED); fin();
+            pNumU("Right##hand", h.pos[2], 5, Q::Length, -1, "+ to the right.", SIGNED); fin();
         }
     }
     pNum("Elbow", h.elbow, 1, "%.0f\xc2\xb0", "Swings the elbow round (+ up and out, - down and in). Or drag the blue dot at the elbow."); fin();

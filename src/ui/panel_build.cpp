@@ -129,9 +129,9 @@ static void scaleToolPanel() {
     double w = W, h = Hh, t = T;
     bool changed = false;
     double sx = 1, sy = 1, sz = 1;
-    if (pNumU("Width", w, 0.5, Q::Length, 1, "Front to back, in the side view.") && W > 1e-6 && w > 0.1) { sx = w / W; if (A.scaleKeep) sy = sz = sx; changed = true; }
-    if (pNumU("Height", h, 0.5, Q::Length, 1, "Top to bottom, in the side view.") && Hh > 1e-6 && h > 0.1) { sy = h / Hh; if (A.scaleKeep) sx = sz = sy; changed = true; }
-    if (corners.empty() && pNumU("Thickness", t, 0.5, Q::Length, 1, "Across the gun (the thickest part of the piece). Round parts take theirs from their outline.") && T > 1e-6 && t > 0.1) {
+    if (pNumU("Width##scale", w, 0.5, Q::Length, 1, "Front to back, in the side view.") && W > 1e-6 && w > 0.1) { sx = w / W; if (A.scaleKeep) sy = sz = sx; changed = true; }
+    if (pNumU("Height##scale", h, 0.5, Q::Length, 1, "Top to bottom, in the side view.") && Hh > 1e-6 && h > 0.1) { sy = h / Hh; if (A.scaleKeep) sx = sz = sy; changed = true; }
+    if (corners.empty() && pNumU("Thickness##scale", t, 0.5, Q::Length, 1, "Across the gun (the thickest part of the piece). Round parts take theirs from their outline.") && T > 1e-6 && t > 0.1) {
         sz = t / T; if (A.scaleKeep) sx = sy = sz; changed = true;
     }
     if (!corners.empty()) sz = 1;
@@ -242,9 +242,9 @@ static void carvesSection(BodyDef& b) {
     }
     c.w = std::max(0.2, c.w); c.h = std::max(0.2, c.h); c.depth = std::max(0.0, c.depth);
     float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-    if (ImGui::Button("Duplicate", {w2, 0})) { CarveDef d = c; d.at.x += std::max(c.w, c.h) + 2; b.carves.push_back(d); A.selCarve = (int)b.carves.size() - 1; editedAny = true; }
+    if (ImGui::Button("Duplicate##cut", {w2, 0})) { CarveDef d = c; d.at.x += std::max(c.w, c.h) + 2; b.carves.push_back(d); A.selCarve = (int)b.carves.size() - 1; editedAny = true; }
     ImGui::SameLine();
-    if (ImGui::Button("Remove", {w2, 0})) { b.carves.erase(b.carves.begin() + A.selCarve); A.selCarve = -1; editedAny = true; }
+    if (ImGui::Button("Remove##cut", {w2, 0})) { b.carves.erase(b.carves.begin() + A.selCarve); A.selCarve = -1; editedAny = true; }
 }
 
 // ---------------------------------------------------------------- inspect: a part

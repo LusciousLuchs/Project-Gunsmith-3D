@@ -9,6 +9,7 @@
 #include "app/usertex.hpp"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -285,6 +286,8 @@ void setupImGui() {
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;
     io.ConfigDragClickToInputText = true;  // click a number without dragging to type it
+    // Two widgets sharing a name show a "programmer error" box: for the developer only (GUNSMITH_DEV), never players
+    io.ConfigDebugHighlightIdConflicts = std::getenv("GUNSMITH_DEV") != nullptr;
     ImFontConfig cfg;
     cfg.FontDataOwnedByAtlas = false;
     FontData fb = interSemiBold();

@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.13-alpha
+
+### Fixes
+- **A cut's Duplicate and Remove buttons work again.** With a cut selected, its Duplicate button could act on the whole part instead (the two buttons shared a name), and a red "programmer error" box popped up. The same mix-up is fixed for the Scale tool's size boxes and the poser's hand and gun position boxes, and that error box never shows for players any more.
+
 ## 0.4.12-alpha
 
 ### New
