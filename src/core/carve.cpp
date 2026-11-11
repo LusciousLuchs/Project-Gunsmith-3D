@@ -21,6 +21,26 @@ void frame(const CarveDef& c, P3& u, P3& v, P3& d) {
     v = v0 * cs - u0 * sn;
 }
 
+CarveDef mirrored(const CarveDef& c, int axis, double mid) {
+    // reflect where it goes in and its frame; every shape is the same when its u is flipped (rect, circle, and half
+    // and tri are symmetric about v), so keep the reflected v and let u follow, which keeps the frame right-handed
+    P3 u, v, d;
+    frame(c, u, v, d);
+    auto refl = [&](P3 q) { if (axis == 0) q.x = -q.x; else if (axis == 1) q.y = -q.y; else q.z = -q.z; return q; };
+    CarveDef m = c;
+    if (axis == 0) m.at.x = 2 * mid - c.at.x;
+    else if (axis == 1) m.at.y = 2 * mid - c.at.y;
+    else m.atZ = 2 * mid - c.atZ;
+    P3 d2 = refl(d), v2 = refl(v);
+    m.dx = d2.x; m.dy = d2.y; m.dz = d2.z;
+    m.spin = 0;
+    P3 u0, v0, dd;
+    frame(m, u0, v0, dd);   // the frame at spin 0 for the new direction
+    m.spin = std::atan2(-dot(v2, u0), dot(v2, v0)) * 180 / PI_;
+    if (std::fabs(m.spin) < 1e-9) m.spin = 0;
+    return m;
+}
+
 std::vector<V2> shape2D(const CarveDef& c, int segs) {
     double a = std::max(0.1, c.w) / 2, b = std::max(0.1, c.h) / 2;
     std::vector<V2> o;

@@ -79,6 +79,9 @@ struct App {
     double carveW = 6, carveH = 6, carveDepth = 4;
     bool carveThrough = false;
     int selCarve = -1;                   // with a part selected: one of its carves
+    bool cutPick = false;                // "Pick cuts in the view": a click on one of the selected part's cuts picks it
+    int dupCount = 1;                    // a cut's Duplicate: how many copies...
+    double dupStep[3] = {0, 0, 0};       // ...each this far on from the last (design mm: x, y down, z)
     bool carveDrag = false; int carveBody = -1; Vector3 carveP{}, carveN{};  // pressed on this surface point (world)
     bool carveMove = false; int carveMoveIdx = -1;   // dragging one of the selected part's cuts by its dot
     CarveDef carveMoving; double carveGrab[3] = {0, 0, 0};   // ...where it is now, and where on it it was grabbed

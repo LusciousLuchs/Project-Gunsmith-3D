@@ -223,7 +223,8 @@ void buildInput(bool overUI) {
         if (cur != selVsPart) { A.selVs.clear(); if (!selVsPart.empty()) A.selCarve = -1; selVsPart = cur; }
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
-    if (A.tool == Tool::Carve || A.carveDrag) { carveInput(overUI); return; }
+    if (A.tool == Tool::Carve || A.carveDrag || A.carveMove) { carveInput(overUI); return; }
+    if (cutPickInput(overUI)) return;   // "Pick cuts in the view": a click on one of the part's cuts picks it
     if (A.tool == Tool::Engrave || A.engraving) { engraveInput(overUI); return; }
     if (A.tool == Tool::Scale) { scaleInput(overUI); return; }
     if (A.tool == Tool::Faces || (A.faceDragging && A.tool != Tool::Select)) { facesInput(overUI); return; }

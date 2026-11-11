@@ -12,6 +12,10 @@ using csg::P3;
 
 // The cutter's own axes: u and v across the shape, d the way it goes in (design axes: x fwd, y down, z near).
 void frame(const CarveDef& c, P3& u, P3& v, P3& d);
+// The cut mirrored across a plane through the part: axis 0 = X (front to back, about x = mid), 1 = Y (top to bottom,
+// about y = mid), 2 = Z (left to right, about the part's middle). Same shape the other way round: a slit leaning
+// forward on the right side leans forward on the left.
+CarveDef mirrored(const CarveDef& c, int axis, double mid);
 // The shape across the cutter, in (u, v) mm, counter-clockwise; convex.
 std::vector<V2> shape2D(const CarveDef& c, int segs = 32);
 // How far before the entry point the cutter starts, so a tilted cutter clears the surface (mm).

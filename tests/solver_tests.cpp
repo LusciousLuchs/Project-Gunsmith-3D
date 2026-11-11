@@ -2056,6 +2056,41 @@ static void controlButtons() {
     CHECK(right[0] > 3.5, "pushed along its track, the key slides it all the way");
 }
 
+// Mirrored cuts: the same shape, the other way round, and mirroring twice gives the cut back
+static void mirroredCuts() {
+    std::printf("Mirrored cuts\n");
+    CarveDef r; r.shape = "rect"; r.at = {131, -3}; r.atZ = 10; r.dx = 0; r.dy = 0; r.dz = -1; r.spin = -13; r.w = 3; r.h = 15.5; r.depth = 0.7;
+    CarveDef l = carve::mirrored(r, 2, 0);
+    CHECK(std::fabs(l.atZ + 10) < 1e-9 && std::fabs(l.dz - 1) < 1e-9 && std::fabs(std::remainder(l.spin - 13, 180)) < 1e-6,   // (a rectangle turned half round is the same rectangle)
+          "a slit on the right, mirrored across: the same slit on the left (as drawn by hand on the SOG P300)");
+    for (const char* shape : {"rect", "tri", "half", "circle"})
+        for (int axis = 0; axis < 3; axis++) {
+            CarveDef c; c.shape = shape; c.at = {40, 12}; c.atZ = 3; c.dx = 0.3; c.dy = -0.4; c.dz = -std::sqrt(0.75); c.spin = 27; c.w = 8; c.h = 5;
+            CarveDef m = carve::mirrored(c, axis, axis == 2 ? 0 : 25);
+            // every outline point of the mirror is the reflection of an outline point of the original
+            auto pts = [](const CarveDef& k) {
+                carve::P3 u, v, d; carve::frame(k, u, v, d); std::vector<carve::P3> o;
+                for (auto& q : carve::shape2D(k, 24)) o.push_back(carve::P3{k.at.x, k.at.y, k.atZ} + u * q.x + v * q.y);
+                return o;
+            };
+            auto a = pts(c), b = pts(m);
+            double worst = 0;
+            for (auto& q : a) {
+                carve::P3 rq = q;
+                if (axis == 0) rq.x = 50 - q.x; else if (axis == 1) rq.y = 50 - q.y; else rq.z = -q.z;
+                double best = 1e9;
+                for (auto& w : b) best = std::min(best, std::sqrt((w.x - rq.x) * (w.x - rq.x) + (w.y - rq.y) * (w.y - rq.y) + (w.z - rq.z) * (w.z - rq.z)));
+                worst = std::max(worst, best);
+            }
+            CarveDef back = carve::mirrored(m, axis, axis == 2 ? 0 : 25);
+            bool same = std::fabs(back.at.x - c.at.x) < 1e-9 && std::fabs(back.at.y - c.at.y) < 1e-9 && std::fabs(back.atZ - c.atZ) < 1e-9 &&
+                        std::fabs(back.dx - c.dx) < 1e-9 && std::fabs(back.dy - c.dy) < 1e-9 && std::fabs(back.dz - c.dz) < 1e-9 &&
+                        std::fabs(std::remainder(back.spin - c.spin, 360)) < 1e-6;
+            if (worst > 1e-6 || !same) CHECK(false, (std::string(shape) + " mirrored on axis " + std::to_string(axis) + ": the exact reflection, and back again").c_str());
+        }
+    CHECK(true, "every shape, mirrored on X, Y and Z, is the exact reflection, and mirroring twice gives it back");
+}
+
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
 static void shotSounds() {
     std::printf("Shot sounds\n");
@@ -2077,6 +2112,7 @@ static void shotSounds() {
 
 int main() {
     shotSounds();
+    mirroredCuts();
     tilting();
     longRecoil();
     turnBolt();

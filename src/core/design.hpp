@@ -94,6 +94,7 @@ struct CarveDef {
     double spin = 0;                     // degrees: turns the shape about that direction
     double w = 6, h = 6;                 // mm across; circles and half circles stretch to w x h
     double depth = 4;                    // mm deep; 0 = right through
+    std::string name;                    // the player's name for it ("" = described by its size)
 };
 
 // A barrel (the Barrel tool): a round part with a chamber cut at its breech end for one cartridge, and a bore through

@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
         else if (a == "--side") sideArg = true;
         else if (a == "--select") selectArg = next();
         else if (a == "--trackdraft") trackDraft = true;
+        else if (a == "--cutpick") A.cutPick = true;   // (screenshots) "Pick cuts in the view" on
         else if (a == "--measure") {   // (screenshots) a measuring line from x1 y1 to x2 y2 (mm), kept shown
             double v[4]; for (double& k : v) k = std::atof(next().c_str());
             A.measureA = {v[0], v[1]}; A.measureB = {v[2], v[3]}; A.measured = A.measureKeep = true;

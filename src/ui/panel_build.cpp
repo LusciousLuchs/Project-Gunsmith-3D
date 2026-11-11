@@ -198,17 +198,28 @@ static void carvesSection(BodyDef& b) {
                                                      : "On magazines, cuts only change the look for now. The physics uses the plain outline.");
         ImGui::PopTextWrapPos();
     }
+    if (accentButton(A.cutPick ? ICON_FA_CROSSHAIRS "  Picking cuts in the view" : ICON_FA_CROSSHAIRS "  Pick cuts in the view", A.cutPick, {-1, 0})) A.cutPick = !A.cutPick;
+    if (tipHover()) ImGui::SetTooltip("On: this part's cuts are all shown, and a click on one in the view picks it\n(on its dot or anywhere inside its outline); drag it to move it. Clicks elsewhere work as usual.");
     for (int k = 0; k < (int)b.carves.size(); k++) {
         auto& c = b.carves[k];
         std::string t = std::string(shapeName(c.shape)) + " " + fmtQ(Q::Length, c.w);
         if (c.shape != "circle" || c.h != c.w) t += " x " + fmtQ(Q::Length, c.h);
         t += c.depth > 0 ? ", " + fmtQ(Q::Length, c.depth) + " deep" : ", right through";
+        if (!c.name.empty()) t = c.name + "   (" + t + ")";
         if (ImGui::Selectable((t + "##cv" + std::to_string(k)).c_str(), A.selCarve == k)) A.selCarve = A.selCarve == k ? -1 : k;
+        if (A.selCarve == k && ImGui::IsWindowAppearing()) ImGui::SetScrollHereY();
         if (k == 0) tutAnchor("carves:list");
     }
-    if (A.selCarve < 0) { muted("Click one to change it. Del removes the selected one."); return; }
+    if (A.selCarve < 0) { muted("Click one to change it, or pick it in the view. Del removes the selected one."); return; }
     CarveDef& c = b.carves[A.selCarve];
     ImGui::Spacing();
+    {   // its name
+        prop("Name", "Your name for this cut: \"Front serrations\", \"Ejection port\". Shown in the list and in the view.");
+        char nb[64]; std::snprintf(nb, sizeof nb, "%s", c.name.c_str());
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::InputTextWithHint("##cutname", ("Cut " + std::to_string(A.selCarve + 1)).c_str(), nb, sizeof nb)) c.name = nb;
+        if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+    }
     ImGui::PushID("cut");
     bool shapeHit = shapeButtons(c.shape);
     ImGui::PopID();
@@ -241,10 +252,48 @@ static void carvesSection(BodyDef& b) {
         pNumU("Z##cut", c.atZ, 0.5, Q::Length, -1, "Across the gun, from the part's middle: + is the gun's right side (toward you in the side view).", SIGNED);
     }
     c.w = std::max(0.2, c.w); c.h = std::max(0.2, c.h); c.depth = std::max(0.0, c.depth);
-    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-    if (ImGui::Button("Duplicate##cut", {w2, 0})) { CarveDef d = c; d.at.x += std::max(c.w, c.h) + 2; b.carves.push_back(d); A.selCarve = (int)b.carves.size() - 1; editedAny = true; }
-    ImGui::SameLine();
-    if (ImGui::Button("Remove##cut", {w2, 0})) { b.carves.erase(b.carves.begin() + A.selCarve); A.selCarve = -1; editedAny = true; }
+    // copies: as many as you like, each a set step on from the last (0 = right on top of it, to move by hand)
+    if (section("Duplicate and mirror", true)) {
+        prop("Copies", "How many copies Duplicate makes.");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputInt("##dupn", &A.dupCount); A.dupCount = std::clamp(A.dupCount, 1, 100);
+        double sy = -A.dupStep[1];
+        pNumU("Step X##dup", A.dupStep[0], 0.5, Q::Length, -1, "Each copy this far on from the last: + toward the muzzle.", SIGNED);
+        if (pNumU("Step Y##dup", sy, 0.5, Q::Length, -1, "+ up.", SIGNED)) A.dupStep[1] = -sy;
+        pNumU("Step Z##dup", A.dupStep[2], 0.5, Q::Length, -1, "+ toward the gun's right side.", SIGNED);
+        float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        if (ImGui::Button(A.dupCount > 1 ? TextFormat("Duplicate x%d##cut", A.dupCount) : "Duplicate##cut", {w2, 0})) {
+            CarveDef base = c;
+            for (int n = 1; n <= A.dupCount; n++) {
+                CarveDef d = base; d.at.x += A.dupStep[0] * n; d.at.y += A.dupStep[1] * n; d.atZ += A.dupStep[2] * n;
+                if (!d.name.empty()) d.name += " " + std::to_string(n + 1);
+                b.carves.push_back(d);
+            }
+            A.selCarve = (int)b.carves.size() - 1; editedAny = true;
+            return;
+        }
+        if (tipHover()) ImGui::SetTooltip("Copies of this cut, each Step on from the last.\nWith the step at 0 the copy sits exactly on the original: drag it where you want it.");
+        ImGui::SameLine();
+        if (dangerButton("Remove##cut", {w2, 0})) { b.carves.erase(b.carves.begin() + A.selCarve); A.selCarve = -1; editedAny = true; return; }
+        // mirror: a copy the other way round, across the part's middle
+        float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+        double lo[2] = {1e9, 1e9}, hi[2] = {-1e9, -1e9};
+        for (auto& p : b.pts) { lo[0] = std::min(lo[0], p.x); hi[0] = std::max(hi[0], p.x); lo[1] = std::min(lo[1], p.y); hi[1] = std::max(hi[1], p.y); }
+        static const char* lab[] = {"Mirror X##cut", "Mirror Y##cut", "Mirror Z##cut"};
+        static const char* tip[] = {"A copy mirrored front to back, across the middle of the part.",
+                                    "A copy mirrored top to bottom, across the middle of the part.",
+                                    "A copy mirrored across the gun, onto the other side of the part (left to right)."};
+        for (int a = 0; a < 3; a++) {
+            if (a) ImGui::SameLine();
+            if (ImGui::Button(lab[a], {w3, 0}) && !b.pts.empty()) {
+                CarveDef m = carve::mirrored(c, a, a == 2 ? 0 : (lo[a] + hi[a]) / 2);
+                if (!m.name.empty()) m.name += " (mirrored)";
+                b.carves.push_back(m); A.selCarve = (int)b.carves.size() - 1; editedAny = true;
+                return;
+            }
+            if (tipHover()) ImGui::SetTooltip("%s", tip[a]);
+        }
+    }
 }
 
 // ---------------------------------------------------------------- inspect: a part

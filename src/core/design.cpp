@@ -1015,9 +1015,12 @@ std::string designToJson(const Design& d, bool pretty) {
         }
         if (!b.carves.empty()) {
             json cs = json::array();
-            for (auto& c : b.carves)
-                cs.push_back({{"shape", c.shape}, {"at", {c.at.x, c.at.y, c.atZ}}, {"dir", {c.dx, c.dy, c.dz}},
-                              {"spin", c.spin}, {"w", c.w}, {"h", c.h}, {"depth", c.depth}});
+            for (auto& c : b.carves) {
+                json jc = {{"shape", c.shape}, {"at", {c.at.x, c.at.y, c.atZ}}, {"dir", {c.dx, c.dy, c.dz}},
+                           {"spin", c.spin}, {"w", c.w}, {"h", c.h}, {"depth", c.depth}};
+                if (!c.name.empty()) jc["name"] = c.name;
+                cs.push_back(jc);
+            }
             jb["carves"] = cs;
         }
         if (b.mass > 0) jb["mass"] = b.mass;
@@ -1217,6 +1220,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 c.w = std::max(0.2, opt<double>(jc, "w", 6.0));
                 c.h = std::max(0.2, opt<double>(jc, "h", 6.0));
                 c.depth = std::max(0.0, opt<double>(jc, "depth", 4.0));
+                c.name = opt<std::string>(jc, "name", "");
                 b.carves.push_back(c);
             }
         if (jb.contains("roll") && jb["roll"].is_object()) {

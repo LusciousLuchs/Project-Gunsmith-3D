@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.15-alpha
+
+### New
+- **Pick cuts in the view.** In a part's Carves list, turn on *Pick cuts in the view*: all its cuts show, the one under the mouse lights up with its name, and a click anywhere on it picks it (drag to move it). Works with any tool.
+- **Name your cuts** ("Front serrations", "Ejection port"): shown in the list and in the view.
+- **Duplicate does what you set:** how many copies, and how far each one steps on from the last in X, Y and Z (0 puts the copy right on top, ready to drag). Rows of slits or holes in one click.
+- **Mirror X / Y / Z** makes a mirrored copy of a cut across the middle of the part: slits on the right side become matching slits on the left.
+
 ## 0.4.14-alpha
 
 ### Changes

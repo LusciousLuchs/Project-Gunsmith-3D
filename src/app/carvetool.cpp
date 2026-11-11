@@ -159,6 +159,7 @@ static CarveDef dragCarve() {
 }
 
 // The dot of one of the selected part's cuts under the cursor (-1: none)
+static std::vector<Vector2> outline(int i, const CarveDef& c, int k);
 static int cutDotUnderMouse() {
     if (A.sel.kind != 1 || A.sel.idx < 0 || A.sel.idx >= (int)A.design.bodies.size()) return -1;
     const BodyDef& b = A.design.bodies[A.sel.idx];
@@ -272,15 +273,70 @@ static void drawCarve(int i, const CarveDef& c, Color col, bool label) {
     }
 }
 
+std::string cutLabel(const CarveDef& c, int k) { return c.name.empty() ? "Cut " + std::to_string(k + 1) : c.name; }
+
+// The selected part's cut under the cursor: on its dot, or inside where it goes in or where it ends, the smallest
+// on screen winning (a slot inside a pocket picks the slot). -1 if none.
+static float polyArea(const std::vector<Vector2>& o) {
+    float a = 0;
+    for (size_t k = 0; k < o.size(); k++) { const Vector2 &p = o[k], &q = o[(k + 1) % o.size()]; a += p.x * q.y - q.x * p.y; }
+    return std::fabs(a) / 2;
+}
+static bool inside(const std::vector<Vector2>& o, Vector2 m) {
+    bool in = false;
+    for (size_t k = 0, j = o.size() - 1; k < o.size(); j = k++)
+        if ((o[k].y > m.y) != (o[j].y > m.y) && m.x < (o[j].x - o[k].x) * (m.y - o[k].y) / (o[j].y - o[k].y) + o[k].x) in = !in;
+    return in;
+}
+static int cutUnderMouse() {
+    int dot = cutDotUnderMouse();
+    if (dot >= 0) return dot;
+    if (A.sel.kind != 1 || A.sel.idx < 0 || A.sel.idx >= (int)A.design.bodies.size()) return -1;
+    const BodyDef& b = A.design.bodies[A.sel.idx];
+    Vector2 m = GetMousePosition();
+    int best = -1; float ba = 1e30f;
+    for (int k = 0; k < (int)b.carves.size(); k++)
+        for (int e = 0; e < 2; e++) {
+            if (e == 1 && b.carves[k].depth <= 0) continue;
+            auto o = outline(A.sel.idx, b.carves[k], e);
+            float a = std::max(polyArea(o), 4.f);
+            if (inside(o, m) && a < ba) { ba = a; best = k; }
+        }
+    return best;
+}
+
+bool cutPickInput(bool overUI) {
+    if (!A.cutPick || overUI || A.mode != Mode::Build || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return false;
+    int k = cutUnderMouse();
+    if (k < 0) return false;   // not on a cut: the click does what it always does
+    A.selCarve = k; A.carveMove = true; A.carveMoveIdx = k;
+    A.carveMoving = A.design.bodies[A.sel.idx].carves[k];
+    A.pressPos = GetMousePosition();
+    double p[3];
+    if (onCutPlane(A.sel.idx, A.carveMoving, p)) { A.carveGrab[0] = p[0] - A.carveMoving.at.x; A.carveGrab[1] = p[1] - A.carveMoving.at.y; A.carveGrab[2] = p[2] - A.carveMoving.atZ; }
+    else A.carveGrab[0] = A.carveGrab[1] = A.carveGrab[2] = 0;
+    return true;
+}
+
 void drawCarveOverlay() {
     auto& D = A.design;
     if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size()) {  // the part's carves: the selected one bright
         auto& b = D.bodies[A.sel.idx];
-        bool moving = A.carveMove && A.tool == Tool::Carve;
+        bool moving = A.carveMove;
+        bool picking = A.cutPick && A.mode == Mode::Build;
+        int hot = picking && !moving && mouseInViewport() && !ImGui::GetIO().WantCaptureMouse ? cutUnderMouse() : -1;
         for (int k = 0; k < (int)b.carves.size(); k++)
             if (moving && k == A.carveMoveIdx) drawCarve(A.sel.idx, b.carves[k], Color{255, 190, 70, 70}, false);   // where it was
             else if (k == A.selCarve) drawCarve(A.sel.idx, b.carves[k], Color{255, 190, 70, 255}, true);
-            else if (A.tool == Tool::Carve) drawCarve(A.sel.idx, b.carves[k], Color{255, 190, 70, 90}, false);
+            else if (k == hot) drawCarve(A.sel.idx, b.carves[k], Color{120, 220, 255, 255}, false);
+            else if (A.tool == Tool::Carve || picking) drawCarve(A.sel.idx, b.carves[k], Color{255, 190, 70, 90}, false);
+        for (int k = 0; k < (int)b.carves.size(); k++)   // names, when picking: the selected one and the one under the cursor
+            if ((picking && (k == hot || k == A.selCarve)) && !(moving && k == A.carveMoveIdx)) {
+                const CarveDef& c = b.carves[k];
+                Vector2 sp = toScreen(toWorld(A.sel.idx, c.at.x, c.at.y, c.atZ));
+                viewText(cutLabel(c, k).c_str(), sp.x + 10, sp.y - 20, 13, k == A.selCarve ? Color{255, 190, 70, 255} : Color{120, 220, 255, 255});
+            }
+        if (picking && moving && A.tool != Tool::Carve) { drawCarve(A.sel.idx, movedCut(), Color{120, 220, 255, 255}, true); drawGuides(); }
     }
     if (A.tool != Tool::Carve || A.mode != Mode::Build) return;
     if (A.carveMove) { drawCarve(A.sel.idx, movedCut(), Color{120, 220, 255, 255}, true); drawGuides(); return; }
