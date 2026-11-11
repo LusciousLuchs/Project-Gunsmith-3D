@@ -27,6 +27,7 @@ void setFog(Color c);               // far things fade to this colour
 void drawMesh(const Mesh& m, Matrix M, Color c, float alpha = 1.f);
 void drawMeshTex(const Mesh& m, Matrix M, Color c, Texture2D tex, float alpha = 1);  // with a picture on it (tinted by c)
 void drawBox(Vector3 center, Vector3 size, Color c, Matrix rot = MatrixIdentity(), float alpha = 1.f);
+void drawAttachmentCrate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});   // a crate of attachments (metres)
 void drawArmorPlate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});   // an armour plate lying flat (metres)
 void drawCyl(Vector3 a, Vector3 b, float r, Color c, float alpha = 1.f, const Mesh* mesh = nullptr);
 void drawSphereLit(Vector3 p, float r, Color c, float alpha = 1.f);

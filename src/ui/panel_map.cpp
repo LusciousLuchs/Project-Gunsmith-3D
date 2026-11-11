@@ -69,7 +69,8 @@ void mapToolbar() {
         {ICON_FA_STAIRS, "Stairs", MTool::Stairs}, {ICON_FA_SCISSORS, "Clip: cut brushes along a line", MTool::Clip},
         {ICON_FA_PERSON, "Player start", MTool::Start}, {ICON_FA_GHOST, "NPC: place an NPC from the NPC editor", MTool::Npc},
         {ICON_FA_BOX_OPEN, "Gun spawner: a stand players take guns from", MTool::Spawner},
-        {ICON_FA_SHIELD_HALVED, "Armour plates: walk over them to fill the armour bar", MTool::Armor}};
+        {ICON_FA_SHIELD_HALVED, "Armour plates: walk over them to fill the armour bar", MTool::Armor},
+        {ICON_FA_TOOLBOX, "Attachment crate: fit attachments to the gun in your hands", MTool::Crate}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -138,6 +139,9 @@ static void editTab() {
         } else if (e.type == "gun_spawner") {
             heading("Gun spawner");
             ImGui::TextDisabled("Walk up to it on the map and press F: take any of your guns.");
+        } else if (e.type == "attachment_crate") {
+            heading("Attachment crate");
+            ImGui::TextDisabled("Walk up to it on the map and press F: fit attachments from your Attachments folder\nto the gun in your hands (or load a loadout).");
         } else if (e.type == "armor_plate") {
             heading("Armour plates");
             double cnt = e.count;

@@ -2214,6 +2214,41 @@ static void fittingAttachments() {
     auto s3 = fit::sites(gun, two);
     bool found = false; for (auto& x : s3) if (x.owner == 0 && x.rail) found = true;
     CHECK(found, "a rail adapter, once fitted, offers its own rail");
+    {   // their weight is real: on a blowback pistol's slide it slows the slide; on the frame the action runs as before
+        auto peak = [](Design d) {
+            auto S = sim::build(d);
+            sim::run(*S, 0.003);
+            S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true);
+            double v = 0;
+            for (int i = 0; i < 300; i++) {
+                sim::run(*S, 0.0001);
+                v = std::max(v, -S->find("slide")->vx);
+                if (i == 150) { sim::setKey(*S, "fire", false); S->trigger = false; }
+            }
+            return v;
+        };
+        Design p0 = loadPreset("blowback"), pS = p0, pF = p0;
+        pS.addMass.push_back({"slide", 150});
+        pF.addMass.push_back({"grip_l", 150});
+        double v0 = peak(p0), vS = peak(pS), vF = peak(pF);
+        std::printf("    slide speed: plain %.2f m/s, 150 g on the slide %.2f, 150 g on the frame %.2f\n", v0, vS, vF);
+        CHECK(vS < v0 * 0.93 && std::fabs(vF - v0) < v0 * 0.02, "150 g on the slide slows it; on the frame it changes nothing");
+    }
+    {   // a suppressor screwed on a muzzle thread (its back end against a point facing forward): it carries on forward
+        Design sup; sup.name = "Suppressor";
+        { BodyDef b; b.id = "can"; b.pts = {{0, -15}, {150, -15}, {150, 15}, {0, 15}}; b.round = true; b.thick = 30; sup.bodies.push_back(b); }
+        sup.attach.on = true; sup.attach.job = "muzzle"; sup.attach.muzzleKind = "suppressor"; sup.attach.mount = "Muzzle thread"; sup.attach.face = "rear"; autoAttach(sup);
+        Design g3 = loadPreset("boltaction");
+        MountDef th; th.type = "Muzzle thread"; th.at = {420, 20}; th.nx = 1; th.ny = 0; th.nz = 0;
+        g3.bodies[g3.bodyIndex("barrel")].mounts.push_back(th);
+        auto s3 = fit::sites(g3, {});
+        fit::Xf x3 = fit::place(sup, s3[0], 0);
+        fit::P3 tip = x3.apply({150, 0, sup.attach.atZ}, sup.bodies.empty() ? fit::P3{} : fit::P3{sup.attach.at.x, sup.attach.at.y, sup.attach.atZ});
+        CHECK(std::fabs(tip.x - 570) < 1e-6 && std::fabs(tip.y - 20) < 1e-6 && fit::check(g3, {}, sup, s3[0], 0).empty(),
+              "a suppressor on a muzzle thread: it goes on straight forward from the muzzle, 150 mm long");
+        Design back;
+        CHECK(designFromJson(designToJson(sup), back) && back.attach.muzzleKind == "suppressor" && back.attach.face == "rear", "a muzzle device keeps its kind and the side that meets the mount");
+    }
     std::string gname; std::vector<fit::LoadoutEntry> le;
     CHECK(fit::loadoutFromJson(fit::loadoutToJson("Bolt-action rifle", items), gname, le) && gname == "Bolt-action rifle" && le.size() == 1 && le[0].site == rs->key() && std::fabs(le[0].along - mid) < 1e-9,
           "a loadout saves which attachment goes where");

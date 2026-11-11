@@ -726,6 +726,8 @@ static void drawAttachment(const std::string& file, const Design& att, Matrix Mf
         else drawMesh(ms[i], M, col, alpha);
     }
 }
+static float gOpticAlpha = 1;   // the optic you're aiming through fades (you look through it, not at it)
+void setOpticSeeThrough(float alpha) { gOpticAlpha = alpha; }
 void drawAttachments(const std::vector<RB>& list) {
     auto delta = [&](const std::string& carrier) {   // a part it rides on that has moved (a slide with a rail): with it
         int bi = A.design.bodyIndex(carrier);
@@ -736,7 +738,8 @@ void drawAttachments(const std::vector<RB>& list) {
         }
         return MatrixIdentity();
     };
-    for (auto& it : A.fitItems) drawAttachment(it.file, it.att, MatrixMultiply(fitMatrix(it), delta(fitCarrier(it))), 1.f, Color{0, 0, 0, 0});
+    for (auto& it : A.fitItems)
+        drawAttachment(it.file, it.att, MatrixMultiply(fitMatrix(it), delta(fitCarrier(it))), it.att.attach.job == "optic" ? gOpticAlpha : 1.f, Color{0, 0, 0, 0});
     if (A.fitting && !A.fitPick.empty() && A.fitHover.on) {   // where the one being placed would go: green if it can, red if not
         auto ss = fit::sites(A.design, A.fitItems);
         if (A.fitHover.site >= 0 && A.fitHover.site < (int)ss.size()) {

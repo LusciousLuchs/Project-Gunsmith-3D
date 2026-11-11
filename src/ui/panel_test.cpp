@@ -2,6 +2,7 @@
 #include "hand.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/range.hpp"
 #include "mounts.hpp"
 #include "app/fitbench.hpp"
 #include "app/npcedit.hpp"
@@ -463,7 +464,8 @@ static void fitPanel() {
         ImGui::EndCombo();
     }
     ImGui::Dummy({0, 6 * fS()});
-    if (ImGui::Button("Done", {-1, 0})) { leaveFitting(); A.running = true; }
+    if (A.rangeFit) { if (accentButton("Back to the range", true, {-1, 0})) backToRange(); }
+    else if (ImGui::Button("Done", {-1, 0})) { leaveFitting(); A.running = true; }
 }
 void testPanel() {
     panelHeader();

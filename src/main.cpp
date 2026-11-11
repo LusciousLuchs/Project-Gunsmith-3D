@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
     bool menuArg = false, settingsArg = false, pauseArg = false, benchArg = false;
     int introArg = 0;
     bool solidArg = false;
-    std::string rangeArg, fittingArg;
+    std::string rangeArg, fittingArg, rangeLoadout; bool rangeAim = false;
     double rangeYaw = 0, rangePitch = 0, rangeArmor = 0; bool rangeShot = false;
     int settingsPage = 0;
     bool useSettings = false;
@@ -78,7 +78,9 @@ int main(int argc, char** argv) {
         else if (a == "--select") selectArg = next();
         else if (a == "--trackdraft") trackDraft = true;
         else if (a == "--cutpick") A.cutPick = true;
-        else if (a == "--fitting") fittingArg = next();   // (screenshots) the fitting bench, with this loadout ("-" for none)   // (screenshots) "Pick cuts in the view" on
+        else if (a == "--fitting") fittingArg = next();
+        else if (a == "--rangeloadout") rangeLoadout = next();   // (screenshots) this loadout on the range gun
+        else if (a == "--rangeaim") rangeAim = true;             // (screenshots) aiming   // (screenshots) the fitting bench, with this loadout ("-" for none)   // (screenshots) "Pick cuts in the view" on
         else if (a == "--measure") {   // (screenshots) a measuring line from x1 y1 to x2 y2 (mm), kept shown
             double v[4]; for (double& k : v) k = std::atof(next().c_str());
             A.measureA = {v[0], v[1]}; A.measureB = {v[2], v[3]}; A.measured = A.measureKeep = true;
@@ -223,6 +225,7 @@ int main(int argc, char** argv) {
         }
         enterRange(rd, rm);
         if (rangeShot) rangeShotSetup(rangeYaw, rangePitch, rangeArmor);
+        rangeShotExtras(rangeLoadout, rangeAim);
     }
     // a normal launch: the studio's splash, then the agreement until it's agreed to (screenshot runs skip them)
     if (introArg == 2) introForceEula();

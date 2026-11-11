@@ -1151,6 +1151,7 @@ std::string designToJson(const Design& d, bool pretty) {
             const auto& a = d.attach;
             json ja = {{"job", a.job}, {"mount", a.mount}, {"clamp", a.clamp}};
             if (a.face != "under") ja["face"] = a.face;
+            if (a.job == "muzzle") ja["muzzleKind"] = a.muzzleKind;
             if (a.atSet) ja["at"] = {a.at.x, a.at.y, a.atZ};
             if (a.job == "optic") {
                 const auto& op = a.optic;
@@ -1502,6 +1503,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         a.mount = opt<std::string>(ja, "mount", "Picatinny");
         a.clamp = std::clamp(opt<double>(ja, "clamp", 20.0), 3.0, 600.0);
         a.face = opt<std::string>(ja, "face", "under");
+        a.muzzleKind = opt<std::string>(ja, "muzzleKind", "brake");
         if (ja.contains("at") && ja["at"].is_array() && ja["at"].size() == 3) { a.atSet = true; a.at = {ja["at"][0].get<double>(), ja["at"][1].get<double>()}; a.atZ = ja["at"][2].get<double>(); }
         if (ja.contains("optic") && ja["optic"].is_object()) {
             auto& jo = ja["optic"];

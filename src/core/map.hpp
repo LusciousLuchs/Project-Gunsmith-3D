@@ -51,7 +51,7 @@ struct Brush {
 };
 struct Entity {
     std::string type = "player_start";   // player_start, target_paper, npc_spawn (an NPC stands here), gun_spawner
-                                         // (a stand the player uses to take guns), armor_plate (plates to pick up)
+                                         // (a stand the player uses to take guns), armor_plate (plates to pick up), attachment_crate (fit attachments)
     V3 pos;
     double yaw = 0;       // degrees; 0 looks along +X
     std::string ref;      // npc_spawn: which NPC (its name in the map's own copies, or in user/npcs)

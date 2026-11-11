@@ -1,5 +1,6 @@
 // Gunsmith3D - Shared app state, small helpers, undo, modes.
 #include "app/app.hpp"
+#include "app/fitbench.hpp"
 #include "app/paths.hpp"
 #include "app/npcedit.hpp"
 #include "app/range.hpp"
@@ -126,7 +127,12 @@ int magwellIndex(const std::string& magId) {
 
 // ---------------------------------------------------------------- modes and simulation control
 static void buildSim() {
-    A.S = sim::build(A.design);
+    Design d = A.design;
+    for (auto& it : A.fitItems) {   // attachments fitted on: their weight on the part they ride on (the physics feels it)
+        std::string c = fitCarrier(it);
+        if (!c.empty()) d.addMass.push_back({c, attachmentMass(it.att)});
+    }
+    A.S = sim::build(d);
     A.S->handStrength = A.handN;
     A.handleBody = nullptr; A.hoverHandle = false;
     if (A.S->hasFace && !A.S->magTmpl && A.S->feedMode != "internal")  // hand-loaded designs start with ammunition on the bench

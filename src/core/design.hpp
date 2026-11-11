@@ -400,6 +400,8 @@ struct AttachDef {
     double clamp = 20;             // Picatinny: how much rail it takes (mm)
     std::string face = "under";    // which side meets the mount: under (sits on a rail, as drawn), top (hangs under one: a
                                    // grip), rear (its back end: onto a muzzle), front
+    std::string muzzleKind = "brake";   // a muzzle device: brake (less kick), compensator (less climb), suppressor
+                                        // (quiet, no flash, heard only close by), flashhider (a small flash)
     OpticDef optic;
 };
 std::vector<ReticleMark> defaultReticle(const std::string& opticKind);   // a dot and ring (reflex), a duplex cross (scope)
@@ -424,6 +426,7 @@ struct Design {
     Pose pose;                           // how it's held (nothing placed in older blueprints)
     NpcGunDef npcGun;                    // made for NPCs only (off in older blueprints)
     AttachDef attach;                    // this is an attachment, not a gun (the attachment designer)
+    std::vector<std::pair<std::string, double>> addMass;   // (not saved) attachments fitted on: grams on the part they ride on
     std::map<std::string, Animation> anims;   // by slot: "work_action", "inspect", "reload", "reload_empty", "clear_jam", "control:<part id>"
     // where the blueprint came from (filled in when loading; saving always writes the current version)
     int format = 1;                      // blueprint format number (GUNSMITH_BLUEPRINT_FORMAT when saved)

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate };
 
 struct MapEd {
     gmap::Map map;

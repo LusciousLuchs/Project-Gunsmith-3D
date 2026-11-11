@@ -336,6 +336,13 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         } else continue;
         s.joints.push_back(J);
     }
+    for (auto& am : s.design.addMass) {   // attachments fitted to the gun: their weight on the part they ride on
+        Body* b = s.find(am.first);
+        if (!b || b == &s.world || am.second <= 0) continue;
+        double m = am.second / 1000;
+        b->m += m; b->I += m * 0.03 * 0.03;   // (about 30 mm off its middle)
+        if (!b->fixed) { b->invM = 1 / b->m; b->invI = 1 / b->I; }
+    }
     {   // welded parts become rigid assemblies: union the weld groups, pick a root, fold the pieces' mass into it
         std::vector<int> grp(s.bodies.size());
         for (size_t i = 0; i < grp.size(); i++) grp[i] = (int)i;

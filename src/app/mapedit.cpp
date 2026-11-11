@@ -622,13 +622,13 @@ static void toolInput() {
             ME.clipPts.push_back(s);
             break;
         }
-        case MTool::Npc: case MTool::Spawner: case MTool::Armor: {   // an NPC standing here, a stand to take guns from, armour plates
+        case MTool::Npc: case MTool::Spawner: case MTool::Armor: case MTool::Crate: {   // an NPC standing here, a stand to take guns from, armour plates
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
             if (ME.tool == MTool::Npc && ME.npcPick.empty()) { toast("Pick which NPC in the panel first (make one in the NPC editor)."); break; }
             meSnapshot();
             gmap::Entity e;
-            e.type = ME.tool == MTool::Npc ? "npc_spawn" : ME.tool == MTool::Armor ? "armor_plate" : "gun_spawner";
+            e.type = ME.tool == MTool::Npc ? "npc_spawn" : ME.tool == MTool::Armor ? "armor_plate" : ME.tool == MTool::Crate ? "attachment_crate" : "gun_spawner";
             e.ref = ME.tool == MTool::Npc ? ME.npcPick : "";
             e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);   // facing you
@@ -838,6 +838,7 @@ static const char* HINT[] = {
     "Click to place the NPC chosen in the panel. It stands there facing you; set how many in the panel.",
     "Click to place a gun spawner: on the map, walk up to it and press F to take any of your guns.",
     "Click to place armour plates: players walk over them to fill their armour bar. Set how many and whether they come back in the panel.",
+    "Click to place an attachment crate: on the map, walk up to it and press F to fit attachments to the gun in your hands.",
 };
 
 static void drawEditor3D() {
@@ -899,6 +900,7 @@ static void drawEditor3D() {
         if (e.type == "player_start") drawStart(e, (int)i == ME.ent);
         else if (e.type == "npc_spawn") drawNpcSpawn(e, (int)i == ME.ent);
         else if (e.type == "gun_spawner") drawSpawner(e, (int)i == ME.ent);
+        else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++)
             drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k), (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
     }

@@ -55,6 +55,7 @@ struct App {
     int axisLock = 0;                    // while dragging: 1 side to side (X), 2 up and down (Y), 3 depth (Z), 0 free
     double zDrag = 0, zDragLast = 0;     // depth dragged so far (Z lock), mm
     bool posing = false;                 // the bench's pose editor (app/pose.cpp)
+    bool rangeFit = false;               // the fitting bench opened from a crate on the range (the gun can't be edited)
     bool fitting = false;                // the bench's fitting bench: attachments onto the gun's mounts (app/fitbench.cpp)
     std::vector<fit::Item> fitItems;     // attachments on the gun now (never part of its blueprint; saved as loadouts)
     std::string fitPick;                 // the attachment being placed ("" = none)

@@ -1,6 +1,7 @@
 // Gunsmith3D - Top bar: menu, designer / bench switch, tools as icons, view toggles.
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/range.hpp"
 #include "app/fitbench.hpp"
 #include "app/audio.hpp"
 #include "app/keys.hpp"
@@ -260,6 +261,11 @@ void toolbar() {
     // designer / bench
     bool b = A.mode == Mode::Build;
     float sz = TOOLBAR_H - 14 * CFG.uiScale;
+    if (A.rangeFit) {   // from a crate on the range: only fitting, then back
+        if (accentButton("Back to the range", true, {0, sz})) backToRange();
+        gap(18);
+        goto rightSide;
+    }
     if (A.design.attach.on && b) {   // the attachment designer: no test bench (attachments are tried on a gun's mounts)
         accentButton(ICON_FA_PLUG "  Attachment designer", true, {0, sz});
         if (tipHover()) ImGui::SetTooltip("You're designing an attachment. It's saved in your Attachments folder;\nNew > A new gun (or Open) goes back to guns.");

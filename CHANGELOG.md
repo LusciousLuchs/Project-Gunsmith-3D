@@ -8,6 +8,18 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.20-alpha
+
+### New (attachments, part 4: on the range)
+- **Attachment crates:** place them in the Level editor (the practice range has one by the start). Walk up, press F, and the gun in your hands goes on the fitting bench; *Back to the range* when you're done. Attachments are fresh on each map: load a saved loadout from the crate.
+- **Attachments weigh what they weigh**, in the gun's physics: on a fixed rail they make the gun heavier (it kicks and sways less); on a moving part they slow it down (150 g on a pistol's slide cut its speed from 6.2 to 4.4 m/s).
+- **Aiming through an optic:** your eye goes on the optic's sight line, whatever the gun's pose says. A reflex sight shows its dot where it points; its body fades so you look through it.
+- **Scopes magnify for real:** the view through the eyepiece is the range seen at the scope's magnification (the rest stays normal), with your reticle in it. Zoom scopes zoom with the mouse wheel while aiming. Reticles that grow with zoom stay true at every magnification.
+- **Muzzle devices** (pick the kind in the attachment designer): a brake kicks less, a compensator climbs less, a suppressor is much quieter with no flash and NPCs only hear it close by, a flash hider hides most of the flash.
+- **Grips** steady your aim; a **stock or brace** puts a one-handed gun in the shoulder.
+- In the attachment designer: **Meets it with** chooses which side of an attachment goes against its mount (underside, top, back end, front end).
+- Still to come in 0.4.20: a better player character (fingers, male and female, hair, faces, clothes and extras, and a simpler editor).
+
 ## 0.4.19-alpha
 
 ### New (attachments, part 3: the fitting bench)

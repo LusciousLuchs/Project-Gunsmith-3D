@@ -4,7 +4,8 @@
 
 struct RB { int tmpl; Matrix M; float roll; sim::Body* sb; };
 Mesh buildPartMesh(const BodyDef& d, bool rough);   // a part's solid (see render.cpp)
-void drawAttachments(const std::vector<RB>& list);   // fitted attachments on the gun, riding on their parts  // one part to draw: template index, pose, live body (Test)
+void drawAttachments(const std::vector<RB>& list);
+void setOpticSeeThrough(float alpha);   // the range: an optic fades while you aim through it   // fitted attachments on the gun, riding on their parts  // one part to draw: template index, pose, live body (Test)
 // A rotating bolt's handle as drawn: it turns with the bolt about the bore axis.
 struct BoltHandle {
     Vector3 base, tip, axis;   // world: root on the bore axis, knob, bore direction

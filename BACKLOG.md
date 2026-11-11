@@ -77,6 +77,18 @@ is up to them, and the game's own examples stay original.
 - [ ] **NPC editor additions:** textures on bones (the same pictures as parts), bones shaped like parts (draw an outline,
   like the gun designer), eyes and glows, sounds.
 
+## Alpha 0.4.20: a better player character (the owner's notes, after attachments stage 4)
+
+- **Fingers**: the character's hands get fingers, three cylinders each, coming from the hand, moved by the poser's finger
+  skeleton (the animations already pose them; nothing draws them on the character yet).
+- **A simpler character editor**: remove setting a weak spot and an armour level per piece (armour is the armour bar now);
+  fewer, plainer controls.
+- **Male or female**; a female body has a protruding chest.
+- **Hair styles**, **eyes** on the head, a **nose** (a trapezoid will do). Less low-poly overall.
+- **Clothing**: long-sleeve shirt, short-sleeve shirt, tank top; long or short pants.
+- **Extras**: belt, hat, headphones, glasses.
+- The owner may have proper player models made later: keep the character's parts easy to swap for a model.
+
 ## Next
 
 - **Firing range**: first person, walking the range with your gun, using its poses; weighty handling (inertia, sway, time to aim), holstering, recoil from the bench, live-fire jams from the measured jam rate.

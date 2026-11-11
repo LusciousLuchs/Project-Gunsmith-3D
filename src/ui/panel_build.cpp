@@ -1385,7 +1385,20 @@ static void attachmentTab() {
         ImGui::EndCombo();
     }
     if (a.job == "adapter") muted("Draw rails (Rail tool) and attachment points (Mount tool) on it: fitted to a gun, they become more places to mount things (a side-rail conversion to Picatinny, say).");
-    else if (a.job == "muzzle") muted("It goes on the muzzle: make its mount a Muzzle thread (or your own kind) and put that point on your guns' muzzles.");
+    else if (a.job == "muzzle") {
+        muted("It goes on the muzzle: make its mount a Muzzle thread (or your own kind), meeting it with its back end, and put that point on your guns' muzzles.");
+        static const char* kinds[] = {"brake", "compensator", "suppressor", "flashhider"};
+        static const char* names[] = {"Brake", "Compensator", "Suppressor", "Flash hider"};
+        static const char* tips[] = {"Throws the gas sideways and back: less kick.", "Throws the gas up: the muzzle climbs less.",
+                                     "Much quieter, no flash, and NPCs only hear it from close by.", "A much smaller flash."};
+        for (int k = 0; k < 4; k++) {
+            if (k) ImGui::SameLine(0, 2 * S());
+            if (accentButton(names[k], a.muzzleKind == kinds[k])) { a.muzzleKind = kinds[k]; editedAny = true; }
+            if (tipHover()) ImGui::SetTooltip("%s", tips[k]);
+        }
+    }
+    else if (a.job == "grip") muted("A grip steadies your aim: the gun sways less when you aim.");
+    else if (a.job == "stock") muted("A stock or brace puts a one-handed gun in the shoulder: steadier, and it kicks less.");
     else if (a.job == "other") muted("Its weight still counts once it's on a gun.");
     heading("How it mounts");
     bool pic = a.mount == "Picatinny";
@@ -1408,13 +1421,24 @@ static void attachmentTab() {
             ImGui::EndCombo();
         }
     }
-    ImGui::TextDisabled(a.atSet ? "Where it meets the mount (set by hand):" : "Where it meets the mount: the middle of its underside.");
+    {   // which side meets the mount
+        static const char* faces[] = {"under", "top", "rear", "front"};
+        static const char* names[] = {"Its underside (sits on top of a rail)", "Its top (hangs under a rail, like a grip)",
+                                      "Its back end (onto a muzzle)", "Its front end"};
+        int fi = 0; for (int k = 0; k < 4; k++) if (a.face == faces[k]) fi = k;
+        prop("Meets it with", "Which side of it goes against the rail or the point. It's turned on the gun so that side faces the mount.");
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::Combo("##aface", &fi, names, 4)) { a.face = faces[fi]; a.atSet = false; editedAny = true; }
+    }
+    static const char* spotName[] = {"the middle of its underside", "the middle of its top", "the middle of its back end", "the middle of its front end"};
+    int sfi = a.face == "top" ? 1 : a.face == "rear" ? 2 : a.face == "front" ? 3 : 0;
+    ImGui::TextDisabled(a.atSet ? "Where it meets the mount (set by hand):" : "Where it meets the mount: %s.", spotName[sfi]);
     double ay = -a.at.y;
     bool mv = pNumU("X##att", a.at.x, 0.5, Q::Length, -1, "+ toward the front.", SIGNED);
     if (pNumU("Y##att", ay, 0.5, Q::Length, -1, "+ up.", SIGNED)) { a.at.y = -ay; mv = true; }
     mv |= pNumU("Z##att", a.atZ, 0.5, Q::Length, -1, "Across: + toward the right side.", SIGNED);
     if (mv) a.atSet = true;
-    if (a.atSet && ImGui::SmallButton("Back to the middle of its underside")) { a.atSet = false; editedAny = true; }
+    if (a.atSet && ImGui::SmallButton(TextFormat("Back to %s", spotName[sfi]))) { a.atSet = false; editedAny = true; }
     if (a.job == "optic") {
         auto& op = a.optic;
         heading("The sight");

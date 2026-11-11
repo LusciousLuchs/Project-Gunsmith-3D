@@ -5,6 +5,8 @@
 // and leaves a mark where it lands. Recoil kicks the view by the cartridge's push against the gun's weight, a heavy gun
 // swings more slowly, and one held in one hand kicks more than one in the shoulder.
 #include "app/range.hpp"
+#include "app/fitbench.hpp"
+#include "app/view.hpp"
 #include "app/perf.hpp"
 #include "app/app.hpp"
 #include "app/pose.hpp"
@@ -41,8 +43,8 @@ namespace {
 struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; double mass = 0.008; int npc = -1; double dmg = 0; };   // dmg: an NPC gun's set damage to you (0: by energy)   // npc: fired by that NPC (-1: by you)
 struct Impact { V3 p, n; bool steel = false; double r = 0.005; };
 struct Target { V3 c, n; double size = 0.6; };
-struct Carried { Design d; std::unique_ptr<sim::Sim> S; };   // a gun you carry (the one in your hands lives in A.design / A.S)
-struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; };   // one lying on the ground
+struct Carried { Design d; std::unique_ptr<sim::Sim> S; std::vector<fit::Item> fit; };   // (fit: its attachments)   // a gun you carry (the one in your hands lives in A.design / A.S)
+struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; std::vector<fit::Item> fit; };   // one lying on the ground
 
 struct Range {
     gmap::Map map;
@@ -79,6 +81,14 @@ struct Range {
     Vector3 eye{};
     double lastYaw = 0, lastPitch = 0;
     double sightY = 0, boreZ = 0;        // aiming: the eye's height over the gun (design mm, y down) and the bore's depth
+    // an optic fitted to the gun in your hands: aiming puts your eye on its sight line (whatever the pose says)
+    bool optic = false;
+    OpticDef op;
+    fit::P3 optRear, optFront;           // its lenses on the gun (design mm)
+    double optEyeX = 0, zoom = 1;
+    // what its other attachments do (worked out in armGun): kick, climb, loudness, flash, how far NPCs hear it, sway
+    double recoilK = 1, riseK = 1, loudK = 1, flashK = 1, hearM = 50, swayK = 1;
+    RenderTexture2D pip{}; bool pipOk = false;   // a scope's magnified picture
     double zero = 0;                     // the bore tipped up so bullets meet the line of sight at the zero distance (rad)
 };
 Range R;
@@ -106,6 +116,7 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
     V2 eyeMM = aimH.eye;
     double eyeZ = aimH.eyeZ;
     // aiming: the eye looks over the top of the gun, the way you look over its sights, in line with the bore
+    if (R.optic) eyeMM.x = eyeMM.x + (R.optEyeX - eyeMM.x) * a;   // an optic: the eye where its sight line and eye relief put it
     eyeMM.y = eyeMM.y + (R.sightY - eyeMM.y) * a;
     eyeZ = eyeZ + (R.boreZ - eyeZ) * a;
     eyeZ -= (1 - a) * (R.twoHands ? 75 : 110);
@@ -181,9 +192,9 @@ void fireBullets(int chamber) {
     // recoil: the cartridge's push against the gun's weight, felt less in the shoulder than in one hand
     double v = cart.impulse() / std::max(0.3, R.mass);
     double feel = R.twoHands ? 0.9 : 1.7;
-    R.kickVel += v * feel * 0.045;
-    R.kickYaw += rnd((float)(v * feel * 0.006));
-    R.kickBack = std::min(0.08, R.kickBack + v * 0.006);
+    R.kickVel += v * feel * 0.045 * R.recoilK * R.riseK;   // (a brake: less kick; a compensator: less climb)
+    R.kickYaw += rnd((float)(v * feel * 0.006 * R.recoilK));
+    R.kickBack = std::min(0.08, R.kickBack + v * 0.006 * R.recoilK);
     R.shots++;
 }
 
@@ -321,24 +332,51 @@ static void armGun() {
         R.boreZ = ci >= 0 ? A.design.bodies[ci].z : 0;
         const BodyHold& aimH = A.design.pose.hold[HOLD_AIM];
         if (aimH.set) { R.sightY = aimH.eye.y; R.boreZ = aimH.eyeZ; }   // posed: the eye exactly where the player put it
+        R.recoilK = R.riseK = R.loudK = R.flashK = R.swayK = 1; R.hearM = 50;
+        bool gripped = false, stocked = false;
+        for (auto& it : A.fitItems) {
+            const auto& at = it.att.attach;
+            if (at.job == "muzzle") {
+                if (at.muzzleKind == "brake") R.recoilK *= 0.7;
+                else if (at.muzzleKind == "compensator") R.riseK *= 0.6;
+                else if (at.muzzleKind == "suppressor") { R.loudK *= 0.35; R.flashK = 0; R.hearM = 15; }
+                else if (at.muzzleKind == "flashhider") R.flashK *= 0.3;
+            } else if (at.job == "grip" && !gripped) { R.swayK *= 0.75; gripped = true; }
+            else if (at.job == "stock" && !stocked) { stocked = true; if (!R.twoHands) { R.twoHands = true; R.swayK *= 0.7; } }
+        }
+        R.optic = false;
+        for (auto& it : A.fitItems) {   // an optic on it: the eye goes on its sight line, behind it by its eye relief
+            if (it.att.attach.job != "optic") continue;
+            const auto& o = it.att.attach.optic;
+            double z = it.att.attach.atZ;
+            R.optRear = it.xf.apply({o.rear.x, o.rear.y, z}, it.spot());
+            R.optFront = it.xf.apply({o.front.x, o.front.y, z}, it.spot());
+            double dx = R.optFront.x - R.optRear.x, dy = R.optFront.y - R.optRear.y, dz = R.optFront.z - R.optRear.z, L = std::sqrt(dx * dx + dy * dy + dz * dz);
+            if (L < 1e-6) continue;
+            double back = o.kind == "scope" ? o.eyeRelief : 70;
+            R.optic = true; R.op = o;
+            R.sightY = R.optRear.y - dy / L * back; R.boreZ = R.optRear.z - dz / L * back; R.optEyeX = R.optRear.x - dx / L * back;
+            R.zoom = o.mag;
+            break;
+        }
         double h = std::max(0.0, (br.face.y - R.sightY) / 1000.0), zd = R.twoHands ? 100.0 : 25.0, v = std::max(50.0, br.cart.velocity);
         R.zero = std::atan(h / zd) + 0.5 * 9.81 * (zd / v) * (zd / v) / zd;
     }
 }
 // hands: put the gun in your hands back in its slot, and take slot k (-1: nothing)
 static void holdSlot(int k) {
-    if (R.cur >= 0 && R.cur < (int)R.inv.size()) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); }
-    else { A.design = Design(); A.S.reset(); }
+    if (R.cur >= 0 && R.cur < (int)R.inv.size()) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); std::swap(A.fitItems, R.inv[R.cur].fit); }
+    else { A.design = Design(); A.S.reset(); A.fitItems.clear(); }
     R.cur = k >= 0 && k < (int)R.inv.size() ? k : -1;
-    if (R.cur >= 0) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); }
-    else { A.design = Design(); A.S.reset(); }
+    if (R.cur >= 0) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); std::swap(A.fitItems, R.inv[R.cur].fit); }
+    else { A.design = Design(); A.S.reset(); A.fitItems.clear(); }
     armGun();
 }
 // a new gun into your hands (a free slot, or in place of the one you hold, which is dropped)
-static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr) {
+static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr, std::vector<fit::Item> fitted = {}) {
     if (R.inv.size() >= 4 && R.cur >= 0) {   // full: what you hold goes on the ground
         holdSlot(R.cur);   // (back in its slot)
-        WorldGun w; w.d = std::move(R.inv[R.cur].d); w.S = std::move(R.inv[R.cur].S);
+        WorldGun w; w.d = std::move(R.inv[R.cur].d); w.S = std::move(R.inv[R.cur].S); w.fit = std::move(R.inv[R.cur].fit);
         w.pos = R.pl.feet + gmap::playerForward(R.pl) * 0.6; w.pos.y = R.pl.feet.y; w.yaw = R.pl.yaw * RAD2DEG;
         R.ground.push_back(std::move(w));
         R.inv.erase(R.inv.begin() + R.cur);
@@ -351,6 +389,7 @@ static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr) {
     int k = (int)R.inv.size() - 1;
     R.cur = k;
     std::swap(A.design, R.inv[k].d);
+    A.fitItems = std::move(fitted);   // (a gun from the spawner comes bare: attachments are fresh each map)
     if (S) A.S = std::move(S); else restartTest();
     A.mode = Mode::Test;
     armGun();
@@ -358,7 +397,7 @@ static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr) {
 // the gun in your hands, put down on the ground in front of you
 static void dropGun() {
     if (R.cur < 0) return;
-    WorldGun w; w.d = A.design; w.S = std::move(A.S);
+    WorldGun w; w.d = A.design; w.S = std::move(A.S); w.fit = std::move(A.fitItems); A.fitItems.clear();
     V3 f = gmap::playerForward(R.pl); f.y = 0; f = gmap::norm(f);
     w.pos = R.pl.feet + f * 0.7; w.pos.y = R.pl.feet.y; w.yaw = R.pl.yaw * RAD2DEG + 90;
     R.ground.push_back(std::move(w));
@@ -424,8 +463,10 @@ double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut) {
     return gmap::len((p1 + d1 * s) - (p2 + d2 * t));
 }
 
+static std::vector<fit::Item> gBenchFit;   // the bench gun's attachments, set aside while on the range
 void enterRange(const Design& gun, const gmap::Map& map) {
-    if (!A.stash) A.stash = std::make_unique<Design>(A.design);
+    if (!A.stash) { A.stash = std::make_unique<Design>(A.design); gBenchFit = A.fitItems; }
+    A.fitItems.clear();
     A.screen = Screen::Range;
     A.showPause = A.showSettings = A.showBenchPicker = A.showRangePicker = false;
     A.mode = Mode::Test;
@@ -444,6 +485,30 @@ void enterRange(const Design& gun, const gmap::Map& map) {
     DisableCursor();
 }
 bool rangeSpawnerOpen() { return inRange() && R.spawnerOpen; }
+// an attachment crate: the gun in your hands on the fitting bench (the designer's view, the gun itself locked)
+static bool gForceAim = false;
+void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) a loadout on the gun in hand; aiming held
+    if (!loadout.empty() && R.cur >= 0) { loadLoadout(loadout); restartTest(); armGun(); }
+    gForceAim = aim;
+}
+void openRangeFitting() {
+    A.rangeFit = true;
+    A.screen = Screen::Workshop;
+    A.mode = Mode::Test;
+    EnableCursor();
+    fitView();
+    enterFitting();
+}
+void backToRange() {
+    leaveFitting();
+    A.rangeFit = false;
+    A.screen = Screen::Range;
+    A.mode = Mode::Test;
+    restartTest();   // (built again: the attachments' weight is in it now)
+    armGun();
+    R.lastYaw = R.pl.yaw; R.lastPitch = R.pl.pitch;
+    DisableCursor();
+}
 // the gun spawner's list: your guns and the examples (guns made for NPCs aren't for you)
 void rangeShotSetup(double yawDeg, double pitchDeg, double armorBar) {
     R.pl.yaw = yawDeg * DEG2RAD; R.pl.pitch = pitchDeg * DEG2RAD;
@@ -485,6 +550,7 @@ void leaveRange() {
     EnableCursor();
     R.bullets.clear(); R.impacts.clear();
     R.inv.clear(); R.ground.clear(); R.actors.clear(); R.cur = -1; R.spawnerOpen = false;
+    A.fitItems = gBenchFit; gBenchFit.clear();   // (the bench gun's attachments back with it)
     mapRestoreLook();
     rangeMapChanged();
 }
@@ -507,6 +573,10 @@ void rangeUpdate(float dt, bool modal) {
     if (IsKeyPressed(KEY_ESCAPE)) { A.showPause = true; return; }   // (the mouse is freed next frame, once)
     {   // your guns: the wheel changes them, G drops the one in your hands, F uses what's in front of you
         float wh = GetMouseWheelMove();
+        if (wh != 0 && R.optic && R.aim > 0.5f && R.op.magMax > R.op.mag) {   // aiming through a zoom scope: the wheel zooms
+            R.zoom = std::clamp(R.zoom * std::pow(1.15, (double)wh), R.op.mag, R.op.magMax);
+            wh = 0;
+        }
         if (wh != 0 && R.inv.size() > 1) {
             int n = (int)R.inv.size(), k = R.cur < 0 ? 0 : ((R.cur + (wh < 0 ? 1 : -1)) % n + n) % n;
             holdSlot(k);
@@ -530,13 +600,19 @@ void rangeUpdate(float dt, bool modal) {
             R.feed = TextFormat("Armour plate%s: armour %.0f", n > 1 ? "s" : "", R.armor); R.feedT = 2.5f;
             playAction(0.6, 2);   // (a heavy plate slotting in)
         }
-        int spawner = -1, ground = -1;
+        int spawner = -1, ground = -1, crate = -1;
         double best = 1e9;
         for (size_t i = 0; i < R.map.ents.size(); i++) {
             if (R.map.ents[i].type != "gun_spawner") continue;
             V3 d = R.map.ents[i].pos - me; d.y = 0;
             double l = gmap::len(d);
             if (l < 1.8 && l < best) { best = l; spawner = (int)i; }
+        }
+        for (size_t i = 0; i < R.map.ents.size(); i++) {   // attachment crates
+            if (R.map.ents[i].type != "attachment_crate") continue;
+            V3 d = R.map.ents[i].pos - me; d.y = 0;
+            double l = gmap::len(d);
+            if (l < 1.6 && l < best) { best = l; crate = (int)i; spawner = -1; }
         }
         for (size_t i = 0; i < R.ground.size(); i++) {
             V3 d = R.ground[i].pos - me; d.y = 0;
@@ -545,12 +621,14 @@ void rangeUpdate(float dt, bool modal) {
         }
         if (ground >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": pick up the " + R.ground[ground].d.name;
         else if (spawner >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": take a gun";
+        else if (crate >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (R.cur >= 0 ? ": fit attachments to the " + A.design.name : ": attachments (hold a gun first)");
         if (actPressed(Act::Use)) {
             if (ground >= 0) {
                 WorldGun w = std::move(R.ground[ground]);
                 R.ground.erase(R.ground.begin() + ground);
-                takeGun(w.d, std::move(w.S));
+                takeGun(w.d, std::move(w.S), std::move(w.fit));
             } else if (spawner >= 0) { R.spawnerOpen = true; EnableCursor(); return; }
+            else if (crate >= 0 && R.cur >= 0) { openRangeFitting(); return; }
         }
     }
     // back from the menu: the click on Resume isn't a shot, and the mouse coming back to the middle isn't a turn
@@ -585,6 +663,7 @@ void rangeUpdate(float dt, bool modal) {
     bool aimWant = IsMouseButtonDown(MOUSE_BUTTON_RIGHT);
     float rate = 1.f / (0.12f + (float)R.mass * 0.05f);
     R.aim = std::clamp(R.aim + (aimWant ? rate : -rate) * dt, 0.f, 1.f);
+    if (gForceAim) R.aim = 1;
     // the gun: the trigger is the left mouse button; R reloads, B works the action
     if (A.S && R.dead) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); { perf::Scope t(perf::Physics); perf::substeps(sim::run(*A.S, dt, 1200)); } A.S->events.clear(); }
     if (A.S && !R.dead) {
@@ -610,14 +689,14 @@ void rangeUpdate(float dt, bool modal) {
         const auto& br = A.design.breech;
         for (auto& e : S.events) {
             if (e.kind == sim::Ev::Bang) {
-                A.flash = 0.06f;
+                A.flash = 0.06f * (float)R.flashK;
                 {
                     int heard = 0;
                     for (size_t k = 0; k <= br.more.size(); k++)
-                        if (k < S.chambers.size() ? std::fabs(S.chambers[k].shotT - e.t) < 1e-9 : k == 0) { playShot(A.design, (int)k, heard ? 0.7f : 1.f); heard++; }
-                    if (!heard) playShot(A.design, 0);
+                        if (k < S.chambers.size() ? std::fabs(S.chambers[k].shotT - e.t) < 1e-9 : k == 0) { playShot(A.design, (int)k, (heard ? 0.7f : 1.f) * (float)R.loudK); heard++; }
+                    if (!heard) playShot(A.design, 0, (float)R.loudK);
                 }
-                npcai::hear(R.actors, R.pl.feet, 50);   // a gunshot carries: NPCs within 50 m come to look
+                npcai::hear(R.actors, R.pl.feet, R.hearM);   // a gunshot carries: NPCs within 50 m come to look (15 m suppressed)
                 bool any = false;
                 for (size_t k = 0; k <= br.more.size(); k++) {
                     bool fired = k < S.chambers.size() ? std::fabs(S.chambers[k].shotT - e.t) < 1e-9 : k == 0;
@@ -679,23 +758,8 @@ void rangeUpdate(float dt, bool modal) {
     stepEffects(dt);
 }
 
-void rangeRender() {
-    double roll;
-    V3 eye = gmap::playerEye(R.pl, R.map, &roll);
-    V3 f = gmap::playerForward(R.pl), r = gmap::norm(gmap::cross(f, {0, 1, 0})), u = gmap::cross(r, f);
-    V3 up = u * std::cos(roll) + r * std::sin(roll);
-    // a little breathing sway when aiming, more for a heavy gun held out in one hand
-    double sway = R.aim * (R.twoHands ? 0.0012 : 0.0025) * (0.6 + R.mass * 0.25);
-    R.lagYaw += std::sin(R.t * 1.1) * sway * 0.02;
-    R.lagPitch += std::sin(R.t * 1.7 + 1) * sway * 0.015;
-    Camera3D cam{};
-    cam.position = rv(eye); cam.target = rv(eye + f); cam.up = rv(up); cam.fovy = CFG.fov - 12 * R.aim; cam.projection = CAMERA_PERSPECTIVE;
-    A.cam = cam;
-    float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
-    mapDrawSky(R.map.look, 0, 0, W, H, (float)R.pl.pitch, cam.fovy);
-    mapBeginViewport(cam, 0, 0, W, H);
-    mapApplyLook(R.map.look);
-    mapDrawWorld();
+// everything on the map besides its brushes: targets, bullet holes, NPCs, spawners, plates, crates, guns on the ground
+static void drawRangeThings() {
     // paper targets: rings on a white sheet
     for (auto& t : R.targets) {
         V3 side = gmap::norm(gmap::cross(t.n, {0, 1, 0})), tu = gmap::cross(side, t.n);
@@ -758,10 +822,67 @@ void rangeRender() {
         if (e.type != "armor_plate") continue;
         for (int k = 0; k < R.plates[i]; k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
     }
+    for (auto& e : R.map.ents) if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
     for (auto& g : R.ground)   // a gun case on the floor (the gun itself is drawn once it's in your hands)
         drawBox(rv(g.pos + V3{0, 0.06, 0}), {0.75f, 0.12f, 0.28f}, Color{58, 52, 44, 255}, MatrixRotateY((float)(-g.yaw * DEG2RAD)));
     // bullets in flight: a faint streak
     for (auto& b : R.bullets) DrawLine3D(rv(b.p), rv(b.p - b.v * 0.004), Color{255, 236, 190, 120});
+}
+
+// a reticle at screen point c, k pixels a milliradian
+static void drawReticle(Vector2 c, double k, const OpticDef& op, float alpha) {
+    unsigned rc = op.color;
+    Color col{(unsigned char)((rc >> 24) & 255), (unsigned char)((rc >> 16) & 255), (unsigned char)((rc >> 8) & 255), (unsigned char)(255 * alpha)};
+    if (op.kind == "scope" && !op.lit) col = Color{12, 12, 14, (unsigned char)(255 * alpha)};   // etched black lines
+    for (auto& m : op.reticle) {
+        float w = std::max(1.f, (float)(m.size * k));
+        Vector2 a{c.x + (float)(m.x0 * k), c.y - (float)(m.y0 * k)};
+        if (m.kind == 0) DrawLineEx(a, {c.x + (float)(m.x1 * k), c.y - (float)(m.y1 * k)}, w, col);
+        else if (m.kind == 1) DrawCircleV(a, std::max(1.f, w / 2), col);
+        else DrawRing(a, std::max(0.f, (float)(m.x1 * k) - w / 2), (float)(m.x1 * k) + w / 2, 0, 360, 64, col);
+    }
+}
+// where a point on the gun (design mm) is on screen now
+static Vector2 gunToScreen(fit::P3 p) { return GetWorldToScreen(rv(gunToMap({p.x, p.y}, (float)(p.z * U))), A.cam); }
+// a scope's magnified picture: the map seen down its sight line, narrower by its magnification (drawn before the view)
+static void renderScopePicture(V3 up) {
+    if (!R.optic || R.op.kind != "scope" || R.aim < 0.3f || R.cur < 0) return;
+    const int SZ = 512;
+    if (!R.pipOk) { R.pip = LoadRenderTexture(SZ, SZ); R.pipOk = true; }
+    V3 wr = gunToMap({R.optRear.x, R.optRear.y}, (float)(R.optRear.z * U)), wf = gunToMap({R.optFront.x, R.optFront.y}, (float)(R.optFront.z * U));
+    V3 d = gmap::norm(wf - wr);
+    Camera3D c{};
+    c.position = rv(wf); c.target = rv(wf + d); c.up = rv(up); c.fovy = (float)(A.cam.fovy / std::max(1.0, R.zoom)); c.projection = CAMERA_PERSPECTIVE;
+    BeginTextureMode(R.pip);
+    ClearBackground(mapSkyHorizon(R.map.look));
+    mapDrawSky(R.map.look, 0, 0, SZ, SZ, (float)std::asin(std::clamp(d.y, -1.0, 1.0)), c.fovy);
+    BeginMode3D(c);
+    mapApplyLook(R.map.look);
+    mapDrawWorld();
+    drawRangeThings();
+    EndMode3D();
+    EndTextureMode();
+}
+
+void rangeRender() {
+    double roll;
+    V3 eye = gmap::playerEye(R.pl, R.map, &roll);
+    V3 f = gmap::playerForward(R.pl), r = gmap::norm(gmap::cross(f, {0, 1, 0})), u = gmap::cross(r, f);
+    V3 up = u * std::cos(roll) + r * std::sin(roll);
+    // a little breathing sway when aiming, more for a heavy gun held out in one hand
+    double sway = R.aim * (R.twoHands ? 0.0012 : 0.0025) * (0.6 + R.mass * 0.25) * R.swayK;   // (a grip, a stock: steadier)
+    R.lagYaw += std::sin(R.t * 1.1) * sway * 0.02;
+    R.lagPitch += std::sin(R.t * 1.7 + 1) * sway * 0.015;
+    Camera3D cam{};
+    cam.position = rv(eye); cam.target = rv(eye + f); cam.up = rv(up); cam.fovy = CFG.fov - 12 * R.aim; cam.projection = CAMERA_PERSPECTIVE;
+    renderScopePicture(up);   // (with last frame's gun: before this frame's view)
+    A.cam = cam;
+    float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+    mapDrawSky(R.map.look, 0, 0, W, H, (float)R.pl.pitch, cam.fovy);
+    mapBeginViewport(cam, 0, 0, W, H);
+    mapApplyLook(R.map.look);
+    mapDrawWorld();
+    drawRangeThings();
     // the gun, in the hands
     placeGun(eye, f, gmap::norm(gmap::cross(f, up)), up);
     if (std::getenv("GUNSMITH_RANGEDBG")) {
@@ -772,7 +893,9 @@ void rangeRender() {
     rlDrawRenderBatchActive();
     rlPushMatrix();
     rlMultMatrixf(MatrixToFloat(R.G));
+    setOpticSeeThrough(R.optic ? 1.f - 0.85f * std::clamp((R.aim - 0.3f) / 0.7f, 0.f, 1.f) : 1.f);
     if (R.cur >= 0) drawGunOnly();
+    setOpticSeeThrough(1);
     rlDrawRenderBatchActive();
     rlPopMatrix();
     EndMode3D();
@@ -782,6 +905,38 @@ void rangeRender() {
 
 void rangeHud() {
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight(), cx = W / 2, cy = H / 2;
+    if (R.optic && R.cur >= 0 && R.aim > 0.3f) {   // looking through an optic: where its sight line points, a long way out
+        double dx = R.optFront.x - R.optRear.x, dy = R.optFront.y - R.optRear.y, dz = R.optFront.z - R.optRear.z, L = std::sqrt(dx * dx + dy * dy + dz * dz);
+        fit::P3 far{R.optFront.x + dx / L * 100000, R.optFront.y + dy / L * 100000, R.optFront.z + dz / L * 100000};
+        Vector2 c = gunToScreen(far);
+        float u = std::clamp((R.aim - 0.3f) / 0.7f, 0.f, 1.f);
+        double pxRad = (H / 2) / std::tan(A.cam.fovy * DEG2RAD / 2);   // the view's own pixels a radian
+        if (R.op.kind == "scope") {   // the magnified picture in the eyepiece, the reticle in it
+            float r = H * 0.23f * (0.6f + 0.4f * u);
+            if (R.pipOk) {   // the picture, cut to the eyepiece's circle by a tiny shader
+                static Shader round{}; static bool roundOk = false;
+                if (!roundOk) {
+                    round = LoadShaderFromMemory(nullptr,
+                        "#version 330\nin vec2 fragTexCoord; in vec4 fragColor; uniform sampler2D texture0; uniform vec4 colDiffuse; out vec4 finalColor;\n"
+                        "void main() { vec2 d = fragTexCoord - vec2(0.5); float r = length(d); if (r > 0.5) discard;\n"
+                        "  vec4 c = texture(texture0, fragTexCoord) * colDiffuse * fragColor; c.rgb *= 1.0 - smoothstep(0.38, 0.5, r) * 0.45; finalColor = c; }\n");
+                    roundOk = true;
+                }
+                unsigned char al = (unsigned char)(255 * u);
+                BeginShaderMode(round);
+                DrawTexturePro(R.pip.texture, {0, 0, (float)R.pip.texture.width, -(float)R.pip.texture.height}, {c.x - r, c.y - r, 2 * r, 2 * r}, {0, 0}, 0, Color{255, 255, 255, al});
+                EndShaderMode();
+            }
+            DrawRing(c, r, r + H * 0.035f, 0, 360, 64, Color{10, 11, 13, (unsigned char)(255 * u)});   // the tube's rim
+            double fov2 = A.cam.fovy / std::max(1.0, R.zoom) * DEG2RAD;
+            double ref = R.op.ffp ? R.zoom : (R.op.magMax > R.op.mag ? R.op.magMax : R.op.mag);   // second focal plane: true at its highest
+            double k = (R.op.ffp ? r / std::tan(fov2 / 2) : r / std::tan(A.cam.fovy / ref * DEG2RAD / 2)) / 1000;
+            BeginScissorMode((int)(c.x - r), (int)(c.y - r), (int)(2 * r), (int)(2 * r));
+            drawReticle(c, k, R.op, u);
+            EndScissorMode();
+            if (R.op.magMax > R.op.mag) viewText(TextFormat("%.1fx", R.zoom), c.x + r * 0.72f, c.y + r * 0.78f, 13, Color{230, 233, 238, (unsigned char)(200 * u)});
+        } else drawReticle(c, pxRad / 1000, R.op, u);   // a reflex sight: the dot out where the sight looks, true size
+    }
     if (R.aim < 0.5f) { DrawCircleV({cx, cy}, 2.5f, Color{255, 255, 255, 200}); DrawCircleLinesV({cx, cy}, 2.5f, Color{0, 0, 0, 120}); }
     {   // your health; a red edge when you're hurt; and dying
         if (R.hurtT > 0) {

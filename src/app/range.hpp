@@ -1,3 +1,4 @@
+#include <string>
 // Gunsmith3D - the firing range (see range.cpp): first person on a map, with a gun you built.
 #pragma once
 #include "design.hpp"
@@ -13,3 +14,7 @@ void rangeHud();                                            // 2D, after it
 void rangeMapChanged();                                     // (map editor) its meshes must be built again
 bool rangeSpawnerOpen();                                    // choosing a gun at a gun spawner
 void rangeSpawnerWindow();                                  // its list (ImGui)
+
+void openRangeFitting();   // an attachment crate: the held gun on the fitting bench
+void backToRange();
+void rangeShotExtras(const std::string& loadout, bool aim);   // (screenshots)

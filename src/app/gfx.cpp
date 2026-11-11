@@ -426,3 +426,15 @@ void drawArmorPlate(Vector3 base, float yawDeg, Color tint) {
     drawBox(Vector3Add(base, {0, 0.014f, 0}), {0.25f, 0.024f, 0.30f}, edge, R);
     drawBox(Vector3Add(base, {0, 0.026f, 0}), {0.21f, 0.008f, 0.27f}, cover, R);
 }
+
+void drawAttachmentCrate(Vector3 base, float yawDeg, Color tint) {
+    // an olive crate with a lid and two dark bands, the size of a footlocker
+    Matrix R = MatrixRotateY(-yawDeg * DEG2RAD);
+    Color body = tint.a ? tint : Color{86, 92, 60, 255}, lid{70, 75, 50, 255}, band{36, 38, 32, 255};
+    drawBox(Vector3Add(base, {0, 0.22f, 0}), {0.9f, 0.44f, 0.5f}, body, R);
+    drawBox(Vector3Add(base, {0, 0.46f, 0}), {0.94f, 0.05f, 0.54f}, lid, R);
+    for (float x : {-0.28f, 0.28f}) {
+        Vector3 off = Vector3Transform({x, 0.24f, 0}, R);
+        drawBox(Vector3Add(base, off), {0.05f, 0.46f, 0.52f}, band, R);
+    }
+}

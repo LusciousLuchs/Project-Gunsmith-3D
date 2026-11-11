@@ -494,6 +494,8 @@ Map builtinRange() {
     }
     Entity plates; plates.type = "armor_plate"; plates.pos = {-3.6, 0, 2.2}; plates.count = 3; plates.respawn = 20; plates.yaw = 20;   // to try the armour bar
     m.ents.push_back(plates);
+    Entity crate; crate.type = "attachment_crate"; crate.pos = {-3.6, 0, -2.2}; crate.yaw = -20;   // to try attachments
+    m.ents.push_back(crate);
     Entity start;
     start.pos = {-3, 0, 0};
     start.yaw = 0;
