@@ -181,6 +181,8 @@ void npcPanel() {
         ImGui::TextDisabled("Saved with it now; used once NPCs come alive on maps (coming next).");
         ImGui::PopTextWrapPos();
         pNum("Health", n.health, 1, "%.0f"); n.health = std::max(1.0, n.health); fin();
+        pNum("Armour", n.armorBar, 5, "%.0f", "Its armour bar, as armour plates give the player (50 a plate, so 150 is three plates).\nWhile it lasts it soaks 70% of each hit; the rest goes to health. 0: no armour.");
+        n.armorBar = std::clamp(n.armorBar, 0.0, 1000.0); fin();
         pNum("Speed", n.speed, 0.1, "%.1f m/s", "Walking pace about 1.4, a sprint about 6."); n.speed = std::max(0.0, n.speed); fin();
         int at = n.attack == "ranged" ? 1 : n.attack == "explode" ? 2 : 0;
         prop("Attacks");

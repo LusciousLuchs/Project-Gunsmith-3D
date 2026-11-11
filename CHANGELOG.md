@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.16-alpha
+
+### New
+- **Armour bar and armour plates.** Walk over a plate to fill your armour bar: 50 a plate, 150 at most (three plates). While you have armour it soaks 70% of each hit; the rest reaches your health. A full bar leaves plates lying for later.
+- **Plates in the Level editor:** a new tool places plate stacks; choose how many plates lie there and whether they come back after a while (for arenas). The practice range has a stack next to where you start.
+- **Armoured NPCs:** give an NPC an armour bar in the NPC editor, so heavies take more shots to drop.
+
 ## 0.4.15-alpha
 
 ### New

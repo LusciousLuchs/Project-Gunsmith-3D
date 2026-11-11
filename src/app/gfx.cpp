@@ -418,3 +418,11 @@ Mesh depthMesh(const BodyDef& d, V2 c) {
     UploadMesh(&m, false);
     return m;
 }
+
+void drawArmorPlate(Vector3 base, float yawDeg, Color tint) {
+    // a ballistic plate in an olive cover, gently curved: a thick middle and thinner shoulders, lying flat
+    Matrix R = MatrixRotateY(-yawDeg * DEG2RAD);
+    Color cover = tint.a ? tint : Color{78, 84, 62, 255}, edge{58, 62, 46, 255};
+    drawBox(Vector3Add(base, {0, 0.014f, 0}), {0.25f, 0.024f, 0.30f}, edge, R);
+    drawBox(Vector3Add(base, {0, 0.026f, 0}), {0.21f, 0.008f, 0.27f}, cover, R);
+}

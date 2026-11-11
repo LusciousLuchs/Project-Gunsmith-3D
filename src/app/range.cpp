@@ -23,6 +23,7 @@
 #include "app/units.hpp"
 #include "player.hpp"
 #include "npcai.hpp"
+#include "armor.hpp"
 #include "raymath.h"
 #include "rlgl.h"
 #include <algorithm>
@@ -52,6 +53,10 @@ struct Range {
     nav::Cache nav;                      // their path-finding grids, one per NPC size
     unsigned rng = 12345;
     double health = 100;                 // yours
+    double armor = 0;                    // your armour bar (core/armor.hpp), filled by plates
+    std::vector<int> plates;             // per map entity: armour plates still lying there
+    std::vector<double> plateBack;       // ...and how long until taken ones come back (respawning spots)
+    float armorT = 0;                    // a blue flash when you pick plates up
     bool dead = false;
     float hurtT = 0, deadT = 0;          // a red flash when you're hurt; how long since you died
     std::string feed; float feedT = 0;   // "Killed the ..." messages
@@ -229,7 +234,7 @@ void stepBullets(double dt) {
                     if (mh.brush < 0 || mh.t / L > sAlong) {
                         double v2 = gmap::len(b.v);
                         double dmg = b.dmg > 0 ? b.dmg : 0.5 * b.mass * v2 * v2 / 60;   // (an NPC's gun hurts you less than its bullet's energy would say: a game, not a simulation)
-                        R.health -= dmg; R.hurtT = 0.35;
+                        R.health -= armor::absorb(R.armor, dmg); R.hurtT = 0.35;
                         b.life = -1;
                         break;
                     }
@@ -365,7 +370,15 @@ static void dropGun() {
 }
 
 // NPCs on the map: standing at their spawn points (they don't move or fight yet), their bones ready to be hit
+// the armour plates lying on the map, as it starts
+static void placePlates() {
+    R.armor = 0;
+    R.plates.assign(R.map.ents.size(), 0);
+    R.plateBack.assign(R.map.ents.size(), 0);
+    for (size_t i = 0; i < R.map.ents.size(); i++) if (R.map.ents[i].type == "armor_plate") R.plates[i] = std::max(1, R.map.ents[i].count);
+}
 static void placeNpcs() {
+    placePlates();
     R.actors.clear();
     for (auto& e : R.map.ents) {
         if (e.type != "npc_spawn" || e.ref.empty()) continue;
@@ -432,6 +445,11 @@ void enterRange(const Design& gun, const gmap::Map& map) {
 }
 bool rangeSpawnerOpen() { return inRange() && R.spawnerOpen; }
 // the gun spawner's list: your guns and the examples (guns made for NPCs aren't for you)
+void rangeShotSetup(double yawDeg, double pitchDeg, double armorBar) {
+    R.pl.yaw = yawDeg * DEG2RAD; R.pl.pitch = pitchDeg * DEG2RAD;
+    R.lastYaw = R.pl.yaw; R.lastPitch = R.pl.pitch;
+    R.armor = armorBar;
+}
 void rangeSpawnerWindow() {
     if (!R.spawnerOpen) return;
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
@@ -496,6 +514,22 @@ void rangeUpdate(float dt, bool modal) {
         if (actPressed(Act::DropGun) && R.cur >= 0) dropGun();
         R.prompt.clear();
         V3 me = R.pl.feet, fw = gmap::playerForward(R.pl);
+        if (R.plates.size() != R.map.ents.size()) placePlates();
+        for (size_t i = 0; i < R.map.ents.size(); i++) {   // armour plates: walk over them to pick them up
+            const auto& e = R.map.ents[i];
+            if (e.type != "armor_plate") continue;
+            if (R.plateBack[i] > 0 && (R.plateBack[i] -= dt) <= 0) { R.plateBack[i] = 0; R.plates[i] = std::max(1, e.count); }   // back again
+            if (R.plates[i] <= 0 || R.dead) continue;
+            V3 d = e.pos - me;
+            if (std::hypot(d.x, d.z) > 0.9 || std::fabs(d.y) > 1.2) continue;
+            int n = armor::takePlates(R.armor, R.plates[i]);
+            if (n == 0) { R.prompt = "Your armour is full"; continue; }
+            R.plates[i] -= n;
+            if (R.plates[i] == 0 && e.respawn > 0) R.plateBack[i] = e.respawn;
+            R.armorT = 0.5f;
+            R.feed = TextFormat("Armour plate%s: armour %.0f", n > 1 ? "s" : "", R.armor); R.feedT = 2.5f;
+            playAction(0.6, 2);   // (a heavy plate slotting in)
+        }
         int spawner = -1, ground = -1;
         double best = 1e9;
         for (size_t i = 0; i < R.map.ents.size(); i++) {
@@ -616,11 +650,11 @@ void rangeUpdate(float dt, bool modal) {
                 R.bullets.push_back({e.from, e.dir * std::max(50.0, c.velocity), k, 0, 0, mass, e.actor, a.gun.damage});
                 { float d = (float)gmap::len(e.from - eye); playShotMix(shotMix(c, -1), std::clamp(6.f / (d + 4), 0.08f, 0.8f)); }   // farther: quieter
             } else if (e.kind == npcai::Event::Melee && !R.dead) {
-                R.health -= e.damage; R.hurtT = 0.4;
+                R.health -= armor::absorb(R.armor, e.damage); R.hurtT = 0.4;
                 R.kickYaw += 0.04; R.kickPitch += 0.02;   // (knocked about)
             } else if (e.kind == npcai::Event::Explode) {
                 double d = gmap::len(eye - e.from);
-                if (!R.dead && d < e.radius) { R.health -= e.damage * (1 - d / e.radius); R.hurtT = 0.5; }
+                if (!R.dead && d < e.radius) { R.health -= armor::absorb(R.armor, e.damage * (1 - d / e.radius)); R.hurtT = 0.5; }
                 for (auto& o : R.actors) {   // and whatever else is near
                     V3 c = o.body.feet + V3{0, npcai::height(o) / 2, 0};
                     double dd = gmap::len(c - e.from);
@@ -636,6 +670,7 @@ void rangeUpdate(float dt, bool modal) {
             if (R.deadT > 1.2 && (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsKeyPressed(KEY_SPACE) || IsKeyPressed(KEY_ENTER))) restartLevel();
         }
         R.hurtT = std::max(0.f, R.hurtT - dt);
+        R.armorT = std::max(0.f, R.armorT - dt);
         R.feedT = std::max(0.f, R.feedT - dt);
     }
     stepBullets(dt);
@@ -718,6 +753,11 @@ void rangeRender() {
         double y = e.yaw * DEG2RAD;
         drawBox(rv(e.pos + V3{0, 1.25, 0} + V3{std::cos(y), 0, std::sin(y)} * 0.05), {0.7f, 0.45f, 0.04f}, Color{40, 90, 130, 255}, Ry);
     }
+    for (size_t i = 0; i < R.map.ents.size() && i < R.plates.size(); i++) {   // armour plates: a stack lying flat
+        const auto& e = R.map.ents[i];
+        if (e.type != "armor_plate") continue;
+        for (int k = 0; k < R.plates[i]; k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
+    }
     for (auto& g : R.ground)   // a gun case on the floor (the gun itself is drawn once it's in your hands)
         drawBox(rv(g.pos + V3{0, 0.06, 0}), {0.75f, 0.12f, 0.28f}, Color{58, 52, 44, 255}, MatrixRotateY((float)(-g.yaw * DEG2RAD)));
     // bullets in flight: a faint streak
@@ -748,6 +788,17 @@ void rangeHud() {
             unsigned char al = (unsigned char)std::min(160.f, R.hurtT * 420);
             DrawRectangleGradientH(0, 0, (int)(W * 0.18f), (int)H, Color{170, 20, 16, al}, Color{170, 20, 16, 0});
             DrawRectangleGradientH((int)(W * 0.82f), 0, (int)(W * 0.18f), (int)H, Color{170, 20, 16, 0}, Color{170, 20, 16, al});
+        }
+        bool anyPlates = false;
+        for (int n : R.plates) if (n > 0) anyPlates = true;
+        if (R.armor > 0 || anyPlates) {   // the armour bar, over the health bar: three plates' worth, in thirds
+            float bw = 220, bx = 24, by = H - 160;
+            DrawRectangleRounded({bx, by, bw, 10}, 0.5f, 6, Color{20, 23, 28, 190});
+            float f = (float)std::clamp(R.armor / armor::MAX, 0.0, 1.0);
+            unsigned char fl = (unsigned char)(R.armorT > 0 ? 255 : 225);
+            if (f > 0) DrawRectangleRounded({bx, by, bw * f, 10}, 0.5f, 6, Color{90, 160, 235, fl});
+            for (int k = 1; k < 3; k++) DrawLineEx({bx + bw * k / 3, by}, {bx + bw * k / 3, by + 10}, 1.5f, Color{20, 23, 28, 220});
+            viewText(TextFormat("Armour %.0f", R.armor), bx, by - 18, 12, Color{170, 205, 245, 230});
         }
         if (!R.actors.empty() || R.health < 100) {
             float bw = 220, bx = 24, by = H - 128;

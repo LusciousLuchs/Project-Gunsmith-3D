@@ -1,6 +1,9 @@
 // Headless checks for maps: brush geometry, collision, files, and walking around.
 #include "map.hpp"
 #include "player.hpp"
+#include "armor.hpp"
+#include "npc.hpp"
+#include "npcai.hpp"
 #include <cmath>
 #include <cstdio>
 
@@ -14,6 +17,32 @@ using namespace gmap;
 static bool near(double a, double b, double e = 1e-6) { return std::fabs(a - b) < e; }
 
 void mapTests(int& failures) {
+    std::printf("Armour: the bar and plates\n");
+    {
+        double bar = 0;
+        CHECK(armor::takePlates(bar, 1) == 1 && near(bar, 50), "a plate fills 50");
+        CHECK(armor::takePlates(bar, 5) == 2 && near(bar, 150), "the bar stops at 150: of five plates, two are taken and three stay lying");
+        CHECK(armor::takePlates(bar, 1) == 0, "a full bar takes none");
+        double toHealth = armor::absorb(bar, 40);
+        CHECK(near(toHealth, 12) && near(bar, 122), "a hit of 40: the armour soaks 28 (70%), 12 reaches health");
+        double low = 10; toHealth = armor::absorb(low, 40);
+        CHECK(near(toHealth, 30) && near(low, 0), "a nearly empty bar soaks what it has left, the rest goes through");
+        double none = 0;
+        CHECK(near(armor::absorb(none, 40), 40), "no armour: all of it");
+        Map m; Entity e; e.type = "armor_plate"; e.count = 3; e.respawn = 45; m.ents.push_back(e);
+        Map back;
+        CHECK(mapFromJson(mapToJson(m), back) && back.ents.size() == 1 && back.ents[0].type == "armor_plate" && back.ents[0].count == 3 && near(back.ents[0].respawn, 45),
+              "plate stacks keep their count and comeback time in the map file");
+        NpcDef n; n.bones.push_back(NpcBone()); n.armorBar = 100;
+        NpcDef nb;
+        CHECK(npcFromJson(npcToJson(n), nb) && near(nb.armorBar, 100), "an NPC's armour is saved with it");
+        NpcDef old; old.bones.push_back(NpcBone()); NpcDef ob;
+        CHECK(npcFromJson(npcToJson(old), ob) && near(ob.armorBar, 0) && npcToJson(old).substr(npcToJson(old).find("\"fight\"")).find("\"armor\"") == std::string::npos, "NPCs without armour save as before");
+        auto a = npcai::spawn(nb, {0, 0, 0}, 0, nullptr);
+        double h0 = a.health;
+        npcai::hurt(a, 50, {1, 0, 0});
+        CHECK(near(a.health, h0 - 15) && near(a.armor, 65), "an armoured NPC: a hit of 50 takes 35 off its armour and 15 off its health");
+    }
     std::printf("Maps: your own textures\n");
     {
         int n0 = (int)materialNames().size();

@@ -35,6 +35,7 @@ struct NpcDef {
     double rootBend = 0, rootTurn = 0;   // the root's own direction: 0, 0 = straight up
     // in a fight (used once NPCs come alive on maps)
     double health = 100;
+    double armorBar = 0;          // its armour bar (as plates give the player: 50 a plate), soaking most of each hit
     double speed = 1.4;           // m/s
     std::string attack = "melee"; // melee, ranged, explode
     double damage = 20;           // per hit (melee, explode)

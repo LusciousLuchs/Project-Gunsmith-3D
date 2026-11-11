@@ -1,5 +1,6 @@
 // Gunsmith3D - NPCs alive on a map (see npcai.hpp).
 #include "npcai.hpp"
+#include "armor.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -60,6 +61,7 @@ Actor spawn(const NpcDef& def, V3 pos, double yawDeg, const Design* gun) {
     Actor a;
     a.def = def;
     a.health = std::max(1.0, def.health);
+    a.armor = std::max(0.0, def.armorBar);
     // its size: as tall as it stands, as wide as it reaches
     auto P = npcPose(def);
     double h = npcHeight(def) / 1000, w = 0.2;
@@ -87,7 +89,7 @@ double bulletDamage(double massKg, double speed, bool vital, double armor) {
 
 bool hurt(Actor& a, double damage, V3 dir) {
     if (a.dead) return false;
-    a.health -= damage;
+    a.health -= armor::absorb(a.armor, damage);   // its armour bar soaks most of it while it lasts
     a.hitFlash = 0.15;
     a.heard = true;   // it knows you're there now
     if (a.health > 0) return false;

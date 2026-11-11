@@ -23,6 +23,7 @@ struct Actor {
     gmap::PlayerTuning tune;         // its size and speed
     gmap::V3 home;                   // where it started (wander and guard stay near it)
     double health = 100;
+    double armor = 0;             // its armour bar (from NpcDef::armorBar)
     bool dead = false;
     double deadT = 0;                // seconds since it died (it falls, then lies there)
     gmap::V3 fallDir;                // which way it fell

@@ -4,6 +4,7 @@
 #include "map.hpp"
 
 void enterRange(const Design& gun, const gmap::Map& map);   // from the main menu's picker
+void rangeShotSetup(double yawDeg, double pitchDeg, double armorBar);   // (screenshots) where you look, and your armour
 void leaveRange();                                          // (backToMenu calls it)
 bool inRange();
 void rangeUpdate(float dt, bool modal);

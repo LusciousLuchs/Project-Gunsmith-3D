@@ -49,6 +49,7 @@ int main(int argc, char** argv) {
     int introArg = 0;
     bool solidArg = false;
     std::string rangeArg;
+    double rangeYaw = 0, rangePitch = 0, rangeArmor = 0; bool rangeShot = false;
     int settingsPage = 0;
     bool useSettings = false;
     std::string mapArg; bool walkArg = false, npcArg = false;
@@ -93,7 +94,8 @@ int main(int argc, char** argv) {
         else if (a == "--perf") perfArg = true;   // (screenshots) the performance overlay with full details
         else if (a == "--about") { menuArg = true; A.showAbout = true; }   // (screenshots of the About window)
         else if (a == "--solid") solidArg = true;
-        else if (a == "--range") rangeArg = next();          // (screenshots) the firing range with an example gun            // (screenshots) every part solid (the x-ray view off)
+        else if (a == "--range") rangeArg = next();
+        else if (a == "--rangeshot") { rangeYaw = std::atof(next().c_str()); rangePitch = std::atof(next().c_str()); rangeArmor = std::atof(next().c_str()); rangeShot = true; }   // (screenshots) look, armour          // (screenshots) the firing range with an example gun            // (screenshots) every part solid (the x-ray view off)
         else if (a == "--intro") introArg = 1;              // (screenshots) the launch splash
         else if (a == "--eula") introArg = 2;               // (screenshots) the agreement screen
         else if (a == "--usesettings") useSettings = true;  // (screenshots) honour the settings file            // (screenshots) stay on the main menu
@@ -215,6 +217,7 @@ int main(int argc, char** argv) {
             gmap::Map m2; if (gmap::mapFromJson(ms.str(), m2)) rm = m2;
         }
         enterRange(rd, rm);
+        if (rangeShot) rangeShotSetup(rangeYaw, rangePitch, rangeArmor);
     }
     // a normal launch: the studio's splash, then the agreement until it's agreed to (screenshot runs skip them)
     if (introArg == 2) introForceEula();

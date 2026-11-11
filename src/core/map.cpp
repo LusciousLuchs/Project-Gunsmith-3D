@@ -365,6 +365,7 @@ std::string mapToJson(const Map& m) {
         json je = {{"type", e.type}, {"pos", v3j(e.pos)}, {"yaw", e.yaw}};
         if (!e.ref.empty()) je["ref"] = e.ref;
         if (e.count != 1) je["count"] = e.count;
+        if (e.respawn > 0) je["respawn"] = e.respawn;
         es.push_back(je);
     }
     j["entities"] = es;
@@ -416,6 +417,7 @@ bool mapFromJson(const std::string& s, Map& out) {
             e.yaw = je.value("yaw", 0.0);
             e.ref = je.value("ref", "");
             e.count = std::max(1, je.value("count", 1));
+            e.respawn = std::max(0.0, je.value("respawn", 0.0));
             m.ents.push_back(e);
         }
         if (j.contains("npcs") && j["npcs"].is_object())
@@ -490,6 +492,8 @@ Map builtinRange() {
         box({x, 0, z - 0.05}, {x + 0.1, 0.9, z + 0.05}, steel);           // post
         box({x - 0.03, 0.9, z - 0.25}, {x + 0.0, 1.4, z + 0.25}, orange);  // plate
     }
+    Entity plates; plates.type = "armor_plate"; plates.pos = {-3.6, 0, 2.2}; plates.count = 3; plates.respawn = 20; plates.yaw = 20;   // to try the armour bar
+    m.ents.push_back(plates);
     Entity start;
     start.pos = {-3, 0, 0};
     start.yaw = 0;

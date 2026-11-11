@@ -225,6 +225,7 @@ std::string npcToJson(const NpcDef& n) {
     o["bones"] = B;
     o["fight"] = {{"health", n.health}, {"speed", n.speed}, {"attack", n.attack}, {"damage", n.damage}, {"reach", n.reach},
                   {"gun", n.gun}, {"sight", n.sight}, {"behaviour", n.behaviour}, {"team", n.team}};
+    if (n.armorBar > 0) o["fight"]["armor"] = n.armorBar;
     return o.dump(1);
 }
 
@@ -256,6 +257,7 @@ bool npcFromJson(const std::string& text, NpcDef& out, std::string* err) {
         auto& f = o["fight"];
         n.health = num(f, "health", 100); n.speed = num(f, "speed", 1.4); n.attack = str(f, "attack", "melee"); n.damage = num(f, "damage", 20);
         n.reach = num(f, "reach", 1.5); n.gun = str(f, "gun", ""); n.sight = num(f, "sight", 30); n.behaviour = str(f, "behaviour", "chase"); n.team = (int)num(f, "team", 1);
+        n.armorBar = std::max(0.0, num(f, "armor", 0));
     }
     out = n;
     return true;

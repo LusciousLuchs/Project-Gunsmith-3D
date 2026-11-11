@@ -51,11 +51,12 @@ struct Brush {
 };
 struct Entity {
     std::string type = "player_start";   // player_start, target_paper, npc_spawn (an NPC stands here), gun_spawner
-                                         // (a stand the player uses to take guns)
+                                         // (a stand the player uses to take guns), armor_plate (plates to pick up)
     V3 pos;
     double yaw = 0;       // degrees; 0 looks along +X
     std::string ref;      // npc_spawn: which NPC (its name in the map's own copies, or in user/npcs)
-    int count = 1;        // npc_spawn: how many
+    int count = 1;        // npc_spawn: how many; armor_plate: how many plates lie here
+    double respawn = 0;   // armor_plate: seconds until taken plates come back (0 = never)
 };
 struct Look {
     double sunYaw = 35, sunPitch = 55;      // degrees: where the sunlight comes from

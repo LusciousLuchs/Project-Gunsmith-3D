@@ -68,7 +68,8 @@ void mapToolbar() {
         {ICON_FA_CARET_UP, "Ramp (wedge) brush", MTool::Wedge}, {ICON_FA_CIRCLE, "Cylinder brush", MTool::Cylinder},
         {ICON_FA_STAIRS, "Stairs", MTool::Stairs}, {ICON_FA_SCISSORS, "Clip: cut brushes along a line", MTool::Clip},
         {ICON_FA_PERSON, "Player start", MTool::Start}, {ICON_FA_GHOST, "NPC: place an NPC from the NPC editor", MTool::Npc},
-        {ICON_FA_BOX_OPEN, "Gun spawner: a stand players take guns from", MTool::Spawner}};
+        {ICON_FA_BOX_OPEN, "Gun spawner: a stand players take guns from", MTool::Spawner},
+        {ICON_FA_SHIELD_HALVED, "Armour plates: walk over them to fill the armour bar", MTool::Armor}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -137,6 +138,19 @@ static void editTab() {
         } else if (e.type == "gun_spawner") {
             heading("Gun spawner");
             ImGui::TextDisabled("Walk up to it on the map and press F: take any of your guns.");
+        } else if (e.type == "armor_plate") {
+            heading("Armour plates");
+            double cnt = e.count;
+            prop("Plates here", "How many plates lie in this stack. Each fills 50 of the armour bar (150 at most); a full bar leaves the rest lying.");
+            if (ImGui::InputDouble("##platecount", &cnt, 1, 1, "%.0f")) { meSnapshot(); e.count = std::clamp((int)std::lround(cnt), 1, 9); meChanged(); }
+            bool back = e.respawn > 0;
+            prop("Comes back", "Taken plates come back after a while: for arenas and long fights.");
+            if (ImGui::Checkbox("##plateback", &back)) { meSnapshot(); e.respawn = back ? 30 : 0; meChanged(); }
+            if (back) {
+                prop("After");
+                if (ImGui::InputDouble("##platesec", &e.respawn, 5, 30, "%.0f s")) { e.respawn = std::clamp(e.respawn, 1.0, 3600.0); meChanged(); }
+            }
+            ImGui::TextDisabled("Players walk over them to pick them up.");
         } else {
         heading("Player start");
         ImGui::TextDisabled("Where you appear when you walk the map.");
