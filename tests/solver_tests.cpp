@@ -2069,6 +2069,9 @@ static void shotSounds() {
     CHECK(nine.pistolGain > nine.rifleGain && nine.rifleGain > 0, "9 mm: mostly pistol, a little rifle");
     CHECK(shotMix(cart("5.56x45mm"), 180).blast > r.blast * 1.8, "a short barrel on a rifle round: more blast");
     CHECK(shotMix(400, 420, 100).crackGain > shotMix(400, 300, 100).crackGain, "a supersonic pistol bullet adds the crack");
+    CHECK(shotMix(cart("7.62x54mmR"), 700).boomGain > shotMix(cart(".22 LR"), 150).boomGain, "the thump grows with the round");
+    CHECK(p.tailGain > 0.2f && r.tailGain > 0.2f, "both cut-short recordings get the made-up echo");
+    CHECK(synthBoom(0, 48000).size() > 10000 && synthTail(1, 48000).size() > 60000, "the made-up layers are built");
     CHECK(actionMix(1.0, -1).pitch < actionMix(0.1, -1).pitch && actionMix(0.25, 8).gain > actionMix(0.25, 1).gain, "heavier parts deeper, faster louder");
 }
 

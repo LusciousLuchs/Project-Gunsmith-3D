@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.14-alpha
+
+### Changes
+- **Punchier gunshots.** Each shot is now your recording plus a made-up deep thump and range echo, both scaled to the round: a .22 pops, a 7.62x54R or a slug booms. The recordings themselves are compressed and pushed harder.
+- **No more brass-catcher clang or background voices** in the shots: only the bang itself is kept from each recording, and the echo after it is made up.
+
 ## 0.4.13-alpha
 
 ### Fixes

@@ -3,7 +3,9 @@
 
 The recordings are the owner's, of their own guns: pistol_* a Thunder .380, rifle_* an AR-15 (5.56), action_* the
 Thunder's slide; crack_* is the opening crack of AR-15 shots (high-passed). Cleaned (hiss and rumble out, a little top
-end back) and evened out; see app/audio.cpp for how they are played and core/shotsound.cpp for the mix."""
+end back), then punched up (low shelf, compressor, soft clip, peak -1 dB). The pistol shots are only the first 0.12 s:
+the brass catcher clangs after that; the game adds a made-up thump and echo (core/shotsound.cpp synthBoom/synthTail).
+See app/audio.cpp for how they are played and core/shotsound.cpp for the mix."""
 import glob, os
 HERE = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(HERE, '..', 'assets', 'sounds')

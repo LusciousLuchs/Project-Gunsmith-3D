@@ -50,7 +50,21 @@ struct Pool {
         PlaySound(*pick);
     }
 };
-Pool gPistol, gRifle, gCrack, gAction;
+Pool gPistol, gRifle, gCrack, gAction, gBoom, gTail;
+Sound fromSamples(const std::vector<float>& y, int rate) {
+    short* d = (short*)MemAlloc((unsigned)(y.size() * sizeof(short)));
+    for (size_t i = 0; i < y.size(); i++) d[i] = (short)(std::clamp(y[i], -1.f, 1.f) * 32000);
+    Wave w{(unsigned)y.size(), (unsigned)rate, 16, 1, d};
+    Sound s = LoadSoundFromWave(w);
+    UnloadWave(w);
+    return s;
+}
+void addSynth(Pool& p, const std::vector<float>& y) {
+    Sound s = fromSamples(y, 48000);
+    std::vector<Sound> v{s};
+    for (int k = 0; k < 3; k++) v.push_back(LoadSoundAlias(s));
+    p.voices.push_back(v);
+}
 }
 static void loadRecordings() {
     for (auto& b : BUILTIN_SND) {
@@ -66,6 +80,7 @@ static void loadRecordings() {
         for (int k = 0; k < extra; k++) v.push_back(LoadSoundAlias(s));
         p->voices.push_back(v);
     }
+    for (int k = 0; k < 3; k++) { addSynth(gBoom, synthBoom(k, 48000)); addSynth(gTail, synthTail(k, 48000)); }
     SFX.recorded = !gPistol.empty() && !gRifle.empty();
 }
 
@@ -83,6 +98,8 @@ void playShotMix(const ShotMix& m, float vol) {
     if (m.pistolGain > 0) gPistol.play(g * m.pistolGain, m.pistolPitch);
     if (m.rifleGain > 0) gRifle.play(g * m.rifleGain, m.riflePitch);
     if (m.crackGain > 0 && !gCrack.empty()) gCrack.play(g * m.crackGain, 1);
+    if (m.boomGain > 0) gBoom.play(g * m.boomGain, m.boomPitch);
+    if (m.tailGain > 0) gTail.play(g * m.tailGain, m.tailPitch);
 }
 void playShot(const Design& d, int k, float vol) {
     const auto& br = d.breech;
