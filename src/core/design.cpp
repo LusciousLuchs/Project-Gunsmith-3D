@@ -1147,6 +1147,22 @@ std::string designToJson(const Design& d, bool pretty) {
         if (!P.empty()) o["pose"] = P;
         if (d.npcGun.on) o["npcGun"] = {{"rpm", d.npcGun.rpm}, {"burst", d.npcGun.burst}, {"spread", d.npcGun.spread}};
         if (d.npcGun.on && d.npcGun.damage > 0) o["npcGun"]["damage"] = d.npcGun.damage;
+        if (d.attach.on) {
+            const auto& a = d.attach;
+            json ja = {{"job", a.job}, {"mount", a.mount}, {"clamp", a.clamp}};
+            if (a.atSet) ja["at"] = {a.at.x, a.at.y, a.atZ};
+            if (a.job == "optic") {
+                const auto& op = a.optic;
+                json jo = {{"kind", op.kind}, {"mag", op.mag}, {"magMax", op.magMax}, {"eyeRelief", op.eyeRelief}, {"objective", op.objective},
+                           {"ffp", op.ffp}, {"color", op.color}, {"lit", op.lit}};
+                if (op.lensSet) { jo["rear"] = {op.rear.x, op.rear.y}; jo["front"] = {op.front.x, op.front.y}; }
+                json jr = json::array();
+                for (auto& m : op.reticle) jr.push_back({m.kind, m.x0, m.y0, m.x1, m.y1, m.size});
+                jo["reticle"] = jr;
+                ja["optic"] = jo;
+            }
+            o["attachment"] = ja;
+        }
         json An = json::object();
         for (auto& [slot, a] : d.anims) {
             if (a.keys.empty()) continue;
@@ -1477,6 +1493,35 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         d.npcGun.spread = std::clamp(opt<double>(g, "spread", 2.0), 0.0, 45.0);
         d.npcGun.damage = std::clamp(opt<double>(g, "damage", 0.0), 0.0, 1000.0);
     }
+    if (o.contains("attachment") && o["attachment"].is_object()) {
+        auto& ja = o["attachment"];
+        auto& a = d.attach;
+        a.on = true;
+        a.job = opt<std::string>(ja, "job", "other");
+        a.mount = opt<std::string>(ja, "mount", "Picatinny");
+        a.clamp = std::clamp(opt<double>(ja, "clamp", 20.0), 3.0, 600.0);
+        if (ja.contains("at") && ja["at"].is_array() && ja["at"].size() == 3) { a.atSet = true; a.at = {ja["at"][0].get<double>(), ja["at"][1].get<double>()}; a.atZ = ja["at"][2].get<double>(); }
+        if (ja.contains("optic") && ja["optic"].is_object()) {
+            auto& jo = ja["optic"];
+            auto& op = a.optic;
+            op.kind = opt<std::string>(jo, "kind", "reflex");
+            op.mag = std::clamp(opt<double>(jo, "mag", 1.0), 1.0, 60.0);
+            op.magMax = std::clamp(opt<double>(jo, "magMax", 0.0), 0.0, 60.0);
+            op.eyeRelief = std::clamp(opt<double>(jo, "eyeRelief", 80.0), 0.0, 600.0);
+            op.objective = std::clamp(opt<double>(jo, "objective", 40.0), 5.0, 120.0);
+            op.ffp = opt<bool>(jo, "ffp", false);
+            op.color = opt<unsigned>(jo, "color", 0xE8302AFFu);
+            op.lit = opt<bool>(jo, "lit", true);
+            auto v2 = [&](const char* k, V2& out) { if (jo.contains(k) && jo[k].is_array() && jo[k].size() == 2) { out = {jo[k][0].get<double>(), jo[k][1].get<double>()}; return true; } return false; };
+            op.lensSet = v2("rear", op.rear) && v2("front", op.front);
+            if (jo.contains("reticle") && jo["reticle"].is_array())
+                for (auto& jm : jo["reticle"]) {
+                    if (!jm.is_array() || jm.size() != 6) continue;
+                    ReticleMark m{jm[0].get<int>(), jm[1].get<double>(), jm[2].get<double>(), jm[3].get<double>(), jm[4].get<double>(), jm[5].get<double>()};
+                    op.reticle.push_back(m);
+                }
+        }
+    }
     if (o.contains("anims") && o["anims"].is_object())
         for (auto& [slot, ks] : o["anims"].items()) {
             if (!ks.is_array()) continue;
@@ -1556,4 +1601,56 @@ double bucklingSqueeze(double L0, double coilDia, double wire) {
     double t = (1 - g) / (0.5 + g) * std::pow(PI_ * D / (nu * L0), 2);
     if (t >= 1) return 1e9;   // short and stout: stable however far it's squeezed
     return L0 * 0.5 / (1 - g) * (1 - std::sqrt(1 - t));
+}
+
+// ---------------------------------------------------------------- attachments
+const std::vector<std::string>& attachJobs() {
+    static const std::vector<std::string> j = {"optic", "grip", "bipod", "bayonet", "light", "laser", "muzzle", "adapter", "stock", "other"};
+    return j;
+}
+const char* attachJobName(const std::string& job) {
+    if (job == "optic") return "Optic (sight or scope)";
+    if (job == "grip") return "Grip or handstop";
+    if (job == "bipod") return "Bipod";
+    if (job == "bayonet") return "Bayonet";
+    if (job == "light") return "Light";
+    if (job == "laser") return "Laser";
+    if (job == "muzzle") return "Muzzle device (brake, compensator, suppressor)";
+    if (job == "adapter") return "Rail or mount adapter";
+    if (job == "stock") return "Stock or brace";
+    return "Other (just its weight)";
+}
+std::vector<ReticleMark> defaultReticle(const std::string& kind) {
+    std::vector<ReticleMark> r;
+    if (kind == "reflex") {   // a 2 MOA dot in a 65 MOA ring
+        r.push_back({1, 0, 0, 0, 0, 0.58});
+        r.push_back({2, 0, 0, 9.45, 0, 0.3});
+    } else {                  // a duplex: thick posts, a thin cross in the middle
+        r.push_back({0, -12, 0, -2, 0, 0.6}); r.push_back({0, 2, 0, 12, 0, 0.6}); r.push_back({0, 0, -12, 0, -2, 0.6});
+        r.push_back({0, -2, 0, 2, 0, 0.12}); r.push_back({0, 0, -2, 0, 2, 0.12}); r.push_back({0, 0, 2, 0, 12, 0.6});
+    }
+    return r;
+}
+void autoAttach(Design& d) {
+    auto& a = d.attach;
+    if (!a.on) return;
+    double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9, zc = 0, n = 0;
+    for (auto& b : d.bodies) {
+        for (auto& p : b.pts) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); y0 = std::min(y0, p.y); y1 = std::max(y1, p.y); }
+        zc += b.z; n++;
+    }
+    if (n == 0) { x0 = -20; x1 = 20; y0 = -10; y1 = 10; }
+    else zc /= n;
+    if (!a.atSet) { a.at = {(x0 + x1) / 2, y1}; a.atZ = zc; }   // the middle of its underside
+    auto& op = a.optic;
+    if (!op.lensSet) {   // through the longest part (a scope's tube, a sight's housing), at its middle height, end to end
+        double best = -1, ym = (y0 + y1) / 2;
+        for (auto& b : d.bodies) {
+            double bx0 = 1e9, bx1 = -1e9, by0 = 1e9, by1 = -1e9;
+            for (auto& p : b.pts) { bx0 = std::min(bx0, p.x); bx1 = std::max(bx1, p.x); by0 = std::min(by0, p.y); by1 = std::max(by1, p.y); }
+            if (bx1 - bx0 > best + 1e-9) { best = bx1 - bx0; ym = (by0 + by1) / 2; }
+        }
+        op.rear = {x0, ym}; op.front = {x1, ym};
+    }
+    if (op.reticle.empty()) op.reticle = defaultReticle(op.kind);
 }

@@ -1283,6 +1283,170 @@ static void outlineTab() {
 }
 
 // ---------------------------------------------------------------- firing system
+// ---------------------------------------------------------------- the attachment designer's tab
+// A reticle, drawn in milliradians: lines, dots and rings, edited on a round canvas like the view through the sight.
+static void reticleEditor(OpticDef& op) {
+    static int tool = 0;              // 0 line, 1 dot, 2 ring, 3 erase
+    static double width = 0.3;
+    static bool dragging = false;
+    static ImVec2 from;
+    float side = std::min(ImGui::GetContentRegionAvail().x, 280 * S());
+    double R = op.kind == "reflex" ? 15 : 20;            // mrad from the middle to the canvas's edge
+    double k = side / 2 / R;                               // pixels a milliradian
+    ImVec2 p0 = ImGui::GetCursorScreenPos(), c{p0.x + side / 2, p0.y + side / 2};
+    ImGui::InvisibleButton("##reticle", {side, side});
+    bool hov = ImGui::IsItemHovered();
+    auto* dl = ImGui::GetWindowDrawList();
+    dl->AddCircleFilled(c, side / 2, op.kind == "reflex" ? IM_COL32(150, 170, 180, 255) : IM_COL32(205, 214, 222, 255), 64);   // the view through it
+    for (int g = -(int)R; g <= (int)R; g += 5) {   // a faint grid every 5 mrad
+        dl->AddLine({c.x + (float)(g * k), c.y - side / 2}, {c.x + (float)(g * k), c.y + side / 2}, IM_COL32(0, 0, 0, 22));
+        dl->AddLine({c.x - side / 2, c.y + (float)(g * k)}, {c.x + side / 2, c.y + (float)(g * k)}, IM_COL32(0, 0, 0, 22));
+    }
+    unsigned rc = op.color;
+    ImU32 col = IM_COL32((rc >> 24) & 255, (rc >> 16) & 255, (rc >> 8) & 255, 255);
+    auto P = [&](double x, double y) { return ImVec2{c.x + (float)(x * k), c.y - (float)(y * k)}; };
+    for (auto& m : op.reticle) {
+        float w = std::max(1.f, (float)(m.size * k));
+        if (m.kind == 0) dl->AddLine(P(m.x0, m.y0), P(m.x1, m.y1), col, w);
+        else if (m.kind == 1) dl->AddCircleFilled(P(m.x0, m.y0), std::max(1.5f, w / 2), col, 20);
+        else dl->AddCircle(P(m.x0, m.y0), (float)(m.x1 * k), col, 64, w);
+    }
+    dl->AddCircle(c, side / 2, IM_COL32(20, 22, 26, 255), 64, 3);
+    auto toMrad = [&](ImVec2 q) { double x = (q.x - c.x) / k, y = -(q.y - c.y) / k; return std::pair<double, double>{std::round(x * 10) / 10, std::round(y * 10) / 10}; };
+    ImVec2 m = ImGui::GetIO().MousePos;
+    if (hov && ImGui::IsMouseClicked(0)) { dragging = true; from = m; }
+    if (dragging && tool != 3) {
+        if (tool == 0) dl->AddLine(from, m, IM_COL32(60, 160, 255, 200), std::max(1.f, (float)(width * k)));
+        if (tool == 2) dl->AddCircle(from, std::hypot(m.x - from.x, m.y - from.y), IM_COL32(60, 160, 255, 200), 48, std::max(1.f, (float)(width * k)));
+    }
+    if (dragging && ImGui::IsMouseReleased(0)) {
+        dragging = false;
+        auto a = toMrad(from), b = toMrad(m);
+        bool shift = ImGui::GetIO().KeyShift;
+        if (tool == 0 && std::hypot(b.first - a.first, b.second - a.second) > 0.2) {
+            if (shift) { if (std::fabs(b.first - a.first) > std::fabs(b.second - a.second)) b.second = a.second; else b.first = a.first; }   // level or upright
+            op.reticle.push_back({0, a.first, a.second, b.first, b.second, width}); editedAny = true;
+        } else if (tool == 1) { op.reticle.push_back({1, a.first, a.second, 0, 0, width}); editedAny = true; }
+        else if (tool == 2) { double r = std::hypot(b.first - a.first, b.second - a.second); if (r > 0.2) { op.reticle.push_back({2, a.first, a.second, std::round(r * 10) / 10, 0, width}); editedAny = true; } }
+        else if (tool == 3) {   // the mark nearest the click
+            int best = -1; double bd = 1.0;
+            for (int i = 0; i < (int)op.reticle.size(); i++) {
+                auto& q = op.reticle[i];
+                double d;
+                if (q.kind == 0) {
+                    double vx = q.x1 - q.x0, vy = q.y1 - q.y0, L2 = vx * vx + vy * vy;
+                    double t = L2 > 0 ? std::clamp(((a.first - q.x0) * vx + (a.second - q.y0) * vy) / L2, 0.0, 1.0) : 0;
+                    d = std::hypot(a.first - (q.x0 + vx * t), a.second - (q.y0 + vy * t));
+                } else if (q.kind == 1) d = std::hypot(a.first - q.x0, a.second - q.y0);
+                else d = std::fabs(std::hypot(a.first - q.x0, a.second - q.y0) - q.x1);
+                if (d < bd) { bd = d; best = i; }
+            }
+            if (best >= 0) { op.reticle.erase(op.reticle.begin() + best); editedAny = true; }
+        }
+    }
+    if (hov) { auto q = toMrad(m); ImGui::SetTooltip("%.1f, %.1f mrad\n(1 mrad = 10 cm at 100 m; Shift keeps a line level or upright)", q.first, q.second); }
+    static const char* tools[] = {"Line", "Dot", "Ring", "Erase"};
+    for (int t = 0; t < 4; t++) { if (t) ImGui::SameLine(0, 2 * S()); if (accentButton(tools[t], tool == t)) tool = t; }
+    pNum("Thickness##ret", width, 0.05, "%.2f mrad", "How thick the next line or ring is, or how big the next dot.");
+    width = std::clamp(width, 0.05, 5.0);
+    static const char* presets[] = {"Dot", "Dot and ring", "Crosshair", "Duplex", "Chevron", "Mil-dot"};
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##retpreset", "Start from...")) {
+        for (int i = 0; i < 6; i++) if (ImGui::Selectable(presets[i])) {
+            std::vector<ReticleMark> r;
+            if (i == 0) r = {{1, 0, 0, 0, 0, 0.58}};
+            if (i == 1) r = defaultReticle("reflex");
+            if (i == 2) r = {{0, -15, 0, 15, 0, 0.1}, {0, 0, -15, 0, 15, 0.1}};
+            if (i == 3) r = defaultReticle("scope");
+            if (i == 4) r = {{0, -1.5, -1.5, 0, 0, 0.25}, {0, 0, 0, 1.5, -1.5, 0.25}, {0, 0, -1.6, 0, -8, 0.25}};
+            if (i == 5) { r = {{0, -15, 0, 15, 0, 0.08}, {0, 0, -15, 0, 15, 0.08}}; for (int d = -5; d <= 5; d++) if (d) { r.push_back({1, (double)d, 0, 0, 0, 0.25}); r.push_back({1, 0, (double)d, 0, 0, 0.25}); } }
+            op.reticle = r; editedAny = true;
+        }
+        ImGui::EndCombo();
+    }
+    float colf[3] = {((rc >> 24) & 255) / 255.f, ((rc >> 16) & 255) / 255.f, ((rc >> 8) & 255) / 255.f};
+    prop("Colour");
+    if (ImGui::ColorEdit3("##retcol", colf, ImGuiColorEditFlags_NoInputs)) {
+        op.color = ((unsigned)(colf[0] * 255) << 24) | ((unsigned)(colf[1] * 255) << 16) | ((unsigned)(colf[2] * 255) << 8) | 255u; editedAny = true;
+    }
+    if (op.kind == "scope") pCheck("Lit##ret", op.lit, "It glows (illuminated), instead of black etched lines.");
+    if (ImGui::SmallButton("Clear the reticle")) { op.reticle.clear(); editedAny = true; }
+}
+
+static void attachmentTab() {
+    auto& D = A.design;
+    auto& a = D.attach;
+    autoAttach(D);
+    heading("What it is");
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##job", attachJobName(a.job))) {
+        for (auto& j : attachJobs()) if (ImGui::Selectable(attachJobName(j.c_str()), a.job == j)) { a.job = j; editedAny = true; }
+        ImGui::EndCombo();
+    }
+    if (a.job == "adapter") muted("Draw rails (Rail tool) and attachment points (Mount tool) on it: fitted to a gun, they become more places to mount things (a side-rail conversion to Picatinny, say).");
+    else if (a.job == "muzzle") muted("It goes on the muzzle: make its mount a Muzzle thread (or your own kind) and put that point on your guns' muzzles.");
+    else if (a.job == "other") muted("Its weight still counts once it's on a gun.");
+    heading("How it mounts");
+    bool pic = a.mount == "Picatinny";
+    if (accentButton("Picatinny clamp", pic)) { a.mount = "Picatinny"; editedAny = true; }
+    ImGui::SameLine(0, 2 * S());
+    if (accentButton("An attachment point", !pic)) { if (pic) a.mount = "Warsaw Pact side rail"; editedAny = true; }
+    if (pic) {
+        pNumU("Clamp length", a.clamp, 1, Q::Length, -1, "How much rail it takes: nothing else can clamp on that stretch.");
+        a.clamp = std::clamp(a.clamp, 3.0, 600.0);
+        ImGui::TextDisabled("Takes about %d slots of a rail.", std::max(1, (int)std::lround(a.clamp / mounts::SLOT_PITCH)));
+    } else {
+        prop("Kind", "It fits attachment points of this kind on a gun (named in the gun designer's Mount tool).");
+        char tb[64]; std::snprintf(tb, sizeof tb, "%s", a.mount.c_str());
+        ImGui::SetNextItemWidth(-28 * S());
+        if (ImGui::InputText("##amount", tb, sizeof tb)) a.mount = tb;
+        if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+        ImGui::SameLine(0, 2 * S());
+        if (ImGui::BeginCombo("##amounts", nullptr, ImGuiComboFlags_NoPreview)) {
+            for (auto& t : mounts::commonMountTypes()) if (ImGui::Selectable(t.c_str(), a.mount == t)) { a.mount = t; editedAny = true; }
+            ImGui::EndCombo();
+        }
+    }
+    ImGui::TextDisabled(a.atSet ? "Where it meets the mount (set by hand):" : "Where it meets the mount: the middle of its underside.");
+    double ay = -a.at.y;
+    bool mv = pNumU("X##att", a.at.x, 0.5, Q::Length, -1, "+ toward the front.", SIGNED);
+    if (pNumU("Y##att", ay, 0.5, Q::Length, -1, "+ up.", SIGNED)) { a.at.y = -ay; mv = true; }
+    mv |= pNumU("Z##att", a.atZ, 0.5, Q::Length, -1, "Across: + toward the right side.", SIGNED);
+    if (mv) a.atSet = true;
+    if (a.atSet && ImGui::SmallButton("Back to the middle of its underside")) { a.atSet = false; editedAny = true; }
+    if (a.job == "optic") {
+        auto& op = a.optic;
+        heading("The sight");
+        bool refl = op.kind == "reflex";
+        if (accentButton("Reflex sight", refl)) { if (!refl) { op.kind = "reflex"; op.mag = 1; op.magMax = 0; op.reticle = defaultReticle("reflex"); } editedAny = true; }
+        if (tipHover()) ImGui::SetTooltip("A lit dot on a window: no magnification, your eye can be anywhere behind it.");
+        ImGui::SameLine(0, 2 * S());
+        if (accentButton("Scope", !refl)) { if (refl) { op.kind = "scope"; op.mag = 4; op.reticle = defaultReticle("scope"); } editedAny = true; }
+        if (tipHover()) ImGui::SetTooltip("Magnified, in a tube: your eye has to sit at the right distance behind it (eye relief).");
+        if (!refl) {
+            pNum("Magnification", op.mag, 0.25, "%.2fx", "How much bigger things look through it.");
+            op.mag = std::clamp(op.mag, 1.0, 60.0);
+            bool var = op.magMax > op.mag;
+            if (pCheck("Variable##mag", var, "It zooms, from its magnification up to a highest one.")) op.magMax = var ? op.mag * 3 : 0;
+            if (op.magMax > op.mag || var) { pNum("Up to", op.magMax, 0.25, "%.2fx"); op.magMax = std::clamp(op.magMax, op.mag + 0.25, 60.0); }
+            pNumU("Eye relief", op.eyeRelief, 2, Q::Length, -1, "How far behind the rear lens your eye has to be to see the whole picture.\nWhere the scope sits on the rail decides if that works for the gun's hold.");
+            pNumU("Front lens", op.objective, 1, Q::Length, -1, "The objective's diameter: bigger is brighter and heavier.");
+            pCheck("Grows with zoom", op.ffp, "First focal plane: the reticle's marks stay true at every magnification.\nOff (second focal plane): it stays the same size; its marks are true only at the highest.");
+        }
+        ImGui::TextDisabled(op.lensSet ? "Its sight line (set by hand):" : "Its sight line: through its longest part, end to end.");
+        double ry = -op.rear.y, fy = -op.front.y;
+        bool lm = pNumU("Rear X##lens", op.rear.x, 0.5, Q::Length, -1, nullptr, SIGNED);
+        if (pNumU("Rear Y##lens", ry, 0.5, Q::Length, -1, "+ up.", SIGNED)) { op.rear.y = -ry; lm = true; }
+        lm |= pNumU("Front X##lens", op.front.x, 0.5, Q::Length, -1, nullptr, SIGNED);
+        if (pNumU("Front Y##lens", fy, 0.5, Q::Length, -1, "+ up.", SIGNED)) { op.front.y = -fy; lm = true; }
+        if (lm) op.lensSet = true;
+        if (op.lensSet && ImGui::SmallButton("Back to its ends")) { op.lensSet = false; editedAny = true; }
+        muted("On a gun, aiming puts your eye on this line (behind it by the eye relief), whatever the gun's pose says.");
+        heading("Reticle");
+        reticleEditor(op);
+    }
+}
+
 static void firingTab() {
     auto& D = A.design;
     auto& br = D.breech;
@@ -1630,6 +1794,22 @@ static void blueprintWindow() {
             if (ImGui::IsMouseDoubleClicked(0)) openFile(p);
         }
     }
+    std::vector<fs::path> atts;
+    if (fs::exists(ATTACH_DIR))
+        for (auto& e : fs::directory_iterator(ATTACH_DIR)) if (e.path().extension() == ".json") atts.push_back(e.path());
+    std::sort(atts.begin(), atts.end());
+    ImGui::SeparatorText("Your attachments");
+    if (atts.empty()) muted("None yet: New > A new attachment.");
+    for (auto& p : atts) {
+        std::string n = p.stem().string(), low = n;
+        std::transform(low.begin(), low.end(), low.begin(), ::tolower);
+        if (!f.empty() && low.find(f) == std::string::npos) continue;
+        bool sel = picked == p.string();
+        if (ImGui::Selectable((n + "##att").c_str(), sel, ImGuiSelectableFlags_AllowDoubleClick)) {
+            if (!sel) { picked = p.string(); info = readBlueprint(p); renaming = false; }
+            if (ImGui::IsMouseDoubleClicked(0)) openFile(p);
+        }
+    }
     ImGui::SeparatorText("Examples");
     for (auto& ex : presetList()) {
         std::string low = ex.label; std::transform(low.begin(), low.end(), low.begin(), ::tolower);
@@ -1745,11 +1925,21 @@ void fileButtons() {
         ImGui::EndPopup();
     }
     ImGui::SameLine(0, 2);
-    if (ImGui::Button(ICON_FA_FILE "  New", {0, sz})) {
-        loadDesign(loadPreset("blank"), "A new design. Undo brings back what you had (and your last one is still in Open if you saved it).");
-        A.saveName[0] = 0;
+    if (ImGui::Button(ICON_FA_FILE "  New", {0, sz})) ImGui::OpenPopup("##new");
+    if (tipHover()) ImGui::SetTooltip("Start a new gun on a blank frame, or a new attachment. Undo brings back what you had.");
+    if (ImGui::BeginPopup("##new")) {
+        if (ImGui::Selectable("A new gun")) {
+            loadDesign(loadPreset("blank"), "A new design. Undo brings back what you had (and your last one is still in Open if you saved it).");
+            A.saveName[0] = 0;
+        }
+        if (ImGui::Selectable("A new attachment")) {
+            Design d; d.name = "New attachment"; d.attach.on = true; d.attach.job = "optic";
+            loadDesign(d, "A new attachment: draw it with the same tools as a gun. What it is and how it mounts are in the Attachment tab.");
+            A.saveName[0] = 0;
+        }
+        if (tipHover()) ImGui::SetTooltip("Optics, grips, bipods, bayonets, lights, muzzle devices, rail adapters...\nSaved in your Attachments folder, apart from your guns, and fitted to guns' rails and mounts.");
+        ImGui::EndPopup();
     }
-    if (tipHover()) ImGui::SetTooltip("Start a new design on a blank frame. Undo brings back what you had.");
     tutAnchor("file:new");
     if (A.showOpenWindow) blueprintWindow();
 }
@@ -1790,8 +1980,13 @@ void buildPanel() {
         }
         bool outOpen = ImGui::BeginTabItem("Outline", nullptr, tabFlag(1)); tutAnchor("tab:Outline");
         if (outOpen) { outlineTab(); ImGui::EndTabItem(); }
-        bool fireOpen = ImGui::BeginTabItem("Firing", nullptr, tabFlag(2)); tutAnchor("tab:Firing");
-        if (fireOpen) { ImGui::BeginChild("##firing", {0, 0}); firingTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        if (D.attach.on) {   // an attachment: what it is and how it mounts, instead of a firing system
+            bool attOpen = ImGui::BeginTabItem("Attachment", nullptr, tabFlag(2));
+            if (attOpen) { ImGui::BeginChild("##attach", {0, 0}); attachmentTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        } else {
+            bool fireOpen = ImGui::BeginTabItem("Firing", nullptr, tabFlag(2)); tutAnchor("tab:Firing");
+            if (fireOpen) { ImGui::BeginChild("##firing", {0, 0}); firingTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        }
         ImGui::EndTabBar();
     }
     ImGui::PopItemWidth();

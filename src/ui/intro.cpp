@@ -138,6 +138,7 @@ void eula() {
     ImGui::End();
 }
 }  // namespace
+void agreementTextPublic() { agreementText(); }   // (the About window shows it too)
 
 void introStart(bool eulaOnly) { t = 0; phase = eulaOnly ? (agreed() ? Phase::Off : Phase::Eula) : Phase::Splash; }
 void introForceEula() { t = 0; phase = Phase::Eula; }

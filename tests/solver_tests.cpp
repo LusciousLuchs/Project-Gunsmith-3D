@@ -2139,6 +2139,27 @@ static void railsAndMounts() {
     CHECK(rr.id == "rail1" && rr.mounts.size() == 1 && rr.rail.base == "x", "rebuilding a rail keeps what's attached to it");
 }
 
+// Attachments: saved apart from guns' data, read back whole; worked-out mount spot and lenses
+static void attachmentsData() {
+    std::printf("Attachments\n");
+    Design a; a.name = "Red dot";
+    BodyDef body; body.id = "b"; body.pts = {{0, -30}, {40, -30}, {40, 0}, {0, 0}}; body.thick = 25; a.bodies.push_back(body);
+    a.attach.on = true; a.attach.job = "optic"; a.attach.mount = "Picatinny"; a.attach.clamp = 25;
+    a.attach.optic.kind = "reflex";
+    autoAttach(a);
+    CHECK(std::fabs(a.attach.at.x - 20) < 1e-9 && std::fabs(a.attach.at.y) < 1e-9, "where it mounts: worked out as the middle of its underside");
+    CHECK(std::fabs(a.attach.optic.rear.x) < 1e-9 && std::fabs(a.attach.optic.front.x - 40) < 1e-9 && std::fabs(a.attach.optic.rear.y + 15) < 1e-9, "its lenses: worked out at its ends, through its longest part");
+    CHECK(!a.attach.optic.reticle.empty(), "a reflex sight starts with a dot and ring");
+    a.attach.optic.reticle.push_back({0, -1, 0, 1, 0, 0.2});
+    a.attach.optic.mag = 4; a.attach.optic.magMax = 12; a.attach.optic.ffp = true;
+    Design b;
+    bool ok = designFromJson(designToJson(a), b);
+    CHECK(ok && b.attach.on && b.attach.job == "optic" && std::fabs(b.attach.clamp - 25) < 1e-9 && b.attach.optic.reticle.size() == a.attach.optic.reticle.size() &&
+          std::fabs(b.attach.optic.magMax - 12) < 1e-9 && b.attach.optic.ffp, "an attachment saves and loads whole (job, mount, optic, reticle)");
+    Design g = loadPreset("boltaction");
+    CHECK(designToJson(g).find("\"attachment\"") == std::string::npos, "guns save as before");
+}
+
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
 static void shotSounds() {
     std::printf("Shot sounds\n");
@@ -2160,6 +2181,7 @@ static void shotSounds() {
 
 int main() {
     shotSounds();
+    attachmentsData();
     railsAndMounts();
     mirroredCuts();
     tilting();

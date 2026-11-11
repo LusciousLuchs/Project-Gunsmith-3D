@@ -25,7 +25,7 @@ static void moveOver(const char* from, const char* to) {
 
 namespace {
 std::string gApp, gUser, sSettings = "gunsmith3d_settings.json", sAutosave = "gunsmith3d_autosave.json";
-std::string sGuns, sMaps, sTex, sParts, sNpcs, sCarts, sChar, sGroups;
+std::string sGuns, sMaps, sTex, sParts, sNpcs, sCarts, sChar, sGroups, sAttach;
 void copyIfMissing(const std::string& from, const std::string& to) {
     std::error_code ec;
     if (fs::exists(to, ec) || !fs::exists(from, ec)) return;
@@ -55,9 +55,9 @@ std::string userFolder() { return gUser; }
 void setUserFolder(const std::string& root) {
     gUser = root;
     sGuns = root + "/Blueprints"; sMaps = root + "/Levels"; sTex = root + "/Textures"; sParts = root + "/Parts";
-    sNpcs = root + "/NPCs"; sCarts = root + "/Rounds"; sGroups = root + "/Groups"; sChar = root + "/Characters/character.json";
+    sNpcs = root + "/NPCs"; sCarts = root + "/Rounds"; sGroups = root + "/Groups"; sAttach = root + "/Attachments"; sChar = root + "/Characters/character.json";
     GUNS_DIR = sGuns.c_str(); MAPS_DIR = sMaps.c_str(); TEXTURES_DIR = sTex.c_str(); PARTS_DIR = sParts.c_str();
-    NPCS_DIR = sNpcs.c_str(); CARTS_DIR = sCarts.c_str(); GROUPS_DIR = sGroups.c_str(); CHARACTER_FILE = sChar.c_str();
+    NPCS_DIR = sNpcs.c_str(); CARTS_DIR = sCarts.c_str(); GROUPS_DIR = sGroups.c_str(); CHARACTER_FILE = sChar.c_str(); ATTACH_DIR = sAttach.c_str();
     setUserCartridgesDir(sCarts);
 }
 bool changeUserFolder(const std::string& root, std::string& err) {
@@ -74,7 +74,7 @@ bool changeUserFolder(const std::string& root, std::string& err) {
 
 void setupUserFolders() {
     std::error_code ec;
-    for (const char* d : {GUNS_DIR, MAPS_DIR, TEXTURES_DIR, PARTS_DIR, NPCS_DIR, GROUPS_DIR, CARTS_DIR}) fs::create_directories(d, ec);
+    for (const char* d : {GUNS_DIR, MAPS_DIR, TEXTURES_DIR, PARTS_DIR, NPCS_DIR, GROUPS_DIR, CARTS_DIR, ATTACH_DIR}) fs::create_directories(d, ec);
     fs::create_directories(fs::path(CHARACTER_FILE).parent_path(), ec);
     // files from where earlier versions kept them, in the game folder: moved in (never over a file already there)
     const char* pairs[][2] = {{"blueprints", GUNS_DIR}, {"maps", MAPS_DIR}, {"user/guns", GUNS_DIR}, {"user/maps", MAPS_DIR},
@@ -100,10 +100,12 @@ bool saveBlueprint() {
     name = safeFileName(name);
     std::snprintf(A.saveName, sizeof A.saveName, "%s", name.c_str());
     std::error_code ec;
-    fs::create_directories(GUNS_DIR, ec);
-    std::ofstream f(fs::path(GUNS_DIR) / (name + ".json"));
+    const Design& d = A.stash ? *A.stash : A.design;   // the sandbox design, even with another gun on the bench
+    const char* dir = d.attach.on ? ATTACH_DIR : GUNS_DIR;   // attachments are kept apart from guns
+    fs::create_directories(dir, ec);
+    std::ofstream f(fs::path(dir) / (name + ".json"));
     if (!f) { toast("Couldn't save " + name + "."); return false; }
-    f << designToJson(A.stash ? *A.stash : A.design, true);  // the sandbox design, even with another gun on the bench
-    toast("Saved " + name + " to your Blueprints folder.");
+    f << designToJson(d, true);
+    toast("Saved " + name + (d.attach.on ? " to your Attachments folder." : " to your Blueprints folder."));
     return true;
 }

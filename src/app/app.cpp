@@ -61,6 +61,7 @@ void commit() {
         if (designFromJson(A.lastSnap, prev)) syncMirrors(A.design, &prev, A.sel.kind == 1 ? A.sel.idx : -1);
     }
     syncBarrels(A.design);  // barrels set the firing system's chambers and muzzles
+    autoAttach(A.design);   // an attachment: where it mounts and its lenses, unless set by hand
     for (auto& b : A.design.bodies) {   // a fitted magazine reshaped by hand keeps its new shape (it's not refitted over it)
         if (!b.gen.on || b.gen.byHand || b.gen.pts0.empty()) continue;
         bool same = b.pts.size() == b.gen.pts0.size();
@@ -135,6 +136,7 @@ static void buildSim() {
 static void resetSim() { A.S.reset(); A.running = false; A.shells.clear(); A.puffs.clear(); A.trace.clear(); A.hover = nullptr; A.dragKind = 0; }
 void setMode(Mode m) {
     if (m == A.mode) return;
+    if (m == Mode::Test && A.design.attach.on) { toast("This is an attachment: it's tried on a gun's rails and mounts, not on the test bench."); return; }
     A.mode = m;
     A.drafting = false; A.draft.clear(); A.draftHasF = false; A.dragKind = 0;
     A.posing = false; A.poseDrag = -1;

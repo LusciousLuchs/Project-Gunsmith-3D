@@ -389,6 +389,37 @@ void mountInput(bool overUI) {
 }
 void drawMountOverlay() {
     if (A.mode != Mode::Build) return;
+    if (A.design.attach.on) {   // an attachment: where it meets its mount, and an optic's sight line
+        autoAttach(A.design);
+        const AttachDef& a = A.design.attach;
+        Color g{110, 230, 140, 255};
+        float zw = (float)(a.atZ * U);
+        Vector2 s = toScreen(W3(a.at, zw));
+        if (a.mount == "Picatinny") {
+            Vector2 l = toScreen(W3({a.at.x - a.clamp / 2, a.at.y}, zw)), r = toScreen(W3({a.at.x + a.clamp / 2, a.at.y}, zw));
+            DrawLineEx(l, r, 3, g);
+            DrawLineEx({l.x, l.y - 5}, {l.x, l.y + 5}, 2, g); DrawLineEx({r.x, r.y - 5}, {r.x, r.y + 5}, 2, g);
+            viewText(TextFormat("Clamps on a rail here (%s)", fmtQ(Q::Length, a.clamp).c_str()), s.x + 10, s.y + 8, 12, g);
+        } else viewText(("Fits a " + a.mount + " here").c_str(), s.x + 10, s.y + 8, 12, g);
+        Vector2 q[4] = {{s.x, s.y - 6}, {s.x + 6, s.y}, {s.x, s.y + 6}, {s.x - 6, s.y}};
+        for (int j = 0; j < 4; j++) DrawLineEx(q[j], q[(j + 1) % 4], 2, g);
+        if (a.job == "optic") {
+            const OpticDef& op = a.optic;
+            Color o{255, 120, 90, 255};
+            Vector2 rr = toScreen(W3(op.rear, zw)), ff = toScreen(W3(op.front, zw));
+            DrawLineEx(rr, ff, 2, o);
+            DrawCircleLinesV(rr, 5, o); DrawCircleLinesV(ff, 5, o);
+            double L = std::hypot(op.front.x - op.rear.x, op.front.y - op.rear.y);
+            if (op.kind == "scope" && L > 1e-6) {   // where the eye goes
+                V2 e{op.rear.x - (op.front.x - op.rear.x) / L * op.eyeRelief, op.rear.y - (op.front.y - op.rear.y) / L * op.eyeRelief};
+                Vector2 es = toScreen(W3(e, zw));
+                for (int k = 0; k < 10; k++) { float t0 = k / 10.f, t1 = t0 + 0.05f; DrawLineEx(Vector2Lerp(es, rr, t0), Vector2Lerp(es, rr, t1), 1.5f, o); }
+                DrawCircleV(es, 4, o);
+                viewText(TextFormat("Eye (%s behind)", fmtQ(Q::Length, op.eyeRelief).c_str()), es.x - 40, es.y - 20, 12, o);
+            }
+            viewText(op.kind == "scope" ? TextFormat("Sight line, %.1fx%s", op.mag, op.magMax > op.mag ? TextFormat("-%.1fx", op.magMax) : "") : "Sight line", ff.x + 8, ff.y - 8, 12, o);
+        }
+    }
     bool tool = A.tool == Tool::Mount;
     for (size_t i = 0; i < A.design.bodies.size(); i++) {
         const BodyDef& b = A.design.bodies[i];

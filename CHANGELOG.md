@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.18-alpha
+
+### New (attachments, part 2: the attachment designer)
+- **New > A new attachment** opens the designer for an attachment instead of a gun: draw it with all the same tools. Attachments are saved in their own Attachments folder, apart from your guns, and listed separately in Open.
+- **The Attachment tab** (in place of Firing): what it is (optic, grip, bipod, bayonet, light, laser, muzzle device, rail adapter, stock, other) and how it mounts: a Picatinny clamp of a set length (how much rail it takes), or an attachment point of a kind you name. The view shows where it meets the mount.
+- **Scope designer:** reflex sight or scope; magnification, variable zoom, eye relief, front lens size, reticle growing with zoom or not. The view shows its sight line and where your eye goes.
+- **Reticle editor:** draw your own reticle with lines, dots and rings, in milliradians, or start from a dot, dot and ring, crosshair, duplex, chevron or mil-dot; pick its colour and whether it glows.
+- **The license agreement can be read again from About.** It's built into the game, not a file next to it.
+- Coming next: fitting attachments to guns on a bench, from crates on the range.
+
 ## 0.4.17-alpha
 
 ### New (attachments, part 1: mounts on your guns)

@@ -372,6 +372,39 @@ Animation defaultInspect(const struct Design& d);   // a plain look over the gun
 // A gun made for NPCs to carry (like the simple guns enemies carry in some games): never reloaded, never runs out, not
 // animated or simulated part by part; it just fires this fast, this wide, with its cartridge's bullet. Players can't
 // take one.
+// An attachment (the attachment designer): drawn with the same tools as a gun, saved apart (Attachments folder), and
+// fitted to a gun's mounts later. Its job says what it does on a gun; its mount says how it goes on.
+struct ReticleMark {               // one stroke of a reticle, in milliradians from the centre (x right, y up)
+    int kind = 0;                  // 0 a line (x0, y0 to x1, y1), 1 a dot at (x0, y0), 2 a ring about (x0, y0), radius x1
+    double x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    double size = 0.3;             // line width, dot size, ring thickness (mrad)
+};
+struct OpticDef {
+    std::string kind = "reflex";   // reflex (a lit dot on a window, no magnification), scope (magnified, in a tube)
+    double mag = 1, magMax = 0;    // magnification; magMax above mag: variable, from mag to magMax
+    bool lensSet = false;          // false: the lenses are worked out from its shape (the ends, at mid height)
+    V2 rear, front;                // lens centres, side view (design mm; across, at the attachment's middle)
+    double eyeRelief = 80;         // scope: how far behind the rear lens your eye sits (mm)
+    double objective = 40;         // scope: the front lens's diameter (mm)
+    bool ffp = false;              // the reticle grows with the magnification (first focal plane)
+    std::vector<ReticleMark> reticle;
+    unsigned color = 0xE8302AFF;   // RGBA
+    bool lit = true;               // glows (reflex dots always do)
+};
+struct AttachDef {
+    bool on = false;
+    std::string job = "other";     // optic grip bipod bayonet light laser muzzle adapter stock other
+    std::string mount = "Picatinny";   // "Picatinny": clamps on a rail; anything else: fits attachment points of that kind
+    bool atSet = false;            // false: where it mounts is worked out (the middle of its underside)
+    V2 at; double atZ = 0;         // where it meets the rail's top, or the point (design mm)
+    double clamp = 20;             // Picatinny: how much rail it takes (mm)
+    OpticDef optic;
+};
+std::vector<ReticleMark> defaultReticle(const std::string& opticKind);   // a dot and ring (reflex), a duplex cross (scope)
+void autoAttach(Design& d);        // fills in what isn't set by hand: the mount spot, the lenses
+const std::vector<std::string>& attachJobs();
+const char* attachJobName(const std::string& job);
+
 struct NpcGunDef {
     bool on = false;
     double rpm = 300;      // shots a minute while the NPC holds the trigger
@@ -388,6 +421,7 @@ struct Design {
     BreechDef breech;
     Pose pose;                           // how it's held (nothing placed in older blueprints)
     NpcGunDef npcGun;                    // made for NPCs only (off in older blueprints)
+    AttachDef attach;                    // this is an attachment, not a gun (the attachment designer)
     std::map<std::string, Animation> anims;   // by slot: "work_action", "inspect", "reload", "reload_empty", "clear_jam", "control:<part id>"
     // where the blueprint came from (filled in when loading; saving always writes the current version)
     int format = 1;                      // blueprint format number (GUNSMITH_BLUEPRINT_FORMAT when saved)

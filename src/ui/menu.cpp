@@ -142,6 +142,7 @@ void whatsNew() {
 
 // ---------------------------------------------------------------- about
 // The game's version, who made it, and what it runs on: raylib, the OpenGL it uses and what this PC's driver reports
+void agreementTextPublic();   // (ui/intro.cpp) the agreement, laid out
 void aboutWindow() {
     dimBackground(0.6f);
     centerNext(560 * S(), 0);
@@ -173,6 +174,15 @@ void aboutWindow() {
     ImGui::TextDisabled("Licences for the libraries and fonts the game uses are in the licenses folder next to the game.");
     ImGui::PopTextWrapPos();
     ImGui::Dummy({0, 6 * S()});
+    static bool showAgreement = false;
+    if (ImGui::Button(showAgreement ? "Hide the license agreement" : "Read the license agreement", {-1, 0})) showAgreement = !showAgreement;
+    if (tipHover()) ImGui::SetTooltip("The agreement you accepted, as built into the game (it isn't read from a file, so it can't be changed).");
+    if (showAgreement) {   // the agreement, from inside the game itself (ui/eula.inc), never from a file next to it
+        ImGui::BeginChild("##agreement", {0, 300 * S()}, ImGuiChildFlags_Borders);
+        agreementTextPublic();
+        ImGui::EndChild();
+    }
+    ImGui::Dummy({0, 4 * S()});
     float w3 = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
     if (ImGui::Button("Copy these details", {w3, 0})) { SetClipboardText(aboutText().c_str()); toast("Copied: paste them into a bug report."); }
     ImGui::SameLine();

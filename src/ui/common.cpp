@@ -61,6 +61,7 @@ bool numFieldU(const char* label, double& v, double step, Q q, int decimals, dou
         return ch;
     }
     double d = toDisp(q, v), st = niceStep(q, step), dlo = toDisp(q, lo), dhi = 1e9;
+    if (std::fabs(d) < 1e-9) d = 0;   // (never "-0.0 mm")
     char fmt[32];
     std::snprintf(fmt, sizeof fmt, "%%.%df %s", decimals >= 0 ? decimals : decimalsOf(q), unitOf(q));
     // drag sideways to scrub the value, or click it (without dragging) to type it

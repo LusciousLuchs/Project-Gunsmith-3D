@@ -259,7 +259,11 @@ void toolbar() {
     // designer / bench
     bool b = A.mode == Mode::Build;
     float sz = TOOLBAR_H - 14 * CFG.uiScale;
-    if (!A.benchOnly) {
+    if (A.design.attach.on && b) {   // the attachment designer: no test bench (attachments are tried on a gun's mounts)
+        accentButton(ICON_FA_PLUG "  Attachment designer", true, {0, sz});
+        if (tipHover()) ImGui::SetTooltip("You're designing an attachment. It's saved in your Attachments folder;\nNew > A new gun (or Open) goes back to guns.");
+        gap(18);
+    } else if (!A.benchOnly) {
         if (accentButton("Designer", b, {0, sz})) setMode(Mode::Build);
         tutAnchor("mode:designer");
         ImGui::SameLine(0, 2);
