@@ -119,6 +119,20 @@ struct MarkDef {
     double width = 0.4;                  // the cut's width (mm)
     std::string color = "#dcd8d0";      // the cut's colour (bright: bare metal showing through)
 };
+// Mounts for attachments. The gun has the mounts (rails and attachment points, made in the gun designer); attachments
+// are designed and saved apart, and fitted to a gun's mounts outside the designer.
+struct RailDef {           // this part is a Picatinny rail (MIL-STD-1913): attachments clamp anywhere along it, slot to slot
+    bool on = false;
+    V2 a, b;               // end to end along its mounting face, side view (design mm)
+    int face = 0;          // which way the mounting face looks: 0 up, 1 down, 2 the gun's right side (+z), 3 its left (-z)
+    std::string base;      // the part it sits on (welded to it)
+};
+struct MountDef {          // an attachment point on a part's surface: it takes attachments with the same type
+    std::string type = "Custom";
+    V2 at; double atZ = 0; // where: design mm, z from the part's middle (+ toward the gun's right side)
+    double nx = 0, ny = -1, nz = 0;   // out of the surface (y points down)
+    double spin = 0;       // degrees: which way an attachment on it faces, about that
+};
 struct BodyDef {
     std::string id, name;
     bool fixed = false;
@@ -132,6 +146,8 @@ struct BodyDef {
     double texScale = 40;                // mm before the picture repeats
     bool ghost = false;                  // drawn see-through in X-ray mode
     BarrelDef barrel;
+    RailDef rail;                        // a Picatinny rail (the Rail tool)
+    std::vector<MountDef> mounts;        // attachment points on it (the Mount tool)
     double tiltX = 0, tiltY = 0;         // degrees: leaned out of the side view about the part's middle (X: about the
                                          // gun's length, + top toward you; Y: about the upright, + front toward you)
     double smooth = 0;                   // 0..1: rounds the front and back edges (grips, dehorned slides). Looks only.

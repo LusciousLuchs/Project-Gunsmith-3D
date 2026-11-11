@@ -1,5 +1,6 @@
 // Gunsmith3D - 2D overlay drawn over the 3D view: handles, joints, labels.
 #include "app/app.hpp"
+#include "mounts.hpp"
 #include "app/scaletool.hpp"
 #include "app/faces.hpp"
 #include "app/gfx.hpp"
@@ -190,7 +191,18 @@ void drawOverlay() {
         viewText(A.tool == Tool::Knife ? "Cut" : "Mirror axis", m.x + 14, m.y + 12, 12, c);
     } else if (A.shaping) {
         V2 a = A.shapeStart, w = snapMM(mouseMM(0));
-        if (A.tool == Tool::Barrel) {
+        if (A.tool == Tool::Rail) {
+            if (std::hypot(w.x - a.x, w.y - a.y) >= 10) {
+                BodyDef pv = mounts::makeRail(a, w, 0, 0);
+                for (size_t k = 0; k < pv.pts.size(); k++) DrawLineEx(toScreen(W3(pv.pts[k], 0)), toScreen(W3(pv.pts[(k + 1) % pv.pts.size()], 0)), 2, Color{120, 220, 255, 255});
+                for (double sl : mounts::railSlots(pv)) {   // where its slots fall
+                    double L = std::hypot(w.x - a.x, w.y - a.y);
+                    V2 q{a.x + (w.x - a.x) * sl / L, a.y + (w.y - a.y) * sl / L};
+                    DrawCircleV(toScreen(W3(q, 0)), 2, Color{120, 220, 255, 255});
+                }
+            }
+            viewText(TextFormat("%s  Picatinny, %d slots", fmtQ(Q::Length, std::hypot(w.x - a.x, w.y - a.y)).c_str(), mounts::railSlotCount(std::hypot(w.x - a.x, w.y - a.y))), m.x + 14, m.y + 12, 12, RAYWHITE);
+        } else if (A.tool == Tool::Barrel) {
             const Cartridge& cart = A.design.breech.on ? A.design.breech.cart : cartridgePresets()[0];
             if (std::hypot(w.x - a.x, w.y - a.y) >= 10) {
                 BodyDef pv = makeBarrel(a, w, cart);
@@ -258,6 +270,7 @@ void drawOverlay() {
         }
     }
     drawCarveOverlay();
+    drawMountOverlay();
     // the name of the part under the cursor, so parts can be told apart without selecting them
     if (!A.drafting && !A.draftHasF && !A.carveDrag && A.dragKind == 0 && mouseInViewport() && !ImGui::GetIO().WantCaptureMouse) {
         int i; Vector3 p, n;

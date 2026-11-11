@@ -133,7 +133,8 @@ static const RailTool RAIL_DRAW[] = {
     {ICON_FA_DRAW_POLYGON, "Polygon", "Click corners to draw any outline. Click the first corner again, or press Enter, to close it.", Tool::Body, -1},
     {ICON_FA_SQUARE, "Rectangle", "Drag out a rectangle.", Tool::Rect, -1},
     {ICON_FA_GRIP_LINES, "Barrel", "Drag from the breech end to the muzzle. A round barrel with a bore, and a chamber at the\nbreech end cut for the cartridge you choose (in its panel). Rifled or smoothbore.", Tool::Barrel, -1},
-    {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius.", Tool::Circle, -1}};
+    {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius.", Tool::Circle, -1},
+    {ICON_FA_BARS, "Rail", "A Picatinny rail: drag along the top of a part, as long as you want it.\nSlotted to the standard (10 mm apart) and welded to the part; attachments clamp on anywhere.\nIt makes a handy ruler too.", Tool::Rail, -1}};
 static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_CUBE, "Faces", "Point at any face of a part (front, back, top, bottom, ends) and drag to push or pull it.\nE extrudes the face: move the mouse to draw it out, click to finish.", Tool::Faces, -1},
     {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
@@ -146,7 +147,8 @@ static const RailTool RAIL_JOIN[] = {
     {ICON_FA_THUMBTACK, "Pin", "A pivot: two parts share a point and can turn (triggers, hammers, levers).", Tool::Pin, -1},
     {ICON_FA_LINK, "Weld", "Click two parts to make them one solid piece. Nothing is added to the gun:\nthey just move as one. Unweld from the part's panel.", Tool::Weld, -1},
     {ICON_FA_ROUTE, "Track", "A point on one part rides a slot or rail in another (cam slots, guide rails).", Tool::Track, -1},
-    {ICON_FA_WAVE_SQUARE, "Spring", "A coil or leaf spring between two parts (recoil, striker and sear springs).", Tool::Spring, -1}};
+    {ICON_FA_WAVE_SQUARE, "Spring", "A coil or leaf spring between two parts (recoil, striker and sear springs).", Tool::Spring, -1},
+    {ICON_FA_PLUG, "Mount", "An attachment point: click a part's surface to put one there, of a kind you name\n(bayonet lug, side rail, muzzle thread, your own). Attachments fit points of the same kind.", Tool::Mount, -1}};
 
 static void railTip(const RailTool& t) {
     if (!tipHover()) return;

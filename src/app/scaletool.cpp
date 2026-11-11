@@ -45,6 +45,8 @@ void scaleParts(Design& D, const std::vector<int>& parts, V2 c, double sx, doubl
         if (!d.depthRef.empty()) d.depthRef = d.pts;
         for (auto& p : d.roundPath) sc(p);
         if (!d.round) d.thick = std::max(0.2, d.thick * sz);
+        for (auto& mt : d.mounts) { sc(mt.at); mt.atZ *= sz; }
+        if (d.rail.on) { sc(d.rail.a); sc(d.rail.b); }
         for (auto& cv : d.carves) {
             sc(cv.at);
             cv.atZ *= sz;

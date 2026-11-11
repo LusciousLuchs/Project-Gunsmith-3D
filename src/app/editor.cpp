@@ -8,6 +8,7 @@
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
+#include "mounts.hpp"
 #include "app/faces.hpp"
 
 #include <algorithm>
@@ -31,6 +32,7 @@ void moveBody(int i, double dx, double dy) {
     for (auto& p : d.roundPath) { p.x += dx; p.y += dy; }
     if (d.gen.on) { d.gen.top.x += dx; d.gen.top.y += dy; for (auto& p : d.gen.pts0) { p.x += dx; p.y += dy; } }   // a fitted magazine moved, still fitted
     carve::moveCarves(d, dx, dy);
+    mounts::moveMounts(d, dx, dy);
     auto mv = [&](V2& p) { p.x += dx; p.y += dy; };
     for (auto& j : A.design.joints) {
         if ((j.type == "pin" || j.type == "weld") && j.a == d.id) mv(j.p);
@@ -53,6 +55,7 @@ void rotateBody(int i, V2 c, double deg) {
     if (!d.depthRef.empty()) d.depthRef = d.pts;
     for (auto& p : d.roundPath) rot(p);
     if (d.gen.on) { rot(d.gen.top); d.gen.angle -= deg; for (auto& p : d.gen.pts0) rot(p); }   // a fitted magazine turned: still fitted, at its new angle
+    mounts::rotateMounts(d, c, deg);
     for (auto& cv : d.carves) {
         rot(cv.at);
         double dx = cv.dx * cs - cv.dy * sn, dy = cv.dx * sn + cv.dy * cs;
@@ -220,10 +223,11 @@ void buildInput(bool overUI) {
     {   // vertex selection belongs to one part: drop it when the selection moves elsewhere
         static std::string selVsPart;
         std::string cur = (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()) ? A.design.bodies[A.sel.idx].id : "";
-        if (cur != selVsPart) { A.selVs.clear(); if (!selVsPart.empty()) A.selCarve = -1; selVsPart = cur; }
+        if (cur != selVsPart) { A.selVs.clear(); if (!selVsPart.empty()) { A.selCarve = -1; A.selMount = -1; } selVsPart = cur; }
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
     if (A.tool == Tool::Carve || A.carveDrag || A.carveMove) { carveInput(overUI); return; }
+    if (A.tool == Tool::Mount) { mountInput(overUI); return; }
     if (cutPickInput(overUI)) return;   // "Pick cuts in the view": a click on one of the part's cuts picks it
     if (A.tool == Tool::Engrave || A.engraving) { engraveInput(overUI); return; }
     if (A.tool == Tool::Scale) { scaleInput(overUI); return; }
@@ -312,7 +316,7 @@ void buildInput(bool overUI) {
             commit(); A.tool = Tool::Select;
             return;
         }
-        case Tool::Rect: case Tool::Circle: case Tool::Knife: case Tool::Barrel: A.shapeStart = w; A.shaping = true; return;
+        case Tool::Rect: case Tool::Circle: case Tool::Knife: case Tool::Barrel: case Tool::Rail: A.shapeStart = w; A.shaping = true; return;
         case Tool::Measure: A.measureA = A.measureB = measureSnap(w); A.measured = true; A.shaping = true; return;
         case Tool::Mirror:
             if (A.sel.kind != 1) { toast("Select the part to mirror first."); A.tool = Tool::Select; return; }
@@ -511,6 +515,36 @@ void buildInput(bool overUI) {
         static const char* pal[] = {"#3f7fe0", "#c9ccd2", "#f0a43a", "#5cb85c", "#d9534f", "#9b7fd4", "#e8d44d"};
         b.id = uid(); b.name = "Part " + std::to_string(A.design.bodies.size() + 1);
         b.layer = "ABC"; b.thick = 12; b.color = pal[A.design.bodies.size() % 7];
+        if (A.tool == Tool::Rail) {
+            if (std::hypot(w.x - a.x, w.y - a.y) >= 10) {
+                // the part it stands on: the one just under the middle of the line drawn (else the one the line runs through)
+                BodyDef probe = mounts::makeRail(a, w, 0, 0);
+                V2 mid{(a.x + w.x) / 2, (a.y + w.y) / 2}, inward{probe.pts[0].x - probe.pts[3].x, probe.pts[0].y - probe.pts[3].y};   // (away from the rail: into what it stands on)
+                double il = std::hypot(inward.x, inward.y); if (il > 0) { inward.x /= il; inward.y /= il; }
+                int base = -1;
+                for (double off : {1.5, 0.0, 4.0})
+                    for (size_t k = 0; k < A.design.bodies.size() && base < 0; k++) {
+                        const BodyDef& d = A.design.bodies[k];
+                        if (d.rail.on || d.magazine || d.ghost) continue;
+                        if (sim::inPoly(mid.x + inward.x * off, mid.y + inward.y * off, d.pts)) base = (int)k;
+                    }
+                BodyDef r = mounts::makeRail(a, w, 0, base >= 0 ? A.design.bodies[base].z : 0);
+                r.id = uid();
+                int n = 0; for (auto& d : A.design.bodies) if (d.rail.on) n++;
+                if (n) r.name = "Picatinny rail " + std::to_string(n + 1);
+                std::string baseId;
+                if (base >= 0) { r.fixed = A.design.bodies[base].fixed; baseId = A.design.bodies[base].id; r.rail.base = baseId; }
+                else r.fixed = true;
+                A.design.bodies.push_back(r);
+                if (!baseId.empty()) weldParts(A.design, r.id, baseId);
+                A.sel = {1, (int)A.design.bodies.size() - 1, -1};
+                commit();
+                toast(base >= 0 ? TextFormat("Picatinny rail: %d slots, welded to %s. Put it on a side or underneath in its panel.", (int)mounts::railSlots(r).size(), A.design.bodies[base].name.c_str())
+                                : "Picatinny rail drawn, on nothing: draw it along the top edge of a part to weld it there.");
+            } else toast("Drag along the top of a part, as long as the rail should be.");
+            A.tool = Tool::Select;
+            return;
+        }
         if (A.tool == Tool::Barrel) {
             if (std::hypot(w.x - a.x, w.y - a.y) >= 10) {
                 const Cartridge& cart = A.design.breech.on ? A.design.breech.cart : cartridgePresets()[0];

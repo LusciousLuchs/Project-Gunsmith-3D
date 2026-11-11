@@ -7,6 +7,7 @@
 #include "reliability.hpp"
 #include "version.hpp"
 #include "carve.hpp"
+#include "mounts.hpp"
 #include "hand.hpp"
 #include <algorithm>
 #include <array>
@@ -2091,6 +2092,53 @@ static void mirroredCuts() {
     CHECK(true, "every shape, mirrored on X, Y and Z, is the exact reflection, and mirroring twice gives it back");
 }
 
+// Picatinny rails and attachment points: real slots at the standard spacing, kept on save, and old blueprints unchanged
+static void railsAndMounts() {
+    std::printf("Rails and attachment points\n");
+    BodyDef r = mounts::makeRail({0, 0}, {100, 0}, 0, 0);
+    auto sl = mounts::railSlots(r);
+    int slots = 0; for (auto& c : r.carves) if (c.name == "Slot") slots++;
+    CHECK(sl.size() == 10 && slots == 10 && std::fabs(sl[1] - sl[0] - 10.01) < 1e-9, "a 100 mm rail: 10 slots, 10.01 mm apart (MIL-STD-1913)");
+    bool along = true, onTop = true;
+    for (auto& c : r.carves) if (c.name == "Slot") {
+        carve::P3 u, v, d; carve::frame(c, u, v, d);
+        if (std::fabs(std::fabs(u.x) - 1) > 1e-6) along = false;          // its width runs along the rail
+        if (std::fabs(c.at.y + 9.4) > 1e-9 || d.y < 0.99) onTop = false;   // cut from the top face, straight down
+    }
+    CHECK(along && onTop, "the slots are cut across the top, straight down");
+    double ymin = 1e9, ymax = -1e9; for (auto& p : r.pts) { ymin = std::min(ymin, p.y); ymax = std::max(ymax, p.y); }
+    CHECK(std::fabs(ymin + 9.4) < 1e-9 && std::fabs(ymax) < 1e-9 && std::fabs(r.thick - 21.2) < 1e-9, "the bar: 21.2 mm wide, 9.4 mm tall, standing on the line drawn");
+    BodyDef angled = mounts::makeRail({0, 0}, {60, -60}, 0, 0);
+    bool alongA = true;
+    for (auto& c : angled.carves) if (c.name == "Slot") { carve::P3 u, v, d; carve::frame(c, u, v, d); if (std::fabs(std::fabs((u.x - u.y) * std::sqrt(0.5)) - 1) > 1e-6) alongA = false; }
+    CHECK(alongA, "a rail drawn at an angle: its slots still run across it");
+    BodyDef base; base.z = 0; base.thick = 30;
+    BodyDef side = mounts::makeRail({0, 20}, {80, 20}, 2, mounts::sideRailZ(base, 2));
+    CHECK(std::fabs(side.z - (15 + 4.7)) < 1e-9 && std::fabs(side.thick - 9.4) < 1e-9, "a side rail lies flat against the part's right side");
+    Design d = loadPreset("bolt");
+    BodyDef rr = mounts::makeRail({20, -30}, {120, -30}, 0, 0); rr.id = "rail1"; rr.rail.base = "x";
+    MountDef m; m.type = "Bayonet lug"; m.at = {200, 10}; m.atZ = 0; m.nx = 0; m.ny = 1; m.nz = 0; m.spin = 15;
+    rr.mounts.push_back(m);
+    d.bodies.push_back(rr);
+    Design back;
+    bool ok = designFromJson(designToJson(d), back);
+    const BodyDef* b2 = nullptr; for (auto& b : back.bodies) if (b.id == "rail1") b2 = &b;
+    CHECK(ok && b2 && b2->rail.on && b2->rail.face == 0 && b2->rail.base == "x" && b2->mounts.size() == 1 && b2->mounts[0].type == "Bayonet lug" && std::fabs(b2->mounts[0].spin - 15) < 1e-9,
+          "rails and attachment points are saved with the gun");
+    Design plain = loadPreset("bolt");
+    CHECK(designToJson(plain).find("\"rail\"") == std::string::npos && designToJson(plain).find("\"mounts\"") == std::string::npos, "guns without them save as before");
+    {   // a rail welded on top of the bolt action's receiver: the gun works just the same
+        Design g = loadPreset("boltaction");
+        BodyDef top = mounts::makeRail({-60, 9}, {100, 9}, 0, 0); top.id = "railtop"; top.rail.base = "rcv"; top.fixed = true;
+        g.bodies.push_back(top); weldParts(g, "railtop", "rcv");
+        sim::ReliabilityOptions o; o.rounds = 5;
+        auto R0 = sim::runReliability(loadPreset("boltaction"), o), R1 = sim::runReliability(g, o);
+        CHECK(R1.fired == R0.fired && R1.fired > 0, "a rail on the receiver: the bolt action still feeds and fires as before");
+    }
+    mounts::regenRail(rr);
+    CHECK(rr.id == "rail1" && rr.mounts.size() == 1 && rr.rail.base == "x", "rebuilding a rail keeps what's attached to it");
+}
+
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
 static void shotSounds() {
     std::printf("Shot sounds\n");
@@ -2112,6 +2160,7 @@ static void shotSounds() {
 
 int main() {
     shotSounds();
+    railsAndMounts();
     mirroredCuts();
     tilting();
     longRecoil();

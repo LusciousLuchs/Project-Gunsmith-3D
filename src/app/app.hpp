@@ -20,7 +20,7 @@ inline constexpr const char* OLD_AUTOSAVE = "actionlab_autosave.json";  // from 
 // ---------------------------------------------------------------- app state
 enum class Mode { Build, Test };
 enum class Screen { Menu, Workshop, MapEditor, Range, NpcEditor };  // the main menu, the designer / test bench, the map editor, or the firing range
-enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Scale, Count };
+enum class Tool { Select, Body, Pin, Weld, Track, Spring, Face, Muzzle, Rect, Circle, CtrlPt, StrikerTip, Knife, Mirror, RoundPath, Carve, Grip, Barrel, Measure, Faces, Engrave, Scale, Rail, Mount, Count };
 struct Sel { int kind = 0; int idx = -1; int v = -1; };  // kind 1 = body, 2 = joint
 struct Handle { Vector2 s; int kind; int i; int v; };  // kind: 0 vertex, 1 joint p, 2 path, 3 pa, 4 pb, 5 face, 6 muzzle, 9 grip, 10 grip's direction, 11 a face to push (v: edge, -1 near, -2 far)
 struct BodyMesh { std::string key; Mesh mesh{}; bool ok = false; bool rough = false; double changedAt = -1e9; };   // rough: built without its cuts while being edited
@@ -79,6 +79,8 @@ struct App {
     double carveW = 6, carveH = 6, carveDepth = 4;
     bool carveThrough = false;
     int selCarve = -1;                   // with a part selected: one of its carves
+    int selMount = -1;                   // with a part selected: one of its attachment points
+    std::string mountType = "Bayonet lug";   // what the Mount tool places next
     bool cutPick = false;                // "Pick cuts in the view": a click on one of the selected part's cuts picks it
     int dupCount = 1;                    // a cut's Duplicate: how many copies...
     double dupStep[3] = {0, 0, 0};       // ...each this far on from the last (design mm: x, y down, z)

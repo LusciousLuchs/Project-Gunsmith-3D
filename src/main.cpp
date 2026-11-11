@@ -40,7 +40,7 @@ int main(int argc, char** argv) {
     bool perfArg = false, charArg = false;
     int frames = 0;
     bool trackDraft = false, carveTool = false;
-    float camYaw = -100, camPitch = 0;
+    float camYaw = -100, camPitch = 0, camDist = -1;
     int selCarveArg = -1;
     bool fireArg = false, sideArg = false, testArg = false, designerArg = false;
     int poseArg = -1;
@@ -94,6 +94,7 @@ int main(int argc, char** argv) {
         else if (a == "--perf") perfArg = true;   // (screenshots) the performance overlay with full details
         else if (a == "--about") { menuArg = true; A.showAbout = true; }   // (screenshots of the About window)
         else if (a == "--solid") solidArg = true;
+        else if (a == "--dist") camDist = (float)std::atof(next().c_str());   // (screenshots) how far the camera is
         else if (a == "--range") rangeArg = next();
         else if (a == "--rangeshot") { rangeYaw = std::atof(next().c_str()); rangePitch = std::atof(next().c_str()); rangeArmor = std::atof(next().c_str()); rangeShot = true; }   // (screenshots) look, armour          // (screenshots) the firing range with an example gun            // (screenshots) every part solid (the x-ray view off)
         else if (a == "--intro") introArg = 1;              // (screenshots) the launch splash
@@ -172,6 +173,7 @@ int main(int argc, char** argv) {
     if (carveTool) A.tool = Tool::Carve;
     if (solidArg) A.xray = false;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
+    if (camDist > 0) A.dist = camDist;
     if (const char* z = std::getenv("GUNSMITH_ZOOM")) {  // (screenshots) "x y dist": look at a design point (mm) from close by
         double zx = 0, zy = 0, zd = 300; std::sscanf(z, "%lf %lf %lf", &zx, &zy, &zd);
         A.target = W3({zx, zy}, 0); A.dist = (float)zd * U;

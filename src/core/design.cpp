@@ -1041,6 +1041,12 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.gen.on && b.gen.byHand) jb["magazine"]["gen"]["byHand"] = true;
         }
         if (b.tiltX != 0 || b.tiltY != 0) jb["tilt"] = {b.tiltX, b.tiltY};
+        if (b.rail.on) jb["rail"] = {{"a", {b.rail.a.x, b.rail.a.y}}, {"b", {b.rail.b.x, b.rail.b.y}}, {"face", b.rail.face}, {"base", b.rail.base}};
+        if (!b.mounts.empty()) {
+            json ms = json::array();
+            for (auto& m : b.mounts) ms.push_back({{"type", m.type}, {"at", {m.at.x, m.at.y, m.atZ}}, {"n", {m.nx, m.ny, m.nz}}, {"spin", m.spin}});
+            jb["mounts"] = ms;
+        }
         if (b.barrel.on) jb["barrel"] = {{"cartridge", cartToJson(b.barrel.cart)}, {"rifled", b.barrel.rifled}, {"twist", b.barrel.twist}, {"grooves", b.barrel.grooves}, {"muzzleEnd", b.barrel.muzzleEnd}};
         if (b.rollOn) jb["roll"] = {{"on", true}, {"min", b.rollMin}, {"max", b.rollMax}, {"handle", b.handle}};
         if (b.ctrl != "none") jb["control"] = {{"kind", b.ctrl}, {"key", b.key}, {"at", v2j(b.ctrlPt)}, {"dir", b.ctrlDir}, {"force", b.ctrlForce}};
@@ -1230,6 +1236,22 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.rollMax = opt<double>(r, "max", 90);
             b.handle = opt<double>(r, "handle", 0);
         }
+        if (jb.contains("rail") && jb["rail"].is_object()) {
+            auto& r = jb["rail"];
+            auto v2 = [&](const char* k) { V2 p; if (r.contains(k) && r[k].is_array() && r[k].size() == 2) p = {r[k][0].get<double>(), r[k][1].get<double>()}; return p; };
+            b.rail.on = true; b.rail.a = v2("a"); b.rail.b = v2("b");
+            b.rail.face = std::clamp(opt<int>(r, "face", 0), 0, 3); b.rail.base = opt<std::string>(r, "base", "");
+        }
+        if (jb.contains("mounts") && jb["mounts"].is_array())
+            for (auto& jm : jb["mounts"]) {
+                if (!jm.is_object()) continue;
+                MountDef m;
+                m.type = opt<std::string>(jm, "type", "Custom");
+                if (jm.contains("at") && jm["at"].is_array() && jm["at"].size() == 3) { m.at = {jm["at"][0].get<double>(), jm["at"][1].get<double>()}; m.atZ = jm["at"][2].get<double>(); }
+                if (jm.contains("n") && jm["n"].is_array() && jm["n"].size() == 3) { m.nx = jm["n"][0].get<double>(); m.ny = jm["n"][1].get<double>(); m.nz = jm["n"][2].get<double>(); }
+                m.spin = opt<double>(jm, "spin", 0.0);
+                b.mounts.push_back(m);
+            }
         if (jb.contains("barrel") && jb["barrel"].is_object()) {
             auto& jr = jb["barrel"];
             b.barrel.on = true;

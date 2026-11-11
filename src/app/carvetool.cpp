@@ -1,6 +1,7 @@
 // Gunsmith3D - the Carve tool: click a part's surface from any side to cut into it, or drag to size the cut.
 #include "app/app.hpp"
 #include "app/carvetool.hpp"
+#include "mounts.hpp"
 #include "app/view.hpp"
 #include "app/fonts.hpp"
 #include "app/settings.hpp"
@@ -352,4 +353,70 @@ void drawCarveOverlay() {
     }
     int i; Vector3 p, n;
     if (carvePick(i, p, n)) { drawCarve(i, carveAt(i, p, n), Color{120, 220, 255, 200}, true); drawGuides(); }
+}
+
+// ---------------------------------------------------------------- attachment points (the Mount tool)
+static int mountUnderMouse(int& part) {
+    Vector2 m = GetMousePosition();
+    int best = -1; float bd = 10; part = -1;
+    for (size_t i = 0; i < A.design.bodies.size(); i++)
+        for (size_t k = 0; k < A.design.bodies[i].mounts.size(); k++) {
+            const MountDef& mt = A.design.bodies[i].mounts[k];
+            float d = Vector2Distance(toScreen(toWorld((int)i, mt.at.x, mt.at.y, mt.atZ)), m);
+            if (d < bd) { bd = d; best = (int)k; part = (int)i; }
+        }
+    return best;
+}
+void mountInput(bool overUI) {
+    if (overUI || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return;
+    int part, k = mountUnderMouse(part);
+    if (k >= 0) { A.sel = {1, part, -1}; A.selMount = k; return; }   // on one already there: pick it
+    int i; Vector3 p, n;
+    if (!carvePick(i, p, n)) { toast("Click on a part's surface to put an attachment point there."); return; }
+    MountDef mt;
+    mt.type = A.mountType;
+    mt.at = {p.x / U, -p.y / U};
+    if (A.snapOn && gSnap > 0) { mt.at.x = std::round(mt.at.x / gSnap) * gSnap; mt.at.y = std::round(mt.at.y / gSnap) * gSnap; }
+    mt.atZ = (p.z - bodyZ(i)) / U;
+    mt.nx = n.x; mt.ny = -n.y; mt.nz = n.z;   // out of the surface (design y points down)
+    auto r3 = [](double& v) { if (std::fabs(v) < 1e-4) v = 0; };
+    r3(mt.nx); r3(mt.ny); r3(mt.nz);
+    auto& b = A.design.bodies[i];
+    b.mounts.push_back(mt);
+    A.sel = {1, i, -1}; A.selMount = (int)b.mounts.size() - 1;
+    commit();
+    toast("Attachment point: " + mt.type + ". Change its kind in the panel; attachments made for that kind fit it.");
+}
+void drawMountOverlay() {
+    if (A.mode != Mode::Build) return;
+    bool tool = A.tool == Tool::Mount;
+    for (size_t i = 0; i < A.design.bodies.size(); i++) {
+        const BodyDef& b = A.design.bodies[i];
+        bool sel = A.sel.kind == 1 && A.sel.idx == (int)i;
+        for (size_t k = 0; k < b.mounts.size(); k++) {
+            const MountDef& mt = b.mounts[k];
+            bool picked = sel && A.selMount == (int)k;
+            Color c = picked ? Color{255, 190, 70, 255} : Color{120, 220, 255, (unsigned char)(tool || sel ? 255 : 140)};
+            Vector2 s = toScreen(toWorld((int)i, mt.at.x, mt.at.y, mt.atZ));
+            Vector2 e = toScreen(toWorld((int)i, mt.at.x + mt.nx * 8, mt.at.y + mt.ny * 8, mt.atZ + mt.nz * 8));
+            DrawLineEx(s, e, 2, c);
+            float r = picked ? 6.f : 4.5f;
+            Vector2 q[4] = {{s.x, s.y - r}, {s.x + r, s.y}, {s.x, s.y + r}, {s.x - r, s.y}};
+            for (int j = 0; j < 4; j++) DrawLineEx(q[j], q[(j + 1) % 4], 2, c);
+            if (tool || sel) viewText(mt.type.c_str(), s.x + 9, s.y - 18, 12, c);
+        }
+        if (b.rail.on && (sel || tool)) {   // a rail: its name where it starts
+            Vector2 s = toScreen(toWorld((int)i, b.rail.a.x, b.rail.a.y, 0));
+            viewText(TextFormat("Picatinny, %d slots", (int)mounts::railSlots(b).size()), s.x, s.y - 30, 12, Color{120, 220, 255, 220});
+        }
+    }
+    if (tool && mouseInViewport() && !ImGui::GetIO().WantCaptureMouse) {
+        int i; Vector3 p, n;
+        if (carvePick(i, p, n)) {   // where it would go
+            Vector2 s = toScreen(p), e = toScreen(Vector3Add(p, Vector3Scale(n, 8 * U)));
+            DrawLineEx(s, e, 2, Color{120, 220, 255, 200});
+            DrawCircleLinesV(s, 5, Color{120, 220, 255, 200});
+            viewText(A.mountType.c_str(), s.x + 9, s.y - 18, 12, Color{120, 220, 255, 200});
+        }
+    }
 }

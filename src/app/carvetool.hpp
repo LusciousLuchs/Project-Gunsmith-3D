@@ -8,4 +8,6 @@ bool carvePick(int& body, Vector3& p, Vector3& n);  // the part surface under th
 void carveInput(bool overUI);                       // Build mode, Carve tool: press on a surface, drag to size, release
 void drawCarveOverlay();
 bool cutPickInput(bool overUI);                    // "Pick cuts in the view": a press on a cut picks it (a drag moves it)
-std::string cutLabel(const CarveDef& c, int k);    // its name, or "Cut 3"                            // the cutter under the cursor and the selected part's carves
+std::string cutLabel(const CarveDef& c, int k);
+void mountInput(bool overUI);                      // the Mount tool: click a surface to put an attachment point there
+void drawMountOverlay();                           // attachment points (and rail labels) in the designer    // its name, or "Cut 3"                            // the cutter under the cursor and the selected part's carves

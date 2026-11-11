@@ -2,6 +2,7 @@
 // Firing (breech, cartridge, feeding, ignition) and File (save, load, examples). Each shows only what matters
 // for the job at hand; less-used settings fold away.
 #include "carve.hpp"
+#include "mounts.hpp"
 #include "app/usertex.hpp"
 #include "app/pieces.hpp"
 #include "app/app.hpp"
@@ -187,6 +188,59 @@ static void engraveToolPanel() {
     }
     ImGui::Spacing();
 }
+// A Picatinny rail: which way it faces, how long, its slots
+static void railSection(BodyDef& b) {
+    if (!b.rail.on || !section("Picatinny rail", true)) return;
+    double L = std::hypot(b.rail.b.x - b.rail.a.x, b.rail.b.y - b.rail.a.y);
+    ImGui::TextDisabled("%s long, %d slots (MIL-STD-1913: 10.01 mm apart, 21.2 mm wide).", fmtQ(Q::Length, L).c_str(), (int)mounts::railSlots(b).size());
+    static const char* faces[] = {"On top", "Underneath", "On the right side", "On the left side"};
+    int f = b.rail.face;
+    prop("Faces", "Which way attachments on it point. On a side, the rail lies flat against the part it's welded to.");
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::Combo("##railface", &f, faces, 4) && f != b.rail.face) {
+        int bi = A.design.bodyIndex(b.rail.base);
+        double z = bi >= 0 ? mounts::sideRailZ(A.design.bodies[bi], f) : b.z;
+        if ((f <= 1) != (b.rail.face <= 1) && bi < 0) z = b.z;
+        b.rail.face = f; b.z = z;
+        mounts::regenRail(b);
+        editedAny = true;
+    }
+    double len = L;
+    if (pNumU("Length##rail", len, 1, Q::Length, -1, "Longer or shorter, from where it starts: the slots are cut again to match.") && len >= 10) {
+        b.rail.b = {b.rail.a.x + (b.rail.b.x - b.rail.a.x) * len / L, b.rail.a.y + (b.rail.b.y - b.rail.a.y) * len / L};
+        mounts::regenRail(b);
+    }
+    muted("Attachments clamp on anywhere along it, slot to slot. It's a real part: it has weight, and it's welded to what it sits on.");
+}
+
+// Attachment points on this part: their kinds, which way attachments face on them
+static void mountsSection(BodyDef& b) {
+    if (b.mounts.empty() && A.tool != Tool::Mount) return;
+    if (!section(b.mounts.empty() ? "Attachment points" : TextFormat("Attachment points (%d)###mounts", (int)b.mounts.size()), true)) return;
+    if (b.mounts.empty()) { muted("None yet: click this part's surface with the Mount tool."); return; }
+    if (A.selMount >= (int)b.mounts.size()) A.selMount = -1;
+    for (int k = 0; k < (int)b.mounts.size(); k++)
+        if (ImGui::Selectable(TextFormat("%s##mt%d", b.mounts[k].type.c_str(), k), A.selMount == k)) A.selMount = A.selMount == k ? -1 : k;
+    if (A.selMount < 0) { muted("Click one to change it."); return; }
+    MountDef& m = b.mounts[A.selMount];
+    prop("Kind", "Attachments fit points of the same kind. Pick a common one or type your own\n(a maker's own mount, say): the attachment designer will offer the same names.");
+    char tb[64]; std::snprintf(tb, sizeof tb, "%s", m.type.c_str());
+    ImGui::SetNextItemWidth(-28 * S());
+    if (ImGui::InputText("##mtype", tb, sizeof tb)) { m.type = tb; A.mountType = m.type; }
+    if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+    ImGui::SameLine(0, 2 * S());
+    if (ImGui::BeginCombo("##mtypes", nullptr, ImGuiComboFlags_NoPreview)) {
+        for (auto& t : mounts::commonMountTypes()) if (ImGui::Selectable(t.c_str(), m.type == t)) { m.type = t; A.mountType = t; editedAny = true; }
+        ImGui::EndCombo();
+    }
+    pNum("Turn##mount", m.spin, 5, "%.0f\xc2\xb0", "Which way an attachment on it faces, turned about the point.");
+    pNumU("X##mount", m.at.x, 0.5, Q::Length, -1, "Along the gun: + toward the muzzle.", SIGNED);
+    double y = -m.at.y;
+    if (pNumU("Y##mount", y, 0.5, Q::Length, -1, "+ up.", SIGNED)) m.at.y = -y;
+    pNumU("Z##mount", m.atZ, 0.5, Q::Length, -1, "Across, from the part's middle: + toward the gun's right side.", SIGNED);
+    if (dangerButton("Remove##mount", {-1, 0})) { b.mounts.erase(b.mounts.begin() + A.selMount); A.selMount = -1; editedAny = true; }
+}
+
 // The part's carves: pick one to change it.
 static void carvesSection(BodyDef& b) {
     if (!section(b.carves.empty() ? "Carves" : TextFormat("Carves (%d)###carves", (int)b.carves.size()), !b.carves.empty() || A.tool == Tool::Carve)) return;
@@ -693,6 +747,8 @@ static void inspectPart(BodyDef& b) {
         if (tipHover()) ImGui::SetTooltip("Drag, or double-click to type a value.");
     }
 
+    railSection(b);
+    mountsSection(b);
     carvesSection(b);
 
     bool surfOpen = section("Surface", !b.texture.empty());

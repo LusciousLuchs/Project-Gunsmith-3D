@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.17-alpha
+
+### New (attachments, part 1: mounts on your guns)
+- **Rail tool:** drag along the top of a part to lay a Picatinny rail on it, any length, slotted to the standard (10.01 mm apart, 21.2 mm wide). It's a real part: it has weight, it's welded to what it sits on, and it works as a ruler. Put it underneath or on either side from its panel; change its length there and the slots are cut again.
+- **Mount tool:** click any surface to put an attachment point there: a bayonet lug, a Warsaw Pact side rail, a muzzle thread, or a kind you name yourself (a maker's own mount). Attachments will fit points of the same kind.
+- Coming next: the attachment and scope designer, then fitting attachments to guns from crates on the range.
+
 ## 0.4.16-alpha
 
 ### New
