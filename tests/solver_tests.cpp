@@ -5,6 +5,7 @@
 #include "career.hpp"
 #include "places.hpp"
 #include "npcai.hpp"
+#include "doors.hpp"
 #include "map.hpp"
 #include "reliability.hpp"
 #include "version.hpp"
@@ -2714,6 +2715,43 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void doorsBlock() {
+    std::printf("doorsBlock\n");
+    // a wall across the way with a 1 m doorway, a wooden door in it
+    gmap::Map m; m.brushes.push_back(gmap::makeBox({-50, -1, -50}, {50, 0, 50}, 0));
+    m.brushes.push_back(gmap::makeBox({4, 0, -10}, {4.5, 3, -0.5}, 0));
+    m.brushes.push_back(gmap::makeBox({4, 0, 0.5}, {4.5, 3, 10}, 0));
+    m.brushes.push_back(gmap::makeBox({4, 2.2, -0.5}, {4.5, 3, 0.5}, 0));
+    gmap::Entity d; d.type = "door"; d.pos = {4.25, 0, 0}; d.yaw = 0; d.width = 1.0; d.ref = "wood";
+    m.ents.push_back(d);
+    double t = doors::ray(m, {0, 1.5, 0}, {1, 0, 0}, 20);
+    CHECK(std::fabs(t - 4.25) < 0.01, "a shut door stops a bullet");
+    CHECK(doors::ray(m, {0, 2.5, 0}, {1, 0, 0}, 20) < 0, "but not over its top");
+    gmap::Map glass = m; glass.ents[0].ref = "glass";
+    CHECK(doors::ray(glass, {0, 1.5, 0}, {1, 0, 0}, 20) < 0, "a glass door lets bullets and sight through");
+    // an NPC behind it doesn't see you
+    unsigned rng = 1; std::vector<npcai::Event> ev;
+    gmap::V3 youFeet{10, 0, 0}, youEye{10, 1.62, 0};
+    NpcDef h = npcPreset("human"); h.behaviour = "chase"; h.attack = "melee"; h.reach = 1.2; h.damage = 25;
+    std::vector<npcai::Actor> A{npcai::spawn(h, {0, 0, 0}, 0, nullptr)};
+    for (int k = 0; k < 120; k++) { doors::swing(m, 1.0 / 60); ev.clear(); npcai::think(A, m, youEye, youFeet, true, 1.0 / 60, ev, rng); }
+    CHECK(!A[0].aware, "an NPC doesn't see you through a shut door");
+    // it hears a shot, opens the door and comes through
+    npcai::hear(A, youFeet, 50);
+    bool struck = false, opened = false;
+    for (int k = 0; k < 900 && !struck; k++) {
+        doors::swing(m, 1.0 / 60); ev.clear(); npcai::think(A, m, youEye, youFeet, true, 1.0 / 60, ev, rng);
+        opened = opened || doors::isOpen(m, 0);
+        for (auto& e : ev) if (e.kind == npcai::Event::Melee) struck = true;
+    }
+    std::printf("  (door opened: %s, reached you: %s, at x %.1f)\n", opened ? "yes" : "no", struck ? "yes" : "no", A[0].body.feet.x);
+    CHECK(opened && struck, "an NPC opens a shut door in its way and comes through");
+    // the player is kept out of a shut one
+    gmap::Map m2 = m; gmap::Player p; p.feet = {4.1, 0, 0};
+    doors::step(m2, p, 1.0 / 60);
+    CHECK(p.feet.x < 4.25 - 0.29, "a shut door keeps you out");
+}
+
 static void shotSounds() {
     std::printf("Shot sounds\n");
     auto cart = [](const char* n) { for (auto& c : cartridgePresets()) if (c.name == n) return c; return Cartridge(); };
@@ -2792,6 +2830,7 @@ int main() {
     careerStages();
     mapsCarryNpcs();
     npcsAlive();
+    doorsBlock();
     npcPaths();
     armFreedom();
     cartridgeSharing();

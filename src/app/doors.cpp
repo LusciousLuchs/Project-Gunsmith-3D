@@ -13,25 +13,9 @@
 namespace doors {
 namespace {
 using gmap::V3;
-constexpr double HEIGHT = 2.1, THICK = 0.05, PI_D = 3.14159265358979;
-
-struct State { double open = 0, target = 0, sign = 1; };   // open 0 shut .. 1 swung a quarter turn; sign: which way
-std::map<int, State> gState;
-const gmap::Map* gMap = nullptr;
-size_t gCount = 0;
-State& state(const gmap::Map& m, int i) {
-    if (&m != gMap || m.ents.size() != gCount) { gState.clear(); gMap = &m; gCount = m.ents.size(); }   // (another map, or it changed)
-    return gState[i];
-}
+constexpr double PI_D = 3.14159265358979;
 V3 facingDir(const gmap::Entity& e) { double a = e.yaw * PI_D / 180; return {std::cos(a), 0, std::sin(a)}; }
 V3 across(const gmap::Entity& e) { V3 f = facingDir(e); return {-f.z, 0, f.x}; }
-// the slab's hinge and its free end on the floor, for how far open it is
-void slab(const gmap::Entity& e, const State& s, V3& hinge, V3& end) {
-    V3 f = facingDir(e), t = across(e);
-    hinge = e.pos - t * (e.width / 2);
-    double a = s.open * PI_D / 2;
-    end = hinge + (t * std::cos(a) + f * (std::sin(a) * s.sign)) * e.width;
-}
 
 // ---- the doors' own pictures (a whole door face, not a repeating tile)
 float hashf(int x, int y, int s) {
@@ -94,60 +78,12 @@ Texture2D doorTexture(int style) {   // 0 wood, 1 metal, 2 glass (its frame)
 int styleOf(const gmap::Entity& e) { return e.ref == "metal" ? 1 : e.ref == "glass" ? 2 : 0; }
 }  // namespace
 
-int facing(const gmap::Map& m, V3 eye, V3 look) {
-    int best = -1; double bd = 1e9;
-    double ll = std::hypot(look.x, look.z);
-    if (ll < 1e-6) return -1;
-    for (int i = 0; i < (int)m.ents.size(); i++) {
-        const auto& e = m.ents[i];
-        if (e.type != "door") continue;
-        V3 h, q; slab(e, state(m, i), h, q);
-        V3 mid = (h + q) * 0.5;
-        double dx = mid.x - eye.x, dz = mid.z - eye.z, d = std::hypot(dx, dz);
-        if (d > 2.0 || std::fabs(mid.y + 1.0 - eye.y) > 2) continue;
-        double lk = d < 1e-6 ? 1 : (dx * look.x + dz * look.z) / (d * ll);
-        if (lk < 0.5) continue;
-        if (d - lk < bd) { bd = d - lk; best = i; }
-    }
-    return best;
-}
-bool isOpen(const gmap::Map& m, int i) { return i >= 0 && i < (int)m.ents.size() && state(m, i).target > 0.5; }
-void toggle(const gmap::Map& m, int i, V3 from) {
-    if (i < 0 || i >= (int)m.ents.size()) return;
-    State& s = state(m, i);
-    if (s.target > 0.5) { s.target = 0; return; }
-    V3 f = facingDir(m.ents[i]);
-    double side = (from.x - m.ents[i].pos.x) * f.x + (from.z - m.ents[i].pos.z) * f.z;
-    if (s.open < 0.02) s.sign = side >= 0 ? -1 : 1;   // (away from whoever opens it)
-    s.target = 1;
-}
-void step(const gmap::Map& m, gmap::Player& p, float dt) {
-    for (int i = 0; i < (int)m.ents.size(); i++) {
-        const auto& e = m.ents[i];
-        if (e.type != "door") continue;
-        State& s = state(m, i);
-        double sp = 2.2 * dt;
-        s.open += std::clamp(s.target - s.open, -sp, sp);
-        if (p.feet.y > e.pos.y + HEIGHT || p.feet.y + 1.0 < e.pos.y) continue;
-        // keep the player's body (a circle on the floor) out of the slab
-        V3 h, q; slab(e, s, h, q);
-        double ux = q.x - h.x, uz = q.z - h.z, L2 = ux * ux + uz * uz;
-        double t = L2 > 0 ? std::clamp(((p.feet.x - h.x) * ux + (p.feet.z - h.z) * uz) / L2, 0.0, 1.0) : 0;
-        double cx = h.x + ux * t, cz = h.z + uz * t, dx = p.feet.x - cx, dz = p.feet.z - cz, d = std::hypot(dx, dz);
-        const double R = 0.3;
-        if (d < R) {
-            if (d < 1e-6) { dx = -uz; dz = ux; d = std::hypot(dx, dz); }
-            p.feet.x = cx + dx / d * R; p.feet.z = cz + dz / d * R;
-        }
-    }
-}
 void draw(const gmap::Map& m, int selected) {
     for (int i = 0; i < (int)m.ents.size(); i++) {
         const auto& e = m.ents[i];
         if (e.type != "door") continue;
-        const State& s = state(m, i);
         V3 f = facingDir(e), t = across(e), h, q;
-        slab(e, s, h, q);
+        slab(m, i, h, q);
         Color frame{58, 52, 46, 255};
         if (i == selected) frame = Color{255, 205, 60, 255};
         // the frame: two jambs and a lintel

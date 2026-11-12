@@ -1,6 +1,7 @@
 // Gunsmith3D - NPCs alive on a map (see npcai.hpp).
 #include "npcai.hpp"
 #include "armor.hpp"
+#include "doors.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,7 +18,9 @@ bool clearLine(const gmap::Map& m, V3 a, V3 b) {
     V3 d = b - a; double L = gmap::len(d);
     if (L < 1e-6) return true;
     gmap::Hit h = gmap::rayMap(m, a, d * (1 / L), L);
-    return h.brush < 0 || h.t >= L - 0.15;
+    if (h.brush >= 0 && h.t < L - 0.15) return false;
+    double dt = doors::ray(m, a, d * (1 / L), L);   // (a shut wood or steel door hides you; glass doesn't)
+    return dt < 0 || dt >= L - 0.15;
 }
 // Is the way clear for its body (above the height it can step up) for `L` metres along `dir`?
 bool wayClear(const Actor& a, const gmap::Map& m, V3 dir, double L) {
@@ -267,6 +270,11 @@ void think(std::vector<Actor>& actors, const gmap::Map& map, V3 eye, V3 feet, bo
             in.forward = std::cos(d) * k; in.right = std::sin(d) * k;
         }
         gmap::playerStep(a.body, map, in, dt, a.tune);
+        {   // doors: it can't walk through one, so it opens a shut one it walks into
+            int door = -1;
+            if (doors::pushOut(map, a.body.feet, a.tune.halfWidth + 0.05, a.tune.standH, &door) && move && !doors::isOpen(map, door))
+                doors::toggle(map, door, a.body.feet);
+        }
         a.stuckT = move && gmap::len(flat(a.body.vel)) < 0.15 ? a.stuckT + dt : 0;   // (pressing on and getting nowhere: plan again)
         a.walkPhase += gmap::len(flat(a.body.vel)) * dt * 2 * PI_A / std::max(0.4, a.tune.standH * 0.9);
         // attacking

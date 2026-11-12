@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.5-alpha
+
+- **Doors stop bullets.** A shut wood or steel door takes the shot (steel ones ding). Glass doors don't stop anything.
+- **Doors hide you.** NPCs can't see you through a shut wood or steel door, but they can still hear your shots.
+- **NPCs open doors.** An NPC that walks into a shut door opens it and comes through, so closing a door won't keep a chasing enemy out. Customers in your shop open doors on their way in and out too.
+- NPCs are kept out of shut doors the same way you are.
+
 ## 0.8.4-alpha
 
 ### Maps

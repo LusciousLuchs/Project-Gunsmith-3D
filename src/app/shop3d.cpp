@@ -209,6 +209,10 @@ void stepWalkers(float dt) {
             if (stp >= d - 1e-6) w.path.erase(w.path.begin());
         }
         w.speed = dt > 0 ? moved / dt : 0;
+        if (moved > 0) {   // a shut door in their way: they open it
+            gmap::V3 probe = w.pos; int door = -1;
+            if (doors::pushOut(ME.map, probe, 0.45, 1.7, &door) && !doors::isOpen(ME.map, door)) doors::toggle(ME.map, door, w.pos);
+        }
         w.phase += moved * 2 * 3.14159265358979 / 0.8;
         if (w.path.empty()) {
             if (w.leaving) { it = gWalkers.erase(it); continue; }

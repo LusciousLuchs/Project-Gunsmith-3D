@@ -244,7 +244,8 @@ void stepBullets(double dt) {
                 }
                 if (ha >= 0) {
                     gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L);
-                    if (mh.brush < 0 || mh.t / L > bestS) {   // (and not a wall in front of it)
+                    double dt0 = doors::ray(R.map, b.p, step * (1 / L), L);
+                    if ((mh.brush < 0 || mh.t / L > bestS) && (dt0 < 0 || dt0 / L > bestS)) {   // (and not a wall or a shut door in front of it)
                         auto& act = R.actors[ha];
                         const NpcBone& bone = act.def.bones[hb];
                         double dmg = npcai::bulletDamage(b.mass, gmap::len(b.v), bone.vital, bone.armor);
@@ -264,7 +265,8 @@ void stepBullets(double dt) {
                 double sAlong;
                 if (segSeg(b.p, b.p + step, feet + V3{0, 0.25, 0}, eye - V3{0, 0.1, 0}, &sAlong) < 0.28) {
                     gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L);
-                    if (mh.brush < 0 || mh.t / L > sAlong) {
+                    double dt0 = doors::ray(R.map, b.p, step * (1 / L), L);
+                    if ((mh.brush < 0 || mh.t / L > sAlong) && (dt0 < 0 || dt0 / L > sAlong)) {
                         double v2 = gmap::len(b.v);
                         double dmg = b.dmg > 0 ? b.dmg : 0.5 * b.mass * v2 * v2 / 60;   // (an NPC's gun hurts you less than its bullet's energy would say: a game, not a simulation)
                         R.health -= armor::absorb(R.armor, dmg); R.hurtT = 0.35;
@@ -275,6 +277,14 @@ void stepBullets(double dt) {
             }
             if (L > 1e-9) {
                 gmap::Hit hit = gmap::rayMap(R.map, b.p, step * (1 / L), L);
+                int doorHit = -1;
+                double doorT = doors::ray(R.map, b.p, step * (1 / L), L, &doorHit);
+                if (doorT >= 0 && (hit.brush < 0 || doorT < hit.t)) {   // a shut door (wood or steel) stops it
+                    // (no bullet hole: it would hang in the air once the door swings)
+                    if (R.map.ents[doorHit].ref == "metal") { R.lastHit = "Ding! (a steel door)"; R.lastHitT = 1.2; }
+                    b.life = -1;
+                    break;
+                }
                 if (hit.brush >= 0) {
                     V3 at = b.p + step * (hit.t / L);
                     int mat = R.map.brushes[hit.brush].faces[hit.face].mat;
