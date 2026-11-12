@@ -1996,7 +1996,7 @@ static void reliabilityTimeout() {
     std::printf("reliabilityTimeout\n");
     sim::ReliabilityOptions o;
     o.rounds = 30;
-    o.stallSeconds = 0.05;   // (far too short for any gun: it must give up, quickly, with the reason)
+    o.stallSeconds = 1e-6;   // (far too short for any machine: it must give up at once, with the reason)
     auto t0 = std::chrono::steady_clock::now();
     auto R = sim::runReliability(loadPreset("blowback"), o);
     double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
