@@ -513,6 +513,16 @@ static void inspectPart(BodyDef& b) {
             }
             if (ImGui::SmallButton(TextFormat("Its usual colour##mc"))) { b.color = mt.color; b.texture.clear(); editedAny = true; }
             if (tipHover()) ImGui::SetTooltip("Paint the part as %s usually looks (takes off a picture on it).", mt.name);
+            auto piece = weldedWith(A.design, A.sel.idx);
+            if (piece.size() > 1) {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Whole piece##mw")) {   // every part welded to it: one material (a slide and all its pieces)
+                    for (int k : piece) A.design.bodies[k].material = b.material;
+                    editedAny = true;
+                    toast(std::string("The whole piece is ") + mt.name + " now (" + std::to_string(piece.size()) + " parts).");
+                }
+                if (tipHover()) ImGui::SetTooltip("Make every part welded to this one %s too (%d parts): a slide is often several.", mt.name, (int)piece.size());
+            }
         }
         if (!b.fixed) {
             double autoMass;

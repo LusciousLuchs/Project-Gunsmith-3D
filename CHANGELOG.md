@@ -15,7 +15,7 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - **It changes how the gun works.** A part weighs what its material weighs, so the gun kicks differently and its moving parts move at different speeds. Measured on the blowback pistol with its whole slide changed: steel 9.1 m/s, brass 8.4, aluminum 24.8, polymer 44.1. Light slides slam back hard, which is why real blowback slides are steel.
 - **It changes how parts slide on each other:** rubber grips, polymer and brass slip easily, aluminum rubs harder.
 - **Career mode:** the material sets each part's cost, and how long it takes to make (wood is slow to shape, polymer is quick).
-- **Its usual colour**, with one click.
+- **Its usual colour** with one click, and **Whole piece** to give every part welded to it the same material (a slide is often several parts).
 - A weight you type in still wins over the material.
 
 ### New: your recorded Mosin bolt
