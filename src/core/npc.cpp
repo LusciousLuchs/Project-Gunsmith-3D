@@ -78,6 +78,32 @@ void npcAimBone(NpcDef& n, int i, const double dir[3]) {
     b.turn = std::atan2(q[0], q[1]) / D2R_N;
 }
 
+void npcRotateBone(NpcDef& n, int i, const double axis[3], double deg) {
+    if (i < 0 || i >= (int)n.bones.size()) return;
+    double l = std::sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+    if (l < 1e-9 || std::fabs(deg) < 1e-12) return;
+    double k[3] = {axis[0] / l, axis[1] / l, axis[2] / l}, a = deg * D2R_N, c = std::cos(a), s = std::sin(a), t = 1 - c;
+    M3 Q = {{{t * k[0] * k[0] + c, t * k[0] * k[1] - s * k[2], t * k[0] * k[2] + s * k[1]},
+             {t * k[0] * k[1] + s * k[2], t * k[1] * k[1] + c, t * k[1] * k[2] - s * k[0]},
+             {t * k[0] * k[2] - s * k[1], t * k[1] * k[2] + s * k[0], t * k[2] * k[2] + c}}};   // (Rodrigues)
+    auto pose = npcPose(n);
+    NpcBone& b = n.bones[i];
+    M3 F, P = ident();
+    for (int r = 0; r < 3; r++) { F.m[r][0] = pose[i].x[r]; F.m[r][1] = pose[i].y[r]; F.m[r][2] = pose[i].z[r]; }
+    if (i != 0 && b.parent >= 0 && b.parent < i) {
+        const NpcBoneAt& p = pose[b.parent];
+        for (int r = 0; r < 3; r++) { P.m[r][0] = p.x[r]; P.m[r][1] = p.y[r]; P.m[r][2] = p.z[r]; }
+    } else if (i == 0) P = local(n.rootBend, n.rootTurn, 0);
+    M3 Fn = mul(Q, F), L{};
+    for (int r = 0; r < 3; r++) for (int cc = 0; cc < 3; cc++) { L.m[r][cc] = 0; for (int q = 0; q < 3; q++) L.m[r][cc] += P.m[q][r] * Fn.m[q][cc]; }   // P^T Fn
+    // L = rotZ(-turn) rotX(bend) rotY(twist): its y column is (sin turn cos bend, cos turn cos bend, sin bend)
+    double bend = std::asin(std::clamp(L.m[2][1], -1.0, 1.0)), cb = std::cos(bend);
+    double turn = cb > 1e-6 ? std::atan2(L.m[0][1], L.m[1][1]) : b.turn * D2R_N;
+    M3 A = mul(rotZ(-turn), rotX(bend)), T{};
+    for (int r = 0; r < 3; r++) for (int cc = 0; cc < 3; cc++) { T.m[r][cc] = 0; for (int q = 0; q < 3; q++) T.m[r][cc] += A.m[q][r] * L.m[q][cc]; }   // A^T L = rotY(twist)
+    b.bend = bend / D2R_N; b.turn = turn / D2R_N; b.twist = std::atan2(T.m[0][2], T.m[0][0]) / D2R_N;
+}
+
 void npcMirrorBone(NpcDef& n, int i) {
     if (i <= 0 || i >= (int)n.bones.size()) return;
     // the bone and its children (they come after it), copied with sides and turns swapped
@@ -461,6 +487,13 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
         }
         between("Glasses bridge", -(ex - lw) - 3, y + 6, zl + 1, (ex - lw) + 3, y + 6, zl + 1, 2.6, "cylinder", 1, 1);
     }
+    // the joints as you turned them (the rotation rings): each body bone keeps its bend, turn and twist
+    if (keep)
+        for (auto& g : keep->bones) {
+            if (g.gen || !npcCoreBone(g.name)) continue;
+            int k = find(g.name.c_str());
+            if (k >= 0) { n.bones[k].bend = g.bend; n.bones[k].turn = g.turn; n.bones[k].twist = g.twist; }
+        }
     // your own gear, kept: on the bone of the same name (else the chest)
     if (keep)
         for (size_t i = 0; i < keep->bones.size(); i++) {

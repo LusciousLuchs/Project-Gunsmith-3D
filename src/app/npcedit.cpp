@@ -1,5 +1,6 @@
 // Gunsmith3D - the NPC editor (see npcedit.hpp).
 #include "app/npcedit.hpp"
+#include "app/gizmo.hpp"
 #include "app/app.hpp"
 #include "app/gfx.hpp"
 #include "app/paths.hpp"
@@ -54,6 +55,7 @@ Vector2 toScreenV(Vector3 w) {
     return {(q.x / q.w + 1) / 2 * vw, TOOLBAR_H + (1 - q.y / q.w) / 2 * vh};
 }
 // the bone nearest the ray, within its thickness
+Rings gRings;   // the selected bone's rotation rings
 int pickBone(Ray r) {
     auto P = npcPose(NE.npc);
     int best = -1; float bt = 1e30f;
@@ -230,6 +232,27 @@ void npcEditorUpdate(float dt, bool modal) {
     }
     if (NE.sel >= (int)NE.npc.bones.size()) NE.sel = 0;
     auto P = npcPose(NE.npc);
+    {   // the selected bone's rotation rings, at its joint: drag one to turn the bone about that axis
+        static NpcDef snap;
+        ToScreen ts = [](Vector3 w) { return toScreenV(w); };
+        if (gRings.axis < 0) {
+            gRings.c = W(P[NE.sel].a);
+            gRings.ax[0] = Vector3Normalize(V(P[NE.sel].x)); gRings.ax[1] = Vector3Normalize(V(P[NE.sel].y)); gRings.ax[2] = Vector3Normalize(V(P[NE.sel].z));
+            gRings.label[0] = "Bend "; gRings.label[1] = "Twist "; gRings.label[2] = "Swing ";
+            ringsFit(gRings, ts, 55);
+        }
+        if (gRings.axis >= 0) {
+            if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { gRings.axis = -1; npcCommit(); return; }
+            double deg = ringsDrag(gRings, m, IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL));
+            NE.npc = snap;
+            Vector3 a = gRings.ax[gRings.axis];
+            double ax[3] = {a.x, a.y, a.z};
+            npcRotateBone(NE.npc, NE.sel, ax, deg);
+            return;
+        }
+        gRings.hot = overUI || NE.aiming ? -1 : ringsPick(gRings, ts, m);
+        if (gRings.hot >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { snap = NE.npc; ringsBegin(gRings, gRings.hot, ts, m); return; }
+    }
     Vector2 endS = toScreenV(W(P[NE.sel].b));
     if (NE.aiming) {   // the bone points at the mouse, in the plane through its end facing you (Shift: and stretches to it)
         if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { NE.aiming = false; npcCommit(); return; }
@@ -529,7 +552,8 @@ void npcEditorRender() {
         Vector2 a = toScreenV(W(P[NE.sel].a));
         DrawText(NE.npc.bones[NE.sel].name.c_str(), (int)a.x + 10, (int)a.y + 6, 14, Color{230, 232, 236, 255});
     }
-    DrawText("Right drag: turn   Wheel: zoom   Middle drag: up and down   Click a bone to select it   Ctrl+Z: undo", 12, GetScreenHeight() - 26, 14, Color{170, 176, 186, 255});
+    if (NE.sel < (int)P.size()) ringsDraw(gRings, [](Vector3 w) { return toScreenV(w); }, cam.position);
+    DrawText("Right drag: turn   Wheel: zoom   Middle drag: up and down   Click a bone to select it   Drag a ring to turn it (Ctrl: 15\xc2\xb0 steps)   Ctrl+Z: undo", 12, GetScreenHeight() - 26, 14, Color{170, 176, 186, 255});
     DrawText("1.8 m", (int)toScreenV({-12, 18.3f, 0}).x - 16, (int)toScreenV({-12, 18.3f, 0}).y - 16, 14, Color{220, 150, 90, 255});
 }
 

@@ -10,6 +10,7 @@
 #include "app/gfx.hpp"
 #include "app/audio.hpp"
 #include "app/view.hpp"
+#include "app/editor.hpp"
 #include "app/render.hpp"
 #include "app/overlay.hpp"
 #include "app/bench.hpp"
@@ -180,6 +181,7 @@ int main(int argc, char** argv) {
     if (direct) enterWorkshop(false);
     if (sideArg) sideView();
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
+    if (const char* c = std::getenv("GUNSMITH_PARTRING")) { int ax = 0; double dg = 0; if (std::sscanf(c, "%d,%lf", &ax, &dg) == 2) partRingTest(ax, dg); }   // (tests) the selected part's rings
     if (carveTool) A.tool = Tool::Carve;
     if (solidArg) A.xray = false;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
@@ -202,7 +204,8 @@ int main(int argc, char** argv) {
         if (std::sscanf(std::getenv("GUNSMITH_ANIM"), "%63s %lf", slot, &t) >= 1) { A.animEdit = true; A.animSlot = slot; A.animT = t; }
     }
     if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); if (std::getenv("GUNSMITH_POSEHAND")) poseFocusHand(std::atoi(std::getenv("GUNSMITH_POSEHAND")));
-        if (const char* c = std::getenv("GUNSMITH_POSECAM")) std::sscanf(c, "%f %f %f", &A.yaw, &A.pitch, &A.dist); }   // (screenshots) "yaw pitch dist" round the hand
+        if (const char* c = std::getenv("GUNSMITH_POSECAM")) std::sscanf(c, "%f %f %f", &A.yaw, &A.pitch, &A.dist);
+        if (const char* c = std::getenv("GUNSMITH_RINGTEST")) { int id = 0, ax = 0; double dg = 0; if (std::sscanf(c, "%d,%d,%lf", &id, &ax, &dg) == 3) poseRingTest(id, ax, dg); } }   // (screenshots) "yaw pitch dist" round the hand
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();

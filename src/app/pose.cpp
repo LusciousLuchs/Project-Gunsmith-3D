@@ -5,6 +5,9 @@
 #include "app/gfx.hpp"
 #include "app/settings.hpp"
 #include "app/view.hpp"
+#include "app/gizmo.hpp"
+#include <cstdio>
+#include <functional>
 #include "raymath.h"
 #include "hand.hpp"
 #include "app/npcedit.hpp"
@@ -636,6 +639,7 @@ void drawPoseBody() {
     if (CF.ok && CF.n->look.on) { Color red = STRAIN; drawCharacterBody(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // the one-piece body, arms reaching
 }
 
+static void poseRingsDraw();   // (below)
 // the gun's own handles in an animation: its middle (move it) and its muzzle (aim it)
 static Vector3 gunMidWorld() {
     double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
@@ -728,9 +732,164 @@ void drawPoseOverlay() {
         Vector2 s = toScreen(far);
         viewText("Line of sight", s.x + 6, s.y - 18 * CFG.uiScale, 11, Color{255, 120, 110, 255});
     }
+    poseRingsDraw();
 }
 
+// ---------------------------------------------------------------- rotation rings
+// The picked joint's rings: a hand on the gun (its angle round the gun's side, its roll round the grip), an elbow (its
+// swing round the shoulder-wrist line), a finger (curl, spread), the body (turn, tilt) and, in an animation, the gun
+// (muzzle up, turn, roll). Each axis says what it changes; which way is measured at the press by nudging the value.
+namespace {
+struct PJ { std::function<void(int, double)> set; std::function<Vector3(int)> probe; };
+Rings gPR;
+PJ gPJ;
+double gPRsign = 1;
+Pose gPoseSnap;
+std::map<std::string, Animation> gAnimSnap;
+void restoreSnap() { A.design.pose = gPoseSnap; A.design.anims = gAnimSnap; }
+Vector3 tipOf(const HandGeo& g, int digit) {
+    for (auto& b : g.bones) if (b.digit == digit && b.seg == 2) return handPt(g.f, b.b);
+    return g.wrist;
+}
+// set up the rings for joint `id` (A.posePicked's numbering); false if it has none
+bool jointFor(int id, Rings& g, PJ& J) {
+    g.ax[0] = g.ax[1] = g.ax[2] = {0, 0, 0};
+    g.label[0] = g.label[1] = g.label[2] = nullptr;
+    const Pose P = viewPose();
+    Frame F = bodyFrame();
+    auto nrm = [](Vector3 v) { return Vector3Length(v) > 1e-9f ? Vector3Normalize(v) : Vector3{0, 0, 0}; };
+    if (id >= 0 && id <= 5) {   // a hand (or the butt) on the gun
+        int k = id / 2;
+        const HandHold& hv = k == 0 ? P.firing : k == 1 ? P.support : P.butt;
+        if (!hv.on) return false;
+        double z = partZ(hv.part), an = hv.angle * DEG2RAD;
+        g.c = gunPt(hv.at, z);
+        g.ax[0] = nrm(Vector3Subtract(gunPt(hv.at, z + 10), g.c)); g.label[0] = "Angle ";
+        if (k < 2) { g.ax[1] = nrm(Vector3Subtract(gunPt({hv.at.x + std::cos(an) * 10, hv.at.y + std::sin(an) * 10}, z), g.c)); g.label[1] = "Roll "; }
+        J.set = [k](int a, double d) { HandHold& h = *editHand(k); if (a == 0) h.angle += d; else h.twist += d; };
+        J.probe = [k](int a) {
+            HandHold& h = *editHand(k);
+            if (a == 0) { double an2 = h.angle * DEG2RAD; return gunPt({h.at.x + std::cos(an2) * 42, h.at.y + std::sin(an2) * 42}, partZ(h.part)); }
+            return tipOf(limbFor(bodyFrame(), h, k == 0 ? 1 : -1).g, 1);
+        };
+        return true;
+    }
+    if (id == 8 || id == 9) {   // an elbow: swung round the line from the shoulder to the wrist
+        int k = id - 8, side = k == 0 ? 1 : -1;
+        Limb L = limbFor(F, k == 0 ? P.firing : P.support, side);
+        g.ax[0] = nrm(Vector3Subtract(L.arm.w, L.arm.s)); g.label[0] = "Elbow ";
+        g.c = Vector3Add(L.arm.s, Vector3Scale(g.ax[0], Vector3DotProduct(Vector3Subtract(L.arm.e, L.arm.s), g.ax[0])));   // (on the line it swings round)
+        J.set = [k](int, double d) { editHand(k)->elbow += d; };
+        J.probe = [k, side](int) { return limbFor(bodyFrame(), *editHand(k), side).arm.e; };
+        return true;
+    }
+    if ((id == 12 || id == 13) && A.animEdit) {   // the gun, in an animation
+        Vector3 O = gunPt({0, 0}, 0);
+        g.c = gunMidWorld();
+        g.ax[0] = nrm(Vector3Subtract(gunPt({0, 0}, 100), O)); g.label[0] = "Muzzle up ";
+        g.ax[1] = nrm(Vector3Subtract(gunPt({0, -100}, 0), O)); g.label[1] = "Turn ";
+        g.ax[2] = nrm(Vector3Subtract(gunPt({100, 0}, 0), O)); g.label[2] = "Roll ";
+        J.set = [](int a, double d) { if (AnimKey* key = editKey()) key->gun[3 + a] += d; };
+        J.probe = [](int a) { return a < 2 ? muzzleWorld() : gunMidWorld(); };
+        return true;
+    }
+    if (id == 6) {   // the body: turned against the gun, and the muzzle tilted
+        g.c = bp(F, -90, 140, -32);
+        g.ax[0] = F.u; g.label[0] = "Turn ";
+        g.ax[1] = F.r; g.label[1] = "Tilt ";
+        J.set = [](int a, double d) { BodyHold& h = editable(); if (a == 0) h.yaw += d; else h.tilt += d; };
+        J.probe = [](int a) { return a == 0 ? bp(bodyFrame(), 300, 0, 0) : muzzleWorld(); };
+        return true;
+    }
+    if (id >= 20 && A.poseHand >= 0) {   // a finger: curled (all its joints together) and spread
+        int digit = id - 20, k = A.poseHand == 0 ? 0 : 1, side = k == 0 ? 1 : -1;
+        Limb L = limbFor(F, k == 0 ? P.firing : P.support, side);
+        if (!L.g.on) return false;
+        const HandBone* b0 = nullptr;
+        for (auto& b : L.g.bones) if (b.digit == digit && b.seg == 0) b0 = &b;
+        if (!b0) return false;
+        HV dir{b0->b.x - b0->a.x, b0->b.y - b0->a.y, b0->b.z - b0->a.z}, up = b0->up;
+        HV side3{dir.y * up.z - dir.z * up.y, dir.z * up.x - dir.x * up.z, dir.x * up.y - dir.y * up.x};
+        g.c = handPt(L.g.f, b0->a);
+        g.ax[0] = nrm(Vector3Subtract(handPt(L.g.f, {b0->a.x + side3.x, b0->a.y + side3.y, b0->a.z + side3.z}), g.c)); g.label[0] = "Curl ";
+        g.ax[1] = nrm(Vector3Subtract(handPt(L.g.f, {b0->a.x + up.x, b0->a.y + up.y, b0->a.z + up.z}), g.c)); g.label[1] = "Spread ";
+        J.set = [k, digit](int a, double d) {
+            HandHold& h = *editHand(k);
+            if (!h.digitsSet) { digitsOf(h, k == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
+            DigitPose& p = h.digits[digit];
+            const double share[3] = {0.35, 0.4, 0.25};
+            if (a == 0) for (int s2 = 0; s2 < 3; s2++) p.bend[s2] += d * share[s2] * 1.6;   // (the fingertip goes round about as far as the ring)
+            else p.spread += d;
+            clampDigit(digit, p);
+        };
+        J.probe = [k, side, digit](int) { return tipOf(limbFor(bodyFrame(), *editHand(k), side).g, digit); };
+        return true;
+    }
+    return false;
+}
+ToScreen poseTS() { return [](Vector3 w) { return toScreen(w); }; }
+// true while the rings have the mouse
+bool poseRingsInput(bool overUI) {
+    if (gPR.axis >= 0) {
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { gPR.axis = -1; commit(); return true; }
+        double deg = ringsDrag(gPR, GetMousePosition(), IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL));
+        restoreSnap();
+        gPJ.set(gPR.axis, gPRsign * deg);
+        return true;
+    }
+    gPR.hot = -1;
+    if (A.poseDrag >= 0 || A.posePicked < 0) return false;
+    PJ J;
+    if (!jointFor(A.posePicked, gPR, J)) return false;
+    ringsFit(gPR, poseTS(), 55);
+    gPR.hot = overUI ? -1 : ringsPick(gPR, poseTS(), GetMousePosition());
+    if (gPR.hot < 0 || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return false;
+    // the press: make sure what's edited exists (an animation's key at this moment), set it aside, and find which way
+    // the value turns things
+    J.set(gPR.hot, 0);
+    gPoseSnap = A.design.pose; gAnimSnap = A.design.anims;
+    gPJ = J;
+    int a = gPR.hot;
+    Vector3 c = gPR.c, ax = gPR.ax[a];
+    gPRsign = ringsSign([&](double v) { restoreSnap(); gPJ.set(a, v); return gPJ.probe(a); }, c, ax);
+    restoreSnap();
+    ringsBegin(gPR, a, poseTS(), GetMousePosition());
+    return true;
+}
+}  // namespace
+
+// (tests) turn joint `id`'s ring `axis` by `deg`, as a drag would
+void poseRingTest(int id, int axis, double deg) {
+    A.posePicked = id;
+    PJ J;
+    if (!jointFor(id, gPR, J) || Vector3Length(gPR.ax[axis]) < 0.5f) { std::printf("RINGTEST: no ring %d on %d\n", axis, id); return; }
+    J.set(axis, 0);
+    gPoseSnap = A.design.pose; gAnimSnap = A.design.anims;
+    gPJ = J;
+    Vector3 c = gPR.c, ax = gPR.ax[axis];
+    Vector3 before = gPJ.probe(axis);
+    gPRsign = ringsSign([&](double v) { restoreSnap(); gPJ.set(axis, v); return gPJ.probe(axis); }, c, ax);
+    restoreSnap();
+    gPJ.set(axis, gPRsign * deg);
+    Vector3 after = gPJ.probe(axis);
+    // how far round the axis the probe went
+    Vector3 a0 = Vector3Subtract(before, c), a1 = Vector3Subtract(after, c);
+    a0 = Vector3Subtract(a0, Vector3Scale(ax, Vector3DotProduct(a0, ax))); a1 = Vector3Subtract(a1, Vector3Scale(ax, Vector3DotProduct(a1, ax)));
+    double turned = std::atan2(Vector3DotProduct(Vector3CrossProduct(a0, a1), ax), Vector3DotProduct(a0, a1)) * RAD2DEG;
+    std::printf("RINGTEST joint %d axis %d (%s): asked %+.1f, sign %+.0f, the joint turned %+.1f degrees about the ring's axis\n", id, axis, gPR.label[axis] ? gPR.label[axis] : "", deg, gPRsign, turned);
+    commit();
+}
+static void poseRingsDraw() {
+    if (A.S && sim::animPlaying(*A.S)) return;
+    PJ J;
+    if (gPR.axis < 0) {   // (what's picked now: its rings, where it is now)
+        if (A.poseDrag >= 0 || A.posePicked < 0 || !jointFor(A.posePicked, gPR, J)) return;
+        ringsFit(gPR, poseTS(), 55);
+    }
+    ringsDraw(gPR, poseTS(), A.cam.position);
+}
 void poseInput(bool overUI) {
+    if (!(A.S && sim::animPlaying(*A.S)) && poseRingsInput(overUI)) return;
     auto& P = A.design.pose;
     if (A.S && sim::animPlaying(*A.S)) return;   // playing on the gun
     if (A.poseDrag < 0) {

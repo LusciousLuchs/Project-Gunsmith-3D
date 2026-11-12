@@ -1992,6 +1992,31 @@ static void careerStages() {
     }
 }
 
+static void npcRotate() {
+    std::printf("npcRotate\n");
+    NpcDef n = npcPreset("human");
+    int arm = -1;
+    for (int i = 0; i < (int)n.bones.size(); i++) if (n.bones[i].name == "Upper arm (left)") arm = i;
+    CHECK(arm > 0, "the human has a left upper arm");
+    auto before = npcPose(n);
+    double ax[3] = {before[arm].z[0], before[arm].z[1], before[arm].z[2]};   // about its own front axis
+    NpcDef m = n;
+    npcRotateBone(m, arm, ax, 30);
+    auto after = npcPose(m);
+    double c = 0; for (int k = 0; k < 3; k++) c += before[arm].y[k] * after[arm].y[k];
+    double dz = 0; for (int k = 0; k < 3; k++) dz += before[arm].z[k] * after[arm].z[k];
+    std::printf("        (the arm turned %.1f degrees; its axis kept %.4f)\n", std::acos(std::min(1.0, c)) * 180 / 3.14159265, dz);
+    CHECK(std::fabs(std::acos(std::min(1.0, c)) * 180 / 3.14159265 - 30) < 0.5 && dz > 0.9999, "turning a bone 30 degrees about an axis turns it exactly that much, about that axis");
+    double tw[3] = {before[arm].y[0], before[arm].y[1], before[arm].y[2]};
+    NpcDef t = n; npcRotateBone(t, arm, tw, 40);
+    auto tp = npcPose(t);
+    double same = 0; for (int k = 0; k < 3; k++) same += before[arm].y[k] * tp[arm].y[k];
+    CHECK(same > 0.9999 && std::fabs(t.bones[arm].twist - n.bones[arm].twist) > 30, "about its own length: it only twists");
+    NpcDef r = m; npcRotateBone(r, arm, ax, -30);
+    auto rp = npcPose(r);
+    double err = 0; for (size_t i = 0; i < rp.size(); i++) for (int k = 0; k < 3; k++) err = std::max(err, std::fabs(rp[i].b[k] - before[i].b[k]));
+    CHECK(err < 0.01, "turned back, every bone is where it was");
+}
 static void npcDesigns() {
     std::printf("npcDesigns\n");
     for (auto& [k, label] : npcPresets()) {
@@ -2575,6 +2600,7 @@ int main() {
     poseAndGunMoves();
     gasAndOpenBolt();
     magazineShaping();
+    npcRotate();
     npcDesigns();
     careerRules();
     careerStages();

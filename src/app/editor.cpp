@@ -10,8 +10,10 @@
 #include "app/editor.hpp"
 #include "mounts.hpp"
 #include "app/faces.hpp"
+#include "app/gizmo.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -46,6 +48,81 @@ void moveBody(int i, double dx, double dy) {
     if (br.on) for (auto& c : br.more) { if ((c.breech.empty() ? br.breech : c.breech) == d.id) mv(c.face); if (c.chamber == d.id && c.hasMuzzle) mv(c.muzzle); }
 }
 // Turn a part in the side view (about Z) by deg about c: its outline and cuts, and what's attached at points on it.
+// ---------------------------------------------------------------- the selected part's rotation rings
+// Z (toward you): turn it in the side view, with what's attached (as Turn does). X and Y: lean it out of the side
+// view (its Tilt X and Tilt Y).
+namespace {
+Rings gPartR;
+Design gPartSnap;
+double gPartSign = 1;
+bool partRingsShown() {
+    return A.mode == Mode::Build && A.tool == Tool::Select && A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()
+        && A.dragKind == 0 && !A.faceDragging && !A.posing;
+}
+void partRingsSetup() {
+    int i = A.sel.idx;
+    V2 c = centroidOf(A.design.bodies[i]);
+    gPartR.c = W3(c, bodyZ(i));
+    gPartR.ax[0] = {1, 0, 0}; gPartR.ax[1] = {0, 1, 0}; gPartR.ax[2] = {0, 0, 1};
+    gPartR.label[0] = "Lean X "; gPartR.label[1] = "Lean Y "; gPartR.label[2] = "Turn ";
+    ringsFit(gPartR, [](Vector3 w) { return toScreen(w); }, 65);
+}
+void partRingsApply(int axis, double deg) {
+    int i = A.sel.idx;
+    BodyDef& d = A.design.bodies[i];
+    if (axis == 0) d.tiltX = std::remainder(d.tiltX + deg, 360.0);
+    else if (axis == 1) d.tiltY = std::remainder(d.tiltY - deg, 360.0);   // (+ Tilt Y: its front toward you, the other way round the upright)
+    else rotateBody(i, centroidOf(gPartSnap.bodies[i]), deg * gPartSign);
+}
+}  // namespace
+bool partRingsInput(bool overUI) {
+    ToScreen ts = [](Vector3 w) { return toScreen(w); };
+    if (gPartR.axis >= 0) {
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) || A.sel.kind != 1 || A.sel.idx >= (int)gPartSnap.bodies.size()) { gPartR.axis = -1; commit(); return true; }
+        double deg = ringsDrag(gPartR, GetMousePosition(), IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL));
+        A.design = gPartSnap;
+        partRingsApply(gPartR.axis, deg);
+        return true;
+    }
+    gPartR.hot = -1;
+    if (!partRingsShown()) return false;
+    partRingsSetup();
+    gPartR.hot = overUI ? -1 : ringsPick(gPartR, ts, GetMousePosition());
+    if (gPartR.hot < 0 || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return false;
+    gPartSnap = A.design;
+    if (gPartR.hot == 2) {   // which way turning goes on the screen: try a degree on its first corner
+        int i = A.sel.idx;
+        Vector3 c = gPartR.c;
+        gPartSign = ringsSign([&](double v) {
+            A.design = gPartSnap;
+            if (v != 0) rotateBody(i, centroidOf(gPartSnap.bodies[i]), v);
+            return W3(A.design.bodies[i].pts[0], bodyZ(i));
+        }, c, gPartR.ax[2]);
+        A.design = gPartSnap;
+    }
+    ringsBegin(gPartR, gPartR.hot, ts, GetMousePosition());
+    return true;
+}
+void partRingTest(int axis, double deg) {   // (tests) as a drag of ring `axis` by `deg` would
+    if (!partRingsShown()) { std::printf("PARTRING: nothing selected\n"); return; }
+    partRingsSetup();
+    gPartSnap = A.design;
+    int i = A.sel.idx;
+    Vector3 c = gPartR.c;
+    Vector3 p0 = W3(A.design.bodies[i].pts[0], bodyZ(i));
+    gPartSign = ringsSign([&](double v) { A.design = gPartSnap; if (v != 0) rotateBody(i, centroidOf(gPartSnap.bodies[i]), v); return W3(A.design.bodies[i].pts[0], bodyZ(i)); }, c, gPartR.ax[2]);
+    A.design = gPartSnap;
+    partRingsApply(axis, deg);
+    Vector3 p1 = W3(A.design.bodies[i].pts[0], bodyZ(i));
+    double turned = std::atan2(Vector3DotProduct(Vector3CrossProduct(Vector3Subtract(p0, c), Vector3Subtract(p1, c)), {0, 0, 1}), Vector3DotProduct(Vector3Subtract(p0, c), Vector3Subtract(p1, c))) * RAD2DEG;
+    std::printf("PARTRING axis %d by %+.0f: tilt X %.1f, tilt Y %.1f, its first corner went %+.1f degrees round the Z axis\n", axis, deg, A.design.bodies[i].tiltX, A.design.bodies[i].tiltY, turned);
+    commit();
+}
+void partRingsDraw() {
+    if (gPartR.axis < 0) { if (!partRingsShown()) return; partRingsSetup(); }
+    ringsDraw(gPartR, [](Vector3 w) { return toScreen(w); }, A.cam.position);
+}
+
 void rotateBody(int i, V2 c, double deg) {
     BodyDef& d = A.design.bodies[i];
     double a = deg * 3.14159265358979 / 180, cs = std::cos(a), sn = std::sin(a);
@@ -233,6 +310,7 @@ void buildInput(bool overUI) {
     if (A.tool == Tool::Engrave || A.engraving) { engraveInput(overUI); return; }
     if (A.tool == Tool::Scale) { scaleInput(overUI); return; }
     if (A.tool == Tool::Faces || (A.faceDragging && A.tool != Tool::Select)) { facesInput(overUI); return; }
+    if (partRingsInput(overUI)) return;   // the selected part's rotation rings
     if (selectFacesInput(overUI)) return;
     if (A.tool == Tool::Select && A.sel.kind == 1 && A.dragKind == 0 && IsKeyPressed(KEY_E)) { facesInput(overUI); if (A.faceDragging) return; }
     Vector2 m = GetMousePosition();

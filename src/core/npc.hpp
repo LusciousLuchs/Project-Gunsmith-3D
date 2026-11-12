@@ -81,6 +81,9 @@ struct NpcBoneAt { double a[3], b[3], x[3], y[3], z[3]; };
 std::vector<NpcBoneAt> npcPose(const NpcDef& n);
 // Aim bone i so it points along `dir` (world), keeping its twist: what dragging a bone's end does in the editor
 void npcAimBone(NpcDef& n, int i, const double dir[3]);
+// Turn bone i (and so everything hanging off it) by `deg` about `axis` (world, the right-hand way): what the rotation
+// rings do. Its bend, turn and twist are worked out again from the turned frame.
+void npcRotateBone(NpcDef& n, int i, const double axis[3], double deg);
 void npcMirrorBone(NpcDef& n, int i);       // a copy of bone i and everything below it, on the other side
 void npcRemoveBone(NpcDef& n, int i);       // and everything below it (not the root)
 double npcHeight(const NpcDef& n);          // mm, ground to the highest point

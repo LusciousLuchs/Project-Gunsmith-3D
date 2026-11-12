@@ -29,4 +29,5 @@ Pose viewPose();                 // the pose as shown: the hold, or an animation
 int animKeyAt(const Animation& a, double t);   // the key at this moment on the timeline, or -1
 HandHold* editHand(int which);
 AnimKey* editKey();              // editing an animation: its key at the timeline's moment (made there if needed)   // the hand dragging edits (making an animation key at the timeline's moment if needed)
+void poseRingTest(int id, int axis, double deg);   // (tests) turn a joint's ring as a drag would
 void poseFocusHand(int hand);   // close up on a hand (0 firing, 1 support)         // put any missing firing hand where a hand would most likely go

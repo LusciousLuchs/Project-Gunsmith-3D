@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.1-alpha
+
+### Rotation rings
+- **Turn joints and parts with rings.** Pick something and red, green and blue circles appear round it: drag along one to turn it about that axis. Hold **Ctrl** for 15° steps. The angle shows while you turn.
+  - **NPC editor and character maker:** the picked bone, at its joint: bend, twist and swing. Everything hanging off it comes along. Your character keeps the angles you give it.
+  - **Pose and animations:** a hand on the gun (its angle and its roll), an elbow (swung round the arm), a finger (curl and spread), the body (turned and tilted) and, in an animation, the gun itself (muzzle up, turn, roll).
+  - **Designer:** the selected part (Select tool): turn it in the side view, or lean it toward or away from you (Tilt X and Y).
+
 ## 0.7.0-alpha
 
 ### Career mode: your shop in 3D
