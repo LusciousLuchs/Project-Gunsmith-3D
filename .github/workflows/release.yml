@@ -2,7 +2,9 @@
 # Bump the version in CMakeLists.txt (project(... VERSION x.y.z)) and push: this builds the Windows zip, checks the
 # tests pass, and puts it on the repository's Releases page as "Gunsmith3D x.y.z-stage", with the newest section of
 # CHANGELOG.md as its notes. A version that already has a release is skipped, so ordinary pushes do nothing.
-# The game's update check (main menu) looks at the newest release here.
+# Where it's published: the public repository PUBLIC_REPO below (the code stays private here), using the secret
+# RELEASES_TOKEN (a token allowed to write to that repository). Without the secret it publishes here instead.
+# The game's updater (src/app/updater.hpp, update::REPO) looks at the newest release in PUBLIC_REPO.
 name: release
 
 on:
@@ -21,19 +23,24 @@ jobs:
   windows-zip:
     runs-on: ubuntu-24.04
     env:
-      GH_TOKEN: ${{ github.token }}
+      PUBLIC_REPO: LusciousLuchs/Gunsmith3D-Releases
+      RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Which version
         id: v
         run: |
+          if [ -n "$RELEASES_TOKEN" ]; then repo="$PUBLIC_REPO"; tok="$RELEASES_TOKEN"; else repo="$GITHUB_REPOSITORY"; tok="${{ github.token }}"; fi
+          echo "repo=$repo" >> "$GITHUB_OUTPUT"
+          echo "GH_TOKEN=$tok" >> "$GITHUB_ENV"
+          echo "Publishing to $repo"
           v=$(sed -n 's/^project(Gunsmith3D VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           stage=$(sed -n 's/^set(GUNSMITH_STAGE "\([a-z]*\)".*/\1/p' CMakeLists.txt)
           full="$v${stage:+-$stage}"
           echo "full=$full" >> "$GITHUB_OUTPUT"
           echo "stage=$stage" >> "$GITHUB_OUTPUT"
-          if gh release view "v$full" >/dev/null 2>&1; then
+          if GH_TOKEN="$tok" gh release view "v$full" --repo "$repo" >/dev/null 2>&1; then
             echo "v$full is already released: nothing to do."
             echo "skip=1" >> "$GITHUB_OUTPUT"
           fi
@@ -67,5 +74,7 @@ jobs:
       - name: Publish the release
         if: steps.v.outputs.skip != '1'
         run: |
+          target=""
+          [ "${{ steps.v.outputs.repo }}" = "$GITHUB_REPOSITORY" ] && target="--target $GITHUB_SHA"
           gh release create "v${{ steps.v.outputs.full }}" "Gunsmith3D-${{ steps.v.outputs.full }}.zip" \
-            --target "$GITHUB_SHA" --title "Gunsmith3D ${{ steps.v.outputs.full }}" --notes-file notes.md --latest
+            --repo "${{ steps.v.outputs.repo }}" $target --title "Gunsmith3D ${{ steps.v.outputs.full }}" --notes-file notes.md --latest

@@ -75,6 +75,7 @@ App::FacePick pick(Ray r, int only = -1) {
             Vector3 w = Vector3Add(r.position, Vector3Scale(r.direction, t));
             V2 mm = toMM(w);
             if (!sim::inPoly(mm.x, mm.y, outline)) continue;
+            if (!d.carves.empty() && !solidAt(i, mm, depthMM(i, zz) + (k == 1 ? -0.05 : 0.05))) continue;   // a cut opens there: no face
             bt = t; best = {i, k, -1, w};
         }
         int n = (int)d.pts.size();

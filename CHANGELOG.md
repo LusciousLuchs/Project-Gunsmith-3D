@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.6.4-alpha
+
+- **Click through holes:** where you've cut a hole or slot through a part, clicking there picks the part behind it, as you'd expect. Clicking the solid part still picks it (Alt-click for the part behind).
+- Updates now come from the public download page (Gunsmith3D-Releases), so they reach everyone while the game's code stays private.
+
 ## 0.6.3-alpha
 
 ### Fixed

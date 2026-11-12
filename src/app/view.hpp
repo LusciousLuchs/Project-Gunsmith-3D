@@ -10,7 +10,9 @@ Vector2 toScreen(Vector3 p);
 Ray mouseRay();                  // the ray under the cursor, in world space
 V2 mouseMM(float z = 0);
 V2 snapMM(V2 p);
-std::vector<Hit> bodiesUnderMouse();
+std::vector<Hit> bodiesUnderMouse();   // nearest first; a cut through a part is open: the part behind is picked there
+bool solidAt(int body, V2 mm, double zmm);   // is there material of this part at this point (design mm, depth mm)? Cuts are empty
+double depthMM(int body, float worldZ);      // a world depth as this part's depth in mm (undoing its anti-flicker nudge)
 TestHit testPick();
 const Handle* handleAt(Vector2 m);
 void fitView();

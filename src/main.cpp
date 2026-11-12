@@ -453,6 +453,17 @@ int main(int argc, char** argv) {
         EndDrawing();
 
         frame++;
+        if (frames && frame == frames - 1)
+            if (const char* e = std::getenv("GUNSMITH_PICKAT")) {   // (tests) which parts are under this design point (mm, x,y,z)
+                float x = 0, y = 0, z = 0; std::sscanf(e, "%f,%f,%f", &x, &y, &z);
+                Vector2 sp = toScreen(W3({x, y}, z));
+                SetMousePosition((int)sp.x, (int)sp.y);
+            }
+        if (frames && frame == frames && std::getenv("GUNSMITH_PICKAT")) {
+            std::printf("PICK at %.0f,%.0f:", GetMousePosition().x, GetMousePosition().y);
+            for (auto& h : bodiesUnderMouse()) std::printf(" [%s]", A.design.bodies[h.body].name.c_str());
+            std::printf("\n"); std::fflush(stdout);
+        }
         if (frames && frame >= frames) {
             if (!shotPath.empty()) TakeScreenshot(shotPath.c_str());
             break;

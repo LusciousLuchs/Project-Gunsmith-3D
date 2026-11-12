@@ -14,7 +14,7 @@ struct Status {
     std::string latest;   // the newest release's version ("0.6.2-alpha")
     std::string note;     // what went wrong, in plain words
 };
-constexpr const char* REPO = "LusciousLuchs/Project-Gunsmith-3D";
+constexpr const char* REPO = "LusciousLuchs/Gunsmith3D-Releases";   // public: downloads only (the code is private)
 void start();             // check (and if newer, download and install) in the background; nothing on other systems
 Status status();
 bool restart();           // start the new version and quit this one

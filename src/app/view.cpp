@@ -4,9 +4,12 @@
 #include "app/view.hpp"
 #include "app/render.hpp"
 #include "rlgl.h"
+#include "carve.hpp"
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <sstream>
 #include <vector>
 
 static Vector2 mouseLocal() { Vector2 m = GetMousePosition(); return {m.x, m.y - TOOLBAR_H}; }
@@ -38,16 +41,76 @@ V2 mouseMM(float z) {
 V2 snapMM(V2 p) { return {snapv(p.x, A.snapOn), snapv(p.y, A.snapOn)}; }
 
 // ---------------------------------------------------------------- picking
+namespace {
+// A part's slices through its depth (the outline less its cuts at each depth), kept until its shape changes
+struct SliceCache { std::string key; std::vector<carve::Slice> sl; };
+std::map<std::string, SliceCache> gSlices;
+const std::vector<carve::Slice>& slicesOf(const BodyDef& d) {
+    std::ostringstream k;
+    k << d.z << ' ' << d.thick << ' ' << d.round << d.roundSides << ' ' << d.roundTurn << ' ' << d.roundSweep << ' ' << d.roundAxis << ' ' << d.tiltX << ' ' << d.tiltY;
+    for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
+    for (double r : d.rad) k << 'r' << r;
+    for (double b : d.bulge) k << 'b' << b;
+    for (size_t q = 0; q < d.depthZn.size() && q < d.depthZf.size() && q < d.depthOff.size(); q++) k << 'D' << d.depthOff[q].x << ' ' << d.depthOff[q].y << ' ' << d.depthZn[q] << ' ' << d.depthZf[q];
+    for (auto& c : d.carves) k << 'c' << c.shape << c.at.x << ' ' << c.at.y << ' ' << c.atZ << ' ' << c.dx << ' ' << c.dy << ' ' << c.dz << ' ' << c.spin << ' ' << c.w << ' ' << c.h << ' ' << c.depth;
+    SliceCache& c = gSlices[d.id];
+    std::string key = k.str();
+    if (c.key != key) { c.key = key; c.sl = carve::slices(d); }
+    return c.sl;
+}
+}  // namespace
+double depthMM(int i, float worldZ) {
+    const BodyDef& d = A.design.bodies[i];
+    float bias = bodyZ(i) - (float)d.z * U;
+    return (worldZ - bias) / U;
+}
+bool solidAt(int i, V2 mm, double zmm) {
+    if (i < 0 || i >= (int)A.design.bodies.size()) return false;
+    const BodyDef& d = A.design.bodies[i];
+    const auto& sl = slicesOf(d);
+    if (sl.empty()) return std::fabs(zmm - d.z) <= d.thick / 2 + 1e-3 && sim::inPoly(mm.x, mm.y, outlineOf(d));
+    for (auto& s : sl) {
+        if (zmm < s.z0 - 1e-3 || zmm > s.z1 + 1e-3) continue;
+        bool in = false;
+        if (s.outlines.empty()) in = sim::inPoly(mm.x, mm.y, outlineOf(d));
+        else for (auto& o : s.outlines) if (sim::inPoly(mm.x, mm.y, o)) { in = true; break; }
+        if (!in) continue;
+        bool cut = false;
+        for (auto& c : s.cav) if (carve::inConvex(c, mm)) { cut = true; break; }
+        if (!cut) return true;
+    }
+    return false;
+}
 std::vector<Hit> bodiesUnderMouse() {  // Build mode: design parts
     std::vector<Hit> hits;
     Ray r = mouseRay();
     for (int i = 0; i < (int)A.design.bodies.size(); i++) {
         const BodyDef& d = A.design.bodies[i];
-        float z = bodyFront(i), t;
-        Vector3 w;
-        if (!rayZ(r, z, w, &t)) continue;
-        V2 mm = toMM(w);
-        if (sim::inPoly(mm.x, mm.y, outlineOf(d))) hits.push_back({i, t, mm});
+        const auto& sl = slicesOf(d);
+        if (sl.empty() || std::fabs(r.direction.z) < 0.02f) {   // a plain slab (or seen edge on): its front face
+            float z = bodyFront(i), t;
+            Vector3 w;
+            if (!rayZ(r, z, w, &t)) continue;
+            V2 mm = toMM(w);
+            if (sim::inPoly(mm.x, mm.y, outlineOf(d))) hits.push_back({i, t, mm});
+            continue;
+        }
+        // cut, turned or shaped in depth: walk the ray through the depth it spans and take the first point with
+        // material there, so a hole shows (and picks) whatever is behind it
+        double z0 = sl.front().z0, z1 = sl.front().z1;
+        for (auto& s : sl) { z0 = std::min(z0, s.z0); z1 = std::max(z1, s.z1); }
+        float bias = bodyZ(i) - (float)d.z * U;
+        float ta = ((float)z0 * U + bias - r.position.z) / r.direction.z, tb = ((float)z1 * U + bias - r.position.z) / r.direction.z;
+        if (ta > tb) std::swap(ta, tb);
+        if (tb <= 0) continue;
+        ta = std::max(ta, 0.f);
+        const int N = 48;
+        for (int k = 0; k <= N; k++) {
+            float t = ta + (tb - ta) * (k + 0.5f) / (N + 1);
+            Vector3 w = Vector3Add(r.position, Vector3Scale(r.direction, t));
+            V2 mm = toMM(w);
+            if (solidAt(i, mm, depthMM(i, w.z))) { hits.push_back({i, t, mm}); break; }
+        }
     }
     std::sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) { return a.t < b.t; });  // nearest first
     return hits;
