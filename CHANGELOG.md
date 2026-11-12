@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.3-alpha
+
+### Career
+- **Customers walk.** They come in through your front door, walk round your furniture to the displays and look them over, join the queue at the counter and step up as it moves, then walk back out once you've served them (or sent them away). Their legs swing as they go.
+
 ## 0.8.2-alpha
 
 ### Career: selling over the counter

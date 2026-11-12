@@ -104,10 +104,13 @@ double fallAngle(const Actor& a) { return a.dead ? std::min(1.0, a.deadT / 0.7) 
 nav::Agent agentOf(const Actor& a) { return {a.tune.halfWidth, a.tune.standH, a.tune.stepHeight}; }
 
 NpcDef posed(const Actor& a) {
-    NpcDef n = a.def;
-    if (a.dead) return n;
-    double speed = gmap::len(flat(a.body.vel));
+    if (a.dead) return a.def;
+    return walking(a.def, a.walkPhase, gmap::len(flat(a.body.vel)));
+}
+NpcDef walking(const NpcDef& def, double walkPhase, double speed) {
+    NpcDef n = def;
     if (speed < 0.05) return n;
+    struct { double walkPhase; } a{walkPhase};
     // its legs: every chain of bones that reaches the ground swings from the bone where it hangs off the root
     auto P = npcPose(n);
     double h = npcHeight(n);

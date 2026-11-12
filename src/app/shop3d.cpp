@@ -14,6 +14,9 @@
 #include "ui/ui.hpp"
 #include "map.hpp"
 #include "npc.hpp"
+#include <map>
+#include "npcai.hpp"
+#include "nav.hpp"
 #include "imgui.h"
 
 #include <algorithm>
@@ -72,7 +75,7 @@ const char* promptFor(const gmap::Entity& e) {
 void openThing(int thing) { gOpen = thing; EnableCursor(); }
 
 // where the people stand
-struct Spot { gmap::V3 at; double yaw; int person; std::string name; };
+struct Spot { gmap::V3 at; double yaw; int person; std::string name; bool staff = false; };
 std::vector<Spot> people() {
     std::vector<Spot> out;
     const gmap::Entity* counter = findType("shop_counter");
@@ -124,13 +127,96 @@ std::vector<Spot> people() {
         if (!got && !free.empty()) { got = free.front(); free.erase(free.begin()); }
         if (!got) break;
         gmap::V3 f = frontOf(*got);
-        out.push_back({got->pos + f * 0.7, std::atan2(-f.z, -f.x) * 180 / 3.14159265358979, (int)(std::hash<std::string>()(emp.name) & 0x7fffffff), emp.name});
+        out.push_back({got->pos + f * 0.7, std::atan2(-f.z, -f.x) * 180 / 3.14159265358979, (int)(std::hash<std::string>()(emp.name) & 0x7fffffff), emp.name, true});
     }
     if (ME.map.build.on()) {   // (everyone inside the building)
         const gmap::Zone& z = ME.map.build;
         for (auto& p : out) { p.at.x = std::clamp(p.at.x, z.x0 + 0.35, z.x1 - 0.35); p.at.z = std::clamp(p.at.z, z.z0 + 0.35, z.z1 - 0.35); }
     }
     return out;
+}
+// People walking: each goes from where they are to their spot (a display, the counter's queue, a workstation) along a
+// path round the furniture; customers come in at the front door and walk back out once served.
+struct Walker {
+    int person = 0; std::string name;
+    gmap::V3 pos; double yaw = 0, phase = 0, speed = 0;
+    std::vector<gmap::V3> path;
+    gmap::V3 goal; double goalYaw = 0;
+    bool leaving = false, staff = false;
+    double idle = 0;   // seconds standing at their spot (they glance about)
+};
+std::map<int, Walker> gWalkers;
+nav::Cache gNav;
+unsigned gNavVersion = ~0u;
+std::string gWalkFile;
+gmap::V3 doorSpot() {
+    if (const gmap::Entity* d = findType("shop_door")) return d->pos;
+    if (const gmap::Entity* s = findType("player_start")) return s->pos;
+    return {0, 0, 0};
+}
+void plan(Walker& w, gmap::V3 to) {
+    w.goal = to;
+    w.path.clear();
+    nav::Agent ag; ag.halfWidth = 0.22; ag.height = 1.7;
+    const nav::Grid& g = gNav.get(ME.map, ag);
+    std::vector<gmap::V3> route;
+    if (nav::findPath(g, w.pos, to, route) && !route.empty()) w.path = route;
+    else w.path = {to};   // (off the grid: straight there)
+}
+void stepWalkers(float dt) {
+    if (gNavVersion != (unsigned)ME.version || gWalkFile != ME.careerFile) {   // the shop changed: plan again on the new floor
+        gNav.clear(); gNavVersion = (unsigned)ME.version;
+        if (gWalkFile != ME.careerFile) { gWalkers.clear(); gWalkFile = ME.careerFile; }
+        for (auto& [id, w] : gWalkers) plan(w, w.goal);
+    }
+    auto spots = people();
+    std::map<int, const Spot*> want;
+    for (auto& sp : spots) want[sp.person] = &sp;
+    for (auto& sp : spots) {
+        auto it = gWalkers.find(sp.person);
+        if (it == gWalkers.end()) {   // someone new: customers come in at the door, staff are already at work
+            Walker w; w.person = sp.person; w.name = sp.name; w.staff = sp.staff;
+            w.pos = sp.staff ? sp.at : doorSpot();
+            w.yaw = sp.yaw; w.goalYaw = sp.yaw;
+            if (sp.staff) { w.goal = sp.at; } else plan(w, sp.at);
+            gWalkers[sp.person] = w;
+            continue;
+        }
+        Walker& w = it->second;
+        w.goalYaw = sp.yaw; w.leaving = false;
+        double dx = sp.at.x - w.goal.x, dz = sp.at.z - w.goal.z;
+        if (dx * dx + dz * dz > 0.09) plan(w, sp.at);   // (their spot moved: a new place in the queue)
+    }
+    for (auto it = gWalkers.begin(); it != gWalkers.end();) {
+        Walker& w = it->second;
+        if (!want.count(it->first) && !w.leaving) {   // served, sent away or gone home: out the door
+            w.leaving = true;
+            if (w.staff) { it = gWalkers.erase(it); continue; }
+            plan(w, doorSpot());
+        }
+        // walk along the path
+        double moved = 0, want2 = 1.15 * dt;
+        while (!w.path.empty() && moved < want2) {
+            gmap::V3 t = w.path.front();
+            double dx = t.x - w.pos.x, dz = t.z - w.pos.z, d = std::hypot(dx, dz);
+            if (d < 1e-4) { w.path.erase(w.path.begin()); continue; }
+            double stp = std::min(d, want2 - moved);
+            w.pos.x += dx / d * stp; w.pos.z += dz / d * stp; w.pos.y = t.y;
+            moved += stp;
+            double ty = std::atan2(dz, dx) * 180 / 3.14159265358979, dy = std::remainder(ty - w.yaw, 360.0);
+            w.yaw += std::clamp(dy, -400.0 * dt, 400.0 * dt);
+            if (stp >= d - 1e-6) w.path.erase(w.path.begin());
+        }
+        w.speed = dt > 0 ? moved / dt : 0;
+        w.phase += moved * 2 * 3.14159265358979 / 0.8;
+        if (w.path.empty()) {
+            if (w.leaving) { it = gWalkers.erase(it); continue; }
+            double dy = std::remainder(w.goalYaw - w.yaw, 360.0);
+            w.yaw += std::clamp(dy, -200.0 * dt, 200.0 * dt);   // turn to face what they came to
+            w.idle += dt;
+        } else w.idle = 0;
+        ++it;
+    }
 }
 }  // namespace
 
@@ -208,7 +294,12 @@ void shopDrawPeople() {
         M = MatrixMultiply(M, MatrixTranslate((float)e.pos.x + off.x, (float)e.pos.y + off.y, (float)e.pos.z + off.z));
         drawDesignModel("display:" + e.ref, g->d, M);
     }
-    for (auto& p : people()) drawNpcAt(careerPerson(p.person, p.name), {(float)p.at.x, (float)p.at.y, (float)p.at.z}, (float)p.yaw, 0.001f);
+    stepWalkers(std::min(GetFrameTime(), 0.1f));
+    for (auto& [id, w] : gWalkers) {
+        const NpcDef& n = careerPerson(w.person, w.name);
+        double look = w.path.empty() && !w.staff ? 18 * std::sin(w.idle * 0.6 + id) : 0;   // (standing about: they look round)
+        drawNpcAt(w.speed > 0.05 ? npcai::walking(n, w.phase, w.speed) : n, {(float)w.pos.x, (float)w.pos.y, (float)w.pos.z}, (float)(w.yaw + look * 0.25), 0.001f);
+    }
 }
 
 void shopHud() {

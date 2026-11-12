@@ -75,7 +75,9 @@ bool hurt(Actor& a, double damage, gmap::V3 dir);
 // Its bones in the world right now (metres; the falling and the legs' swing applied): start, end, radius
 struct BoneAt { gmap::V3 a, b; double r; int bone; };
 std::vector<BoneAt> bones(const Actor& a);
-NpcDef posed(const Actor& a);        // its NPC with this moment's leg swing applied (for drawing)
+NpcDef posed(const Actor& a);
+// any NPC walking at `speed` m/s, its legs swung by `walkPhase` (radians; advance it 2 pi per stride, about 0.8 m for a person)
+NpcDef walking(const NpcDef& n, double walkPhase, double speed);        // its NPC with this moment's leg swing applied (for drawing)
 double height(const Actor& a);       // metres
 double fallAngle(const Actor& a);    // radians it has fallen over so far (about its feet, toward fallDir)
 
