@@ -11,6 +11,11 @@ on:
   push:
     paths: [CMakeLists.txt, .github/workflows/release.yml]
   workflow_dispatch:
+    inputs:
+      discord:
+        description: Post the newest changelog to Discord even if this version is already released (a test)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -83,7 +88,7 @@ jobs:
       # from Discord: Server Settings > Integrations > Webhooks). Without it this step does nothing. Discord takes
       # at most 2000 characters a message, so long notes are cut and end with the link to the full release.
       - name: Post to Discord
-        if: steps.v.outputs.skip != '1'
+        if: steps.v.outputs.skip != '1' || inputs.discord
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
@@ -91,7 +96,7 @@ jobs:
           full="${{ steps.v.outputs.full }}"
           link="https://github.com/${{ steps.v.outputs.repo }}/releases/tag/v$full"
           head="**Gunsmith3D $full is out!** The game updates itself, or download it here: <$link>"
-          body=$(cat notes.md)
+          body=$(awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2)
           room=$((1900 - ${#head}))
           if [ ${#body} -gt $room ]; then body="${body:0:$room}"; body="${body%$'\n'*}"$'\n'"...and more in the full notes."; fi
           jq -n --arg c "$head"$'\n\n'"$body" '{content: $c, allowed_mentions: {parse: []}}' > discord.json
