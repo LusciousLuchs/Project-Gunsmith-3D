@@ -2127,6 +2127,36 @@ static void taxesAndAccessories() {
     career::Career back; career::careerFromJson(career::careerToJson(c), back);
     CHECK(back.props[0].city == c.props[0].city && back.accessories == c.accessories && std::fabs(back.taxesPaid - c.taxesPaid) < 1e-6, "location, accessories and taxes save and load");
 }
+static void paperworkTest() {
+    std::printf("paperwork\n");
+    career::Career c = career::newCareer(77);
+    career::setLocation(c, c.props[0], places::cityByName("Austin", "TX"));
+    career::Walkin w;
+    int found = 0, flawed = 0;
+    for (int i = 0; i < 400; i++) { career::endDay(c); for (auto& x : c.walkins) { if (x.trouble.empty() && x.flaws.empty() && !found) { w = x; found = 1; } if (!x.flaws.empty()) flawed++; } }
+    CHECK(found, "a clean customer turns up");
+    CHECK(w.idNumber.size() == 12 && w.idNumber[2] == '-', "their licence number is in the game's own format");
+    c.walkins = {w};
+    std::string first = w.idName.substr(0, w.idName.find(' ')), last = w.idName.substr(w.idName.rfind(' ') + 1);
+    CHECK(career::submitCheck(c, w.id, last + "x", first, w.idDob, w.idNumber) == "NO MATCH", "a typo in the check system: no match, try again");
+    std::string r = career::submitCheck(c, w.id, last, first, w.idDob, w.idNumber);
+    CHECK(r == "PROCEED" || r == "DELAYED", "their ID's details typed in right: the check answers");
+    CHECK(career::scanId(c, w.id) == "VALID", "a good ID scans as valid");
+    // a form with mistakes: handed back, they fix it; sold anyway, it's on record
+    career::Walkin f = w; f.id = 9001; f.flaws = {"unsigned"}; f.signedForm = false; f.checked = true; f.result = "PROCEED";
+    c.walkins.push_back(f);
+    CHECK(career::fixForm(c, 9001) && c.walkins.back().signedForm && c.walkins.back().flaws.empty(), "handed back, they sign it");
+    career::Walkin g = w; g.id = 9002; g.flaws = {"blank"}; g.answers[3] = ' '; g.checked = true; g.result = "PROCEED"; g.hands = 0; g.budget = 1e6;
+    c.walkins.push_back(g);
+    career::GunSheet sh = career::sheetOf(loadPreset("blowback")); sh.rated = true; sh.name = "P"; c.sheets["P"] = sh; c.stock["P"] = 2;
+    CHECK(career::sellToWalkin(c, 9002, "P", 500) && c.badForms == 1, "sold on a form with a blank answer: it's on record");
+    career::Walkin d = w; d.id = 9003; d.trouble = "fakeid"; c.walkins.push_back(d);
+    CHECK(career::scanId(c, 9003) == "NOT VALID", "a fake ID doesn't scan");
+    std::printf("    customers with mistakes on their form: %d\n", flawed);
+    CHECK(flawed > 0, "some forms come with mistakes to catch");
+    career::Career back; career::careerFromJson(career::careerToJson(c), back);
+    CHECK(back.walkins.size() == c.walkins.size() && back.walkins[0].idNumber == c.walkins[0].idNumber && back.badForms == 1, "the paperwork saves and loads");
+}
 static void shopChecks() {
     std::printf("shopChecks\n");
     gmap::Map m = gmap::defaultWorkshop();
@@ -2756,6 +2786,7 @@ int main() {
     holdOpenTest();
     propertiesTest();
     taxesAndAccessories();
+    paperworkTest();
     npcDesigns();
     careerRules();
     careerStages();

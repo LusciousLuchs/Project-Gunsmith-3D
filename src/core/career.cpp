@@ -1,6 +1,7 @@
 // Gunsmith3D - Career mode, stage 1 (see career.hpp).
 #include "career.hpp"
 #include "places.hpp"
+#include <cctype>
 #include "solver.hpp"
 #include "json.hpp"
 
@@ -426,15 +427,46 @@ Walkin walkin(Career& c) {
     double e = want.maxE > 0 ? (want.minE + want.maxE) / 2 : std::max(want.minE, 500.0);
     w.budget = std::round(baseValue(e, want.hands == 2, 10) * (1.0 + 0.6 * rnd(c)) / 10) * 10;
     int y = 1950 + rndInt(c, 0, 55), m = rndInt(c, 1, 12), d = rndInt(c, 1, 28);
-    char b[32]; std::snprintf(b, sizeof b, "%02d/%02d/%d", m, d, y);
+    char b[64]; std::snprintf(b, sizeof b, "%02d/%02d/%d", m, d, y);
     w.dob = w.idDob = b;
     std::snprintf(b, sizeof b, "%02d/%d", rndInt(c, 1, 12), 2032 + rndInt(c, 0, 6));
     w.idExpires = b;
-    if (rnd(c) < 0.01) {   // the one in a hundred
-        int kind = rndInt(c, 0, 3);
+    // who they are, on their ID: an address near your shop (its state, if it's on the map), a made-up licence number
+    int city = -1;
+    for (auto& p : c.props) if (p.city >= 0) { city = p.city; break; }
+    {
+        const auto& cs = places::cities();
+        std::vector<int> near;
+        if (city >= 0) for (int i = 0; i < (int)cs.size(); i++) if (std::string(cs[i].state) == cs[city].state) near.push_back(i);
+        int home = !near.empty() && rnd(c) < 0.85 ? near[rndInt(c, 0, (int)near.size() - 1)] : rndInt(c, 0, (int)cs.size() - 1);
+        w.address = w.idAddress = places::address((unsigned)(w.id * 2654435761u + c.rng), home);
+        w.idState = cs[home].state;
+        int born = rndInt(c, 0, (int)cs.size() - 1);
+        w.birthPlace = std::string(cs[born].name) + ", " + cs[born].state;
+    }
+    w.idNumber = places::licenceNumber((unsigned)(w.id * 40503u + c.rng));
+    std::string body = bodyForName(w.name);
+    w.sex = body == "female" ? "F" : body == "male" ? "M" : (rnd(c) < 0.5 ? "F" : "M");
+    int inches = w.sex == "F" ? rndInt(c, 60, 70) : rndInt(c, 64, 76);
+    std::snprintf(b, sizeof b, "%d' %d\"", inches / 12, inches % 12); w.height = b;
+    std::snprintf(b, sizeof b, "%d lb", w.sex == "F" ? rndInt(c, 110, 210) : rndInt(c, 140, 260)); w.weight = b;
+    w.answers = std::string(formQuestions().size(), 'N');
+    w.answers[0] = 'Y';
+    if (rnd(c) < 0.02) {   // the one or two in a hundred who can't buy
+        int kind = rndInt(c, 0, 6);
         if (kind <= 1) w.trouble = "denied";
         else if (kind == 2) { w.trouble = "mismatch"; w.idName = pick(c, FIRST) + " " + w.name.substr(w.name.find(' ') + 1); if (w.idName == w.name) w.idName = "J. " + last + "son"; }
-        else { w.trouble = "expired"; std::snprintf(b, sizeof b, "%02d/%d", rndInt(c, 1, 12), 2024 + rndInt(c, 0, 5)); w.idExpires = b; }
+        else if (kind == 3) { w.trouble = "expired"; std::snprintf(b, sizeof b, "%02d/%d", rndInt(c, 1, 12), 2024 + rndInt(c, 0, 5)); w.idExpires = b; }
+        else if (kind == 4) { w.trouble = "prohibited"; w.answers[rndInt(c, 1, (int)w.answers.size() - 1)] = 'Y'; }   // (honest about it)
+        else if (kind == 5) { w.trouble = "straw"; w.answers[0] = 'N'; }   // buying it for someone else
+        else w.trouble = "fakeid";
+    }
+    if (rnd(c) < 0.16) {   // mistakes on the form: they'll fix them if you hand it back
+        int kind = rndInt(c, 0, 3);
+        if (kind == 0) { w.flaws.push_back("blank"); w.answers[rndInt(c, 1, (int)w.answers.size() - 1)] = ' '; }
+        else if (kind == 1) { w.flaws.push_back("unsigned"); w.signedForm = false; }
+        else if (kind == 2) { w.flaws.push_back("address"); w.address = places::address((unsigned)(w.id * 977u + 3), rndInt(c, 0, (int)places::cities().size() - 1)); }   // (an old address)
+        else { w.flaws.push_back("dob"); std::string t = w.dob; std::swap(t[3], t[4]); if (t == w.dob) t[9] = t[9] == '0' ? '1' : '0'; w.dob = t; }   // (a slip of the pen)
     }
     return w;
 }
@@ -560,6 +592,13 @@ void endDay(Career& c) {
         double u = dailyUpkeep(c);
         if (u > 0) { c.money -= u; c.taxable -= u; char bb[160]; std::snprintf(bb, sizeof bb, "Rent and upkeep on your properties: %s.", money(u).c_str()); c.news.push_back(bb); }
     }
+    if (c.badForms > 0 && rnd(c) < 0.08) {   // a records inspection: every transfer form with mistakes costs you
+        double fine = 750.0 * c.badForms;
+        c.money -= fine; c.reputation = std::max(0.0, c.reputation - c.badForms);
+        std::snprintf(b, sizeof b, "A compliance inspector went through your transfer records: %d form%s with mistakes. Fined %s.", c.badForms, c.badForms == 1 ? "" : "s", money(fine).c_str());
+        c.news.push_back(b);
+        c.badForms = 0;
+    }
     if (c.day - c.taxDay >= 7) {   // the week's taxes on what you made
         double rate = taxRate(c), tax = std::max(0.0, c.taxable) * rate / 100;
         if (tax > 0) {
@@ -661,7 +700,9 @@ std::string careerToJson(const Career& c) {
     for (auto& w : c.walkins)
         W.push_back({{"id", w.id}, {"name", w.name}, {"idName", w.idName}, {"request", w.request}, {"hands", w.hands}, {"minEnergy", w.minEnergy}, {"maxEnergy", w.maxEnergy},
                      {"budget", w.budget}, {"dob", w.dob}, {"idDob", w.idDob}, {"idExpires", w.idExpires}, {"trouble", w.trouble}, {"checked", w.checked}, {"result", w.result}, {"state", w.state},
-                     {"prop", w.prop}, {"interest", w.interest}});
+                     {"prop", w.prop}, {"interest", w.interest}, {"address", w.address}, {"idAddress", w.idAddress}, {"idNumber", w.idNumber}, {"idState", w.idState},
+                     {"sex", w.sex}, {"height", w.height}, {"weight", w.weight}, {"birthPlace", w.birthPlace}, {"answers", w.answers}, {"signed", w.signedForm},
+                     {"flaws", w.flaws}, {"scanned", w.scanned}, {"scan", w.scan}, {"txn", w.txn}, {"badPaper", w.badPaper}});
     o["walkins"] = W;
     json P = json::array();
     for (auto& p : c.props) {
@@ -669,6 +710,7 @@ std::string careerToJson(const Career& c) {
         P.push_back({{"id", p.id}, {"kind", p.kind}, {"role", p.role}, {"name", p.name}, {"stations", st}, {"rating", p.rating}, {"shown", p.shown}, {"city", p.city}, {"address", p.address}});
     }
     o["properties"] = P; o["here"] = c.here;
+    o["badForms"] = c.badForms;
     o["taxable"] = c.taxable; o["taxesPaid"] = c.taxesPaid; o["taxDay"] = c.taxDay; o["accessories"] = c.accessories; o["accPrice"] = c.accPrice;
     o["news"] = c.news;
     return o.dump(1);
@@ -718,6 +760,12 @@ bool careerFromJson(const std::string& text, Career& out) {
         w.minEnergy = j.value("minEnergy", 0.0); w.maxEnergy = j.value("maxEnergy", 0.0); w.budget = j.value("budget", 0.0); w.dob = j.value("dob", ""); w.idDob = j.value("idDob", "");
         w.idExpires = j.value("idExpires", ""); w.trouble = j.value("trouble", ""); w.checked = j.value("checked", false); w.result = j.value("result", ""); w.state = j.value("state", 0);
         w.prop = j.value("prop", 1); w.interest = j.value("interest", "");
+        w.address = j.value("address", ""); w.idAddress = j.value("idAddress", w.address); w.idNumber = j.value("idNumber", ""); w.idState = j.value("idState", "");
+        w.sex = j.value("sex", ""); w.height = j.value("height", ""); w.weight = j.value("weight", ""); w.birthPlace = j.value("birthPlace", "");
+        w.answers = j.value("answers", std::string(formQuestions().size(), 'N')); if (!w.answers.empty() && !j.contains("answers")) w.answers[0] = 'Y';
+        w.signedForm = j.value("signed", true);
+        if (j.contains("flaws") && j["flaws"].is_array()) for (auto& f : j["flaws"]) if (f.is_string()) w.flaws.push_back(f.get<std::string>());
+        w.scanned = j.value("scanned", false); w.scan = j.value("scan", ""); w.txn = j.value("txn", ""); w.badPaper = j.value("badPaper", false);
         c.walkins.push_back(w);
     }
     if (o.contains("news") && o["news"].is_array()) for (auto& n : o["news"]) if (n.is_string()) c.news.push_back(n.get<std::string>());
@@ -731,6 +779,7 @@ bool careerFromJson(const std::string& text, Career& out) {
         c.props.push_back(p);
     }
     c.here = o.value("here", 1);
+    c.badForms = o.value("badForms", 0);
     c.taxable = o.value("taxable", 0.0); c.taxesPaid = o.value("taxesPaid", 0.0); c.taxDay = o.value("taxDay", c.day);
     c.accessories = o.value("accessories", 0); c.accPrice = o.value("accPrice", 45.0);
     if (c.stations.empty()) {   // a career from before the workshop (0.5): it starts with what a new one has (once the
@@ -749,18 +798,72 @@ bool careerFromJson(const std::string& text, Career& out) {
 namespace {
 Walkin* findWalkin(Career& c, int id) { for (auto& w : c.walkins) if (w.id == id) return &w; return nullptr; }
 }
+const std::vector<std::string>& formQuestions() {
+    static const std::vector<std::string> q = {
+        "Are you buying this firearm for yourself (not on behalf of someone else)?",
+        "Are you facing charges for a crime that could send you to prison for more than a year?",
+        "Have you ever been convicted of a crime that could have sent you to prison for more than a year?",
+        "Are you a fugitive from justice?",
+        "Do you unlawfully use, or are you addicted to, any controlled substance?",
+        "Has a court ever found you mentally incompetent, or committed you to a mental institution?",
+        "Were you discharged from the armed forces under dishonorable conditions?",
+        "Are you subject to a court order restraining you from harassing or threatening a partner or child?",
+        "Are you in the country unlawfully?"};
+    return q;
+}
+static std::string trimLower(std::string s) {
+    std::string o;
+    for (char ch : s) if (ch != ' ' && ch != '.' && ch != ',') o += (char)std::tolower((unsigned char)ch);
+    return o;
+}
 void runCheck(Career& c, int id) {
     Walkin* w = findWalkin(c, id);
     if (!w || w->checked) return;
+    std::string nm = w->idName;
+    std::string first = nm.substr(0, nm.find(' ')), last = nm.substr(nm.rfind(' ') + 1);
+    submitCheck(c, id, last, first, w->idDob, w->idNumber);
+}
+bool fixForm(Career& c, int id) {
+    Walkin* w = findWalkin(c, id);
+    if (!w || w->flaws.empty()) return false;
+    for (auto& f : w->flaws) {
+        if (f == "blank") for (size_t i = 0; i < w->answers.size(); i++) if (w->answers[i] == ' ') w->answers[i] = i == 0 ? 'Y' : 'N';
+        if (f == "unsigned") w->signedForm = true;
+        if (f == "address") w->address = w->idAddress;
+        if (f == "dob") w->dob = w->idDob;
+    }
+    w->flaws.clear();
+    return true;
+}
+std::string scanId(Career& c, int id) {
+    (void)c;
+    Walkin* w = findWalkin(c, id);
+    if (!w) return "";
+    w->scanned = true;
+    w->scan = w->trouble == "fakeid" ? "NOT VALID" : w->trouble == "expired" ? "EXPIRED" : "VALID";
+    return w->scan;
+}
+std::string submitCheck(Career& c, int id, const std::string& last, const std::string& first, const std::string& dob, const std::string& idNo) {
+    Walkin* w = findWalkin(c, id);
+    if (!w || w->state != 0) return "";
+    if (w->checked) return w->result;
+    std::string nm = w->idName;
+    std::string f0 = nm.substr(0, nm.find(' ')), l0 = nm.substr(nm.rfind(' ') + 1);
+    if (trimLower(last) != trimLower(l0) || trimLower(first) != trimLower(f0) || trimLower(dob) != trimLower(w->idDob) || trimLower(idNo) != trimLower(w->idNumber))
+        return "NO MATCH";   // (a typo, or details that aren't the ID's: the system can't find them)
     w->checked = true;
-    w->result = w->trouble == "denied" ? "DENIED" : "PROCEED";   // (an ID that doesn't match, or has run out: the check
-                                                                  // doesn't see that. You do, if you look.)
+    w->txn = places::transferNumber((unsigned)(w->id * 7u + c.day));
+    w->result = w->trouble == "denied" ? "DENIED" : rnd(c) < 0.03 ? "DELAYED" : "PROCEED";   // (an ID that doesn't match the
+                                                                  // form, a fake or one that's run out: the check doesn't see that. You do, if you look.)
+    return w->result;
 }
 bool sellToWalkin(Career& c, int id, const std::string& gun, double price, std::string* why) {
     Walkin* w = findWalkin(c, id);
     auto no = [&](const std::string& t) { if (why) *why = t; return false; };
     if (!w || w->state != 0) return no("they've gone");
     if (!w->checked) return no("run the background check first");
+    if (w->result == "DELAYED") return no("the check came back DELAYED: not today");
+    if (w->result == "DENIED") return no("the check DENIED them");
     if (c.stock[gun] <= 0) return no("none in stock");
     auto it = c.sheets.find(gun);
     if (it == c.sheets.end()) return no("rate it first");
@@ -776,6 +879,7 @@ bool sellToWalkin(Career& c, int id, const std::string& gun, double price, std::
     c.stock[gun]--;
     c.money += price; c.taxable += price;
     w->state = 1;
+    if (!w->flaws.empty()) { w->badPaper = true; c.badForms++; }   // (the form still has mistakes on it: on record)
     c.reputation = std::min(100.0, c.reputation + (wanted ? 0.5 : 0.3));
     char b[200];
     std::snprintf(b, sizeof b, "Sold a %s over the counter to %s for %s.", gun.c_str(), w->name.c_str(), money(price).c_str());

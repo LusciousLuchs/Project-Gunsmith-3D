@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.2-alpha
+
+### Career: selling over the counter
+- **Real paperwork, in four steps.** (1) **Their form**: read the transfer form they filled in. Hand it back if a question is left blank, it isn't signed, or the address or date of birth doesn't match their ID. (2) **Their ID**: look at it and scan it (valid, expired, or a fake that won't read). (3) **Check system**: type their name, date of birth and licence number in by hand; a typo comes back NO MATCH, the right details come back PROCEED, DELAYED (not today) or DENIED. (4) **Sell**, with your state's sales tax shown.
+- Some customers can't buy: the check denies them, the ID isn't theirs or has run out or is fake, they answer Yes to a disqualifying question, or No to buying it for themselves. Sell to them anyway and you're fined.
+- **Records inspections**: sales made on forms with mistakes are on record, and an inspector who turns up fines you for each one.
+- Customers have made-up addresses (mostly near your shop) and licence numbers in the game's own format.
+
 ## 0.8.1-alpha
 
 ### Career

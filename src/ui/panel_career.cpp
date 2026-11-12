@@ -11,6 +11,7 @@
 #include "extras/IconsFontAwesome6.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <cmath>
 #include <cstdio>
@@ -418,7 +419,7 @@ static void counterTab() {
     ImGui::BeginChild("##customer", {0, 0});
     Texture2D face = careerPortrait(w.id);
     if (face.id) {
-        float pw = 200 * CFG.uiScale, ph = 250 * CFG.uiScale;
+        float pw = 112 * CFG.uiScale, ph = 140 * CFG.uiScale;
         ImGui::Image((ImTextureID)(intptr_t)face.id, {pw, ph}, {0, 1}, {1, 0});
         ImGui::SameLine();
     }
@@ -427,51 +428,120 @@ static void counterTab() {
     wrapped("\"" + w.request + "\"");
     if (!w.interest.empty()) ImGui::TextColored({0.95f, 0.8f, 0.45f, 1}, "They saw the %s on display and want a look at it.", w.interest.c_str());
     ImGui::TextDisabled("They mention about %s to spend.", usd(w.budget).c_str());
-    ImGui::Dummy({0, 6 * CFG.uiScale});
-    // their form and their ID, side by side: they should match, and the ID shouldn't have run out
-    ImGui::BeginChild("##form", {270 * CFG.uiScale, 120 * CFG.uiScale}, ImGuiChildFlags_Borders);
-    ImGui::TextDisabled("FORM TR-1: Firearm transfer record");
-    ImGui::Text("Name: %s", w.name.c_str());
-    ImGui::Text("Date of birth: %s", w.dob.c_str());
-    ImGui::Text("Barred from owning firearms? No");
-    ImGui::EndChild();
-    ImGui::SameLine();
-    ImGui::BeginChild("##idcard", {270 * CFG.uiScale, 120 * CFG.uiScale}, ImGuiChildFlags_Borders);
-    ImGui::TextDisabled("DRIVER LICENSE");
-    ImGui::Text("Name: %s", w.idName.c_str());
-    ImGui::Text("Date of birth: %s", w.idDob.c_str());
-    ImGui::Text("Expires: %s", w.idExpires.c_str());
-    ImGui::EndChild();
     ImGui::EndGroup();
     if (w.state != 0) { ImGui::TextDisabled(w.state == 1 ? "They bought a gun." : w.state == 2 ? "You sent them away." : "The police took them away."); ImGui::EndChild(); return; }
-    heading("Background check");
-    if (!w.checked) { if (accentButton("Run the background check", true)) { career::runCheck(C, w.id); careerSave(); } }
-    else ImGui::TextColored(w.result == "PROCEED" ? ImVec4(0.5f, 0.9f, 0.55f, 1) : ImVec4(1, 0.4f, 0.35f, 1), "Result: %s", w.result.c_str());
-    if (w.checked) ImGui::TextDisabled("The check only knows the name it's given: compare the form with their ID, and look at when it expires.");
-    heading("Sell");
-    static std::map<int, std::string> pick; static std::map<int, double> price;
-    std::string& pg = pick[w.id];
-    ImGui::SetNextItemWidth(220 * CFG.uiScale);
-    if (ImGui::BeginCombo("##sellgun", pg.empty() ? "Show them..." : pg.c_str())) {
-        for (auto& [g, n] : C.stock) if (n > 0 && ImGui::Selectable((g + "  (" + std::to_string(n) + ")").c_str(), pg == g)) {
-            pg = g;
-            auto it = C.sheets.find(g); double v = it != C.sheets.end() ? it->second.value() : 500;
-            for (auto& L : C.listings) if (L.gun == g) v = L.price;
-            price[w.id] = std::round(v / 10) * 10;
+    // the paperwork, step by step: their form, their ID, the check, the sale
+    static int stepForced = -2;
+    if (stepForced == -2) { const char* e = std::getenv("GUNSMITH_COUNTERSTEP"); stepForced = e ? std::atoi(e) : -1; }   // (screenshots) which step
+    if (ImGui::BeginTabBar("##steps")) {
+        if (ImGui::BeginTabItem("1  Their form", nullptr, stepForced == 0 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            ImGui::BeginChild("##formpaper", {0, -40 * CFG.uiScale}, ImGuiChildFlags_Borders);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.9f, 0.84f, 1));
+            ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("FIREARM TRANSFER RECORD  (Form TR-1)"); ImGui::PopFont();
+            ImGui::TextDisabled("Section A: the buyer fills this in");
+            ImGui::Text("Full name:  %s", w.name.c_str());
+            ImGui::Text("Home address:  %s", w.address.c_str());
+            ImGui::Text("Date of birth:  %s        Place of birth:  %s", w.dob.c_str(), w.birthPlace.c_str());
+            ImGui::Text("Sex:  %s      Height:  %s      Weight:  %s", w.sex.c_str(), w.height.c_str(), w.weight.c_str());
+            ImGui::Dummy({0, 4 * CFG.uiScale});
+            ImGui::TextDisabled("Section B: answer every question Yes or No");
+            const auto& Q = career::formQuestions();
+            for (size_t i = 0; i < Q.size() && i < w.answers.size(); i++) {
+                char a = w.answers[i];
+                ImGui::TextColored(a == ' ' ? ImVec4(0.6f, 0.6f, 0.6f, 1) : ImVec4(0.95f, 0.85f, 0.5f, 1), "[%s]", a == 'Y' ? "Yes" : a == 'N' ? "No " : "   ");
+                ImGui::SameLine();
+                ImGui::PushTextWrapPos(0); ImGui::TextUnformatted((std::to_string(i + 1) + ". " + Q[i]).c_str()); ImGui::PopTextWrapPos();
+            }
+            ImGui::Dummy({0, 4 * CFG.uiScale});
+            ImGui::TextDisabled("Section C: I certify my answers are true");
+            ImGui::Text("Signature:  %s        Date:  %s", w.signedForm ? w.name.c_str() : "____________________", TextFormat("day %d", C.day));
+            ImGui::PopStyleColor();
+            ImGui::EndChild();
+            if (ImGui::Button("Hand it back to correct")) {
+                if (career::fixForm(C, w.id)) { careerSave(); toast("They fix it and hand it back."); }
+                else toast("They look it over: \"Looks right to me.\"");
+            }
+            if (tipHover()) ImGui::SetTooltip("A question left blank, no signature, or an address or date of birth that doesn't match their ID: they'll fix it.\nSelling on a form with mistakes is on record: a records inspection fines you for each one.");
+            ImGui::SameLine();
+            ImGui::TextDisabled("Question 1 must be Yes, the rest No.");
+            ImGui::EndTabItem();
         }
-        ImGui::EndCombo();
+        if (ImGui::BeginTabItem("2  Their ID", nullptr, stepForced == 1 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            ImGui::BeginChild("##idcard", {460 * CFG.uiScale, 210 * CFG.uiScale}, ImGuiChildFlags_Borders);
+            ImGui::PushFont(gFontBold, 15.0f); ImGui::TextColored({0.55f, 0.75f, 1, 1}, "DRIVER LICENSE   %s", w.idState.c_str()); ImGui::PopFont();
+            if (face.id) { ImGui::Image((ImTextureID)(intptr_t)face.id, {90 * CFG.uiScale, 112 * CFG.uiScale}, {0, 1}, {1, 0}); ImGui::SameLine(); }
+            ImGui::BeginGroup();
+            ImGui::Text("No. %s", w.idNumber.c_str());
+            ImGui::Text("%s", w.idName.c_str());
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 330 * CFG.uiScale); ImGui::Text("%s", w.idAddress.c_str()); ImGui::PopTextWrapPos();
+            ImGui::Text("DOB %s   Sex %s   Ht %s", w.idDob.c_str(), w.sex.c_str(), w.height.c_str());
+            ImGui::Text("Expires %s", w.idExpires.c_str());
+            ImGui::EndGroup();
+            ImGui::EndChild();
+            if (!w.scanned) { if (accentButton(ICON_FA_BARCODE "  Scan it", true)) { career::scanId(C, w.id); careerSave(); } }
+            else ImGui::TextColored(w.scan == "VALID" ? ImVec4(0.5f, 0.9f, 0.55f, 1) : ImVec4(1, 0.4f, 0.35f, 1), "Scanner: %s", w.scan.c_str());
+            ImGui::TextDisabled("Does the name on the ID match the form? The date of birth, the address? Has it run out?");
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("3  Check system", nullptr, stepForced == 2 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            ImGui::PushFont(gFontBold, 15.0f); ImGui::TextColored({0.6f, 0.85f, 0.65f, 1}, "NIRC  National Instant Records Check"); ImGui::PopFont();
+            static std::map<int, std::array<std::string, 4>> typed;
+            auto& T = typed[w.id];
+            static const char* labels[4] = {"Last name", "First name", "Date of birth (MM/DD/YYYY)", "ID number"};
+            ImGui::BeginDisabled(w.checked);
+            for (int i = 0; i < 4; i++) {
+                char buf[64]; std::snprintf(buf, sizeof buf, "%s", T[i].c_str());
+                ImGui::SetNextItemWidth(260 * CFG.uiScale);
+                if (ImGui::InputText(labels[i], buf, sizeof buf)) T[i] = buf;
+            }
+            static std::map<int, std::string> last;
+            if (accentButton("Submit", true)) { last[w.id] = career::submitCheck(C, w.id, T[0], T[1], T[2], T[3]); careerSave(); }
+            ImGui::EndDisabled();
+            ImGui::TextDisabled("Type in what's on their ID, exactly.");
+            std::string r = w.checked ? w.result : last[w.id];
+            if (!r.empty()) {
+                ImVec4 col = r == "PROCEED" ? ImVec4(0.5f, 0.9f, 0.55f, 1) : r == "DELAYED" ? ImVec4(1, 0.8f, 0.4f, 1) : ImVec4(1, 0.4f, 0.35f, 1);
+                ImGui::PushFont(gFontBold, 18.0f); ImGui::TextColored(col, "%s", r.c_str()); ImGui::PopFont();
+                if (r == "NO MATCH") ImGui::TextDisabled("No record matches what you typed. Check it against their ID and try again.");
+                if (r == "DELAYED") ImGui::TextDisabled("The check needs more time: you can't transfer to them today.");
+                if (w.checked && !w.txn.empty()) ImGui::TextDisabled("Transaction %s", w.txn.c_str());
+            }
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("4  Sell", nullptr, stepForced == 3 ? ImGuiTabItemFlags_SetSelected : 0)) {
+            if (!w.checked || w.result != "PROCEED") ImGui::TextColored({1, 0.75f, 0.35f, 1}, "The check has to come back PROCEED first.");
+            static std::map<int, std::string> pick; static std::map<int, double> price;
+            std::string& pg = pick[w.id];
+            if (pg.empty() && !w.interest.empty() && C.stock[w.interest] > 0) pg = w.interest;
+            ImGui::SetNextItemWidth(220 * CFG.uiScale);
+            if (ImGui::BeginCombo("##sellgun", pg.empty() ? "Show them..." : pg.c_str())) {
+                for (auto& [g, n] : C.stock) if (n > 0 && ImGui::Selectable((g + "  (" + std::to_string(n) + ")").c_str(), pg == g)) {
+                    pg = g;
+                    auto it = C.sheets.find(g); double v = it != C.sheets.end() ? it->second.value() : 500;
+                    for (auto& L : C.listings) if (L.gun == g) v = L.price;
+                    price[w.id] = std::round(v / 10) * 10;
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(110 * CFG.uiScale);
+            ImGui::InputDouble("##sellprice", &price[w.id], 10, 100, "$%.0f");
+            if (const career::Property* hp = career::propertyById(C, C.here); hp && hp->city >= 0) {
+                double st = places::stateTax(places::cities()[hp->city].state).sales;
+                ImGui::TextDisabled("Plus %.1f%% sales tax (%s), which they pay and you pass on: %s at the till.", st, places::cities()[hp->city].state, usd(price[w.id] * (1 + st / 100)).c_str());
+            }
+            ImGui::BeginDisabled(pg.empty() || !w.checked || w.result != "PROCEED");
+            if (accentButton("Sell", true)) {
+                std::string why;
+                if (career::sellToWalkin(C, w.id, pg, price[w.id], &why)) { careerSave(); toast("Sold."); }
+                else toast(why);
+            }
+            ImGui::EndDisabled();
+            ImGui::EndTabItem();
+        }
+        ImGui::EndTabBar();
+        if (stepForced >= 0 && ImGui::GetFrameCount() > 30) stepForced = -1;
     }
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(110 * CFG.uiScale);
-    ImGui::InputDouble("##sellprice", &price[w.id], 10, 100, "$%.0f");
-    ImGui::SameLine();
-    ImGui::BeginDisabled(pg.empty());
-    if (accentButton("Sell", true)) {
-        std::string why;
-        if (career::sellToWalkin(C, w.id, pg, price[w.id], &why)) { careerSave(); toast("Sold."); }
-        else toast(why);
-    }
-    ImGui::EndDisabled();
     ImGui::Dummy({0, 4 * CFG.uiScale});
     if (ImGui::Button("Send them away")) { career::refuseWalkin(C, w.id, false); careerSave(); }
     ImGui::SameLine();
@@ -483,7 +553,7 @@ static void counterTab() {
 bool careerThingWindow(int thing) {
     auto& C = CAREER;
     careerTestPoll();
-    float w = std::min((float)GetScreenWidth() - 60, 1100 * CFG.uiScale), h = std::min((float)GetScreenHeight() - 80, 720 * CFG.uiScale);
+    float w = std::min((float)GetScreenWidth() - 60, 1100 * CFG.uiScale), h = std::min((float)GetScreenHeight() - 60, 840 * CFG.uiScale);
     ImGui::SetNextWindowPos({(GetScreenWidth() - w) / 2, (GetScreenHeight() - h) / 2}, ImGuiCond_Always);
     ImGui::SetNextWindowSize({w, h}, ImGuiCond_Always);
     static const char* titles[] = {"Office computer", "Workbench", "Counter", "Front door"};

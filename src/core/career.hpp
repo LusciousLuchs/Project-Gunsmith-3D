@@ -83,7 +83,21 @@ struct Walkin {
     int state = 0;                         // 0 waiting, 1 sold, 2 sent away, 3 reported to the police
     int prop = 1;                          // the property they came into
     std::string interest;                  // a gun they saw on display there and want to see ("" none)
+    // the paperwork (0.8.2): the transfer form they fill in, their ID, and the check you run
+    std::string address, idAddress;        // what they wrote; what's on their ID
+    std::string idNumber, idState;         // their licence (a made-up format)
+    std::string sex, height, weight, birthPlace;
+    std::string answers;                   // the form's questions (FORM_QUESTIONS), one letter each: Y, N, or ' ' left blank
+    bool signedForm = true;
+    std::vector<std::string> flaws;        // mistakes on the form they'd fix if handed it back: blank, unsigned, address, dob
+    bool scanned = false;
+    std::string scan;                      // the ID scanner's answer: VALID, EXPIRED, NOT VALID
+    std::string txn;                       // the check's transaction number
+    bool badPaper = false;                 // sold to with mistakes still on the form
 };
+// The transfer form's questions (a made-up form, in plain words). The first must be answered Yes; the rest No: any
+// other answer means they can't buy.
+const std::vector<std::string>& formQuestions();
 
 // Properties (0.8, the owner's plan): you start selling out of your home garage and move up to a shack, a strip-mall unit
 // and a warehouse, and can own several at once. Each is a fixed building (its walls and storefront come with it) that
@@ -130,6 +144,7 @@ struct Career {
     std::map<std::string, int> flawed;     // of the stock, copies with a flaw nobody caught (they jam more)
     // stage 3
     std::vector<Walkin> walkins;
+    int badForms = 0;                       // sales made on forms with mistakes, since the last inspection
     // properties (0.8)
     std::vector<Property> props;
     int here = 1;                           // the property you're in
@@ -168,7 +183,12 @@ void refreshCandidates(Career& c);         // a new few people looking for work 
 bool hire(Career& c, int candidate, std::string* why = nullptr);
 void letGo(Career& c, int employee);
 // Stage 3: the counter. Run the check, then sell (true if they bought it), send them away, or call the police.
-void runCheck(Career& c, int walkinId);
+void runCheck(Career& c, int walkinId);   // (as if their ID's details were typed in right)
+bool fixForm(Career& c, int walkinId);     // hand their form back: they correct its mistakes (true if there were any)
+std::string scanId(Career& c, int walkinId);   // VALID, EXPIRED or NOT VALID
+// the check system: what you typed in. NO MATCH (a typo, or details that aren't on their ID: try again), or PROCEED,
+// DELAYED (not today) or DENIED for the person on the ID
+std::string submitCheck(Career& c, int walkinId, const std::string& last, const std::string& first, const std::string& dob, const std::string& idNumber);
 bool sellToWalkin(Career& c, int walkinId, const std::string& gun, double price, std::string* why = nullptr);
 void refuseWalkin(Career& c, int walkinId, bool police);
 // Stage 4: a big order's range demonstration: hits on paper out of the rounds fired. Paid if it passes.
