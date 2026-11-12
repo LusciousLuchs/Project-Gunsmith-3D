@@ -160,7 +160,9 @@ static void ensureMeshes() {
         bool rough = hasCuts && A.meshes[i].ok && now - A.meshes[i].changedAt < SETTLE && A.mode == Mode::Build;
         if (A.meshes[i].ok) UnloadMesh(A.meshes[i].mesh);
         if (d.round) carve::syncRound(d);   // (a round part's thickness is its width across)
+        double tb = GetTime();
         A.meshes[i].mesh = buildPartMesh(d, rough);
+        if (std::getenv("GUNSMITH_CARVEPERF")) std::printf("CARVEPERF part %zu (%d cuts, %s): %.1f ms, %d triangles\n", i, (int)d.carves.size(), rough ? "rough" : "cut", (GetTime() - tb) * 1000, A.meshes[i].mesh.triangleCount);
         A.meshes[i].key = key;
         A.meshes[i].ok = true;
         A.meshes[i].rough = rough;

@@ -1,4 +1,5 @@
 // Gunsmith3D - the Carve tool: click a part's surface from any side to cut into it, or drag to size the cut.
+#include <cstdlib>
 #include "app/app.hpp"
 #include "app/carvetool.hpp"
 #include "mounts.hpp"
@@ -352,7 +353,12 @@ void drawCarveOverlay() {
         return;
     }
     int i; Vector3 p, n;
-    if (carvePick(i, p, n)) { drawCarve(i, carveAt(i, p, n), Color{120, 220, 255, 200}, true); drawGuides(); }
+    static bool perfLog = std::getenv("GUNSMITH_CARVEPERF") != nullptr;
+    double t0 = GetTime();
+    bool hit = carvePick(i, p, n);
+    double t1 = GetTime();
+    if (hit) { drawCarve(i, carveAt(i, p, n), Color{120, 220, 255, 200}, true); drawGuides(); }
+    if (perfLog) std::printf("CARVEPERF pick %.2f ms, preview %.2f ms (hit %d)\n", (t1 - t0) * 1000, (GetTime() - t1) * 1000, hit ? i : -1);
 }
 
 // ---------------------------------------------------------------- attachment points (the Mount tool)
