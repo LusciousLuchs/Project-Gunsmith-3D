@@ -2146,7 +2146,7 @@ static void paperworkTest() {
     career::Walkin f = w; f.id = 9001; f.flaws = {"unsigned"}; f.signedForm = false; f.checked = true; f.result = "PROCEED";
     c.walkins.push_back(f);
     CHECK(career::fixForm(c, 9001) && c.walkins.back().signedForm && c.walkins.back().flaws.empty(), "handed back, they sign it");
-    career::Walkin g = w; g.id = 9002; g.flaws = {"blank"}; g.answers[3] = ' '; g.checked = true; g.result = "PROCEED"; g.hands = 0; g.budget = 1e6;
+    career::Walkin g = w; g.id = 9002; g.flaws = {"blank"}; g.answers[3] = ' '; g.checked = true; g.result = "PROCEED"; g.hands = 0; g.budget = 1e6; g.minEnergy = g.maxEnergy = 0; g.trouble.clear();
     c.walkins.push_back(g);
     career::GunSheet sh = career::sheetOf(loadPreset("blowback")); sh.rated = true; sh.name = "P"; c.sheets["P"] = sh; c.stock["P"] = 2;
     CHECK(career::sellToWalkin(c, 9002, "P", 500) && c.badForms == 1, "sold on a form with a blank answer: it's on record");
