@@ -393,6 +393,70 @@ void mountInput(bool overUI) {
     commit();
     toast("Attachment point: " + mt.type + ". Change its kind in the panel; attachments made for that kind fit it.");
 }
+// ---------------------------------------------------------------- an attachment's handles in the view
+// The sight line's (or beam's) two ends, the line itself (moves both), and where it mounts: dragged in the plane of the
+// attachment's mount, across the view. Snaps to the grid step with the magnet on; Alt is free.
+static int gAttHot = -1, gAttDrag = -1;   // 0 rear end, 1 front end, 2 the whole line, 3 the mount spot
+static V2 gAttGrab, gAttRear0, gAttFront0, gAttAt0;
+static bool lineJob(const AttachDef& a) { return a.job == "optic" || a.job == "light" || a.job == "laser"; }
+static bool mousePlane(float zw, V2& out) {   // the design point under the mouse, on the plane z = zw
+    Ray r = mouseRay();
+    if (std::fabs(r.direction.z) < 1e-4f) return false;   // (the view edge-on to it)
+    float t = (zw - r.position.z) / r.direction.z;
+    if (t <= 0) return false;
+    out = {(r.position.x + r.direction.x * t) / U, -(r.position.y + r.direction.y * t) / U};
+    return true;
+}
+static int attHandleUnderMouse() {
+    const AttachDef& a = A.design.attach;
+    float zw = (float)(a.atZ * U);
+    Vector2 m = GetMousePosition();
+    auto near = [&](V2 p) { return Vector2Distance(toScreen(W3(p, zw)), m) < 9; };
+    if (lineJob(a)) {
+        if (near(a.optic.rear)) return 0;
+        if (near(a.optic.front)) return 1;
+    }
+    if (near(a.at)) return 3;
+    if (lineJob(a)) {   // on the line between
+        Vector2 r = toScreen(W3(a.optic.rear, zw)), f = toScreen(W3(a.optic.front, zw)), d = Vector2Subtract(f, r);
+        float l2 = Vector2LengthSqr(d);
+        if (l2 > 1) {
+            float t = std::clamp(Vector2DotProduct(Vector2Subtract(m, r), d) / l2, 0.f, 1.f);
+            if (Vector2Distance(Vector2Add(r, Vector2Scale(d, t)), m) < 6) return 2;
+        }
+    }
+    return -1;
+}
+bool attachHandlesInput(bool overUI) {
+    if (!A.design.attach.on || A.mode != Mode::Build) { gAttHot = gAttDrag = -1; return false; }
+    AttachDef& a = A.design.attach;
+    float zw = (float)(a.atZ * U);
+    if (gAttDrag >= 0) {
+        V2 p;
+        if (mousePlane(zw, p)) {
+            V2 d{p.x - gAttGrab.x, p.y - gAttGrab.y};
+            bool snap = A.snapOn && gSnap > 0 && !IsKeyDown(KEY_LEFT_ALT) && !IsKeyDown(KEY_RIGHT_ALT);
+            auto sn = [&](V2 q) { return snap ? V2{std::round(q.x / gSnap) * gSnap, std::round(q.y / gSnap) * gSnap} : q; };
+            if (gAttDrag == 0) { a.optic.rear = sn({gAttRear0.x + d.x, gAttRear0.y + d.y}); a.optic.lensSet = true; }
+            else if (gAttDrag == 1) { a.optic.front = sn({gAttFront0.x + d.x, gAttFront0.y + d.y}); a.optic.lensSet = true; }
+            else if (gAttDrag == 2) {
+                V2 r = sn({gAttRear0.x + d.x, gAttRear0.y + d.y});
+                V2 move{r.x - gAttRear0.x, r.y - gAttRear0.y};
+                a.optic.rear = r; a.optic.front = {gAttFront0.x + move.x, gAttFront0.y + move.y}; a.optic.lensSet = true;
+            } else { a.at = sn({gAttAt0.x + d.x, gAttAt0.y + d.y}); a.atSet = true; }
+        }
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { gAttDrag = -1; commit(); }
+        return true;
+    }
+    gAttHot = overUI ? -1 : attHandleUnderMouse();
+    if (gAttHot < 0 || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return false;
+    V2 p;
+    if (!mousePlane(zw, p)) return false;
+    gAttDrag = gAttHot; gAttGrab = p;
+    gAttRear0 = a.optic.rear; gAttFront0 = a.optic.front; gAttAt0 = a.at;
+    return true;
+}
+
 void drawMountOverlay() {
     if (A.mode != Mode::Build) return;
     if (A.design.attach.on) {   // an attachment: where it meets its mount, and an optic's sight line
@@ -409,6 +473,7 @@ void drawMountOverlay() {
         } else viewText(("Fits a " + a.mount + " here").c_str(), s.x + 10, s.y + 8, 12, g);
         Vector2 q[4] = {{s.x, s.y - 6}, {s.x + 6, s.y}, {s.x, s.y + 6}, {s.x - 6, s.y}};
         for (int j = 0; j < 4; j++) DrawLineEx(q[j], q[(j + 1) % 4], 2, g);
+        if (gAttHot == 3 || gAttDrag == 3) { DrawCircleLinesV(s, 10, g); if (gAttDrag < 0) viewText("Drag to move where it mounts", s.x + 12, s.y - 22, 12, g); }
         if (a.job == "optic") {
             const OpticDef& op = a.optic;
             Color o{255, 120, 90, 255};
@@ -423,6 +488,10 @@ void drawMountOverlay() {
                 DrawCircleV(es, 4, o);
                 viewText(TextFormat("Eye (%s behind)", fmtQ(Q::Length, op.eyeRelief).c_str()), es.x - 40, es.y - 20, 12, o);
             }
+            if (gAttHot == 0 || gAttDrag == 0) DrawCircleLinesV(rr, 9, o);
+            if (gAttHot == 1 || gAttDrag == 1) DrawCircleLinesV(ff, 9, o);
+            if (gAttHot == 2 || gAttDrag == 2) DrawLineEx(rr, ff, 4, o);
+            if (gAttHot >= 0 && gAttHot <= 2 && gAttDrag < 0) viewText(gAttHot == 2 ? "Drag to move the sight line" : "Drag to move this end", rr.x - 10, rr.y + 12, 12, o);
             viewText(op.kind == "scope" ? TextFormat("Sight line, %.1fx%s", op.mag, op.magMax > op.mag ? TextFormat("-%.1fx", op.magMax) : "") : "Sight line", ff.x + 8, ff.y - 8, 12, o);
         }
         if (a.job == "light" || a.job == "laser") {   // its beam: out of the front end
@@ -440,6 +509,9 @@ void drawMountOverlay() {
                 DrawLineEx(ff, Vector2Add(ff, Vector2Add(Vector2Scale(d, 120), Vector2Scale(nrm, 120 * sp))), 1.5f, o);
                 DrawLineEx(ff, Vector2Add(ff, Vector2Subtract(Vector2Scale(d, 120), Vector2Scale(nrm, 120 * sp))), 1.5f, o);
             }
+            if (gAttHot == 0 || gAttDrag == 0) DrawCircleLinesV(rr, 9, o);
+            if (gAttHot == 1 || gAttDrag == 1) DrawCircleLinesV(ff, 9, o);
+            if (gAttHot == 2 || gAttDrag == 2) DrawLineEx(rr, ff, 4, o);
             viewText(a.job == "laser" ? "Laser" : TextFormat("Beam, %.0f deg", a.beamDeg), ff.x + 8, ff.y - 20, 12, o);
         }
     }

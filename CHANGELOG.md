@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.6-alpha
+
+### Attachment designer
+- **Drag the sight line in the view.** Grab either end of an optic's sight line (or a light's or laser's beam) to move that end, the line itself to move it whole, or the green diamond to move where it mounts. Snaps to the grid with the magnet on; hold Alt for free movement. The number fields in the Attachment tab still work too.
+
 ## 0.7.5-alpha
 
 ### Fixes
