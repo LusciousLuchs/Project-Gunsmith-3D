@@ -32,6 +32,7 @@ struct Settings {
     // audio (0..1)
     float volMaster = 0.8f, volGunfire = 1.0f, volMechanical = 1.0f, volInterface = 0.7f;
     bool muteUnfocused = true;
+    bool autoUpdate = true;              // fetch and install new versions from GitHub at start (Windows)
     // interface
     Units units = Units::Metric;
     StatsDetail stats = StatsDetail::Minimal;

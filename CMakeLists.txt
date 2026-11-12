@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- version: the one place to change it. See CHANGELOG.md.
 #   0.1.0-dev: the editor and test bench worked out (dev1 to dev25).
 #   0.2.x-alpha: barrels, posing, and first-person shooting.
-project(Gunsmith3D VERSION 0.6.1 LANGUAGES C CXX)
+project(Gunsmith3D VERSION 0.6.2 LANGUAGES C CXX)
 set(GUNSMITH_STAGE "alpha" CACHE STRING "Release stage: dev, alpha, beta, rc, or empty for a release")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -90,7 +90,7 @@ add_library(gunsmith_app STATIC ${APP_SRC})
 target_include_directories(gunsmith_app PUBLIC src)
 target_link_libraries(gunsmith_app PUBLIC gunsmith_core raylib imgui)
 if(WIN32)
-  target_link_libraries(gunsmith_app PUBLIC comdlg32 shell32 ole32)  # the open-file box and "open folder"
+  target_link_libraries(gunsmith_app PUBLIC comdlg32 shell32 ole32 winhttp)  # the open-file box and "open folder"; the updater
 endif()
 
 add_library(gunsmith_ui STATIC ${UI_SRC})

@@ -9,6 +9,7 @@
 #include "app/keys.hpp"
 #include "app/mapedit.hpp"
 #include "app/settings.hpp"
+#include "app/updater.hpp"
 #include "app/view.hpp"
 #include "ui/ui.hpp"
 #include "app/range.hpp"
@@ -237,6 +238,25 @@ void mainMenu() {
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, GetScreenHeight() - 34 * S()});
     ImGui::TextDisabled("%s", version::text());
+    {   // updates: fetched from GitHub and installed in the background
+        update::Status u = update::status();
+        ImGui::SameLine(0, 14 * S());
+        switch (u.state) {
+            case update::State::Checking: ImGui::TextDisabled("Checking for updates..."); break;
+            case update::State::UpToDate: ImGui::TextDisabled("Up to date"); break;
+            case update::State::Downloading: ImGui::TextDisabled("Downloading %s...", u.latest.c_str()); break;
+            case update::State::Installing: ImGui::TextDisabled("Installing %s...", u.latest.c_str()); break;
+            case update::State::Installed:
+                ImGui::TextColored({0.55f, 0.85f, 0.55f, 1}, "Updated to %s: it starts next time.", u.latest.c_str());
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Restart now") && update::restart()) A.quit = true;
+                break;
+            case update::State::Failed:
+                ImGui::TextDisabled("Update: %s", u.note.c_str());
+                break;
+            default: break;
+        }
+    }
     ImGui::End();
     whatsNew();
 }
@@ -470,6 +490,11 @@ void audioPage() {
 }
 
 void interfacePage() {
+    ImGui::SeparatorText("Updates");
+    row("Update automatically", "When the game starts it looks for a new version on GitHub, downloads it and installs it in the\n"
+                                "background. It runs the next time you start the game (or at once with Restart now, on the main menu).\n"
+                                "Your designs, maps and settings are never touched.");
+    if (ImGui::Checkbox("##autoupd", &CFG.autoUpdate)) { saveSettings(); if (CFG.autoUpdate) update::start(); }
     ImGui::SeparatorText("Performance");
     row("Performance overlay", "The frame rate, a graph of how long each frame takes, and with full details what the time goes on\n"
                                 "(the gun's physics, NPCs, drawing) and the heaviest parts of a design. F3 changes it anywhere.");

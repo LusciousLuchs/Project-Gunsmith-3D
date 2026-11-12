@@ -43,6 +43,7 @@ void loadSettings() {
         CFG.volMechanical = std::clamp(g("volMechanical", d.volMechanical), 0.f, 1.f);
         CFG.volInterface = std::clamp(g("volInterface", d.volInterface), 0.f, 1.f);
         CFG.muteUnfocused = g("muteUnfocused", d.muteUnfocused);
+        CFG.autoUpdate = g("autoUpdate", d.autoUpdate);
         CFG.units = (Units)std::clamp(g("units", (int)d.units), 0, 1);
         CFG.stats = (StatsDetail)std::clamp(g("stats", (int)d.stats), 0, 2);
         CFG.tooltips = g("tooltips", d.tooltips);
@@ -78,7 +79,7 @@ void saveSettings() {
         {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
-        {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused},
+        {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused}, {"autoUpdate", CFG.autoUpdate},
         {"units", (int)CFG.units}, {"stats", (int)CFG.stats}, {"tooltips", CFG.tooltips}, {"hints", CFG.hints},
         {"colorblind", CFG.colorblind}, {"snap", CFG.snap}, {"snapOn", CFG.snapOn}, {"autosave", (int)CFG.autosave},
         {"orbitMiddle", CFG.orbitMiddle}, {"zoomSpeed", CFG.zoomSpeed}, {"invertZoom", CFG.invertZoom},

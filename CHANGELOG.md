@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.6.2-alpha
+
+- **The game updates itself.** When it starts it looks for a newer version online, downloads it and installs it in the background. You'll see "Updated to ..." at the bottom of the main menu: the new version runs next time, or press Restart now. Your designs, maps, character and settings are never touched. Switch it off in Settings > Interface > Updates.
+- **This is the last time you need to download a zip by hand:** updates after this one arrive on their own.
+
 ## 0.6.1-alpha
 
 ### Magazines
