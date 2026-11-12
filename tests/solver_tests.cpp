@@ -1992,6 +1992,22 @@ static void careerStages() {
     }
 }
 
+static void reliabilityTimeout() {
+    std::printf("reliabilityTimeout\n");
+    sim::ReliabilityOptions o;
+    o.rounds = 30;
+    o.stallSeconds = 0.05;   // (far too short for any gun: it must give up, quickly, with the reason)
+    auto t0 = std::chrono::steady_clock::now();
+    auto R = sim::runReliability(loadPreset("blowback"), o);
+    double took = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+    CHECK(R.gaveUp && R.note.rfind("Gave up", 0) == 0, "a test that can't keep up gives up, saying why");
+    CHECK(R.fired < 30, "it stopped early");
+    CHECK(took < 3, "and promptly");
+    o.stallSeconds = 10;
+    o.rounds = 10;
+    auto R2 = sim::runReliability(loadPreset("blowback"), o);
+    CHECK(!R2.gaveUp && R2.fired == 10, "a working gun is untouched by the limit");
+}
 static void shopChecks() {
     std::printf("shopChecks\n");
     gmap::Map m = gmap::defaultWorkshop();
@@ -2617,6 +2633,7 @@ int main() {
     magazineShaping();
     npcRotate();
     shopChecks();
+    reliabilityTimeout();
     npcDesigns();
     careerRules();
     careerStages();

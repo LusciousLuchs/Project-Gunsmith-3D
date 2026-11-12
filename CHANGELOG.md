@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.5-alpha
+
+### Fixes
+- **The reliability test no longer gets stuck.** A gun that can't fire and reload within 10 seconds is given up on, rated on what it managed, and you're told why. This applies both to rating a gun in career mode and to the designer's reliability test. It was also what made the cursor go missing in career mode.
+
 ## 0.7.4-alpha
 
 ### Career

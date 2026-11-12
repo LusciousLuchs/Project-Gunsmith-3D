@@ -80,6 +80,7 @@ struct Test {
     bool running = false;
     int target = 30, contract = -1;
     std::string gun;
+    bool stalled = false;
     career::GunSheet sheet;
     std::mutex m;
 } T;
@@ -267,6 +268,7 @@ void careerTestStart(const std::string& gun, int contractId) {
     sim::ReliabilityOptions o;
     o.rounds = TEST_ROUNDS;
     o.seed = (unsigned)(CAREER.day * 7919 + contractId * 31 + 1);   // (each test day its own luck)
+    o.stallSeconds = 10;   // (a gun that can't fire and reload in 10 s fails the test instead of testing forever)
     T.worker = std::thread([d, o, base]() {
         sim::ReliabilityReport r = sim::runReliability(d, o, &T.done, &T.cancel);
         std::lock_guard<std::mutex> lk(T.m);
@@ -276,6 +278,7 @@ void careerTestStart(const std::string& gun, int contractId) {
         if (r.gaveUp && r.fired < o.rounds) T.sheet.jamRate = std::max(T.sheet.jamRate, 100.0 * (o.rounds - r.fired) / o.rounds);   // (stuck for good)
         T.sheet.fired = r.fired;
         T.sheet.manual = r.manual;
+        T.stalled = r.gaveUp && r.note.rfind("Gave up", 0) == 0;
         T.finished = true;
     });
 }
@@ -293,7 +296,8 @@ void careerTestPoll() {
     if (T.contract < 0) {
         CAREER.sheets[T.gun] = s;
         char b[160];
-        std::snprintf(b, sizeof b, "Rated the %s: %.1f%% jams over %d rounds, worth about $%.0f.", T.gun.c_str(), s.jamRate, s.fired, s.value());
+        if (T.stalled) std::snprintf(b, sizeof b, "The %s couldn't fire and reload within 10 seconds on the bench: rated on the %d round%s it fired.", T.gun.c_str(), s.fired, s.fired == 1 ? "" : "s");
+        else std::snprintf(b, sizeof b, "Rated the %s: %.1f%% jams over %d rounds, worth about $%.0f.", T.gun.c_str(), s.jamRate, s.fired, s.value());
         toast(b);
     } else {
         bool paid = career::deliver(CAREER, T.contract, T.gun, s);

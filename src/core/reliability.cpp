@@ -271,6 +271,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
     };
     auto clear = [&]() -> bool {  // open, pick out what's stuck, let it close on a fresh round
         for (int tries = 0; tries < 3; tries++) {
+            if (run_.stop()) return false;
             run_.open();
             run_.pickOut(tries > 0);
             if (R.singleLoad) run_.loadAll();

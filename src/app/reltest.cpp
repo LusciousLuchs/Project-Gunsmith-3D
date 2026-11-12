@@ -15,6 +15,7 @@ void relStart() {
     sim::ReliabilityOptions o;
     o.rounds = REL.rounds;
     o.seed = REL.seed++;
+    o.stallSeconds = 10;   // (a gun that can't fire and reload in 10 s is given up on, not tested forever)
     REL.worker = std::thread([d, o]() {
         sim::ReliabilityReport r = sim::runReliability(d, o, &REL.done, &REL.cancel);
         std::lock_guard<std::mutex> lk(REL.m);
