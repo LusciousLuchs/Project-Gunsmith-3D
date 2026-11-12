@@ -148,6 +148,11 @@ static void restore(const std::string& s) {
     gmap::Map m;
     if (gmap::mapFromJson(s, m)) { ME.map = m; ME.sel.clear(); ME.face = -1; ME.ent = -1; ME.version++; ME.dirty = true; }
 }
+void meReplaceMap(const gmap::Map& m) {
+    meSnapshot();
+    ME.map = m; ME.sel.clear(); ME.face = -1; ME.ent = -1;
+    meChanged();
+}
 void meUndo() {
     if (ME.undo.empty()) return;
     ME.redo.push_back(gmap::mapToJson(ME.map));

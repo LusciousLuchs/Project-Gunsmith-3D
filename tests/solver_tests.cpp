@@ -1992,6 +1992,21 @@ static void careerStages() {
     }
 }
 
+static void shopChecks() {
+    std::printf("shopChecks\n");
+    gmap::Map m = gmap::defaultWorkshop();
+    CHECK(gmap::shopMissing(m).empty(), "the starting workshop has everything");
+    // take the bench, the counter, the door and the start away
+    std::vector<gmap::Entity> keep;
+    for (auto& e : m.ents) if (e.type != "station_bench" && e.type != "shop_counter" && e.type != "shop_door" && e.type != "player_start" && e.type != "light") keep.push_back(e);
+    m.ents = keep;
+    CHECK(gmap::shopMissing(m).size() == 5, "missing: start, bench, counter, door, a light");
+    int n = gmap::shopRepair(m);
+    CHECK(n == 5, "five put back");
+    CHECK(gmap::shopMissing(m).empty(), "nothing missing after the repair");
+    for (auto& e : m.ents) if (e.type == "station_bench") CHECK(std::fabs(e.pos.y) < 0.05, "the bench stands on the floor");
+    CHECK(gmap::shopRepair(m) == 0, "a second repair adds nothing");
+}
 static void npcRotate() {
     std::printf("npcRotate\n");
     NpcDef n = npcPreset("human");
@@ -2601,6 +2616,7 @@ int main() {
     gasAndOpenBolt();
     magazineShaping();
     npcRotate();
+    shopChecks();
     npcDesigns();
     careerRules();
     careerStages();

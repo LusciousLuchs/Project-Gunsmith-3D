@@ -532,6 +532,58 @@ Map defaultWorkshop() {
     addShopBasics(m);
     return m;
 }
+namespace {
+bool hasType(const Map& m, const char* t) { for (auto& e : m.ents) if (e.type == t) return true; return false; }
+bool darkInside(const Map& m) { return m.look.daylight < 0.3 && !hasType(m, "light"); }
+}  // namespace
+std::vector<ShopNeed> shopMissing(const Map& m) {
+    std::vector<ShopNeed> out;
+    if (!hasType(m, "player_start")) out.push_back({"Where you start", "Player start tool"});
+    if (!hasType(m, "station_bench")) out.push_back({"Your workbench (where you work on your guns)", "Workstation tool: Workbench"});
+    if (!hasType(m, "shop_counter")) out.push_back({"The counter (where you serve customers)", "Workstation tool: Shop counter"});
+    if (!hasType(m, "shop_computer")) out.push_back({"The computer (store, contracts, staff)", "Workstation tool: Office computer"});
+    if (!hasType(m, "shop_door")) out.push_back({"The front door (where you end the day)", "Workstation tool: Front door"});
+    if (darkInside(m)) out.push_back({"A light (it's dark inside)", "Light tool"});
+    return out;
+}
+int shopRepair(Map& m) {
+    int added = 0;
+    // the middle of the room: where you start, else the middle of the walls, else the middle of everything
+    V3 c{0, 0, 0};
+    bool have = false;
+    for (auto& e : m.ents) if (e.type == "player_start") { c = e.pos; have = true; break; }
+    if (!have) {
+        double x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9;
+        for (auto& b : m.brushes) {
+            V3 mn, mx;
+            brushBounds(b, mn, mx);
+            if (mx.y < 1.5 || mn.y > 1.0) continue;
+            x0 = std::min(x0, mn.x); x1 = std::max(x1, mx.x); z0 = std::min(z0, mn.z); z1 = std::max(z1, mx.z);
+        }
+        if (x1 > x0) c = {(x0 + x1) / 2, 0, (z0 + z1) / 2};
+    }
+    auto floorAt = [&](double x, double z) {   // the top of whatever's under (x, z) below head height
+        Hit h = rayMap(m, {x, 2.0, z}, {0, -1, 0}, 20);
+        return h.brush >= 0 ? 2.0 - h.t : 0.0;
+    };
+    auto put = [&](const char* type, double dx, double dz, double yaw) {
+        if (hasType(m, type)) return;
+        Entity e; e.type = type; e.pos = {c.x + dx, 0, c.z + dz}; e.pos.y = floorAt(e.pos.x, e.pos.z); e.yaw = yaw;
+        m.ents.push_back(e);
+        added++;
+    };
+    if (!have) { Entity e; e.type = "player_start"; e.pos = {c.x, floorAt(c.x, c.z), c.z}; m.ents.push_back(e); added++; }
+    put("station_bench", -1.8, -1.6, 90);
+    put("shop_counter", 1.8, 1.6, 180);
+    put("shop_computer", -1.8, 1.6, 0);
+    put("shop_door", 2.6, 0, 180);
+    if (darkInside(m)) {
+        Entity e; e.type = "light"; e.pos = {c.x, floorAt(c.x, c.z) + 2.6, c.z}; e.power = 8; e.range = 10;
+        m.ents.push_back(e);
+        added++;
+    }
+    return added;
+}
 std::map<std::string, int> workshopStations(const Map& m) {
     std::map<std::string, int> n;
     for (auto& e : m.ents) {

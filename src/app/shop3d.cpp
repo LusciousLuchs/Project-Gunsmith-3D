@@ -21,7 +21,8 @@
 #include <vector>
 
 namespace {
-int gOpen = -1;            // the screen open: 0 computer, 1 workstation, 2 counter, 3 front door; -1 none
+int gOpen = -1;
+bool gAskMissing = false;   // Walk was pressed with things missing: ask            // the screen open: 0 computer, 1 workstation, 2 counter, 3 front door; -1 none
 gmap::Player gStood;       // where you stood when you went to build
 bool gHaveStood = false;
 
@@ -119,7 +120,10 @@ bool shopActive() { return inCareer() && A.screen == Screen::MapEditor && !ME.ca
 bool shopWalking() { return shopActive() && ME.walking; }
 
 void shopEnter() {
+    size_t had = ME.map.ents.size();
     gmap::addShopBasics(ME.map);
+    gmap::shopRepair(ME.map);
+    if (int n = (int)(ME.map.ents.size() - had); n > 0) toast(TextFormat("Your shop was missing %d thing%s it needs: put back near where you start.", n, n == 1 ? "" : "s"));
     ME.version++;
     gOpen = -1;
     CAREER.stations = gmap::workshopStations(ME.map);
@@ -181,6 +185,32 @@ void shopHud() {
 
 void shopWindows() {
     careerTestPoll();   // (a bench test finishing while you walk)
+    if (gAskMissing && shopActive() && !ME.walking) {
+        auto miss = gmap::shopMissing(ME.map);
+        if (miss.empty()) { gAskMissing = false; shopWalk(); return; }
+        ImGui::OpenPopup("Your shop isn't ready");
+        ImGui::SetNextWindowPos({GetScreenWidth() / 2.0f, GetScreenHeight() / 2.0f}, ImGuiCond_Always, {0.5f, 0.5f});
+        ImGui::SetNextWindowSize({440 * CFG.uiScale, 0});
+        if (ImGui::BeginPopupModal("Your shop isn't ready", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove)) {
+            ImGui::TextWrapped("Your shop needs these to work:");
+            for (auto& m : miss) { ImGui::BulletText("%s", m.what.c_str()); ImGui::Indent(); ImGui::TextDisabled("%s", m.tool.c_str()); ImGui::Unindent(); }
+            ImGui::Dummy({0, 6 * CFG.uiScale});
+            float w = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+            if (ImGui::Button("Put them in for me", {w, 30 * CFG.uiScale})) {
+                meSnapshot();
+                gmap::shopRepair(ME.map);
+                meChanged();
+                gAskMissing = false;
+                ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+                shopWalk();
+                return;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Keep building", {w, 30 * CFG.uiScale}) || IsKeyPressed(KEY_ESCAPE)) { gAskMissing = false; ImGui::CloseCurrentPopup(); }
+            ImGui::EndPopup();
+        }
+    }
     if (gOpen < 0) return;
     if (!careerThingWindow(gOpen)) shopCloseThing();
 }
@@ -202,7 +232,7 @@ void shopBuildMode() {
 
 void shopWalk() {
     if (!shopActive()) return;
-    gmap::addShopBasics(ME.map);
+    if (!gmap::shopMissing(ME.map).empty()) { gAskMissing = true; return; }   // (the window in shopWindows asks what to do)
     CAREER.stations = gmap::workshopStations(ME.map);
     careerSave();
     meWalk(false);

@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.3-alpha
+
+### Career
+- **Several careers.** Career on the main menu lists your gun businesses (day, money, how well known): play one, start a new one with its own name, or delete one. Your old career carries on as "My shop".
+- **Save and load your workshop.** In build mode, the File tab saves copies of your workshop and loads them back (Ctrl+Z undoes a load), or starts again from the empty workshop.
+- **Your shop checks itself.** The Edit tab lists anything your shop still needs: where you start, your workbench, the counter, the computer, the front door, and a light if it's dark. Walking in with something missing asks first, and "Put them in for me" places them.
+
+### Fixes
+- The Fullbright view button in the level editor no longer gets stuck.
+
 ## 0.7.2-alpha
 
 ### Rotation rings

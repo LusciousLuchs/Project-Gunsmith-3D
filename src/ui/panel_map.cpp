@@ -20,6 +20,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 
 using gmap::V3;
 static float S() { return CFG.uiScale; }
@@ -27,7 +29,9 @@ static float S() { return CFG.uiScale; }
 static bool iconBtn(const char* icon, const char* tip, bool on = false) {
     float sz = TOOLBAR_H - 14 * S();
     if (on) { ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.91f, 0.63f, 0.23f, 0.22f)); ImGui::PushStyleColor(ImGuiCol_Text, colAccent()); }
+    ImGui::PushID(tip);   // (two buttons can share an icon: the light tool and the fullbright view are both a bulb)
     bool r = ImGui::Button(icon, {sz, sz});
+    ImGui::PopID();
     if (on) ImGui::PopStyleColor(2);
     if (tipHover()) ImGui::SetTooltip("%s", tip);
     return r;
@@ -115,7 +119,9 @@ void mapToolbar() {
         static const char* tips[] = {"As players will see it: lit only by its daylight and its own lights.\nClick: a work light", "Work light: dark maps still show while you build, the lamps on top.\nClick: fullbright",
                                      "Fullbright: every face in its own colour, no shading, no fog: easiest for placing things.\nClick: as players will see it"};
         const char* icons[] = {ICON_FA_MOON, ICON_FA_SUN, ICON_FA_LIGHTBULB};
+        ImGui::PushID("viewlight");
         if (iconBtn(icons[ME.lightMode], tips[ME.lightMode], ME.lightMode > 0)) ME.lightMode = (ME.lightMode + 1) % 3;
+        ImGui::PopID();
     }
     gap(4);
     if (iconBtn(ICON_FA_BORDER_ALL, "Ground grid", ME.showGrid)) ME.showGrid = !ME.showGrid;
@@ -126,9 +132,14 @@ void mapToolbar() {
     gap(4);
     if (iconBtn(ICON_FA_FLOPPY_DISK, "Save (Ctrl+S)")) meSave();
     gap(8);
-    if (accentButton(ICON_FA_PERSON_WALKING "  Walk", true, {104 * S(), sz})) meWalk(IsKeyDown(KEY_LEFT_SHIFT));
-    tutAnchor("map:walk");
-    if (tipHover()) ImGui::SetTooltip("Walk the map from the player start (F5).\nShift: start where the camera is.");
+    if (!ME.careerFile.empty()) {   // (your workshop: Walk is on the left, and goes through the shop's checks)
+        if (accentButton(ICON_FA_PERSON_WALKING "  Walk", true, {104 * S(), sz})) shopWalk();
+        if (tipHover()) ImGui::SetTooltip("Back on foot in your shop (B).");
+    } else {
+        if (accentButton(ICON_FA_PERSON_WALKING "  Walk", true, {104 * S(), sz})) meWalk(IsKeyDown(KEY_LEFT_SHIFT));
+        tutAnchor("map:walk");
+        if (tipHover()) ImGui::SetTooltip("Walk the map from the player start (F5).\nShift: start where the camera is.");
+    }
     ImGui::End();
 }
 
@@ -483,7 +494,74 @@ static void mapTab() {
     }
 }
 
+// career mode: what your shop still needs, at the top of the Edit tab
+static void shopChecklist() {
+    auto miss = gmap::shopMissing(ME.map);
+    heading("Your shop");
+    if (miss.empty()) { ImGui::TextColored(ImVec4(0.45f, 0.8f, 0.45f, 1), ICON_FA_CHECK "  Everything it needs is here."); ImGui::Dummy({0, 6 * S()}); return; }
+    ImGui::TextColored(colWarn(), "Still needs:");
+    for (auto& m : miss) {
+        ImGui::BulletText("%s", m.what.c_str());
+        if (tipHover()) ImGui::SetTooltip("%s", m.tool.c_str());
+    }
+    if (ImGui::Button("Put them in for me", {-1, 0})) { meSnapshot(); gmap::shopRepair(ME.map); meChanged(); }
+    if (tipHover()) ImGui::SetTooltip("Placed near where you start (else the middle of the room). Move them where you like.");
+    ImGui::Dummy({0, 6 * S()});
+}
+// career mode: your workshop's saved copies, so a mistake can be undone later
+static void workshopFileTab() {
+    heading("Your workshop");
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+    ImGui::TextWrapped("Kept as you go. Save a copy before big changes, and load it back if you don't like them.");
+    ImGui::PopStyleColor();
+    static char name[64] = "";
+    ImGui::SetNextItemWidth(-90 * S());
+    ImGui::InputTextWithHint("##copyname", "Name of the copy", name, sizeof name);
+    ImGui::SameLine();
+    if (ImGui::Button("Save copy", {-1, 0})) {
+        std::string n = name[0] ? name : TextFormat("Day %d", CAREER.day);
+        std::string f = careerWorkshopCopyFile(n);
+        embedMapNpcs(ME.map);
+        std::ofstream(f) << gmap::mapToJson(ME.map);
+        toast(TextFormat("Saved a copy: %s", std::filesystem::path(f).stem().string().c_str()));
+        name[0] = 0;
+    }
+    ImGui::Dummy({0, 6 * S()});
+    heading("Saved copies");
+    auto copies = careerWorkshopCopies();
+    if (copies.empty()) ImGui::TextDisabled("None yet.");
+    static std::string askDelete;
+    for (auto& c : copies) {
+        ImGui::PushID(c.c_str());
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(c.c_str());
+        float bw = 60 * S();
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 2 * bw - ImGui::GetStyle().ItemSpacing.x);
+        if (ImGui::Button("Load", {bw, 0})) {
+            std::ifstream in(careerWorkshopCopyFile(c)); std::stringstream ss; ss << in.rdbuf();
+            gmap::Map m;
+            if (in && gmap::mapFromJson(ss.str(), m)) { meReplaceMap(m); toast(TextFormat("Loaded %s. Ctrl+Z puts back what you had.", c.c_str())); }
+            else toast("That copy couldn't be read.");
+        }
+        ImGui::SameLine();
+        if (askDelete == c) { if (ImGui::Button("Sure?", {bw, 0})) { std::error_code ec; std::filesystem::remove(careerWorkshopCopyFile(c), ec); askDelete.clear(); } }
+        else if (ImGui::Button("Delete", {bw, 0})) askDelete = c;
+        ImGui::PopID();
+    }
+    ImGui::Dummy({0, 6 * S()});
+    heading("Start again");
+    static bool askFresh = false;
+    if (!askFresh) { if (ImGui::Button("The empty workshop you started with", {-1, 0})) askFresh = true; }
+    else {
+        ImGui::TextColored(colWarn(), "Replace your workshop? (Ctrl+Z undoes it)");
+        float w = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        if (ImGui::Button("Replace it", {w, 0})) { meReplaceMap(gmap::defaultWorkshop()); askFresh = false; }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", {w, 0})) askFresh = false;
+    }
+}
 static void fileTab() {
+    if (!ME.careerFile.empty()) { workshopFileTab(); return; }
     heading("Save");
     ImGui::TextDisabled("Saved in your Levels folder as <name>.gsmap (Settings > Files shows where). Maps are plain text, so they're easy to share and edit.");
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {-1, 30 * S()})) meSave();
@@ -525,7 +603,7 @@ void mapPanel() {
     }
     ImGui::BeginChild("##mapbody");
     switch (tab) {
-    case 0: editTab(); toolOptions(); ImGui::Dummy({0, 6 * S()}); groupTools(); break;
+    case 0: if (!ME.careerFile.empty()) shopChecklist(); editTab(); toolOptions(); ImGui::Dummy({0, 6 * S()}); groupTools(); break;
     case 1: texturesTab(); break;
     case 2: mapTab(); break;
     case 3: fileTab(); break;

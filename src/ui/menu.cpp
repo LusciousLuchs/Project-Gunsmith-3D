@@ -201,6 +201,7 @@ void mainMenu() {
     if (A.showTutorials) { tutorialsWindow(); return; }
     if (A.showRangePicker) { rangePicker(); return; }
     if (A.showAbout) { aboutWindow(); return; }
+    if (A.showCareerPicker) { careerPicker(); return; }
     ImGui::SetNextWindowPos({0, 0});
     ImGui::SetNextWindowSize({(float)GetScreenWidth(), (float)GetScreenHeight()});
     ImGui::SetNextWindowBgAlpha(0);
@@ -216,7 +217,7 @@ void mainMenu() {
     ImGui::SetCursorPosX(x - 16 * S());
     ImGui::BeginGroup();
     if (menuItem("Tutorials", true, tutorialsDoneCount() == 0 ? "start here" : nullptr)) A.showTutorials = true;
-    if (menuItem("Career", true, careerExists() ? "carry on" : "start your gun business")) enterCareer();
+    if (menuItem("Career", true, careerExists() ? "carry on, or start another" : "start your gun business")) A.showCareerPicker = true;
     if (menuItem("Sandbox")) enterWorkshop(false);
     if (menuItem("Firing range")) A.showRangePicker = true;
     if (menuItem("Your character", true, "who holds your guns")) enterCharacterEditor();
@@ -347,6 +348,58 @@ void rangePicker() {
     }
     ImGui::EndChild();
     if (ImGui::Button("Back", {120 * S(), 32 * S()}) || IsKeyPressed(KEY_ESCAPE)) { uiTick(); A.showRangePicker = false; }
+    ImGui::End();
+}
+
+// ---------------------------------------------------------------- career: which one
+void careerPicker() {
+    dimBackground(0.35f);
+    centerNext(520 * S(), 520 * S());
+    ImGui::Begin("##careers", nullptr, PLAIN);
+    ImGui::PushFont(gFontBold, 20.0f);
+    ImGui::TextUnformatted("Career");
+    ImGui::PopFont();
+    ImGui::TextDisabled("Carry on with a gun business, or start a new one.");
+    ImGui::Dummy({0, 4 * S()});
+    auto slots = careerSlots();
+    static char name[64] = "";
+    static std::string askDelete;
+    static bool init = false;
+    if (!init) { std::snprintf(name, sizeof name, "%s", slots.empty() ? "My shop" : TextFormat("Shop %d", (int)slots.size() + 1)); init = true; }
+    ImGui::SeparatorText("New career");
+    ImGui::SetNextItemWidth(-130 * S());
+    ImGui::InputTextWithHint("##cname", "Your shop's name", name, sizeof name);
+    ImGui::SameLine();
+    if (accentButton("Start", true, {-1, 0})) { uiTick(); A.showCareerPicker = false; init = false; careerBegin(name); ImGui::End(); return; }
+    ImGui::SeparatorText("Your careers");
+    ImGui::BeginChild("##clist", {0, -44 * S()});
+    if (slots.empty()) ImGui::TextDisabled("None yet.");
+    for (auto& c : slots) {
+        ImGui::PushID(c.name.c_str());
+        ImGui::BeginGroup();
+        ImGui::PushFont(gFontBold, 0.0f);
+        ImGui::TextUnformatted(c.name.c_str());
+        ImGui::PopFont();
+        ImGui::TextDisabled("Day %d    $%.0f    %s", c.day, c.money, career::tierName(c.reputation));
+        ImGui::EndGroup();
+        float bw = 80 * S();
+        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 2 * bw - ImGui::GetStyle().ItemSpacing.x);
+        float by = ImGui::GetCursorPosY() + 6 * S();
+        ImGui::SetCursorPosY(by);
+        if (ImGui::Button("Play", {bw, 0})) { uiTick(); A.showCareerPicker = false; init = false; careerContinue(c.name); ImGui::PopID(); ImGui::EndChild(); ImGui::End(); return; }
+        ImGui::SameLine();
+        ImGui::SetCursorPosY(by);
+        if (askDelete == c.name) {
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.2f, 0.2f, 1));
+            if (ImGui::Button("Delete it", {bw, 0})) { careerDelete(c.name); askDelete.clear(); }
+            ImGui::PopStyleColor();
+            if (tipHover()) ImGui::SetTooltip("Deletes this career and its workshop for good.");
+        } else if (ImGui::Button("Delete", {bw, 0})) askDelete = c.name;
+        ImGui::Separator();
+        ImGui::PopID();
+    }
+    ImGui::EndChild();
+    if (ImGui::Button("Back", {120 * S(), 32 * S()}) || IsKeyPressed(KEY_ESCAPE)) { uiTick(); A.showCareerPicker = false; askDelete.clear(); }
     ImGui::End();
 }
 

@@ -102,6 +102,7 @@ int main(int argc, char** argv) {
         else if (a == "--menu") menuArg = true;
         else if (a == "--perf") perfArg = true;   // (screenshots) the performance overlay with full details
         else if (a == "--about") { menuArg = true; A.showAbout = true; }   // (screenshots of the About window)
+        else if (a == "--careers") { menuArg = true; A.showCareerPicker = true; }   // (screenshots of the career list)
         else if (a == "--solid") solidArg = true;
         else if (a == "--dist") camDist = (float)std::atof(next().c_str());   // (screenshots) how far the camera is
         else if (a == "--range") rangeArg = next();
@@ -218,6 +219,12 @@ int main(int argc, char** argv) {
         if (std::getenv("GUNSMITH_CAREERDESIGN")) enterWorkshop(false);   // (the designer, opened from the office)
         if (const char* e = std::getenv("GUNSMITH_CAREERDEMO")) careerDemoStart(std::atoi(e));   // (a contract's range demonstration)
         if (const char* e = std::getenv("GUNSMITH_CAREERSHOP")) careerOpenWorkshop(std::atoi(e) == 2);   // (your workshop: 1 to build, 2 on foot)
+        if (const char* e = std::getenv("GUNSMITH_SHOPREMOVE")) {   // (screenshots) take things out of your shop after it's opened: types, comma separated
+            std::string t = std::string(",") + e + ",";
+            auto& v = ME.map.ents;
+            v.erase(std::remove_if(v.begin(), v.end(), [&](const gmap::Entity& x) { return t.find("," + x.type + ",") != std::string::npos; }), v.end());
+        }
+        if (const char* e = std::getenv("GUNSMITH_SHOPWALK")) { (void)e; shopWalk(); }   // (screenshots) press Walk
         if (const char* e = std::getenv("GUNSMITH_SHOPOPEN")) shopOpen(std::atoi(e));   // (screenshots) a thing in your shop, used
         if (const char* e = std::getenv("GUNSMITH_CAREERDAYS")) for (int k = std::atoi(e); k > 0; k--) career::endDay(CAREER);
     }
@@ -276,7 +283,7 @@ int main(int argc, char** argv) {
         relPoll();
         applyAudio();
         autosaveTick();
-        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker || A.showTutorials || A.showOpenWindow || A.showRangePicker || A.showAbout;
+        A.modalAtFrameStart = A.showPause || A.showSettings || A.showBenchPicker || A.showTutorials || A.showOpenWindow || A.showRangePicker || A.showAbout || A.showCareerPicker;
         bool menu = A.screen == Screen::Menu;
         TOOLBAR_H = menu ? 0.f : TOOLBAR_H_BASE * CFG.uiScale;
         if (relArg > 0 && frame == 2) { REL.rounds = relArg; relStart(); }
@@ -321,7 +328,7 @@ int main(int argc, char** argv) {
             if (shopActive()) careerRenderPortraits();   // (career: customers' faces for the counter's screen)
             rlImGuiBegin();
             if (!ME.walking) { mapToolbar(); mapPanel(); }
-            else if (shopActive()) shopWindows();
+            if (shopActive()) shopWindows();   // (on foot: what you're using; building: the shop's checks)
             tutorialPanel();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();

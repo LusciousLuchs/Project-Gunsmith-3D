@@ -15,6 +15,7 @@
 #include "rlgl.h"
 
 #include <algorithm>
+#include <cstring>
 #include <atomic>
 #include <filesystem>
 #include <fstream>
@@ -28,7 +29,48 @@ career::Career CAREER;
 
 namespace {
 bool gIn = false;   // in career mode
-std::string careerFile() { return userFolder() + "/Career/career.json"; }
+std::string gSlot;   // the career being played: its folder under Career/
+std::string careerRoot() { return userFolder() + "/Career"; }
+std::string careerDir() { return careerRoot() + "/" + (gSlot.empty() ? std::string("My shop") : gSlot); }
+std::string careerFile() { return careerDir() + "/career.json"; }
+// before there were several careers, the one career lived straight in Career/: it becomes "My shop"
+void migrateCareer() {
+    std::error_code ec;
+    std::string root = careerRoot();
+    if (!fs::exists(root + "/career.json", ec)) return;
+    std::string to = root + "/My shop";
+    fs::create_directories(to, ec);
+    if (!fs::exists(to + "/career.json", ec)) {
+        fs::rename(root + "/career.json", to + "/career.json", ec);
+        if (fs::exists(root + "/workshop.gsmap", ec)) fs::rename(root + "/workshop.gsmap", to + "/workshop.gsmap", ec);
+    }
+}
+std::string lastSlot() {
+    std::ifstream in(careerRoot() + "/last.txt");
+    std::string name;
+    std::getline(in, name);
+    std::error_code ec;
+    if (!name.empty() && fs::exists(careerRoot() + "/" + name + "/career.json", ec)) return name;
+    auto all = careerSlots();
+    return all.empty() ? std::string() : all.front().name;
+}
+void useSlot(const std::string& name) {
+    gSlot = name;
+    std::error_code ec;
+    fs::create_directories(careerDir(), ec);
+    std::ofstream(careerRoot() + "/last.txt") << name;
+}
+std::string slotName(const std::string& want) {   // a folder name from what the player typed (and not one in use)
+    std::string n;
+    for (char c : want) if (!std::strchr("/\\:*?\"<>|", c) && (unsigned char)c >= 32) n += c;
+    while (!n.empty() && (n.back() == ' ' || n.back() == '.')) n.pop_back();
+    while (!n.empty() && n.front() == ' ') n.erase(n.begin());
+    if (n.empty()) n = "My shop";
+    std::string base = n;
+    std::error_code ec;
+    for (int k = 2; fs::exists(careerRoot() + "/" + n, ec); k++) n = base + " " + std::to_string(k);
+    return n;
+}
 
 // the bench test in the background
 struct Test {
@@ -44,7 +86,63 @@ struct Test {
 const int TEST_ROUNDS = 30;
 }  // namespace
 
-bool careerExists() { std::error_code ec; return fs::exists(careerFile(), ec); }
+std::vector<CareerSlot> careerSlots() {
+    migrateCareer();
+    std::vector<CareerSlot> out;
+    std::error_code ec;
+    if (!fs::exists(careerRoot(), ec)) return out;
+    for (auto& e : fs::directory_iterator(careerRoot(), ec)) {
+        if (!e.is_directory()) continue;
+        fs::path f = e.path() / "career.json";
+        if (!fs::exists(f, ec)) continue;
+        CareerSlot c;
+        c.name = e.path().filename().string();
+        std::ifstream in(f); std::stringstream ss; ss << in.rdbuf();
+        career::Career k;
+        if (career::careerFromJson(ss.str(), k)) { c.day = k.day; c.money = k.money; c.reputation = k.reputation; }
+        c.when = (long long)fs::last_write_time(f, ec).time_since_epoch().count();
+        out.push_back(c);
+    }
+    std::sort(out.begin(), out.end(), [](const CareerSlot& a, const CareerSlot& b) { return a.when > b.when; });
+    return out;
+}
+std::string careerName() { return gSlot; }
+bool careerExists() { return !careerSlots().empty(); }
+void careerContinue(const std::string& name) {
+    useSlot(name);
+    enterCareer();
+}
+void careerBegin(const std::string& name) {
+    useSlot(slotName(name));
+    careerStartNew();
+    enterCareer();
+}
+bool careerDelete(const std::string& name) {
+    if (name.empty() || name.find('/') != std::string::npos || name.find('\\') != std::string::npos || name == "." || name == "..") return false;
+    std::error_code ec;
+    fs::path p = fs::path(careerRoot()) / name;
+    if (!fs::exists(p / "career.json", ec)) return false;
+    fs::remove_all(p, ec);
+    if (gSlot == name) gSlot.clear();
+    return !ec;
+}
+std::vector<std::string> careerWorkshopCopies() {
+    std::vector<std::string> out;
+    std::error_code ec;
+    for (auto& e : fs::directory_iterator(careerDir() + "/Workshops", ec))
+        if (e.path().extension() == ".gsmap") out.push_back(e.path().stem().string());
+    std::sort(out.begin(), out.end());
+    return out;
+}
+std::string careerWorkshopCopyFile(const std::string& name) {
+    std::string n;
+    for (char c : name) if (!std::strchr("/\\:*?\"<>|", c) && (unsigned char)c >= 32) n += c;
+    while (!n.empty() && (n.back() == ' ' || n.back() == '.')) n.pop_back();
+    if (n.empty()) n = "Copy";
+    std::error_code ec;
+    fs::create_directories(careerDir() + "/Workshops", ec);
+    return careerDir() + "/Workshops/" + n + ".gsmap";
+}
 void careerSave() {
     std::error_code ec;
     fs::create_directories(fs::path(careerFile()).parent_path(), ec);
@@ -60,7 +158,7 @@ void careerStartNew() {
     CAREER = career::newCareer((unsigned)(GetTime() * 1000) ^ 0x5bd1e995u);
     careerSave();
 }
-std::string careerWorkshopFile() { return userFolder() + "/Career/workshop.gsmap"; }
+std::string careerWorkshopFile() { return careerDir() + "/workshop.gsmap"; }
 void careerCountStations() {
     std::ifstream in(careerWorkshopFile());
     if (!in) return;   // (not built yet: the career's own start, a bench and a counter)
@@ -105,6 +203,8 @@ void careerTick() {
     if (gBackToOffice && A.screen == Screen::Menu) { gBackToOffice = false; careerOpenWorkshop(true); }   // (back in your shop)
 }
 void enterCareer() {
+    migrateCareer();
+    if (gSlot.empty()) { std::string l = lastSlot(); useSlot(l.empty() ? slotName("My shop") : l); }
     if (!careerLoad()) careerStartNew();
     careerCountStations();
     gIn = true;

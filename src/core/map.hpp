@@ -133,6 +133,12 @@ Map builtinRange();      // the starter practice range
 Map defaultWorkshop();   // career mode: the room you start your business in (a bench, a counter)
 // Career mode: the office computer and the front door (added where missing, in older workshops too)
 void addShopBasics(Map& m);
+// Career mode: what a shop needs to work that this one hasn't got, in plain words ("" for each found): where you start,
+// your own workbench, the counter, the computer, the front door, and a light if it's dark inside
+struct ShopNeed { std::string what, tool; };   // tool: where to place one in the editor
+std::vector<ShopNeed> shopMissing(const Map& m);
+// puts in whatever shopMissing finds, on the floor near where you start (else the middle of the room)
+int shopRepair(Map& m);
 // career mode: the workstations placed in a workshop map (entities station_bench/lathe/mill/qc, shop_counter -> counter)
 std::map<std::string, int> workshopStations(const Map& m);
 

@@ -10,6 +10,16 @@
 
 extern career::Career CAREER;
 bool careerExists();                 // a career saved in the user folder
+// several careers, each a folder in the user folder's Career/ (its career.json, its workshop, its saved workshop copies)
+struct CareerSlot { std::string name; int day = 1; double money = 0, reputation = 0; long long when = 0; };
+std::vector<CareerSlot> careerSlots();   // the newest played first
+std::string careerName();                // the one being played
+void careerContinue(const std::string& name);   // load it and go to your shop
+void careerBegin(const std::string& name);      // a new career under this name (made unique) and go to your shop
+bool careerDelete(const std::string& name);
+// your workshop's saved copies (Career/<name>/Workshops/<copy>.gsmap)
+std::vector<std::string> careerWorkshopCopies();
+std::string careerWorkshopCopyFile(const std::string& copy);
 void careerStartNew();
 bool careerLoad();
 void careerSave();

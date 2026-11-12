@@ -58,6 +58,7 @@ void mapEditorRender();                    // the 3D view and its overlay (betwe
 void meSnapshot();                         // call before changing ME.map
 void meChanged();                          // call after
 void meUndo();
+void meReplaceMap(const gmap::Map& m);   // the whole map swapped for another (undoable)
 void meRedo();
 void meDelete();
 void meDuplicate();
