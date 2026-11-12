@@ -23,5 +23,11 @@ int ringsPick(const Rings& g, const ToScreen& ts, Vector2 m);   // the ring unde
 void ringsBegin(Rings& g, int axis, const ToScreen& ts, Vector2 m);
 double ringsDrag(Rings& g, Vector2 m, bool snap);              // degrees since the press
 void ringsDraw(const Rings& g, const ToScreen& ts, Vector3 eye); // (2D, after the 3D pass) the near half bright, the far half faint
+// How many degrees `probe` goes round `axis` (about `c`) for each degree the value goes up (signed): dividing the ring's
+// turn by this makes the joint follow the ring exactly, wherever the joint really pivots
+double ringsGain(const std::function<Vector3(double)>& probe, Vector3 c, Vector3 axis);
+// The value that turns `probe` `deg` degrees round `axis`, starting from deg / gain and correcting a few times (for joints
+// that don't turn evenly with their value, like a hand's roll or a finger's spread)
+double ringsSolve(const std::function<Vector3(double)>& probe, Vector3 c, Vector3 axis, double deg, double gain);
 // Which way a value turns things: +1 if raising it by one moves `probe` the right-hand way about `axis` round `c`
 double ringsSign(const std::function<Vector3(double)>& probe, Vector3 c, Vector3 axis);

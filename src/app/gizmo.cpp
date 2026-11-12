@@ -110,3 +110,39 @@ double ringsSign(const std::function<Vector3(double)>& probe, Vector3 c, Vector3
     Vector3 want = Vector3CrossProduct(axis, Vector3Subtract(p0, c));
     return Vector3DotProduct(Vector3Subtract(p1, p0), want) >= 0 ? 1 : -1;
 }
+
+double ringsGain(const std::function<Vector3(double)>& probe, Vector3 c, Vector3 axis) {
+    // how far round the axis the probe goes for a few degrees of the value, per degree (signed)
+    const double step = 4;
+    Vector3 p0 = Vector3Subtract(probe(0), c), p1 = Vector3Subtract(probe(step), c);
+    p0 = Vector3Subtract(p0, Vector3Scale(axis, Vector3DotProduct(p0, axis)));
+    p1 = Vector3Subtract(p1, Vector3Scale(axis, Vector3DotProduct(p1, axis)));
+    if (Vector3Length(p0) < 1e-6f || Vector3Length(p1) < 1e-6f) return 1;
+    double turned = std::atan2(Vector3DotProduct(Vector3CrossProduct(p0, p1), axis), Vector3DotProduct(p0, p1)) * 180 / PI;
+    double g = turned / step;
+    if (std::fabs(g) < 0.05) return g < 0 ? -1 : 1;   // (it hardly shows round this axis: one for one)
+    return g;
+}
+
+namespace {
+double turnedBy(Vector3 p0, Vector3 p1, Vector3 c, Vector3 axis) {
+    p0 = Vector3Subtract(p0, c); p1 = Vector3Subtract(p1, c);
+    p0 = Vector3Subtract(p0, Vector3Scale(axis, Vector3DotProduct(p0, axis)));
+    p1 = Vector3Subtract(p1, Vector3Scale(axis, Vector3DotProduct(p1, axis)));
+    return std::atan2(Vector3DotProduct(Vector3CrossProduct(p0, p1), axis), Vector3DotProduct(p0, p1)) * 180 / PI;
+}
+}  // namespace
+
+double ringsSolve(const std::function<Vector3(double)>& probe, Vector3 c, Vector3 axis, double deg, double gain) {
+    if (std::fabs(deg) < 1e-9 || std::fabs(gain) < 1e-9) return 0;
+    Vector3 p0 = probe(0);
+    double v0 = 0, t0 = 0, v1 = deg / gain, t1 = turnedBy(p0, probe(v1), c, axis);
+    for (int i = 0; i < 4 && std::fabs(t1 - deg) > 0.05; i++) {   // secant steps toward the asked turn
+        double dt = t1 - t0;
+        if (std::fabs(dt) < 1e-6) break;
+        double v2 = v1 + (deg - t1) * (v1 - v0) / dt;
+        if (!std::isfinite(v2) || std::fabs(v2) > 4 * std::fabs(deg / gain) + 30) break;   // (it won't go that far: keep the last)
+        v0 = v1; t0 = t1; v1 = v2; t1 = turnedBy(p0, probe(v1), c, axis);
+    }
+    return v1;
+}

@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.2-alpha
+
+### Rotation rings
+- **Rings turn things exactly as far as you drag.** In Pose, the body's turn and tilt and a hand's roll used to go 20-35% too far or not far enough; now every ring matches the angle it shows. A finger's spread stops at the finger's real limit.
+
 ## 0.7.1-alpha
 
 ### Rotation rings

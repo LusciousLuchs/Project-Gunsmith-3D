@@ -790,15 +790,15 @@ bool jointFor(int id, Rings& g, PJ& J) {
         g.ax[1] = nrm(Vector3Subtract(gunPt({0, -100}, 0), O)); g.label[1] = "Turn ";
         g.ax[2] = nrm(Vector3Subtract(gunPt({100, 0}, 0), O)); g.label[2] = "Roll ";
         J.set = [](int a, double d) { if (AnimKey* key = editKey()) key->gun[3 + a] += d; };
-        J.probe = [](int a) { return a < 2 ? muzzleWorld() : gunMidWorld(); };
+        J.probe = [](int a) { return a < 2 ? gunPt({5000, 0}, 0) : gunPt({0, -500}, 0); };   // (far points: where it pivots hardly matters)
         return true;
     }
     if (id == 6) {   // the body: turned against the gun, and the muzzle tilted
-        g.c = bp(F, -90, 140, -32);
+        g.c = F.o;   // (the body turns about the aiming eye)
         g.ax[0] = F.u; g.label[0] = "Turn ";
-        g.ax[1] = F.r; g.label[1] = "Tilt ";
+        g.ax[1] = nrm(Vector3Subtract(gunPt({0, 0}, 100), gunPt({0, 0}, 0))); g.label[1] = "Tilt ";   // (the muzzle tilts about the gun's side)
         J.set = [](int a, double d) { BodyHold& h = editable(); if (a == 0) h.yaw += d; else h.tilt += d; };
-        J.probe = [](int a) { return a == 0 ? bp(bodyFrame(), 300, 0, 0) : muzzleWorld(); };
+        J.probe = [](int a) { return a == 0 ? bp(bodyFrame(), 300, 0, 0) : gunPt({5000, 0}, 0); };   // (far down the bore: where the pivot is hardly matters)
         return true;
     }
     if (id >= 20 && A.poseHand >= 0) {   // a finger: curled (all its joints together) and spread
@@ -833,8 +833,10 @@ bool poseRingsInput(bool overUI) {
     if (gPR.axis >= 0) {
         if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { gPR.axis = -1; commit(); return true; }
         double deg = ringsDrag(gPR, GetMousePosition(), IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL));
+        int a = gPR.axis;
+        double v = ringsSolve([&](double x) { restoreSnap(); gPJ.set(a, x); return gPJ.probe(a); }, gPR.c, gPR.ax[a], deg, 1.0 / gPRsign);
         restoreSnap();
-        gPJ.set(gPR.axis, gPRsign * deg);
+        gPJ.set(a, v);
         return true;
     }
     gPR.hot = -1;
@@ -851,7 +853,7 @@ bool poseRingsInput(bool overUI) {
     gPJ = J;
     int a = gPR.hot;
     Vector3 c = gPR.c, ax = gPR.ax[a];
-    gPRsign = ringsSign([&](double v) { restoreSnap(); gPJ.set(a, v); return gPJ.probe(a); }, c, ax);
+    gPRsign = 1.0 / ringsGain([&](double v) { restoreSnap(); gPJ.set(a, v); return gPJ.probe(a); }, c, ax);
     restoreSnap();
     ringsBegin(gPR, a, poseTS(), GetMousePosition());
     return true;
@@ -868,15 +870,16 @@ void poseRingTest(int id, int axis, double deg) {
     gPJ = J;
     Vector3 c = gPR.c, ax = gPR.ax[axis];
     Vector3 before = gPJ.probe(axis);
-    gPRsign = ringsSign([&](double v) { restoreSnap(); gPJ.set(axis, v); return gPJ.probe(axis); }, c, ax);
+    gPRsign = 1.0 / ringsGain([&](double v) { restoreSnap(); gPJ.set(axis, v); return gPJ.probe(axis); }, c, ax);
+    double v = ringsSolve([&](double x) { restoreSnap(); gPJ.set(axis, x); return gPJ.probe(axis); }, c, ax, deg, 1.0 / gPRsign);
     restoreSnap();
-    gPJ.set(axis, gPRsign * deg);
+    gPJ.set(axis, v);
     Vector3 after = gPJ.probe(axis);
     // how far round the axis the probe went
     Vector3 a0 = Vector3Subtract(before, c), a1 = Vector3Subtract(after, c);
     a0 = Vector3Subtract(a0, Vector3Scale(ax, Vector3DotProduct(a0, ax))); a1 = Vector3Subtract(a1, Vector3Scale(ax, Vector3DotProduct(a1, ax)));
     double turned = std::atan2(Vector3DotProduct(Vector3CrossProduct(a0, a1), ax), Vector3DotProduct(a0, a1)) * RAD2DEG;
-    std::printf("RINGTEST joint %d axis %d (%s): asked %+.1f, sign %+.0f, the joint turned %+.1f degrees about the ring's axis\n", id, axis, gPR.label[axis] ? gPR.label[axis] : "", deg, gPRsign, turned);
+    std::printf("RINGTEST joint %d axis %d (%s): asked %+.1f, scale %+.2f, the joint turned %+.1f degrees about the ring's axis\n", id, axis, gPR.label[axis] ? gPR.label[axis] : "", deg, gPRsign, turned);
     commit();
 }
 static void poseRingsDraw() {
