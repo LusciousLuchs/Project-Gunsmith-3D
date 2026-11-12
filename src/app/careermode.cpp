@@ -113,9 +113,11 @@ void careerContinue(const std::string& name) {
     useSlot(name);
     enterCareer();
 }
-void careerBegin(const std::string& name) {
+void careerBegin(const std::string& name, int city) {
     useSlot(slotName(name));
     careerStartNew();
+    if (!CAREER.props.empty()) career::setLocation(CAREER, CAREER.props[0], city);
+    careerSave();
     enterCareer();
 }
 bool careerDelete(const std::string& name) {

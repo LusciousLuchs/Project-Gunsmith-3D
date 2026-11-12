@@ -100,6 +100,8 @@ struct Property {
     std::map<std::string, int> stations;      // what's placed in it (from its map): bench, lathe, mill, qc, counter
     double rating = 0;                        // the store's rating, 0..5 stars (from its map: displays, decoration, light)
     std::vector<std::string> shown;           // the guns on its displays
+    int city = -1;                            // where it is (places::cities()), -1 not chosen yet
+    std::string address;                      // its made-up street address there
     bool sells() const { return role != "workshop"; }
     bool makes() const { return role != "store"; }
 };
@@ -131,6 +133,12 @@ struct Career {
     // properties (0.8)
     std::vector<Property> props;
     int here = 1;                           // the property you're in
+    // taxes: profit since the last tax day, paid each week (federal and your main property's state)
+    double taxable = 0, taxesPaid = 0;
+    int taxDay = 1;
+    // accessories: plain boxes (magazines, ammunition, holsters, slings, cleaning kits...) sold in your stores
+    int accessories = 0;                    // boxes in stock
+    double accPrice = 45;                   // what you sell one for
 };
 Property* propertyById(Career& c, int id);
 const Property* propertyById(const Career& c, int id);
@@ -140,7 +148,13 @@ bool sellProperty(Career& c, int id, std::string* why = nullptr);   // 60% back;
 int stationRoom(const Career& c);           // workstations that count today: each making property's, up to its size
 int staffRoom(const Career& c);             // employees you have room for
 double dailyUpkeep(const Career& c);
-void sumStations(Career& c);                // Career::stations from the making properties' own (call after a property's map changes)
+void sumStations(Career& c);
+void setLocation(Career& c, Property& p, int city);   // a property's city, and a made-up street address there
+std::string propertyAddress(const Property& p);       // "" if it has no place yet
+constexpr double ACC_COST = 18;             // a box of accessories, wholesale
+bool buyAccessories(Career& c, int boxes, std::string* why = nullptr);
+double taxRate(const Career& c);            // percent of profit, this week
+double accessoryChance(const Property& p);  // the chance a customer in this store buys a box (accessory stands help)                // Career::stations from the making properties' own (call after a property's map changes)
 // a person's body from their first name: "male", "female", or "" (a name either could have)
 std::string bodyForName(const std::string& name);
 int shopStations(int tier);                // workstations your building has room for

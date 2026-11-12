@@ -1,5 +1,6 @@
 // Gunsmith3D - Career mode, stage 1 (see career.hpp).
 #include "career.hpp"
+#include "places.hpp"
 #include "solver.hpp"
 #include "json.hpp"
 
@@ -102,7 +103,7 @@ bool startBuild(Career& c, const std::string& gun, int qty, std::string* why) {
     if (qty < 1) { if (why) *why = "nothing to make"; return false; }
     double cost = it->second.materialCost * qty;
     if (cost > c.money) { if (why) *why = "not enough money for the material (" + money(cost) + ")"; return false; }
-    c.money -= cost;
+    c.money -= cost; c.taxable -= cost;
     if (!c.builds.empty() && c.builds.back().gun == gun) c.builds.back().qty += qty;
     else c.builds.push_back({gun, qty, 0});
     return true;
@@ -167,7 +168,9 @@ std::string reviewText(Career& c, const GunSheet& s, int stars, double price) {
 Contract offer(Career& c) {
     Contract k;
     k.id = c.nextId++;
-    struct Tpl { const char* title; const char* brief; double minE, maxE, maxJam, maxKg; int minCap, hands; double maxMoa; int qMin, qMax; double rep; bool demo = false; };
+    struct Tpl { const char* title; const char* brief; double minE, maxE, maxJam, maxKg; int minCap, hands; double maxMoa; int qMin, qMax; double rep; bool demo = false; double premium = 1; };
+    // premium: what the client pays per gun over the shelf price. Agencies, armies and security firms pay big: they want
+    // guns that run, on time, with paperwork, spares and support.
     static const std::vector<Tpl> T = {
         {"A pocket pistol", "Something small and light I can carry every day. It has to work every time.", 150, 700, 3, 1.0, 6, 1, 0, 1, 1, 0},
         {"A deer rifle", "A rifle for whitetail out to 200 yards. Accuracy matters more than anything.", 1800, 0, 6, 0, 0, 2, 2.5, 1, 1, 0},
@@ -175,13 +178,16 @@ Contract offer(Career& c) {
         {"A competition pistol", "For steel matches: accurate, soft-shooting, and it must not jam.", 300, 800, 1.5, 0, 10, 1, 4, 1, 1, 0},
         {"Something cursed", "I run a YouTube channel. Build me the weirdest thing you can that still goes bang now and then.", 0, 0, 30, 0, 0, 0, 0, 1, 1, 0},
         {"A big-bore revolver substitute", "I want a handgun that hits like a truck. Weight and kick don't scare me.", 1000, 0, 8, 0, 0, 1, 0, 1, 1, 0},
-        {"Guns for a security firm", "Sidearms for our guards: reliable above all, enough rounds.", 300, 800, 2, 1.3, 10, 1, 0, 3, 5, 15},
-        {"Rifles for a hunting lodge", "Loaner rifles for our guests. Accurate and dependable.", 1800, 0, 4, 9, 3, 2, 3, 3, 6, 25},
+        {"Guns for a security firm", "Sidearms for our guards: reliable above all, enough rounds.", 300, 800, 2, 1.3, 10, 1, 0, 3, 6, 15, false, 1.8},
+        {"Rifles for a hunting lodge", "Loaner rifles for our guests. Accurate and dependable.", 1800, 0, 4, 9, 3, 2, 3, 3, 6, 25, false, 1.3},
+        {"Armed guards for a bank chain", "Sidearms for an armored-car and branch security contract. Dependable and compact.", 300, 800, 1.5, 1.2, 12, 1, 0, 8, 16, 30, false, 2.0},
         // big orders: once you're known. They test it on the bench, then want to see it shot on the range.
-        {"Sidearms for the county sheriff", "Duty pistols for our deputies. Dependable, enough rounds, not too heavy. We'll want to see it shot.", 300, 800, 1.5, 1.3, 12, 1, 0, 10, 20, 35, true},
-        {"Patrol rifles for the state police", "Rifles for our troopers' cars: accurate and reliable. A range demonstration first.", 1200, 3500, 2, 0, 20, 2, 3, 8, 15, 45, true},
-        {"Service pistols for the Army", "A sidearm for the troops. It has to run, every time. Bench test and a demonstration.", 300, 800, 1, 1.2, 15, 1, 0, 40, 80, 60, true},
-        {"Service rifles for the Marines", "A rifle for the infantry: accurate, tough, holds plenty. Bench test and a demonstration.", 1200, 3500, 1, 0, 20, 2, 2.5, 50, 120, 75, true},
+        {"Sidearms for the county sheriff", "Duty pistols for our deputies. Dependable, enough rounds, not too heavy. We'll want to see it shot.", 300, 800, 1.5, 1.3, 12, 1, 0, 10, 20, 35, true, 2.4},
+        {"Patrol rifles for the state police", "Rifles for our troopers' cars: accurate and reliable. A range demonstration first.", 1200, 3500, 2, 0, 20, 2, 3, 8, 15, 45, true, 2.6},
+        {"Entry guns for a SWAT team", "Compact, hard-hitting and utterly reliable, for a city tactical unit. They'll test it themselves on the range.", 400, 2500, 1, 4.5, 15, 0, 3, 6, 12, 50, true, 3.0},
+        {"Rifles for a private military contractor", "A contract overseas needs rifles that run in dust and heat. Bench test and a demonstration.", 1200, 3500, 1.5, 0, 20, 2, 3, 20, 40, 60, true, 3.2},
+        {"Service pistols for the Army", "A sidearm for the troops. It has to run, every time. Bench test and a demonstration.", 300, 800, 1, 1.2, 15, 1, 0, 40, 80, 65, true, 3.4},
+        {"Service rifles for the Marines", "A rifle for the infantry: accurate, tough, holds plenty. Bench test and a demonstration.", 1200, 3500, 1, 0, 20, 2, 2.5, 50, 120, 75, true, 3.6},
     };
     std::vector<const Tpl*> open;
     for (auto& t : T) if (c.reputation >= t.rep) open.push_back(&t);
@@ -190,10 +196,19 @@ Contract offer(Career& c) {
     k.minEnergy = t.minE; k.maxEnergy = t.maxE; k.maxJam = t.maxJam; k.maxKg = t.maxKg; k.minCapacity = t.minCap; k.hands = t.hands; k.maxMoa = t.maxMoa;
     k.qty = rndInt(c, t.qMin, t.qMax);
     k.demo = t.demo;
-    k.client = t.qMax > 1 ? pick(c, std::vector<std::string>{"Ironwood Security", "Coldwater Lodge", "Redline Protection", "Big Sky Outfitters"}) : buyer(c);
+    if (t.qMax > 1) {
+        std::string tt = t.title;
+        if (tt.find("sheriff") != std::string::npos) k.client = pick(c, std::vector<std::string>{"Travis County Sheriff's Office", "Maricopa Valley Sheriff", "Cascade County Sheriff", "Pine Hollow County Sheriff"});
+        else if (tt.find("state police") != std::string::npos) k.client = pick(c, std::vector<std::string>{"State Highway Patrol", "State Police, Troop C", "Department of Public Safety"});
+        else if (tt.find("SWAT") != std::string::npos) k.client = pick(c, std::vector<std::string>{"Metro PD Tactical Unit", "City SWAT, East Division", "Regional Special Response Team"});
+        else if (tt.find("Army") != std::string::npos || tt.find("Marines") != std::string::npos) k.client = pick(c, std::vector<std::string>{"Army Contracting Command", "Marine Corps Systems Command", "Defense Logistics Office"});
+        else if (tt.find("contractor") != std::string::npos) k.client = pick(c, std::vector<std::string>{"Sandline Global", "Blackridge Solutions", "Vantage Risk Group"});
+        else if (tt.find("bank") != std::string::npos) k.client = pick(c, std::vector<std::string>{"Armored Transit Co.", "Keystone Bank Security", "Union Courier Services"});
+        else k.client = pick(c, std::vector<std::string>{"Ironwood Security", "Coldwater Lodge", "Redline Protection", "Big Sky Outfitters"});
+    } else k.client = buyer(c);
     double e = t.maxE > 0 ? (t.minE + t.maxE) / 2 : std::max(t.minE, 600.0);
-    double each = k.qty >= 10 ? baseValue(e, t.hands == 2, t.minCap) * (1.05 + 0.25 * rnd(c))   // (volume: a little over the shelf price)
-                              : baseValue(e, t.hands == 2, t.minCap) * (1.25 + 0.4 * rnd(c)) + 150;   // bespoke work pays better than the shelf
+    double each = k.qty >= 3 ? baseValue(e, t.hands == 2, t.minCap) * t.premium * (0.95 + 0.25 * rnd(c))   // (agencies and firms: their premium over the shelf price)
+                             : baseValue(e, t.hands == 2, t.minCap) * (1.25 + 0.4 * rnd(c)) + 150;   // bespoke work pays better than the shelf
     k.pay = std::round(each * k.qty / 10) * 10;
     k.dueDay = c.day + rndInt(c, 6, 12) + (k.qty >= 10 ? k.qty / 2 + 10 : 2 * k.qty);
     return k;
@@ -286,6 +301,26 @@ bool sellProperty(Career& c, int id, std::string* why) {
     }
     return false;
 }
+void setLocation(Career& c, Property& p, int city) {
+    (void)c;
+    if (city < 0 || city >= (int)places::cities().size()) return;
+    p.city = city;
+    p.address = places::address((unsigned)(p.id * 7919 + city * 104729 + c.rng % 9973), city, p.kind == "retail" || p.kind == "warehouse");
+}
+std::string propertyAddress(const Property& p) { return p.city >= 0 ? p.address : std::string(); }
+bool buyAccessories(Career& c, int boxes, std::string* why) {
+    double cost = boxes * ACC_COST;
+    if (boxes <= 0) return false;
+    if (cost > c.money) { if (why) *why = "you need " + money(cost); return false; }
+    c.money -= cost; c.taxable -= cost; c.accessories += boxes;
+    return true;
+}
+double taxRate(const Career& c) {
+    std::string st;
+    for (auto& p : c.props) if (p.city >= 0) { st = places::cities()[p.city].state; break; }
+    return places::FEDERAL_TAX + places::stateTax(st).business;
+}
+double accessoryChance(const Property& p) { return std::min(0.6, 0.18 + 0.06 * std::clamp(p.rating, 0.0, 5.0)); }
 const char* tierName(double r) {
     return r >= 80 ? "Defense supplier" : r >= 60 ? "National brand" : r >= 35 ? "Regional maker" : r >= 15 ? "Local gunsmith" : "Garage gunsmith";
 }
@@ -435,7 +470,7 @@ void endDay(Career& c) {
     // wages, and your people get better at it
     double wages = 0;
     for (auto& e : c.staff) { wages += e.wage; e.days++; e.skill = std::min(0.95, e.skill + 0.003); }
-    if (wages > 0) { c.money -= wages; std::snprintf(b, sizeof b, "Paid %s in wages.", money(wages).c_str()); c.news.push_back(b); }
+    if (wages > 0) { c.money -= wages; c.taxable -= wages; std::snprintf(b, sizeof b, "Paid %s in wages.", money(wages).c_str()); c.news.push_back(b); }
     if (c.candidates.empty() || c.day - c.candidatesDay >= 7) refreshCandidates(c);
     // the online store: buyers look at each listing; the better it is for its price, the likelier they buy
     double income = 0;
@@ -451,7 +486,7 @@ void endDay(Career& c) {
             if (rnd(c) >= p) continue;
             bool bad = c.flawed[L.gun] > 0 && rnd(c) * c.stock[L.gun] < c.flawed[L.gun];   // (one of the flawed ones?)
             if (bad) c.flawed[L.gun]--;
-            c.stock[L.gun]--; L.sold++; c.money += L.price; income += L.price;
+            c.stock[L.gun]--; L.sold++; c.money += L.price; c.taxable += L.price; income += L.price;
             std::string who = buyer(c);
             std::snprintf(b, sizeof b, "Sold a %s online for %s to %s.", L.gun.c_str(), money(L.price).c_str(), who.c_str()); c.news.push_back(b);
             if (rnd(c) < 0.5) {   // and maybe tells everyone what they think
@@ -504,9 +539,35 @@ void endDay(Career& c) {
             c.walkins.push_back(w);
         }
     }
+    if (!c.props.empty() && c.accessories > 0) {   // accessories: the day's customers (and people who only came in for ammo)
+        int sold = 0;
+        for (auto& p : c.props) {
+            if (!p.sells() || !p.stations.count("counter")) continue;
+            int people = 0;
+            for (auto& w : c.walkins) if (w.prop == p.id) people++;
+            people += 1 + (int)(p.rating) + (rnd(c) < 0.5 ? 1 : 0);   // (browsers who don't want a gun)
+            double priceK = std::clamp(std::pow(45.0 / std::max(1.0, c.accPrice), 1.5), 0.1, 1.6);   // (dearer: fewer buy)
+            for (int i = 0; i < people && c.accessories > 0; i++) if (rnd(c) < accessoryChance(p) * priceK) { c.accessories--; sold++; }
+        }
+        if (sold > 0) {
+            double got = sold * c.accPrice;
+            c.money += got; c.taxable += got;
+            std::snprintf(b, sizeof b, "Sold %d box%s of accessories (magazines, ammunition, holsters...): %s.", sold, sold == 1 ? "" : "es", money(got).c_str());
+            c.news.push_back(b);
+        }
+    }
     if (!c.props.empty()) {   // what your places cost to keep
         double u = dailyUpkeep(c);
-        if (u > 0) { c.money -= u; char bb[160]; std::snprintf(bb, sizeof bb, "Rent and upkeep on your properties: %s.", money(u).c_str()); c.news.push_back(bb); }
+        if (u > 0) { c.money -= u; c.taxable -= u; char bb[160]; std::snprintf(bb, sizeof bb, "Rent and upkeep on your properties: %s.", money(u).c_str()); c.news.push_back(bb); }
+    }
+    if (c.day - c.taxDay >= 7) {   // the week's taxes on what you made
+        double rate = taxRate(c), tax = std::max(0.0, c.taxable) * rate / 100;
+        if (tax > 0) {
+            c.money -= tax; c.taxesPaid += tax;
+            std::snprintf(b, sizeof b, "Taxes for the week: %s (%.1f%% of %s profit).", money(tax).c_str(), rate, money(c.taxable).c_str());
+        } else std::snprintf(b, sizeof b, "No tax this week: no profit (%s).", money(c.taxable).c_str());
+        c.news.push_back(b);
+        c.taxable = 0; c.taxDay = c.day;
     }
     c.day++;
     std::snprintf(b, sizeof b, "Day %d.%s", c.day, income > 0 ? (" Online sales yesterday: " + money(income) + ".").c_str() : "");
@@ -519,7 +580,7 @@ void handOver(Career& c, Contract& k, const std::string& gun) {
     int bad = 0;
     for (int i = 0; i < k.qty; i++) if (c.flawed[gun] > 0 && rnd(c) * c.stock[gun] < c.flawed[gun]) { c.flawed[gun]--; bad++; }
     c.stock[gun] -= k.qty;
-    c.money += k.pay;
+    c.money += k.pay; c.taxable += k.pay;
     k.state = 2; k.delivered = gun; k.verdict = "Delivered and paid " + money(k.pay) + ".";
     c.reputation = std::min(100.0, c.reputation + 3 + std::min(10.0, k.qty * 0.5));
     if (bad) {
@@ -605,9 +666,10 @@ std::string careerToJson(const Career& c) {
     json P = json::array();
     for (auto& p : c.props) {
         json st = json::object(); for (auto& [k, n] : p.stations) st[k] = n;
-        P.push_back({{"id", p.id}, {"kind", p.kind}, {"role", p.role}, {"name", p.name}, {"stations", st}, {"rating", p.rating}, {"shown", p.shown}});
+        P.push_back({{"id", p.id}, {"kind", p.kind}, {"role", p.role}, {"name", p.name}, {"stations", st}, {"rating", p.rating}, {"shown", p.shown}, {"city", p.city}, {"address", p.address}});
     }
     o["properties"] = P; o["here"] = c.here;
+    o["taxable"] = c.taxable; o["taxesPaid"] = c.taxesPaid; o["taxDay"] = c.taxDay; o["accessories"] = c.accessories; o["accPrice"] = c.accPrice;
     o["news"] = c.news;
     return o.dump(1);
 }
@@ -665,9 +727,12 @@ bool careerFromJson(const std::string& text, Career& out) {
         if (j.contains("stations") && j["stations"].is_object()) for (auto& [k, n] : j["stations"].items()) p.stations[k] = n.get<int>();
         p.rating = j.value("rating", 0.0);
         if (j.contains("shown") && j["shown"].is_array()) for (auto& g : j["shown"]) if (g.is_string()) p.shown.push_back(g.get<std::string>());
+        p.city = j.value("city", -1); p.address = j.value("address", "");
         c.props.push_back(p);
     }
     c.here = o.value("here", 1);
+    c.taxable = o.value("taxable", 0.0); c.taxesPaid = o.value("taxesPaid", 0.0); c.taxDay = o.value("taxDay", c.day);
+    c.accessories = o.value("accessories", 0); c.accPrice = o.value("accPrice", 45.0);
     if (c.stations.empty()) {   // a career from before the workshop (0.5): it starts with what a new one has (once the
                                 // workshop is built, its map is counted instead)
         c.stations = {{"bench", 1}, {"counter", 1}};
@@ -709,7 +774,7 @@ bool sellToWalkin(Career& c, int id, const std::string& gun, double price, std::
     bool bad = c.flawed[gun] > 0 && rnd(c) * c.stock[gun] < c.flawed[gun];
     if (bad) c.flawed[gun]--;
     c.stock[gun]--;
-    c.money += price;
+    c.money += price; c.taxable += price;
     w->state = 1;
     c.reputation = std::min(100.0, c.reputation + (wanted ? 0.5 : 0.3));
     char b[200];

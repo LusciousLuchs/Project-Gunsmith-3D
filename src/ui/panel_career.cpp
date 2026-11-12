@@ -1,6 +1,7 @@
 // Gunsmith3D - Career mode's office: your shop's day, your guns and their rating sheets, building copies, the online
 // store with its reviews, and customers' contracts. (Rules: core/career; the save and the bench test: app/career.)
 #include "app/careermode.hpp"
+#include "places.hpp"
 #include "app/shop3d.hpp"
 #include "app/mapedit.hpp"
 #include "app/app.hpp"
@@ -61,6 +62,10 @@ static void todayTab() {
     for (auto& k : C.contracts)
         if (k.state == 1 && k.dueDay - C.day <= 2)
             ImGui::TextColored({1, 0.75f, 0.35f, 1}, "%s for %s is due %s.", k.title.c_str(), k.client.c_str(), k.dueDay <= C.day ? "today" : "tomorrow");
+    heading("Taxes");
+    ImGui::Text("Profit this week so far: %s. Tax on profit: %.1f%% (federal %.0f%%, state %.1f%%), paid at the end of each week.", usd(C.taxable).c_str(), career::taxRate(C),
+                places::FEDERAL_TAX, career::taxRate(C) - places::FEDERAL_TAX);
+    ImGui::TextDisabled("Paid so far: %s. Sales tax is added to what customers pay and passed on, so it doesn't touch your money.", usd(C.taxesPaid).c_str());
     ImGui::Dummy({0, 10 * CFG.uiScale});
     heading("How it works");
     wrappedDim("Design guns in the designer (every tool is yours). Rate each one on the bench here: the test fires it and works out what it's worth. "
@@ -254,6 +259,20 @@ static void workshopTab() {
         ImGui::PushFont(gFontBold, 0.0f);
         ImGui::Text("%s%s", p.name.empty() ? k.name : p.name.c_str(), p.id == C.here ? "  (you're here)" : "");
         ImGui::PopFont();
+        {
+            std::string a = career::propertyAddress(p);
+            static int choosing = -1;
+            if (!a.empty()) ImGui::TextDisabled("%s", a.c_str());
+            else {
+                ImGui::TextColored({1, 0.75f, 0.35f, 1}, "Not placed on the map yet.");
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Choose where it is")) choosing = p.id;
+            }
+            if (choosing == p.id) {
+                int city = p.city;
+                if (usMapPicker("##placeit", city, std::min(ImGui::GetContentRegionAvail().x, 620 * CFG.uiScale))) { career::setLocation(C, p, city); choosing = -1; careerSave(); }
+            }
+        }
         int placed = 0; for (auto& [kk, nn] : p.stations) if (kk != "counter") placed += nn;
         ImGui::TextDisabled("%d of %d workstations   staff room %d   upkeep %s a day", std::min(placed, k.stations), k.stations, k.staff, usd(k.upkeep).c_str());
         if (placed > k.stations) ImGui::TextColored({1, 0.6f, 0.4f, 1}, "%d workstations don't fit: only %d count.", placed - k.stations, k.stations);
@@ -286,8 +305,26 @@ static void workshopTab() {
         if (career::sellProperty(C, sellId, &why)) { careerSave(); toast("Sold."); if (wasHere) { careerOpenWorkshop(true); return; } }
         else toast(why);
     }
+    heading("Accessories");
+    ImGui::TextWrapped("Plain boxes of magazines, ammunition, holsters, slings and cleaning kits. Your stores sell them to customers and passers-by each day: "
+                       "small money, but it adds up. Better-rated stores sell more.");
+    ImGui::Text("%d box%s in stock.", C.accessories, C.accessories == 1 ? "" : "es");
+    for (int n : {10, 50, 200}) {
+        ImGui::SameLine();
+        if (ImGui::Button(TextFormat("Buy %d (%s)", n, usd(n * career::ACC_COST).c_str()))) { std::string why; if (career::buyAccessories(C, n, &why)) careerSave(); else toast(why); }
+    }
+    {
+        float pr = (float)C.accPrice;
+        ImGui::SetNextItemWidth(220 * CFG.uiScale);
+        if (ImGui::SliderFloat("Price per box", &pr, 20, 120, "$%.0f")) { C.accPrice = std::round(pr); careerSave(); }
+        if (C.accPrice > 70) ImGui::TextDisabled("At that price fewer people buy.");
+    }
     heading("Buy a property");
     static int buyRole = 2;
+    static int buyCity = -1;
+    if (buyCity < 0) { buyCity = 0; for (auto& p : C.props) if (p.city >= 0) { buyCity = p.city; break; } }
+    ImGui::TextDisabled("Where: click a city on the map.");
+    usMapPicker("##buycity", buyCity, std::min(ImGui::GetContentRegionAvail().x, 620 * CFG.uiScale));
     for (auto& k : career::propertyKinds()) {
         if (k.price <= 0) continue;
         ImGui::PushID(k.id);
@@ -301,7 +338,7 @@ static void workshopTab() {
         ImGui::BeginDisabled(C.money < k.price);
         if (accentButton("Buy", true)) {
             std::string why;
-            if (career::buyProperty(C, k.id, roles[buyRole], &why)) { careerSave(); toast(std::string("Bought: ") + k.name + ". Go there from this list or the front door."); }
+            if (career::buyProperty(C, k.id, roles[buyRole], &why)) { career::setLocation(C, C.props.back(), buyCity); careerSave(); toast(std::string("Bought: ") + k.name + " at " + C.props.back().address + ". Go there from this list or the front door."); }
             else toast(why);
         }
         ImGui::EndDisabled();

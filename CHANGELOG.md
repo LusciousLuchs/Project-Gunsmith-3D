@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.1-alpha
+
+### Career
+- **Big clients pay big.** Agencies, the military and security firms now pay well over shelf price per gun: from about $1,300 (security firms, bank guards) and $1,600 to $3,100 (sheriffs, state police, a new SWAT team client) up to $3,900 to $4,400 (a new private military contractor, the Army, the Marines). A Marines order can be worth half a million.
+- **Your shop is on the map.** Pick a city when you start a career and when you buy a property; each place gets a made-up street address there.
+- **Taxes.** Each week you pay tax on that week's profit: 21% federal plus your state's rate (Texas none, California nearly 9%). The computer's Today page shows the week so far.
+- **Accessories.** Buy boxes of magazines, ammunition, holsters and the like wholesale (Properties & staff) and your stores sell them to customers and passers-by each day: small money that adds up, more in better-rated stores. You set the price.
+
 ## 0.8.0-alpha
 
 ### Career: properties

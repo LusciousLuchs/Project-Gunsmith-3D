@@ -16,7 +16,7 @@ struct CareerSlot { std::string name; int day = 1; double money = 0, reputation 
 std::vector<CareerSlot> careerSlots();   // the newest played first
 std::string careerName();                // the one being played
 void careerContinue(const std::string& name);   // load it and go to your shop
-void careerBegin(const std::string& name);      // a new career under this name (made unique) and go to your shop
+void careerBegin(const std::string& name, int city = 0);      // a new career under this name (made unique) and go to your shop
 bool careerDelete(const std::string& name);
 // your workshop's saved copies (Career/<name>/Workshops/<copy>.gsmap)
 std::vector<std::string> careerWorkshopCopies();

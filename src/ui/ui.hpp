@@ -55,7 +55,8 @@ void toolbar();
 void toolRail();
 void tutorialsWindow();   // the list of lessons
 void rangePicker();       // the firing range: which map and which gun
-void careerPicker();      // career: carry on with one, start a new one, delete one
+void careerPicker();
+bool usMapPicker(const char* id, int& city, float width);   // a map of the US: click a city (true when it changed)      // career: carry on with one, start a new one, delete one
 void tutorialPanel();     // the lesson in progress, over the view
 void tutAnchor(const char* id);
 bool tutAnchorAfter(bool r, const char* id);   // tutAnchor, passing a button's result through   // marks the last widget drawn, so a tutorial step can point at it

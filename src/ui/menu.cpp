@@ -354,7 +354,7 @@ void rangePicker() {
 // ---------------------------------------------------------------- career: which one
 void careerPicker() {
     dimBackground(0.35f);
-    centerNext(520 * S(), 520 * S());
+    centerNext(560 * S(), 720 * S());
     ImGui::Begin("##careers", nullptr, PLAIN);
     ImGui::PushFont(gFontBold, 20.0f);
     ImGui::TextUnformatted("Career");
@@ -370,7 +370,10 @@ void careerPicker() {
     ImGui::SetNextItemWidth(-130 * S());
     ImGui::InputTextWithHint("##cname", "Your shop's name", name, sizeof name);
     ImGui::SameLine();
-    if (accentButton("Start", true, {-1, 0})) { uiTick(); A.showCareerPicker = false; init = false; careerBegin(name); ImGui::End(); return; }
+    static int city = 0;
+    if (accentButton("Start", true, {-1, 0})) { uiTick(); A.showCareerPicker = false; init = false; careerBegin(name, city); ImGui::End(); return; }
+    ImGui::TextDisabled("Where's your home garage? Click a city.");
+    usMapPicker("##newcity", city, ImGui::GetContentRegionAvail().x);
     ImGui::SeparatorText("Your careers");
     ImGui::BeginChild("##clist", {0, -44 * S()});
     if (slots.empty()) ImGui::TextDisabled("None yet.");

@@ -3,6 +3,7 @@
 #include "shotsound.hpp"
 #include "npc.hpp"
 #include "career.hpp"
+#include "places.hpp"
 #include "npcai.hpp"
 #include "map.hpp"
 #include "reliability.hpp"
@@ -2103,6 +2104,29 @@ static void propertiesTest() {
     career::Career loaded; career::careerFromJson(career::careerToJson(old), loaded);
     CHECK(loaded.props.size() == 1 && loaded.props[0].kind == "shack", "an older career's shop (tier 1) becomes a shack");
 }
+static void taxesAndAccessories() {
+    std::printf("taxes and accessories\n");
+    career::Career c = career::newCareer(41);
+    career::setLocation(c, c.props[0], places::cityByName("Austin", "TX"));
+    CHECK(c.props[0].address.find("Austin, TX 78705") != std::string::npos, "the garage gets a made-up street address in Austin, TX 78705");
+    CHECK(std::fabs(career::taxRate(c) - 21) < 1e-9, "Texas: no state tax on profit, so 21% federal");
+    career::setLocation(c, c.props[0], places::cityByName("Los Angeles", "CA"));
+    CHECK(career::taxRate(c) > 29, "California adds its own");
+    c.money = 100000; c.taxable = 0;
+    c.taxable = 10000;
+    double m0 = c.money;
+    for (int d = 0; d < 8; d++) career::endDay(c);
+    CHECK(c.taxesPaid > 0 && c.money < m0, "a week's profit is taxed at the week's end");
+    CHECK(!career::buyAccessories(c, 1000000), "can't buy more accessories than you can pay for");
+    CHECK(career::buyAccessories(c, 100) && c.accessories == 100, "a hundred boxes of accessories in stock");
+    double before = c.money;
+    for (int d = 0; d < 10; d++) career::endDay(c);
+    std::printf("    accessories sold in 10 days: %d\n", 100 - c.accessories);
+    CHECK(c.accessories < 100, "the store sells accessories each day");
+    (void)before;
+    career::Career back; career::careerFromJson(career::careerToJson(c), back);
+    CHECK(back.props[0].city == c.props[0].city && back.accessories == c.accessories && std::fabs(back.taxesPaid - c.taxesPaid) < 1e-6, "location, accessories and taxes save and load");
+}
 static void shopChecks() {
     std::printf("shopChecks\n");
     gmap::Map m = gmap::defaultWorkshop();
@@ -2731,6 +2755,7 @@ int main() {
     reliabilityTimeout();
     holdOpenTest();
     propertiesTest();
+    taxesAndAccessories();
     npcDesigns();
     careerRules();
     careerStages();
