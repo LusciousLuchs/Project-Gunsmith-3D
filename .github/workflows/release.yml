@@ -25,6 +25,7 @@ jobs:
     env:
       PUBLIC_REPO: LusciousLuchs/Gunsmith3D-Releases
       RELEASES_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
     steps:
       - uses: actions/checkout@v4
 
@@ -78,3 +79,19 @@ jobs:
           [ "${{ steps.v.outputs.repo }}" = "$GITHUB_REPOSITORY" ] && target="--target $GITHUB_SHA"
           gh release create "v${{ steps.v.outputs.full }}" "Gunsmith3D-${{ steps.v.outputs.full }}.zip" \
             --repo "${{ steps.v.outputs.repo }}" $target --title "Gunsmith3D ${{ steps.v.outputs.full }}" --notes-file notes.md --latest
+
+      # Posts the same notes in the game's Discord server. Needs the secret DISCORD_WEBHOOK (a channel's webhook URL:
+      # in Discord, Edit Channel > Integrations > Webhooks > New Webhook > Copy Webhook URL). Without it, skipped.
+      - name: Tell the Discord server
+        if: steps.v.outputs.skip != '1' && env.DISCORD_WEBHOOK != ''
+        continue-on-error: true
+        run: |
+          url="https://github.com/${{ steps.v.outputs.repo }}/releases/tag/v${{ steps.v.outputs.full }}"
+          # Discord shows "### Heading" poorly inside a card: make headings bold; a card holds 4096 characters
+          sed -E 's/^#{1,6} +(.*)$/**\1**/' notes.md > discord.md
+          jq -n --rawfile notes discord.md --arg url "$url" --arg title "Gunsmith3D ${{ steps.v.outputs.full }} is out" '
+            ($notes | sub("^\\s+"; "") | sub("\\s+$"; "") | if length > 3900 then .[0:3900] + "\n… (the rest is on the download page)" else . end) as $d
+            | {username: "Gunsmith3D", allowed_mentions: {parse: []},
+               embeds: [{title: $title, url: $url, description: $d, color: 15105570,
+                         footer: {text: "The game updates itself, or download it from the link above."}}]}' > discord.json
+          curl -sS --fail-with-body -H "Content-Type: application/json" -d @discord.json "$DISCORD_WEBHOOK"
