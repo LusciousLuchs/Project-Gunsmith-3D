@@ -369,9 +369,7 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     }
     add("Head", piece("Nose", 0.53, 0, front(0.45, 0) - 4, 46, 7, 13, 180, 0, L.skin, "box", 1.0, 1.6));
     add("Head", piece("Mouth", 0.3, 0, front(0.3, 0) - 3, 6, 15, 15, 90, 0, "#9a5a52", "cylinder", 1.7, 0.3));
-    // the chest
-    if (fem)
-        for (int s : {-1, 1}) add("Chest", piece(s < 0 ? "Bust (left)" : "Bust (right)", 0.58, s * 46, 32, 92, 52, 52, 90, s * 8, L.topColor, "ball", 1, 1));
+    // (a woman's chest is shaped in the one-piece body: drawCharacterBody in the app)
     // (sleeves, shorts and a tank top are colours on the one-piece body: see drawCharacterBody in the app)
     // fingers: three pieces each, from the end of the palm, a little curled; the thumb from the side of the palm
     for (const char* sd : {"left", "right"}) {

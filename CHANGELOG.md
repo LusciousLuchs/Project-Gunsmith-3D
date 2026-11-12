@@ -25,6 +25,8 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - **Range demonstrations:** big orders pass the bench test, then you shoot a course for them on the range: 12 hits on paper in 20 rounds. Miss, and you can try again before the deadline.
 
 ### Fixed
+- **A career from 0.5 had no counter or bench:** it now starts with both, plus people to hire and customers.
+- **Women's chests** were two round balls stuck on the shirt. They're now shaped into the body, in the same faceted style.
 - **Guns with a tilting or hinged barrel shot about 2° high on the range:** the shot left along the barrel as it was unlocking, not as it fired. Now the shot leaves along the barrel as drawn, in battery.
 
 ## 0.5.1-alpha

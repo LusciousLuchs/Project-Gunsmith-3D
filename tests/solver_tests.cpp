@@ -11,6 +11,7 @@
 #include "mounts.hpp"
 #include "fitting.hpp"
 #include "hand.hpp"
+#include "json.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -1958,6 +1959,12 @@ static void careerStages() {
     CHECK(std::string(tierName(0)) != tierName(70), "reputation brings a name");
     Career back;
     CHECK(careerFromJson(careerToJson(c), back) && back.staff.size() == c.staff.size() && back.stations["lathe"] == 1 && back.walkins.size() == c.walkins.size(), "staff, stations and customers save and load");
+    {   // a career saved by 0.5 (no workshop yet) loads with a bench, a counter, people to hire and customers
+        Career old = newCareer(5); std::string t = careerToJson(old);
+        auto o = nlohmann::json::parse(t); o.erase("stations"); o.erase("candidates"); o.erase("walkins"); o.erase("staff");
+        Career back; CHECK(careerFromJson(o.dump(), back) && back.stations["bench"] == 1 && back.stations["counter"] == 1 && !back.candidates.empty() && !back.walkins.empty(),
+              "a career saved before the workshop gets a bench, a counter, people looking for work and customers");
+    }
 }
 
 static void npcDesigns() {
@@ -2016,7 +2023,7 @@ static void mapsCarryNpcs() {
     CHECK(has(ch, "Eye (left)") && has(ch, "Nose") && has(ch, "Hair") && has(ch, "Belt") && has(ch, "Ear cup (right)") && !has(ch, "Cap"), "a face, hair and the chosen extras");
     L.body = "female"; L.hair = "ponytail"; L.hat = true; L.glasses = true; L.top = "tank"; L.pants = "shorts";
     NpcDef fem = characterFromLook(L);
-    CHECK(has(fem, "Bust (left)") && has(fem, "Ponytail") && has(fem, "Cap") && has(fem, "Lens (right)") && !has(ch, "Bust (left)"), "a female body, a ponytail, a cap and glasses");
+    CHECK(!has(fem, "Bust (left)") && fem.look.body == "female" && has(fem, "Ponytail") && has(fem, "Cap") && has(fem, "Lens (right)"), "a female body (the chest shaped in the one-piece body, not pieces), a ponytail, a cap and glasses");
     double hip = 0, hipF = 0; for (auto& b : ch.bones) if (b.name == "Pelvis") hip = b.r1 * b.width; for (auto& b : fem.bones) if (b.name == "Pelvis") hipF = b.r1 * b.width;
     CHECK(hipF > hip * 0.95, "a female body's hips aren't narrower");
     // your own gear stays when the choices change; the look saves and loads

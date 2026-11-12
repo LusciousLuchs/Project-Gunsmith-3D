@@ -538,7 +538,8 @@ void npcEditorRender() {
 // joined into tubes that run through the joints (a ring at a joint follows both bones half and half, so an elbow or a
 // knee bends without a gap), drawn faceted. Clothes are colours on it: a sleeve is where the shirt's colour stops.
 namespace {
-struct RingAt { int a = -1, b = -1; double ta = 0, tb = 0, w = 0, shrink = 1; };   // where: on bone a at ta, blended toward b at tb
+struct RingAt { int a = -1, b = -1; double ta = 0, tb = 0, w = 0, shrink = 1, bust = 0; };   // where: on bone a at ta, blended toward b at tb
+                                                                                       // (bust: how far its front swells, in two curves)
 struct Tube { std::vector<RingAt> rings; std::vector<Color> cols; int sides = 8; };
 int boneNamed(const NpcDef& n, const std::string& nm) { for (int i = 0; i < (int)n.bones.size(); i++) if (n.bones[i].name == nm) return i; return -1; }
 }  // namespace
@@ -554,11 +555,14 @@ void drawCharacterBody(const NpcDef& n, const std::vector<Matrix>& M, const Colo
     int pel = boneNamed(n, "Pelvis"), che = boneNamed(n, "Chest"), nec = boneNamed(n, "Neck");
     if (pel < 0 || che < 0 || nec < 0) return;
     {   // the torso: from below the hips up through the chest, closing in to the base of the neck
-        Tube t; t.sides = 10;
+        Tube t; t.sides = 16;
+        const double b = L.body == "female" ? 1 : 0;   // (a woman's chest swells forward: part of the one skin, not added pieces)
         t.rings = {{pel, -1, -0.12, 0, 0, 0.55}, {pel, -1, 0.0, 0, 0, 0.95}, {pel, -1, 0.5, 0, 0, 1}, {pel, che, 1, 0, 0.5, 1}, {che, -1, 0.35, 0, 0, 1},
-                   {che, -1, 0.72, 0, 0, 1}, {che, -1, 0.9, 0, 0, 0.97}, {che, -1, 1.0, 0, 0, 0.8}, {che, -1, 1.07, 0, 0, 0.5}, {che, -1, 1.1, 0, 0, 0.3}};   // (the shoulders slope in to the neck)
+                   {che, -1, 0.47, 0, 0, 1, 0.24 * b}, {che, -1, 0.56, 0, 0, 1, 0.4 * b}, {che, -1, 0.65, 0, 0, 1, 0.34 * b},
+                   {che, -1, 0.74, 0, 0, 1, 0.12 * b}, {che, -1, 0.9, 0, 0, 0.97}, {che, -1, 1.0, 0, 0, 0.8}, {che, -1, 1.07, 0, 0, 0.5}, {che, -1, 1.1, 0, 0, 0.3}};   // (the shoulders slope in to the neck)
         // below the belt line: the pants' colour; above: the top's
-        t.cols = {T(pants), T(pants), T(pants), T(top), T(top), T(top), T(top), T(top), T(top)};
+        t.cols = {T(pants), T(pants), T(pants)};
+        while (t.cols.size() + 1 < t.rings.size()) t.cols.push_back(T(top));
         tubes.push_back(t);
     }
     {   // the neck: from inside the shoulders up into the head
@@ -600,6 +604,10 @@ void drawCharacterBody(const NpcDef& n, const std::vector<Matrix>& M, const Colo
             bool sq = b.shape == "box" || b.shape == "wedge";
             double ex = sq ? 3.5 : 2;   // a rounded square across a box-shaped bone (the chest), round elsewhere
             double px = (cx < 0 ? -1 : 1) * std::pow(std::fabs(cx), 2 / ex), pz = (cz < 0 ? -1 : 1) * std::pow(std::fabs(cz), 2 / ex);
+            if (r.bust > 0 && cz > 0) {   // two soft curves either side of the middle, on the front only
+                double lobe = std::exp(-std::pow((std::fabs(cx) - 0.42) / 0.3, 2));
+                pz += r.bust * std::pow(cz, 1.5) * (0.35 + 0.65 * lobe);
+            }
             return Vector3Transform(Vector3{(float)(px * rad * b.width), (float)(t * b.len), (float)(pz * rad * b.depth)}, M[bi]);
         };
         for (int k = 0; k < sides; k++) {

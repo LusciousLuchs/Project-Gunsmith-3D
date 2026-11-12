@@ -536,6 +536,12 @@ bool careerFromJson(const std::string& text, Career& out) {
         c.walkins.push_back(w);
     }
     if (o.contains("news") && o["news"].is_array()) for (auto& n : o["news"]) if (n.is_string()) c.news.push_back(n.get<std::string>());
+    if (c.stations.empty()) {   // a career from before the workshop (0.5): it starts with what a new one has (once the
+                                // workshop is built, its map is counted instead)
+        c.stations = {{"bench", 1}, {"counter", 1}};
+        if (c.candidates.empty()) refreshCandidates(c);
+        if (c.walkins.empty()) for (int i = 0; i < 2; i++) c.walkins.push_back(walkin(c));
+    }
     out = c;
     return true;
 }

@@ -238,7 +238,11 @@ void careerRenderPortraits() {
         BeginTextureMode(rt);
         ClearBackground(Color{58, 50, 44, 255});   // (the shop's back wall)
         BeginMode3D(cam);
-        setLamps({});
+        {   // a light at the counter, in front of them and a little to one side, so their face shows
+            Lamp key; key.pos[0] = 0.5f; key.pos[1] = (float)(h * 0.95); key.pos[2] = 1.1f; key.col[0] = 1; key.col[1] = 0.93f; key.col[2] = 0.82f;
+            key.power = 1.6f; key.range = 4;
+            setLamps({key});
+        }
         { float vp[3] = {cam.position.x, cam.position.y, cam.position.z}; SetShaderValue(G.lit, G.locView, vp, SHADER_UNIFORM_VEC3); }   // (lit from where it's seen)
         drawNpcAt(n, {0, 0, 0}, 90, 0.001f);
         EndMode3D();
