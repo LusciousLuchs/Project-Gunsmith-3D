@@ -727,13 +727,20 @@ static const std::vector<Mesh>& attMeshes(const std::string& file, const Design&
 }
 static void drawAttachment(const std::string& file, const Design& att, Matrix Mfit, float alpha, Color tint) {
     const auto& ms = attMeshes(file, att);
+    for (int pass = 0; pass < 2; pass++) {
+    if (pass == 1) rlDisableDepthMask();
     for (size_t i = 0; i < att.bodies.size() && i < ms.size(); i++) {
         const BodyDef& b = att.bodies[i];
         V2 c = centroidOf(b);
         Matrix M = MatrixMultiply(MatrixTranslate((float)c.x * U, -(float)c.y * U, (float)(b.z * U)), Mfit);
         Color col = tint.a ? tint : hexColor(b.color);
-        if (!b.texture.empty() && !tint.a) drawMeshTex(ms[i], M, col, userTexture(b.texture), alpha);
-        else drawMesh(ms[i], M, col, alpha);
+        if (b.opacity < 0.99 && pass == 0) continue;   // (clear parts after the solid ones, so what's behind them shows)
+        if (b.opacity >= 0.99 && pass == 1) continue;
+        float a = alpha * (float)b.opacity;
+        if (!b.texture.empty() && !tint.a) drawMeshTex(ms[i], M, col, userTexture(b.texture), a);
+        else drawMesh(ms[i], M, col, a);
+    }
+    if (pass == 1) rlEnableDepthMask();
     }
 }
 static float gOpticAlpha = 1;   // the optic you're aiming through fades (you look through it, not at it)
@@ -788,6 +795,7 @@ static void drawSceneImpl(bool gunOnly) {
     }
     auto list = renderList();
     auto isGhost = [&](const RB& r) {
+        if (D.bodies[r.tmpl].opacity < 0.99) return true;   // clear: always drawn see-through
         if (A.showcase || gunOnly) return false;  // on the menu it looks like a finished gun
         const BodyDef& d = D.bodies[r.tmpl];
         if (building && A.sel.kind == 1 && A.sel.idx == r.tmpl && !d.magazine) return false;   // a selected magazine stays see-through: its rounds show
@@ -961,6 +969,9 @@ static void drawSceneImpl(bool gunOnly) {
         {
             Color gc = (!building && r.sb && r.sb == A.hover) ? shade(c, 1.4f) : c;
             float ga = r.sb && r.sb == A.hover ? 0.42f : 0.26f;
+            double op = D.bodies[r.tmpl].opacity;
+            bool xr = !(A.showcase || gunOnly) && ((A.xray && D.bodies[r.tmpl].ghost) || (A.cutaway && D.bodies[r.tmpl].z - D.bodies[r.tmpl].thick / 2 > 0.5));
+            if (op < 0.99) ga = xr ? std::min(ga, (float)op) : (float)op;   // (a clear part: its own opacity; x-rayed, whichever is clearer)
             if (!D.bodies[r.tmpl].texture.empty()) drawMeshTex(A.meshes[r.tmpl].mesh, r.M, gc, userTexture(D.bodies[r.tmpl].texture), ga);
             else drawMesh(A.meshes[r.tmpl].mesh, r.M, gc, ga);
         }

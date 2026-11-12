@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.7-alpha
+
+### See-through parts
+- **Opacity** for every part (Inspect, under Material): lower it and the part turns see-through everywhere, on the bench, the range and in attachments. Make a magazine you can see the rounds in, a clear grip, a sight window.
+- **New materials: Glass and Clear polymer.** Picking one makes the part see-through straight away (change the opacity to taste).
+
 ## 0.7.6-alpha
 
 ### Attachment designer

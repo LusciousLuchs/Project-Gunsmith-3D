@@ -1025,6 +1025,7 @@ std::string designToJson(const Design& d, bool pretty) {
         }
         if (b.mass > 0) jb["mass"] = b.mass;
         if (!b.material.empty() && b.material != "steel") jb["material"] = b.material;
+        if (b.opacity < 0.999) jb["opacity"] = b.opacity;
         if (b.magazine) {
             jb["magazine"] = {{"cap", b.magCap}};
             if (b.lipHeight != 0) jb["magazine"]["lipHeight"] = b.lipHeight;
@@ -1229,6 +1230,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.thick = opt<double>(jb, "thick", 10);
         b.mass = opt<double>(jb, "mass", 0);
         b.material = opt<std::string>(jb, "material", "");
+        b.opacity = std::clamp(opt<double>(jb, "opacity", 1.0), 0.05, 1.0);
         b.damp = opt<double>(jb, "damp", 0);
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
@@ -1706,6 +1708,8 @@ const std::vector<MaterialInfo>& materials() {
         {"wood", "Wood", 0.65, 1.3, "#7a5233", 12, 1.3, "Walnut: light, warm, slow to shape. Stocks and grips."},
         {"polymer", "Polymer", 1.4, 0.75, "#232427", 9, 0.6, "Glass-filled nylon: light, slippery, quick to make once moulded."},
         {"rubber", "Rubber", 1.15, 3.0, "#1b1b1c", 6, 0.5, "Grippy and light: recoil pads, grip panels, buffers."},
+        {"glass", "Glass", 2.5, 0.9, "#cfe8f0", 20, 1.2, "Clear and hard: lenses, sight windows. See-through when you pick it."},
+        {"clear", "Clear polymer", 1.2, 0.8, "#d8dde0", 12, 0.6, "Polycarbonate: tough, light and see-through. Magazines you can see the rounds in."},
     };
     return m;
 }

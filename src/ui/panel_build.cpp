@@ -506,11 +506,21 @@ static void inspectPart(BodyDef& b) {
             prop("Material", "What the part is made of. It sets how heavy the part is (and so how the gun kicks and how fast its parts move),\nhow it slides against other parts, and what it costs to make in career mode.");
             if (ImGui::BeginCombo("##material", mt.name)) {
                 for (auto& m : materials()) {
-                    if (ImGui::Selectable(m.name, &m == &mt)) { b.material = std::string(m.id) == "steel" ? "" : m.id; editedAny = true; }
+                    if (ImGui::Selectable(m.name, &m == &mt)) {
+                        b.material = std::string(m.id) == "steel" ? "" : m.id; editedAny = true;
+                        std::string id = m.id;
+                        if ((id == "glass" || id == "clear") && b.opacity > 0.99) { b.opacity = id == "glass" ? 0.25 : 0.4; b.color = m.color; b.texture.clear(); }   // (clear things look clear)
+                    }
                     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n%.2f g/cm3, %s against steel.", m.tip, m.density,
                                                                 m.friction > 1.5 ? "grips" : m.friction > 1.05 ? "rubs a little harder" : m.friction < 0.95 ? "slides easily" : "slides as steel does");
                 }
                 ImGui::EndCombo();
+            }
+            {   // how solid it looks: see-through parts (glass, a clear magazine) show what's behind and inside them
+                float pct = (float)(b.opacity * 100);
+                prop("Opacity", "How solid it looks. Lower it for glass, a see-through magazine, a window: what's behind and inside shows through.\nLooks only: it doesn't change how it moves or collides.");
+                ImGui::SetNextItemWidth(-1);
+                if (ImGui::SliderFloat("##opacity", &pct, 5, 100, "%.0f%%")) { b.opacity = std::clamp(pct / 100.0, 0.05, 1.0); editedAny = true; }
             }
             if (ImGui::SmallButton(TextFormat("Its usual colour##mc"))) { b.color = mt.color; b.texture.clear(); editedAny = true; }
             if (tipHover()) ImGui::SetTooltip("Paint the part as %s usually looks (takes off a picture on it).", mt.name);

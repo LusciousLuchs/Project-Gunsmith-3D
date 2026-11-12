@@ -154,6 +154,7 @@ struct BodyDef {
     std::string texture;                 // a picture from user/textures on its surface ("" = plain colour); the colour tints it
     double texScale = 40;                // mm before the picture repeats
     bool ghost = false;                  // drawn see-through in X-ray mode
+    double opacity = 1;                  // how solid it looks: 1 solid .. 0.05 nearly clear (glass, see-through magazines); looks only
     BarrelDef barrel;
     RailDef rail;                        // a Picatinny rail (the Rail tool)
     std::vector<MountDef> mounts;        // attachment points on it (the Mount tool)
