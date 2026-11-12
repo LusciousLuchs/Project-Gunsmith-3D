@@ -164,7 +164,9 @@ void enterBenchWith(const Design& d) {
     A.design = d;
     enterWorkshop(true);
 }
+void careerLeave();   // (app/career.cpp)
 void backToMenu() {
+    careerLeave();
     if (A.screen == Screen::MapEditor) leaveMapEditor();
     if (A.screen == Screen::Range) leaveRange();
     if (A.screen == Screen::NpcEditor) leaveNpcEditor();

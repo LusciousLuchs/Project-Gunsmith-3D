@@ -2,6 +2,7 @@
 #include "solver.hpp"
 #include "shotsound.hpp"
 #include "npc.hpp"
+#include "career.hpp"
 #include "npcai.hpp"
 #include "map.hpp"
 #include "reliability.hpp"
@@ -1817,6 +1818,77 @@ static void magazineShaping() {
     CHECK(back.bodies[mi].gen.byHand && back.bodies[mi].roundPath.size() >= 2, "the hand-made shape and the rounds' path are saved");
     CHECK(autoRoundPath(loadPreset("tilting").bodies[mi], f.breech.cart).size() >= 2, "an automatic layout has a feed spot and a direction to drag");
 }
+// Career mode: rating a gun, building copies, the online store, reviews, contracts, saving
+static void careerRules() {
+    std::printf("Career mode\n");
+    using namespace career;
+    Design pistol = loadPreset("blowback"), rifle = loadPreset("boltaction");
+    GunSheet p = sheetOf(pistol), r = sheetOf(rifle);
+    CHECK(!p.twoHands && r.twoHands && p.energy > 100 && r.energy > p.energy, "a pistol and a rifle are told apart by how they're held and their rounds");
+    CHECK(p.massKg > 0.2 && p.massKg < 3 && p.buildHours > 1 && p.materialCost > 5 && p.capacity > 0, "a sheet has weight, hours to build, material cost, capacity");
+    CHECK(r.moa > 0 && r.moa < p.moa, "a long barrel groups tighter than a short one");
+    GunSheet good = p, bad = p; good.rated = bad.rated = true; good.jamRate = 0; bad.jamRate = 12;
+    CHECK(good.value() > bad.value() * 1.3 && good.value() > p.value(), "a reliable gun is worth more than a jammy one (and than an untested one)");
+    Career c = newCareer(7);
+    int offers = 0; for (auto& k : c.contracts) if (k.state == 0) offers++;
+    CHECK(c.day == 1 && c.money > 0 && offers >= 2, "a new career: day 1, some money, customers waiting");
+    p.rated = true; p.jamRate = 0; p.name = "P";
+    c.sheets["P"] = p;
+    double before = c.money;
+    CHECK(startBuild(c, "P", 3) && std::fabs(c.money - (before - 3 * p.materialCost)) < 1e-6, "building copies pays for their material up front");
+    std::string why;
+    CHECK(!startBuild(c, "Nothing", 1, &why) && !why.empty(), "a gun not yet rated can't be built");
+    int days = 0;
+    while (c.stock["P"] < 3 && days < 20) { endDay(c); days++; }
+    int expect = (int)std::ceil(3 * p.buildHours / c.hoursPerDay);
+    CHECK(c.stock["P"] == 3 && days <= expect + 1, "the copies are made from your working hours, day by day");
+    // the store: cheap sells, dear doesn't
+    Career cheap = c, dear = c;
+    cheap.listings.push_back({"P", p.value() * 0.5, true, 0});
+    dear.listings.push_back({"P", p.value() * 4, true, 0});
+    for (int d = 0; d < 15; d++) { endDay(cheap); endDay(dear); }
+    CHECK(cheap.listings[0].sold == 3 && cheap.money > c.money, "priced below its worth, every copy sells");
+    CHECK(dear.listings[0].sold == 0, "priced at four times its worth, none do");
+    // reviews follow how it really works
+    auto avgStars = [&](double jam) {
+        Career t = newCareer(3); GunSheet s = p; s.jamRate = jam; t.sheets["P"] = s; t.stock["P"] = 400; t.listings.push_back({"P", s.value() * 0.6, true, 0});
+        for (int d = 0; d < 60; d++) endDay(t);
+        double sum = 0; int n = 0; for (auto& rv : t.reviews) { sum += rv.stars; n++; }
+        return n ? sum / n : 0.0;
+    };
+    double fine = avgStars(0), jammy = avgStars(15);
+    std::printf("        (average stars: reliable %.2f, jammy %.2f)\n", fine, jammy);
+    CHECK(fine > jammy + 1.0, "buyers of a jammy gun leave worse reviews");
+    // contracts
+    Contract k; k.id = 99; k.state = 1; k.hands = 2; k.qty = 2; k.pay = 3000; k.dueDay = c.day + 10;
+    CHECK(!shortfalls(k, p).empty() && shortfalls(k, r).empty(), "a one-handed gun doesn't meet a brief for a long gun");
+    Design unposed = rifle; unposed.pose = Pose();
+    GunSheet u = sheetOf(unposed);
+    auto miss = shortfalls(k, u);
+    CHECK(!u.posed && miss.size() == 1 && miss[0].find("Pose") != std::string::npos, "a gun with no hold set isn't guessed at: the brief says to set it in Pose");
+    Contract k2 = k; k2.id = 100; k2.hands = 1;
+    c.contracts.push_back(k2);
+    c.stock["P"] = 1;
+    CHECK(!deliver(c, 100, "P", p), "not enough copies built: not delivered");
+    c.stock["P"] = 2;
+    double m0 = c.money;
+    CHECK(deliver(c, 100, "P", p) && std::fabs(c.money - (m0 + 3000)) < 1e-6 && c.stock["P"] == 0, "delivered: paid, and the copies leave stock");
+    Contract k3 = k2; k3.id = 101; k3.maxJam = 1;
+    c.contracts.push_back(k3); c.stock["P"] = 2;
+    CHECK(!deliver(c, 101, "P", bad) && c.stock["P"] == 2, "a gun that fails the test is turned down and the copies stay");
+    Contract k4 = k2; k4.id = 102; k4.dueDay = c.day + 1; c.contracts.push_back(k4);
+    double rep0 = c.reputation; endDay(c); endDay(c);   // (due by tomorrow: you have today and tomorrow)
+    bool lapsed = false; for (auto& x : c.contracts) if (x.id == 102) lapsed = x.state == 3;
+    CHECK(lapsed && c.reputation <= rep0, "a contract not delivered in time lapses, and costs reputation");
+    // saving
+    Career back;
+    CHECK(careerFromJson(careerToJson(c), back) && back.day == c.day && std::fabs(back.money - c.money) < 1e-6 && back.contracts.size() == c.contracts.size() &&
+          back.sheets.size() == c.sheets.size() && back.reviews.size() == c.reviews.size(), "a career saves and loads whole");
+    double m1 = c.money, r1 = c.reputation + 10; c.reputation = r1;
+    soldToProhibited(c);
+    CHECK(std::fabs(c.money - (m1 - 2500)) < 1e-6 && c.reputation < r1, "selling to someone who failed the check: a fine and some reputation, nothing worse");
+}
+
 static void npcDesigns() {
     std::printf("npcDesigns\n");
     for (auto& [k, label] : npcPresets()) {
@@ -2367,6 +2439,7 @@ int main() {
     gasAndOpenBolt();
     magazineShaping();
     npcDesigns();
+    careerRules();
     mapsCarryNpcs();
     npcsAlive();
     npcPaths();

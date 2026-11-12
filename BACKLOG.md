@@ -89,6 +89,12 @@ is up to them, and the game's own examples stay original.
 - **Extras**: belt, hat, headphones, glasses.
 - The owner may have proper player models made later: keep the character's parts easy to swap for a model.
 
+## Career mode (the owner's plan; stage 1 done in 0.5.0)
+
+- **Stage 2: employees.** Editing is never locked; making guns is what grows. Hire gunsmiths (wage, skill, specialty: machinist, assembler, finisher/QC); each adds working hours, gets better with experience, and sometimes makes a flawed copy (a higher jam rate, so worse reviews). QC test-fires copies and catches flaws. Each needs a workstation (bench, lathe, mill) placed in your workshop, a walkable map built with the level editor's tools; floor space limits how many, then a bigger shop.
+- **Stage 3: the storefront.** Walk-in customers at your counter; a background check on each: 99% clean, 1% something wrong: refuse and call the police. Selling anyway: a fine and some reputation (the owner: no harsher consequence, it's a cozy game).
+- **Stage 4: bigger business.** Reputation tiers; police and military volume contracts; range demonstrations for big contracts (a course of fire for the customer) on top of the bench test.
+
 ## Next
 
 - **Firing range**: first person, walking the range with your gun, using its poses; weighty handling (inertia, sway, time to aim), holstering, recoil from the bench, live-fire jams from the measured jam rate.

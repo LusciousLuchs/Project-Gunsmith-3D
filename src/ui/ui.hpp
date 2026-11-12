@@ -75,6 +75,8 @@ void buildPanel();
 void cartridgeDesigner();
 // panel_map.cpp
 void mapToolbar();
+void careerScreen();   // career mode's office (panel_career.cpp)
+void careerSetTab(int t);
 void mapPanel();
 // menu.cpp
 void mainMenu();

@@ -1,6 +1,7 @@
 // Gunsmith3D - Top bar: menu, designer / bench switch, tools as icons, view toggles.
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/careermode.hpp"
 #include "app/range.hpp"
 #include "app/fitbench.hpp"
 #include "app/audio.hpp"
@@ -261,6 +262,11 @@ void toolbar() {
     // designer / bench
     bool b = A.mode == Mode::Build;
     float sz = TOOLBAR_H - 14 * CFG.uiScale;
+    if (inCareer()) {   // career mode: back to your shop's office
+        if (accentButton(ICON_FA_STORE "  Office", true, {0, sz})) { careerBackToOffice(); return; }
+        if (tipHover()) ImGui::SetTooltip("Back to your shop. Save your gun first (Ctrl+S) so the office sees the change.");
+        gap(10);
+    }
     if (A.rangeFit) {   // from a crate on the range: only fitting, then back
         if (accentButton("Back to the range", true, {0, sz})) backToRange();
         gap(18);

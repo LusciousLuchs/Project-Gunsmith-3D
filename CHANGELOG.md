@@ -8,6 +8,18 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.5.0-alpha
+
+### New: Career mode (a first, basic version)
+- **Run your own gun shop** in a post-NFA America, where every gun is legal to own. Main menu > Career.
+- **Design freely:** every tool is yours from day one. Open the designer from your office, save your gun, and come back with **Office** (top left).
+- **Rate your guns on the bench:** the test fires each gun 30 times and works out its jam rate, accuracy, recoil and weight, and what it's worth.
+- **Build copies:** each copy takes hours of your 8-hour working day, worked out from the gun itself (parts, cuts, turned parts, springs, rifling), and its material is paid up front.
+- **Sell online** through GunBench, your online store. Set a price; buyers order at the end of each day, depending on how good the gun is for the money, and leave reviews that say how it really ran.
+- **Contracts:** customers write in with a brief (a pocket pistol, a deer rifle, a competition pistol, something cursed for a YouTube channel...). Take one on, build it, and deliver: they test it against their brief before they pay. Bigger orders come with reputation.
+- **End the day** when you're done.
+- Coming next: employees and workstations in your workshop, a storefront with walk-in customers and background checks, military contracts and range demonstrations.
+
 ## 0.4.21-alpha
 
 ### New: light and dark

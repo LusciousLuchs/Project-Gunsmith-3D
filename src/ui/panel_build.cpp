@@ -48,6 +48,7 @@ static void warn(const char* t) { ImGui::PushTextWrapPos(0); ImGui::TextColored(
 int gPanelTab = -1;
 static void loadDesign(const Design& nd, const std::string& msg);
 void openExample(const char* key, const char* msg) { loadDesign(loadPreset(key), msg); }
+void openDesignInEditor(const Design& d, const std::string& msg) { loadDesign(d, msg); }   // (career mode's office)
 static void loadDesign(const Design& nd, const std::string& msg) {
     A.fitItems.clear(); A.fitSel = -1;   // (attachments belong with the gun they were fitted to)
     A.hist.push_back(designToJson(A.design));

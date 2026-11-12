@@ -2,6 +2,7 @@
 #include "app/paths.hpp"
 #include "app/app.hpp"
 #include "app/npcedit.hpp"
+#include "app/careermode.hpp"
 #include "app/sysinfo.hpp"
 #include "app/usertex.hpp"
 #include "app/audio.hpp"
@@ -214,7 +215,7 @@ void mainMenu() {
     ImGui::SetCursorPosX(x - 16 * S());
     ImGui::BeginGroup();
     if (menuItem("Tutorials", true, tutorialsDoneCount() == 0 ? "start here" : nullptr)) A.showTutorials = true;
-    menuItem("Career", false, "coming later");
+    if (menuItem("Career", true, careerExists() ? "carry on" : "start your gun business")) enterCareer();
     if (menuItem("Sandbox")) enterWorkshop(false);
     if (menuItem("Firing range")) A.showRangePicker = true;
     if (menuItem("Your character", true, "who holds your guns")) enterCharacterEditor();
