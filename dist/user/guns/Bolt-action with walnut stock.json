@@ -1,0 +1,1331 @@
+{
+ "bodies": [
+  {
+   "color": "#ffffff",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "rcv",
+   "layer": "none",
+   "name": "Receiver",
+   "pts": [
+    [
+     -80.0,
+     9.0
+    ],
+    [
+     138.0,
+     9.0
+    ],
+    [
+     138.0,
+     32.0
+    ],
+    [
+     124.0,
+     34.0
+    ],
+    [
+     124.0,
+     72.0
+    ],
+    [
+     46.0,
+     72.0
+    ],
+    [
+     46.0,
+     38.0
+    ],
+    [
+     -80.0,
+     38.0
+    ]
+   ],
+   "rad": [
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0,
+    2.0
+   ],
+   "texScale": 50.0,
+   "texture": "camo.png",
+   "thick": 22.0,
+   "z": 0.0
+  },
+  {
+   "color": "#ffffff",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "stock",
+   "layer": "none",
+   "name": "Stock",
+   "pts": [
+    [
+     -80.0,
+     14.0
+    ],
+    [
+     -330.0,
+     24.0
+    ],
+    [
+     -330.0,
+     115.0
+    ],
+    [
+     -300.0,
+     115.0
+    ],
+    [
+     -130.0,
+     60.0
+    ],
+    [
+     -30.0,
+     60.0
+    ],
+    [
+     -6.0,
+     84.0
+    ],
+    [
+     8.0,
+     84.0
+    ],
+    [
+     12.0,
+     50.0
+    ],
+    [
+     -80.0,
+     38.0
+    ]
+   ],
+   "rad": [
+    0.0,
+    6.0,
+    6.0,
+    4.0,
+    20.0,
+    10.0,
+    4.0,
+    4.0,
+    6.0,
+    0.0
+   ],
+   "texScale": 60.0,
+   "texture": "walnut.jpg",
+   "thick": 34.0,
+   "z": 0.0
+  },
+  {
+   "color": "#ffffff",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "fore",
+   "layer": "none",
+   "name": "Fore-end",
+   "pts": [
+    [
+     138.0,
+     28.0
+    ],
+    [
+     330.0,
+     28.0
+    ],
+    [
+     330.0,
+     44.0
+    ],
+    [
+     138.0,
+     50.0
+    ]
+   ],
+   "rad": [
+    0.0,
+    4.0,
+    4.0,
+    0.0
+   ],
+   "thick": 30.0,
+   "z": 0.0,
+   "texture": "walnut.jpg",
+   "texScale": 60
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "barrel",
+   "layer": "ABC",
+   "name": "Barrel",
+   "pts": [
+    [
+     120.0,
+     13.0
+    ],
+    [
+     420.0,
+     14.0
+    ],
+    [
+     420.0,
+     26.0
+    ],
+    [
+     120.0,
+     27.0
+    ]
+   ],
+   "rad": [
+    0.6,
+    1.0,
+    1.0,
+    0.6
+   ],
+   "thick": 14.0,
+   "z": 0.0,
+   "round": true
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "ramp_r",
+   "layer": "ABC",
+   "name": "Feed ramp (right)",
+   "pts": [
+    [
+     107.0,
+     30.5
+    ],
+    [
+     120.0,
+     25.1
+    ],
+    [
+     120.0,
+     34.0
+    ],
+    [
+     107.0,
+     34.0
+    ]
+   ],
+   "rad": [
+    0.0,
+    0.5,
+    0.0,
+    0.0
+   ],
+   "thick": 2.0,
+   "z": 4.0
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "ramp_l",
+   "layer": "ABC",
+   "name": "Feed ramp (left)",
+   "pts": [
+    [
+     107.0,
+     30.5
+    ],
+    [
+     120.0,
+     25.1
+    ],
+    [
+     120.0,
+     34.0
+    ],
+    [
+     107.0,
+     34.0
+    ]
+   ],
+   "rad": [
+    0.0,
+    0.5,
+    0.0,
+    0.0
+   ],
+   "thick": 2.0,
+   "z": -4.0
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "shoulder_r",
+   "layer": "ABC",
+   "name": "Locking shoulder (right)",
+   "pts": [
+    [
+     100.0,
+     17.0
+    ],
+    [
+     108.0,
+     17.0
+    ],
+    [
+     108.0,
+     23.0
+    ],
+    [
+     100.0,
+     23.0
+    ]
+   ],
+   "thick": 3.0,
+   "z": 7.2
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "shoulder_l",
+   "layer": "ABC",
+   "name": "Locking shoulder (left)",
+   "pts": [
+    [
+     100.0,
+     17.0
+    ],
+    [
+     108.0,
+     17.0
+    ],
+    [
+     108.0,
+     23.0
+    ],
+    [
+     100.0,
+     23.0
+    ]
+   ],
+   "thick": 3.0,
+   "z": -7.2
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "boltstop",
+   "layer": "ABC",
+   "name": "Bolt stop",
+   "pts": [
+    [
+     27.6,
+     10.5
+    ],
+    [
+     32.6,
+     10.5
+    ],
+    [
+     32.6,
+     14.2
+    ],
+    [
+     27.6,
+     14.2
+    ]
+   ],
+   "thick": 4.0,
+   "z": 0.0
+  },
+  {
+   "color": "#ffffff",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "wall_l",
+   "layer": "ABC",
+   "name": "Receiver wall (left)",
+   "pts": [
+    [
+     -80.0,
+     11.0
+    ],
+    [
+     120.0,
+     11.0
+    ],
+    [
+     120.0,
+     29.0
+    ],
+    [
+     -80.0,
+     29.0
+    ]
+   ],
+   "texScale": 50.0,
+   "texture": "camo.png",
+   "thick": 2.0,
+   "z": -10.0
+  },
+  {
+   "color": "#ffffff",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "wall_r",
+   "layer": "ABC",
+   "name": "Receiver wall (right, port)",
+   "pts": [
+    [
+     -80.0,
+     11.0
+    ],
+    [
+     42.6,
+     11.0
+    ],
+    [
+     42.6,
+     34.0
+    ],
+    [
+     118.0,
+     34.0
+    ],
+    [
+     118.0,
+     11.0
+    ],
+    [
+     120.0,
+     11.0
+    ],
+    [
+     120.0,
+     29.0
+    ],
+    [
+     -80.0,
+     29.0
+    ]
+   ],
+   "texScale": 50.0,
+   "texture": "camo.png",
+   "thick": 2.0,
+   "z": 10.0
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "ejector",
+   "layer": "ABC",
+   "name": "Ejector",
+   "pts": [
+    [
+     68.8,
+     21.4
+    ],
+    [
+     72.8,
+     21.4
+    ],
+    [
+     72.8,
+     23.6
+    ],
+    [
+     68.8,
+     23.6
+    ]
+   ],
+   "thick": 2.0,
+   "z": -2.5
+  },
+  {
+   "color": "#c9ccd2",
+   "damp": 4.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "bolt",
+   "layer": "ABC",
+   "mass": 180.0,
+   "name": "Bolt",
+   "pts": [
+    [
+     10.0,
+     14.5
+    ],
+    [
+     120.0,
+     14.5
+    ],
+    [
+     120.0,
+     21.0
+    ],
+    [
+     68.3,
+     21.0
+    ],
+    [
+     68.3,
+     25.5
+    ],
+    [
+     10.0,
+     25.5
+    ]
+   ],
+   "rad": [
+    2.0,
+    0.5,
+    0.0,
+    0.0,
+    0.0,
+    2.0
+   ],
+   "roll": {
+    "handle": 34.0,
+    "max": 90.0,
+    "min": 0.0,
+    "on": true
+   },
+   "thick": 11.0,
+   "z": 0.0
+  },
+  {
+   "color": "#c9ccd2",
+   "damp": 0.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "lug_r",
+   "layer": "ABC",
+   "mass": 6.0,
+   "name": "Locking lug (right)",
+   "pts": [
+    [
+     108.0,
+     17.5
+    ],
+    [
+     117.0,
+     17.5
+    ],
+    [
+     117.0,
+     22.5
+    ],
+    [
+     108.0,
+     22.5
+    ]
+   ],
+   "rad": [
+    0.5,
+    0.5,
+    0.5,
+    0.5
+   ],
+   "thick": 3.0,
+   "z": 7.0
+  },
+  {
+   "color": "#c9ccd2",
+   "damp": 0.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "lug_l",
+   "layer": "ABC",
+   "mass": 6.0,
+   "name": "Locking lug (left)",
+   "pts": [
+    [
+     108.0,
+     17.5
+    ],
+    [
+     117.0,
+     17.5
+    ],
+    [
+     117.0,
+     22.5
+    ],
+    [
+     108.0,
+     22.5
+    ]
+   ],
+   "rad": [
+    0.5,
+    0.5,
+    0.5,
+    0.5
+   ],
+   "thick": 3.0,
+   "z": -7.0
+  },
+  {
+   "color": "#c9ccd2",
+   "damp": 0.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "striker",
+   "layer": "none",
+   "mass": 14.0,
+   "name": "Striker",
+   "pts": [
+    [
+     0.0,
+     18.5
+    ],
+    [
+     110.6,
+     18.5
+    ],
+    [
+     110.6,
+     21.5
+    ],
+    [
+     0.0,
+     21.5
+    ]
+   ],
+   "rad": [
+    0.0,
+    1.0,
+    1.0,
+    0.0
+   ],
+   "thick": 3.0,
+   "z": 0.0
+  },
+  {
+   "color": "#c9ccd2",
+   "damp": 0.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "clug",
+   "layer": "ABC",
+   "mass": 4.0,
+   "name": "Cocking piece",
+   "pts": [
+    [
+     3.0,
+     26.0
+    ],
+    [
+     7.0,
+     26.0
+    ],
+    [
+     7.0,
+     31.0
+    ],
+    [
+     3.0,
+     31.0
+    ]
+   ],
+   "rad": [
+    0.5,
+    0.5,
+    0.0,
+    0.0
+   ],
+   "thick": 4.0,
+   "z": 0.0
+  },
+  {
+   "color": "#e0b54a",
+   "damp": 10.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "sear",
+   "layer": "ABC",
+   "mass": 4.0,
+   "name": "Sear",
+   "pts": [
+    [
+     7.0,
+     28.5
+    ],
+    [
+     8.5,
+     28.5
+    ],
+    [
+     10.5,
+     31.6
+    ],
+    [
+     27.0,
+     31.6
+    ],
+    [
+     30.0,
+     32.5
+    ],
+    [
+     30.0,
+     35.5
+    ],
+    [
+     7.0,
+     35.5
+    ]
+   ],
+   "rad": [
+    0.2,
+    0.3,
+    0.0,
+    0.0,
+    0.5,
+    0.5,
+    0.5
+   ],
+   "thick": 4.0,
+   "z": 0.0
+  },
+  {
+   "color": "#e0b54a",
+   "control": {
+    "at": [
+     38.2,
+     58.0
+    ],
+    "dir": 180.0,
+    "force": 25.0,
+    "key": "fire",
+    "kind": "trigger"
+   },
+   "damp": 20.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "trigger",
+   "layer": "ABC",
+   "mass": 8.0,
+   "name": "Trigger",
+   "pts": [
+    [
+     25.0,
+     35.6
+    ],
+    [
+     37.0,
+     35.6
+    ],
+    [
+     38.5,
+     40.0
+    ],
+    [
+     38.5,
+     50.0
+    ],
+    [
+     37.5,
+     60.0
+    ],
+    [
+     35.5,
+     63.0
+    ],
+    [
+     33.5,
+     63.0
+    ],
+    [
+     33.5,
+     58.0
+    ],
+    [
+     34.0,
+     50.0
+    ],
+    [
+     33.5,
+     40.0
+    ],
+    [
+     25.0,
+     38.0
+    ]
+   ],
+   "rad": [
+    0.3,
+    0.5,
+    0.0,
+    0.0,
+    1.5,
+    1.5,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.3
+   ],
+   "thick": 5.0,
+   "z": 0.0
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "searstop",
+   "layer": "ABC",
+   "name": "Sear stop",
+   "pts": [
+    [
+     26.0,
+     27.8
+    ],
+    [
+     30.0,
+     27.8
+    ],
+    [
+     30.0,
+     29.0
+    ],
+    [
+     26.0,
+     29.0
+    ]
+   ],
+   "thick": 4.0,
+   "z": 0.0
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "trigstop_f",
+   "layer": "ABC",
+   "name": "Trigger stop (front)",
+   "pts": [
+    [
+     39.0,
+     46.0
+    ],
+    [
+     41.0,
+     46.0
+    ],
+    [
+     41.0,
+     50.0
+    ],
+    [
+     39.0,
+     50.0
+    ]
+   ],
+   "thick": 5.0,
+   "z": 0.0
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "trigstop_r",
+   "layer": "ABC",
+   "name": "Trigger stop (rear)",
+   "pts": [
+    [
+     28.5,
+     45.0
+    ],
+    [
+     30.3,
+     45.0
+    ],
+    [
+     30.3,
+     50.0
+    ],
+    [
+     28.5,
+     50.0
+    ]
+   ],
+   "thick": 5.0,
+   "z": 0.0
+  },
+  {
+   "color": "#3f4654",
+   "damp": 0.0,
+   "fixed": true,
+   "ghost": true,
+   "id": "guard",
+   "layer": "none",
+   "name": "Trigger guard",
+   "pts": [
+    [
+     30.0,
+     72.0
+    ],
+    [
+     34.0,
+     72.0
+    ],
+    [
+     34.0,
+     70.0
+    ],
+    [
+     44.0,
+     70.0
+    ],
+    [
+     50.0,
+     72.0
+    ],
+    [
+     54.0,
+     72.0
+    ],
+    [
+     48.0,
+     76.0
+    ],
+    [
+     30.0,
+     76.0
+    ]
+   ],
+   "thick": 8.0,
+   "z": 0.0
+  },
+  {
+   "color": "#3d434f",
+   "damp": 0.0,
+   "fixed": false,
+   "ghost": true,
+   "id": "mag",
+   "layer": "none",
+   "magazine": {
+    "cap": 5,
+    "gen": {
+     "H": 67.98079999999999,
+     "W": 62.4,
+     "angle": 0.0,
+     "curve": 0.0,
+     "stack": 1,
+     "top": [
+      76.3,
+      20.404
+     ],
+     "wall": 1.0
+    }
+   },
+   "mass": 69.0,
+   "name": "Magazine",
+   "pts": [
+    [
+     45.1,
+     20.4
+    ],
+    [
+     45.1,
+     37.4
+    ],
+    [
+     45.1,
+     54.39
+    ],
+    [
+     45.1,
+     71.39
+    ],
+    [
+     45.1,
+     88.38
+    ],
+    [
+     107.5,
+     88.38
+    ],
+    [
+     107.5,
+     71.39
+    ],
+    [
+     107.5,
+     54.39
+    ],
+    [
+     107.5,
+     37.4
+    ],
+    [
+     107.5,
+     20.4
+    ]
+   ],
+   "rad": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    2.5,
+    2.5,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "thick": 13.0,
+   "z": 0.0
+  },
+  {
+   "color": "#e0b54a",
+   "control": {
+    "at": [
+     117.5,
+     63.0
+    ],
+    "dir": 180.0,
+    "force": 14.0,
+    "key": "magrelease",
+    "kind": "button"
+   },
+   "damp": 0.0,
+   "fixed": false,
+   "ghost": false,
+   "id": "magbtn",
+   "layer": "none",
+   "mass": 6.0,
+   "name": "Magazine catch",
+   "pts": [
+    [
+     111.0,
+     60.0
+    ],
+    [
+     117.5,
+     60.0
+    ],
+    [
+     117.5,
+     66.0
+    ],
+    [
+     111.0,
+     66.0
+    ]
+   ],
+   "rad": [
+    0.0,
+    1.5,
+    1.5,
+    0.0
+   ],
+   "thick": 6.0,
+   "z": -6.0
+  }
+ ],
+ "breech": {
+  "auto": false,
+  "breech": "bolt",
+  "burst": 3,
+  "cartImpulse": true,
+  "cartridge": {
+   "baseDia": 9.58,
+   "bulletDia": 5.7,
+   "bulletMass": 4.0,
+   "caseLen": 44.7,
+   "custom": [],
+   "massFromShape": false,
+   "meplat": 0.0,
+   "name": "5.56x45mm",
+   "neckDia": 6.43,
+   "nose": "spitzer",
+   "noseLen": 14.0,
+   "oal": 57.4,
+   "rimDia": 9.6,
+   "rimThick": 1.14,
+   "rimmed": false,
+   "seat": 0.0,
+   "shoulderAt": 36.5,
+   "shoulderDia": 9.0,
+   "tailDia": 0.8,
+   "tailLen": 0.0,
+   "velocity": 940.0
+  },
+  "chamber": "barrel",
+  "cockAt": 0.0,
+  "doubleAction": false,
+  "dur": 1.0,
+  "face": [
+   120.0,
+   20.0
+  ],
+  "feed": 40.0,
+  "feedMode": "magazine",
+  "fireMode": "semi",
+  "hammer": "striker",
+  "igniteSpeed": 1.5,
+  "ignition": "striker",
+  "impulse": 5.08,
+  "loaded": true,
+  "lockTime": 0.0,
+  "muzzle": [
+   420.0,
+   20.0
+  ],
+  "physicalFeed": true,
+  "round": [
+   57.4,
+   9.6
+  ],
+  "rounds": 5,
+  "striker": "striker",
+  "strikerTip": [
+   110.6,
+   20.0
+  ]
+ },
+ "format": 1,
+ "friction": 0.12,
+ "joints": [
+  {
+   "a": "bolt",
+   "b": "rcv",
+   "lockRot": true,
+   "p": [
+    60.0,
+    20.0
+   ],
+   "path": [
+    [
+     -17.400000000000006,
+     20.0
+    ],
+    [
+     60.0,
+     20.0
+    ]
+   ],
+   "type": "track"
+  },
+  {
+   "a": "lug_r",
+   "b": "bolt",
+   "p": [
+    112.0,
+    20.0
+   ],
+   "type": "weld"
+  },
+  {
+   "a": "lug_l",
+   "b": "bolt",
+   "p": [
+    112.0,
+    20.0
+   ],
+   "type": "weld"
+  },
+  {
+   "a": "striker",
+   "b": "bolt",
+   "lockRot": true,
+   "p": [
+    50.0,
+    20.0
+   ],
+   "path": [
+    [
+     48.0,
+     20.0
+    ],
+    [
+     60.0,
+     20.0
+    ]
+   ],
+   "type": "track"
+  },
+  {
+   "a": "clug",
+   "b": "striker",
+   "p": [
+    5.0,
+    27.0
+   ],
+   "type": "weld"
+  },
+  {
+   "a": "striker",
+   "b": "bolt",
+   "coilDia": 5.0,
+   "damp": 0.0,
+   "guide": "striker",
+   "k": 3.0,
+   "kind": "coil",
+   "pa": [
+    40.0,
+    20.0
+   ],
+   "pb": [
+    13.0,
+    20.0
+   ],
+   "rest": 47.0,
+   "turns": 14.0,
+   "type": "spring",
+   "wire": 0.8
+  },
+  {
+   "a": "sear",
+   "b": "rcv",
+   "p": [
+    20.0,
+    33.0
+   ],
+   "type": "pin"
+  },
+  {
+   "a": "sear",
+   "b": "rcv",
+   "coilDia": 3.0,
+   "damp": 0.0,
+   "guide": "",
+   "k": 1.0,
+   "kind": "coil",
+   "pa": [
+    14.0,
+    35.5
+   ],
+   "pb": [
+    14.0,
+    42.0
+   ],
+   "rest": 8.5,
+   "turns": 7.0,
+   "type": "spring",
+   "wire": 0.4
+  },
+  {
+   "a": "trigger",
+   "b": "rcv",
+   "p": [
+    36.0,
+    38.0
+   ],
+   "type": "pin"
+  },
+  {
+   "a": "trigger",
+   "b": "rcv",
+   "coilDia": 3.0,
+   "damp": 0.0,
+   "guide": "",
+   "k": 0.5,
+   "kind": "coil",
+   "pa": [
+    34.0,
+    41.5
+   ],
+   "pb": [
+    28.5,
+    41.5
+   ],
+   "rest": 8.0,
+   "turns": 6.0,
+   "type": "spring",
+   "wire": 0.4
+  },
+  {
+   "a": "magbtn",
+   "b": "rcv",
+   "lockRot": true,
+   "p": [
+    114.0,
+    63.0
+   ],
+   "path": [
+    [
+     110.5,
+     63.0
+    ],
+    [
+     114.0,
+     63.0
+    ]
+   ],
+   "type": "track"
+  },
+  {
+   "a": "magbtn",
+   "b": "rcv",
+   "coilDia": 4.0,
+   "damp": 2.0,
+   "guide": "",
+   "k": 0.5,
+   "kind": "coil",
+   "pa": [
+    112.0,
+    63.0
+   ],
+   "pb": [
+    99.0,
+    63.0
+   ],
+   "rest": 16.0,
+   "turns": 6.0,
+   "type": "spring",
+   "wire": 0.6
+  },
+  {
+   "a": "mag",
+   "b": "rcv",
+   "lockRot": false,
+   "p": [
+    76.3,
+    30.404
+   ],
+   "path": [
+    [
+     76.3,
+     30.404
+    ],
+    [
+     76.3,
+     104.38479999999998
+    ]
+   ],
+   "rel": "magbtn",
+   "releaseAt": 1.5,
+   "type": "magwell"
+  }
+ ],
+ "name": "Bolt-action rifle",
+ "savedWith": "Gunsmith3D 0.1.0-dev",
+ "speed": 0.05
+}

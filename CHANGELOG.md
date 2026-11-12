@@ -11,8 +11,8 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 ## 0.6.1-alpha
 
 ### Magazines
-- **Round angle** and **Feed direction** (magazine panel, *Rounds inside*): tick one to set it by hand. Round angle is how the top round lies (0 = parallel to the bore, + nose up); feed direction is the way the follower pushes the rounds out (90 = straight up). Unticked, they're worked out from the magazine as before. Rounds lying nose down stub on the way in, so a raked magazine usually wants its rounds set level or a little nose up.
-- **Double stack on any magazine**, including ones you reshaped or drew yourself. You no longer have to switch back to *Fit to cartridge*.
+- **Round angle** and **Feed direction** (magazine panel, under Rounds inside): tick one to set it by hand. Round angle is how the top round lies (0 = parallel to the bore, + nose up); feed direction is the way the follower pushes the rounds out (90 = straight up). Unticked, they're worked out from the magazine as before. Rounds lying nose down stub on the way in, so a raked magazine usually wants its rounds set level or a little nose up.
+- **Double stack on any magazine**, including ones you reshaped or drew yourself. You no longer have to switch back to Fit to cartridge.
 
 ### Fixed
 - **Cuts in parts didn't count for the round being fed:** a slot or pocket you cut into a bolt, a barrel's end or a ramp was still solid to the top round on its way to the chamber. It's open now, as it is for everything else.

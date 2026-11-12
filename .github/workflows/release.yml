@@ -1,0 +1,71 @@
+# Publishes a downloadable Windows build whenever the game's version goes up.
+# Bump the version in CMakeLists.txt (project(... VERSION x.y.z)) and push: this builds the Windows zip, checks the
+# tests pass, and puts it on the repository's Releases page as "Gunsmith3D x.y.z-stage", with the newest section of
+# CHANGELOG.md as its notes. A version that already has a release is skipped, so ordinary pushes do nothing.
+# The game's update check (main menu) looks at the newest release here.
+name: release
+
+on:
+  push:
+    paths: [CMakeLists.txt, .github/workflows/release.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  windows-zip:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Which version
+        id: v
+        run: |
+          v=$(sed -n 's/^project(Gunsmith3D VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          stage=$(sed -n 's/^set(GUNSMITH_STAGE "\([a-z]*\)".*/\1/p' CMakeLists.txt)
+          full="$v${stage:+-$stage}"
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "stage=$stage" >> "$GITHUB_OUTPUT"
+          if gh release view "v$full" >/dev/null 2>&1; then
+            echo "v$full is already released: nothing to do."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Tests (the physics core, on Linux)
+        if: steps.v.outputs.skip != '1'
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build -j
+          ./build/gunsmith3d_tests
+
+      - name: Windows build (MinGW-w64)
+        if: steps.v.outputs.skip != '1'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q g++-mingw-w64-x86-64-posix
+          cmake -S . -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-gcc.cmake -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-win -j --target gunsmith3d
+
+      - name: Zip
+        if: steps.v.outputs.skip != '1'
+        run: |
+          d="Gunsmith3D-${{ steps.v.outputs.full }}"
+          mkdir "$d"
+          cp build-win/gunsmith3d.exe README.md CHANGELOG.md BACKLOG.md "$d"/
+          cp -r licenses dist/user "$d"/
+          zip -qr "$d.zip" "$d"
+          # the release notes: the changelog's newest section
+          awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2 > notes.md
+
+      - name: Publish the release
+        if: steps.v.outputs.skip != '1'
+        run: |
+          gh release create "v${{ steps.v.outputs.full }}" "Gunsmith3D-${{ steps.v.outputs.full }}.zip" \
+            --target "$GITHUB_SHA" --title "Gunsmith3D ${{ steps.v.outputs.full }}" --notes-file notes.md --latest

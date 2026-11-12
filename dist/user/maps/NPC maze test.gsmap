@@ -1,0 +1,1975 @@
+{
+ "brushes": [
+  {
+   "faces": [
+    {
+     "d": 20.0,
+     "mat": "concrete",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "concrete",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 0.0,
+     "mat": "concrete",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 0.4,
+     "mat": "concrete",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "concrete",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "concrete",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 3.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -20.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 3.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -20.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": -20.0,
+     "mat": "concrete_dark",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 3.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 20.4,
+     "mat": "concrete_dark",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -20.0,
+     "mat": "concrete_dark",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 3.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "concrete_dark",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": -9.6,
+     "mat": "plywood",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 10.0,
+     "mat": "plywood",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.6,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 10.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": -1.6,
+     "mat": "plywood",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.0,
+     "mat": "plywood",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.6,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 10.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 6.4,
+     "mat": "plywood",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -6.0,
+     "mat": "plywood",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.6,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 6.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": -5.0,
+     "mat": "plywood",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 9.6,
+     "mat": "plywood",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.6,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -1.6,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": 2.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 2.5,
+     "mat": "plywood",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 1.6,
+     "mat": "plywood",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.6,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 4.4,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -4.0,
+     "mat": "plywood",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 20.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.4,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 20.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 0.19999999999999998,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 6.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -6.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 0.39999999999999997,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 7.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -6.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 0.6,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 7.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -7.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 0.7999999999999999,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 8.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -7.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 1.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 8.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -8.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 1.2,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 9.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -8.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 1.4000000000000001,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 9.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -9.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 1.5999999999999999,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 10.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -9.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 1.7999999999999998,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 10.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -10.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 11.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -10.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.1999999999999997,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 11.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -11.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  },
+  {
+   "faces": [
+    {
+     "d": 14.0,
+     "mat": "wood_planks",
+     "n": [
+      1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": -12.0,
+     "mat": "wood_planks",
+     "n": [
+      -1.0,
+      0.0,
+      0.0
+     ]
+    },
+    {
+     "d": 2.4,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      1.0,
+      0.0
+     ]
+    },
+    {
+     "d": -0.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      -1.0,
+      0.0
+     ]
+    },
+    {
+     "d": 12.0,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      1.0
+     ]
+    },
+    {
+     "d": -11.5,
+     "mat": "wood_planks",
+     "n": [
+      0.0,
+      0.0,
+      -1.0
+     ]
+    }
+   ]
+  }
+ ],
+ "entities": [
+  {
+   "pos": [
+    17.0,
+    2.4,
+    17.0
+   ],
+   "type": "player_start",
+   "yaw": 225.0
+  },
+  {
+   "count": 2,
+   "pos": [
+    -15.0,
+    0.0,
+    -15.0
+   ],
+   "ref": "Grunt",
+   "type": "npc_spawn",
+   "yaw": 0.0
+  },
+  {
+   "pos": [
+    -15.0,
+    0.0,
+    15.0
+   ],
+   "ref": "Crawler",
+   "type": "npc_spawn",
+   "yaw": 0.0
+  },
+  {
+   "pos": [
+    18.5,
+    2.4,
+    14.0
+   ],
+   "type": "gun_spawner",
+   "yaw": 180.0
+  }
+ ],
+ "format": "gunsmith3d-map",
+ "look": {
+  "ambient": [
+   0.48,
+   0.52,
+   0.6
+  ],
+  "fogEnd": 450.0,
+  "fogStart": 60.0,
+  "skyHorizon": [
+   0.78,
+   0.84,
+   0.9
+  ],
+  "skyTop": [
+   0.36,
+   0.55,
+   0.8
+  ],
+  "sun": [
+   1.0,
+   0.96,
+   0.88
+  ],
+  "sunPitch": 55.0,
+  "sunYaw": 35.0
+ },
+ "name": "NPC maze test",
+ "npcs": {
+  "Crawler": {
+   "bones": [
+    {
+     "armor": 0.5,
+     "at": 0.0,
+     "bend": 0.0,
+     "color": "#3c4a3a",
+     "len": 700.0,
+     "name": "Body",
+     "parent": -1,
+     "r0": 150.0,
+     "r1": 120.0,
+     "shape": "capsule",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 15.0,
+     "color": "#4f6a3f",
+     "len": 380.0,
+     "name": "Head",
+     "parent": 0,
+     "r0": 90.0,
+     "r1": 30.0,
+     "shape": "capsule",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": true
+    },
+    {
+     "armor": 0.0,
+     "at": 0.5,
+     "bend": -90.0,
+     "color": "#c0e060",
+     "len": 60.0,
+     "name": "Core",
+     "parent": 0,
+     "r0": 70.0,
+     "r1": 70.0,
+     "shape": "ball",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": true
+    },
+    {
+     "armor": 0.0,
+     "at": 0.85,
+     "bend": 35.0,
+     "color": "#3c4a3a",
+     "len": 420.0,
+     "name": "Leg (left)",
+     "parent": 0,
+     "r0": 45.0,
+     "r1": 35.0,
+     "shape": "capsule",
+     "side": -110.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 35.0,
+     "color": "#2a3328",
+     "len": 200.0,
+     "name": "Claw (left)",
+     "parent": 3,
+     "r0": 30.0,
+     "r1": 8.0,
+     "shape": "capsule",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 0.85,
+     "bend": 35.0,
+     "color": "#3c4a3a",
+     "len": 420.0,
+     "name": "Leg (right)",
+     "parent": 0,
+     "r0": 45.0,
+     "r1": 35.0,
+     "shape": "capsule",
+     "side": 110.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 35.0,
+     "color": "#2a3328",
+     "len": 200.0,
+     "name": "Claw (right)",
+     "parent": 5,
+     "r0": 30.0,
+     "r1": 8.0,
+     "shape": "capsule",
+     "side": -0.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 0.5,
+     "bend": 35.0,
+     "color": "#3c4a3a",
+     "len": 420.0,
+     "name": "Leg (left)",
+     "parent": 0,
+     "r0": 45.0,
+     "r1": 35.0,
+     "shape": "capsule",
+     "side": -110.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 35.0,
+     "color": "#2a3328",
+     "len": 200.0,
+     "name": "Claw (left)",
+     "parent": 7,
+     "r0": 30.0,
+     "r1": 8.0,
+     "shape": "capsule",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 0.5,
+     "bend": 35.0,
+     "color": "#3c4a3a",
+     "len": 420.0,
+     "name": "Leg (right)",
+     "parent": 0,
+     "r0": 45.0,
+     "r1": 35.0,
+     "shape": "capsule",
+     "side": 110.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 35.0,
+     "color": "#2a3328",
+     "len": 200.0,
+     "name": "Claw (right)",
+     "parent": 9,
+     "r0": 30.0,
+     "r1": 8.0,
+     "shape": "capsule",
+     "side": -0.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 0.15,
+     "bend": 35.0,
+     "color": "#3c4a3a",
+     "len": 420.0,
+     "name": "Leg (left)",
+     "parent": 0,
+     "r0": 45.0,
+     "r1": 35.0,
+     "shape": "capsule",
+     "side": -110.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 35.0,
+     "color": "#2a3328",
+     "len": 200.0,
+     "name": "Claw (left)",
+     "parent": 11,
+     "r0": 30.0,
+     "r1": 8.0,
+     "shape": "capsule",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 0.15,
+     "bend": 35.0,
+     "color": "#3c4a3a",
+     "len": 420.0,
+     "name": "Leg (right)",
+     "parent": 0,
+     "r0": 45.0,
+     "r1": 35.0,
+     "shape": "capsule",
+     "side": 110.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 35.0,
+     "color": "#2a3328",
+     "len": 200.0,
+     "name": "Claw (right)",
+     "parent": 13,
+     "r0": 30.0,
+     "r1": 8.0,
+     "shape": "capsule",
+     "side": -0.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    }
+   ],
+   "fight": {
+    "attack": "explode",
+    "behaviour": "chase",
+    "damage": 40.0,
+    "gun": "",
+    "health": 150.0,
+    "reach": 1.5,
+    "sight": 60.0,
+    "speed": 2.5,
+    "team": 1
+   },
+   "gunsmithNpc": 1,
+   "name": "Crawler",
+   "root": {
+    "bend": 90.0,
+    "height": 420.0,
+    "turn": 0.0
+   }
+  },
+  "Grunt": {
+   "bones": [
+    {
+     "armor": 0.0,
+     "at": 0.0,
+     "bend": 0.0,
+     "color": "#3a3f36",
+     "depth": 0.78,
+     "len": 150.0,
+     "name": "Pelvis",
+     "parent": -1,
+     "r0": 115.0,
+     "r1": 125.0,
+     "shape": "box",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false,
+     "width": 1.3
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 0.0,
+     "bulge": 0.1,
+     "color": "#4f5d52",
+     "depth": 0.66,
+     "len": 330.0,
+     "name": "Chest",
+     "parent": 0,
+     "r0": 118.0,
+     "r1": 150.0,
+     "shape": "box",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false,
+     "width": 1.18
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 0.0,
+     "color": "#c8a088",
+     "len": 95.0,
+     "name": "Neck",
+     "parent": 1,
+     "r0": 46.0,
+     "r1": 42.0,
+     "shape": "cylinder",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 4.0,
+     "bulge": 0.05,
+     "color": "#c8a088",
+     "len": 225.0,
+     "name": "Head",
+     "parent": 2,
+     "r0": 92.0,
+     "r1": 92.0,
+     "shape": "ball",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": true,
+     "width": 0.84
+    },
+    {
+     "armor": 0.0,
+     "at": 0.9,
+     "bend": 0.0,
+     "bulge": 0.16,
+     "color": "#4f5d52",
+     "len": 300.0,
+     "name": "Upper arm (left)",
+     "parent": 1,
+     "r0": 50.0,
+     "r1": 41.0,
+     "shape": "capsule",
+     "side": -205.0,
+     "turn": 172.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 12.0,
+     "bulge": 0.14,
+     "color": "#c8a088",
+     "depth": 0.9,
+     "len": 265.0,
+     "name": "Forearm (left)",
+     "parent": 4,
+     "r0": 41.0,
+     "r1": 30.0,
+     "shape": "capsule",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 0.0,
+     "bulge": 0.1,
+     "color": "#c8a088",
+     "depth": 0.45,
+     "len": 95.0,
+     "name": "Hand (left)",
+     "parent": 5,
+     "r0": 31.0,
+     "r1": 26.0,
+     "shape": "box",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false,
+     "width": 1.05
+    },
+    {
+     "armor": 0.0,
+     "at": 0.0,
+     "bend": 0.0,
+     "bulge": 0.1,
+     "color": "#3a3f36",
+     "len": 450.0,
+     "name": "Thigh (left)",
+     "parent": 0,
+     "r0": 80.0,
+     "r1": 54.0,
+     "shape": "capsule",
+     "side": -100.0,
+     "turn": 178.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": -4.0,
+     "bulge": 0.2,
+     "color": "#3a3f36",
+     "len": 430.0,
+     "name": "Shin (left)",
+     "parent": 7,
+     "r0": 53.0,
+     "r1": 38.0,
+     "shape": "capsule",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 90.0,
+     "color": "#26231f",
+     "len": 235.0,
+     "name": "Foot (left)",
+     "parent": 8,
+     "r0": 46.0,
+     "r1": 40.0,
+     "shape": "wedge",
+     "side": 0.0,
+     "turn": 0.0,
+     "twist": 0.0,
+     "vital": false,
+     "width": 0.85
+    },
+    {
+     "armor": 0.0,
+     "at": 0.9,
+     "bend": 0.0,
+     "bulge": 0.16,
+     "color": "#4f5d52",
+     "len": 300.0,
+     "name": "Upper arm (right)",
+     "parent": 1,
+     "r0": 50.0,
+     "r1": 41.0,
+     "shape": "capsule",
+     "side": 205.0,
+     "turn": -172.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 12.0,
+     "bulge": 0.14,
+     "color": "#c8a088",
+     "depth": 0.9,
+     "len": 265.0,
+     "name": "Forearm (right)",
+     "parent": 10,
+     "r0": 41.0,
+     "r1": 30.0,
+     "shape": "capsule",
+     "side": -0.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 0.0,
+     "bulge": 0.1,
+     "color": "#c8a088",
+     "depth": 0.45,
+     "len": 95.0,
+     "name": "Hand (right)",
+     "parent": 11,
+     "r0": 31.0,
+     "r1": 26.0,
+     "shape": "box",
+     "side": -0.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false,
+     "width": 1.05
+    },
+    {
+     "armor": 0.0,
+     "at": 0.0,
+     "bend": 0.0,
+     "bulge": 0.1,
+     "color": "#3a3f36",
+     "len": 450.0,
+     "name": "Thigh (right)",
+     "parent": 0,
+     "r0": 80.0,
+     "r1": 54.0,
+     "shape": "capsule",
+     "side": 100.0,
+     "turn": -178.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": -4.0,
+     "bulge": 0.2,
+     "color": "#3a3f36",
+     "len": 430.0,
+     "name": "Shin (right)",
+     "parent": 13,
+     "r0": 53.0,
+     "r1": 38.0,
+     "shape": "capsule",
+     "side": -0.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false
+    },
+    {
+     "armor": 0.0,
+     "at": 1.0,
+     "bend": 90.0,
+     "color": "#26231f",
+     "len": 235.0,
+     "name": "Foot (right)",
+     "parent": 14,
+     "r0": 46.0,
+     "r1": 40.0,
+     "shape": "wedge",
+     "side": -0.0,
+     "turn": -0.0,
+     "twist": -0.0,
+     "vital": false,
+     "width": 0.85
+    }
+   ],
+   "fight": {
+    "attack": "melee",
+    "behaviour": "chase",
+    "damage": 10.0,
+    "gun": "",
+    "health": 100.0,
+    "reach": 1.5,
+    "sight": 60.0,
+    "speed": 2.2,
+    "team": 1
+   },
+   "gunsmithNpc": 1,
+   "name": "Grunt",
+   "root": {
+    "bend": 0.0,
+    "height": 920.0,
+    "turn": 0.0
+   }
+  }
+ },
+ "version": 1
+}

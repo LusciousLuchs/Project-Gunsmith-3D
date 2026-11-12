@@ -1,0 +1,245 @@
+{
+  "bodies": [
+    {
+      "color": "#9aa3b5",
+      "damp": 0.0,
+      "fixed": false,
+      "ghost": false,
+      "id": "barrel",
+      "layer": "A",
+      "name": "Round barrel",
+      "pts": [
+        [
+          0.0,
+          -9.0
+        ],
+        [
+          60.0,
+          -9.0
+        ],
+        [
+          60.0,
+          -6.0
+        ],
+        [
+          180.0,
+          -6.0
+        ],
+        [
+          180.0,
+          6.0
+        ],
+        [
+          60.0,
+          6.0
+        ],
+        [
+          60.0,
+          9.0
+        ],
+        [
+          0.0,
+          9.0
+        ]
+      ],
+      "round": true,
+      "thick": 10.0,
+      "z": 0.0
+    },
+    {
+      "color": "#7f8aa3",
+      "damp": 0.0,
+      "fixed": false,
+      "ghost": false,
+      "id": "oct",
+      "layer": "A",
+      "name": "Octagon barrel",
+      "pts": [
+        [
+          0.0,
+          21.0
+        ],
+        [
+          180.0,
+          21.0
+        ],
+        [
+          180.0,
+          37.0
+        ],
+        [
+          0.0,
+          37.0
+        ]
+      ],
+      "round": true,
+      "roundSides": 8,
+      "thick": 10.0,
+      "z": 0.0
+    },
+    {
+      "color": "#c9a65a",
+      "damp": 0.0,
+      "fixed": false,
+      "ghost": false,
+      "id": "hex",
+      "layer": "A",
+      "name": "Hex bar",
+      "pts": [
+        [
+          0.0,
+          50.0
+        ],
+        [
+          120.0,
+          50.0
+        ],
+        [
+          120.0,
+          62.0
+        ],
+        [
+          0.0,
+          62.0
+        ]
+      ],
+      "round": true,
+      "roundSides": 6,
+      "roundTurn": 30.0,
+      "thick": 10.0,
+      "z": 0.0
+    },
+    {
+      "color": "#5cb85c",
+      "damp": 0.0,
+      "fixed": false,
+      "ghost": false,
+      "id": "diamond",
+      "layer": "A",
+      "name": "Diamond",
+      "pts": [
+        [
+          140.0,
+          50.0
+        ],
+        [
+          180.0,
+          50.0
+        ],
+        [
+          180.0,
+          62.0
+        ],
+        [
+          140.0,
+          62.0
+        ]
+      ],
+      "round": true,
+      "roundSides": 4,
+      "roundTurn": 45.0,
+      "thick": 10.0,
+      "z": 0.0
+    },
+    {
+      "color": "#3f7fe0",
+      "damp": 0.0,
+      "fixed": false,
+      "ghost": false,
+      "id": "bolt",
+      "layer": "A",
+      "name": "Bolt body",
+      "pts": [
+        [
+          -80.0,
+          -7.0
+        ],
+        [
+          -10.0,
+          -7.0
+        ],
+        [
+          -10.0,
+          7.0
+        ],
+        [
+          -80.0,
+          7.0
+        ]
+      ],
+      "round": true,
+      "thick": 10.0,
+      "z": 0.0
+    },
+    {
+      "color": "#e8a33a",
+      "damp": 0.0,
+      "fixed": false,
+      "ghost": false,
+      "id": "lugU",
+      "layer": "A",
+      "name": "Lug (top)",
+      "pts": [
+        [
+          -22.0,
+          -10.0
+        ],
+        [
+          -12.0,
+          -10.0
+        ],
+        [
+          -12.0,
+          10.0
+        ],
+        [
+          -22.0,
+          10.0
+        ]
+      ],
+      "round": true,
+      "roundSweep": 50.0,
+      "thick": 10.0,
+      "z": 0.0
+    },
+    {
+      "color": "#e8a33a",
+      "damp": 0.0,
+      "fixed": false,
+      "ghost": false,
+      "id": "lugD",
+      "layer": "A",
+      "name": "Lug (bottom)",
+      "pts": [
+        [
+          -22.0,
+          -10.0
+        ],
+        [
+          -12.0,
+          -10.0
+        ],
+        [
+          -12.0,
+          10.0
+        ],
+        [
+          -22.0,
+          10.0
+        ]
+      ],
+      "round": true,
+      "roundSweep": 50.0,
+      "roundTurn": 180.0,
+      "thick": 10.0,
+      "z": 0.0
+    }
+  ],
+  "breech": null,
+  "format": 1,
+  "friction": 0.12,
+  "joints": [],
+  "name": "Round parts",
+  "savedWith": "Gunsmith3D 0.1.0-dev",
+  "speed": 0.02
+}
