@@ -1031,6 +1031,9 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.lipRelease != 0.45) jb["magazine"]["lipRelease"] = b.lipRelease;
             if (b.magSpring != 1) jb["magazine"]["spring"] = b.magSpring;
             if (b.doubleFeed) jb["magazine"]["feed"] = "double";
+            if (b.magStack) jb["magazine"]["stack"] = b.magStack;
+            if (b.roundSet) jb["magazine"]["roundAngle"] = b.roundAngle;
+            if (b.feedSet) jb["magazine"]["feedAngle"] = b.feedAngle;
             if (b.magFixed) jb["magazine"]["builtIn"] = true;
             if (b.roundStyle != "side") jb["magazine"]["style"] = b.roundStyle;
             if (b.roundStyle == "line") jb["magazine"]["tubeFeed"] = b.tubeFeed;
@@ -1297,6 +1300,9 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             b.lipRelease = std::clamp(opt<double>(m, "lipRelease", 0.45), 0.1, 0.95);
             b.magSpring = std::clamp(opt<double>(m, "spring", 1.0), 0.1, 3.0);
             b.doubleFeed = opt<std::string>(m, "feed", "single") == "double";
+            b.magStack = std::clamp(opt<int>(m, "stack", 0), 0, 2);
+            if (m.contains("roundAngle")) { b.roundSet = true; b.roundAngle = opt<double>(m, "roundAngle", 0.0); }
+            if (m.contains("feedAngle")) { b.feedSet = true; b.feedAngle = opt<double>(m, "feedAngle", 90.0); }
             b.magFixed = opt<bool>(m, "builtIn", false);
             b.roundStyle = opt<std::string>(m, "style", "side") == "line" ? "line" : "side";
             b.tubeFeed = opt<std::string>(m, "tubeFeed", "simple") == "physical" ? "physical" : "simple";  // older tubes: the simple way
@@ -1709,3 +1715,4 @@ const MaterialInfo& materialOf(const std::string& id) {
 }
 double densityOf(const BodyDef& b) { return materialOf(b.material).density * 1e-6; }
 
+int magStackOf(const BodyDef& b) { return b.magStack ? b.magStack : (b.gen.on ? b.gen.stack : 1); }

@@ -4,6 +4,7 @@
 // only if it arrives straight, the extractor pulls the case back on the breech face, an ejector you draw kicks it
 // round, and it has to get out through the port before the breech comes back. Anything that goes wrong is a jam.
 #include "solver_internal.hpp"
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 
@@ -174,7 +175,8 @@ int looseRounds(const Sim& S) {
 static void retire(Sim& S, Body& b) { retireBody(S, b); }
 
 static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL, V2* liftL = nullptr, int* side = nullptr);
-static bool doubleStack(const Body& M) { return M.d && M.d->gen.on && M.d->gen.stack == 2; }
+static bool boxMagD(const BodyDef& d) { return !(d.roundStyle == "line" && d.roundPath.size() >= 2) && d.feedPawl.empty(); }   // (side magazines stack too)
+static bool doubleStack(const Body& M) { return M.d && magStackOf(*M.d) == 2 && boxMagD(*M.d); }
 static bool tubeMag(const Body& M) { return M.d && M.d->roundStyle == "line" && M.d->roundPath.size() >= 2; }   // rounds nose to tail
 static bool physicalTube(const Body& M) { return tubeMag(M) && M.d->tubeFeed == "physical"; }
 // A tube's mouth (its round path's first point) and the way out of it, in the magazine's frame.
@@ -281,13 +283,12 @@ void legacyRoundsStep(Sim& S) {
 // ---------- physical feeding ----------
 // Where the top round's head sits and which way it feeds (toward the muzzle), in the magazine's frame; `liftL` is
 // the way the follower pushes it (out of the magazine, toward the lips), and `side` a magazine across the gun.
-static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL, V2* liftL, int* side) {
-    const BodyDef& d = *M.d;
-    const Cartridge& c = S.design.breech.cart;
+static bool magLipsAuto(const Design& D, const BodyDef& d, V2& headL, V2& fwdL, V2* liftL, int* side) {
+    const Cartridge& c = D.breech.cart;
     V2 cen = centroidOf(d);
     V2 lift{0, -1};
     if (side) *side = 0;
-    const BreechDef& brd = S.design.breech;
+    const BreechDef& brd = D.breech;
     V2 gunFwd{brd.hasMuzzle && brd.hasFace ? brd.muzzle.x - brd.face.x : 1, brd.hasMuzzle && brd.hasFace ? brd.muzzle.y - brd.face.y : 0};
     auto done = [&]() { if (liftL) *liftL = lift; return true; };
     if (d.roundPath.size() >= 2) {  // the round path you drew: the top round sits at its first point
@@ -337,6 +338,54 @@ static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL, V2* liftL,
     headL = {((x0 + x1) / 2 - c.oal / 2 - cen.x) / 1000, (y0 + 1.5 + c.headDia() / 2 - d.lipHeight - cen.y) / 1000};
     fwdL = {1, 0};
     return done();
+}
+// The bore's direction in the side view, and "up" from it (toward the top of the gun; design y is down)
+static void boreAxes(const Design& D, V2& g, V2& up) {
+    const BreechDef& b = D.breech;
+    double gx = b.hasMuzzle && b.hasFace ? b.muzzle.x - b.face.x : 1, gy = b.hasMuzzle && b.hasFace ? b.muzzle.y - b.face.y : 0, l = std::hypot(gx, gy);
+    g = l > 1e-9 ? V2{gx / l, gy / l} : V2{1, 0};
+    up = {g.y, -g.x};
+}
+static bool boxMag(const BodyDef& d) { return !(d.roundStyle == "line" && d.roundPath.size() >= 2) && d.feedPawl.empty() && !(d.gen.on && d.gen.side != 0); }
+// As worked out from the magazine, then the round's angle and the follower's push as set by hand (a box magazine's)
+static bool magLipsD(const Design& D, const BodyDef& d, V2& headL, V2& fwdL, V2* liftL, int* side) {
+    V2 ll;
+    if (!magLipsAuto(D, d, headL, fwdL, &ll, side)) return false;
+    if (boxMag(d) && (d.roundSet || d.feedSet)) {
+        V2 g, up; boreAxes(D, g, up);
+        if (d.roundSet) {   // turned about its middle, which stays where the lips hold it
+            double oal = D.breech.cart.oal / 1000, a = d.roundAngle * D2R;
+            V2 mid{headL.x + fwdL.x * oal / 2, headL.y + fwdL.y * oal / 2};
+            fwdL = {g.x * std::cos(a) + up.x * std::sin(a), g.y * std::cos(a) + up.y * std::sin(a)};
+            headL = {mid.x - fwdL.x * oal / 2, mid.y - fwdL.y * oal / 2};
+        }
+        if (d.feedSet) {
+            double a = d.feedAngle * D2R;
+            ll = {g.x * std::cos(a) + up.x * std::sin(a), g.y * std::cos(a) + up.y * std::sin(a)};
+        }
+        // the push can't run along the round (it would never lift it to the lips): at least 25 degrees off it
+        double cr = fwdL.x * ll.y - fwdL.y * ll.x, dt = fwdL.x * ll.x + fwdL.y * ll.y, ang = std::atan2(cr, dt);
+        const double lim = 25 * D2R;
+        if (std::fabs(ang) < lim || std::fabs(ang) > 3.14159265358979323846 - lim) {
+            double want = (ang >= 0 ? 1 : -1) * (std::fabs(ang) < 1.5707963 ? lim : 3.14159265358979323846 - lim);
+            double fa = std::atan2(fwdL.y, fwdL.x) + want;
+            ll = {std::cos(fa), std::sin(fa)};
+        }
+    }
+    if (liftL) *liftL = ll;
+    return true;
+}
+static bool magLips(const Sim& S, const Body& M, V2& headL, V2& fwdL, V2* liftL, int* side) {
+    return magLipsD(S.design, *M.d, headL, fwdL, liftL, side);
+}
+bool magFeedAnglesImpl(const Design& D, const BodyDef& b, double& roundDeg, double& feedDeg) {
+    if (!b.magazine || !boxMag(b)) return false;
+    V2 h, f, l;
+    if (!magLipsD(D, b, h, f, &l, nullptr)) return false;
+    V2 g, up; boreAxes(D, g, up);
+    roundDeg = std::atan2(f.x * up.x + f.y * up.y, f.x * g.x + f.y * g.y) / D2R;
+    feedDeg = std::atan2(l.x * up.x + l.y * up.y, l.x * g.x + l.y * g.y) / D2R;
+    return true;
 }
 
 // Which edge of the rim the extractor grips: set in the design, or away from the magazine (the top, unless the
@@ -395,13 +444,9 @@ static void chamberContacts(Sim& S, Body& r, const BoreLine& L) {
         }
         // anywhere else the barrel is solid: the round is stopped by its rear face, or slides up the feed ramp
         V2 lc = lpt(C, w);
-        if (w.x < C.bb[0] || w.x > C.bb[2] || w.y < C.bb[1] || w.y > C.bb[3] || !inPoly(lc.x, lc.y, C.lp)) continue;
-        double best = 1e18; V2 bq;
-        for (size_t i = 0; i < C.lp.size(); i++) {
-            double d2; V2 q = closestOnSeg(lc, C.lp[i], C.lp[(i + 1) % C.lp.size()], &d2);
-            if (d2 < best) { best = d2; bq = q; }
-        }
-        double d = std::sqrt(best);
+        if (w.x < C.bb[0] || w.x > C.bb[2] || w.y < C.bb[1] || w.y > C.bb[3]) continue;
+        V2 bq; double d;
+        if (!solidPoint(C, lc, bq, d)) continue;   // (a cut in the barrel's end, a feed ramp ground into it, is open)
         if (d < 1e-7 || d > 0.005) continue;
         V2 qw = wpt(C, bq);
         solve(r, C, w, qw, (qw.x - w.x) / d, (qw.y - w.y) / d, d);
@@ -450,13 +495,8 @@ static bool presentedContacts(Sim& S, Body& r, V2 f, V2 n, double stripped) {
         if (P.bb[0] > r.bb[2] || r.bb[0] > P.bb[2] || P.bb[1] > r.bb[3] || r.bb[1] > P.bb[3]) continue;
         for (auto& s : r.samples) {
             V2 w = wpt(r, s), lc = lpt(P, w);
-            if (!inPoly(lc.x, lc.y, P.lp)) continue;
-            double best = 1e18; V2 bq;
-            for (size_t i = 0; i < P.lp.size(); i++) {
-                double d2; V2 q = closestOnSeg(lc, P.lp[i], P.lp[(i + 1) % P.lp.size()], &d2);
-                if (d2 < best) { best = d2; bq = q; }
-            }
-            double d = std::sqrt(best);
+            V2 bq; double d;
+            if (!solidPoint(P, lc, bq, d)) continue;   // (a cut in the part is empty space: the round passes through it)
             if (d < 1e-7 || d > 0.006) continue;
             V2 qw = wpt(P, bq), nc{(qw.x - w.x) / d, (qw.y - w.y) / d};
             double t = (s.x - r.headLx) / (c.oal / 1000);       // 0 at the head, 1 at the tip
@@ -802,3 +842,4 @@ static void chamberStep(Sim& S, bool main) {
 }
 
 }  // namespace sim
+bool magFeedAngles(const Design& D, const BodyDef& b, double& roundDeg, double& feedDeg) { return sim::magFeedAnglesImpl(D, b, roundDeg, feedDeg); }

@@ -1056,18 +1056,6 @@ static void inspectPart(BodyDef& b) {
                         regen = true;
                     }
                 }
-                int st = b.gen.stack - 1;
-                prop("Stack");
-                if (ImGui::Combo("##stack", &st, "Single\0Double\0")) { b.gen.stack = st + 1; regen = true; }
-                if (b.gen.stack == 2) {
-                    int fp = b.doubleFeed ? 1 : 0;
-                    prop("Feeds from", "Single position: the two columns taper into one, and every round feeds from the centre.\n"
-                                       "Straight in, so short pistol rounds like it; the taper's friction costs some spring (about a fifth).\n"
-                                       "Double position: rounds feed alternately from the left and right lips.\n"
-                                       "Easy on the spring, but each round comes in at an angle sideways: fine for long rifle rounds,\n"
-                                       "marginal for 9 mm, and fat short rounds like .45 ACP may not make it into the chamber.");
-                    if (ImGui::Combo("##feedpos", &fp, "Single position (centre)\0Double position (alternating)\0")) { b.doubleFeed = fp == 1; editedAny = true; }
-                }
                 float curve = (float)b.gen.curve;
                 prop("Curve");
                 if (ImGui::SliderFloat("##curve", &curve, -15, 80, "%.0f\xc2\xb0")) { b.gen.curve = curve; regen = true; } typeable();
@@ -1084,6 +1072,51 @@ static void inspectPart(BodyDef& b) {
                 if (lastCap != b.magCap) { lastCap = b.magCap; regen = true; }
                 if (regen) { generateMagazine(D, A.sel.idx); editedAny = true; }
                 muted("%s, %d rounds: %s long.", D.breech.cart.name.c_str(), b.magCap, fmtQ(Q::Length, b.gen.H, 0).c_str());
+            }
+            {   // how the rounds sit and come out: any box magazine, fitted or drawn by hand
+                double rd = 0, fd = 90;
+                if (magFeedAngles(D, b, rd, fd)) {
+                    ImGui::Dummy({0, 4 * S()});
+                    ImGui::TextDisabled("Rounds inside");
+                    int st = magStackOf(b) - 1;
+                    prop("Stack", "Single: one column of rounds. Double: two staggered columns, about half as long for the same rounds.\n"
+                                  "Works on any magazine: fitted, reshaped or drawn by hand. A fitted one is refitted; your shape is kept.");
+                    if (ImGui::Combo("##stack", &st, "Single\0Double\0")) {
+                        b.magStack = st + 1;
+                        if (b.gen.on) { b.gen.stack = st + 1; if (!b.gen.byHand) generateMagazine(D, A.sel.idx); }
+                        editedAny = true;
+                    }
+                    if (magStackOf(b) == 2) {
+                        int fp = b.doubleFeed ? 1 : 0;
+                        prop("Feeds from", "Single position: the two columns taper into one, and every round feeds from the centre.\n"
+                                           "Straight in, so short pistol rounds like it; the taper's friction costs some spring (about a fifth).\n"
+                                           "Double position: rounds feed alternately from the left and right lips.\n"
+                                           "Easy on the spring, but each round comes in at an angle sideways: fine for long rifle rounds,\n"
+                                           "marginal for 9 mm, and fat short rounds like .45 ACP may not make it into the chamber.");
+                        if (ImGui::Combo("##feedpos", &fp, "Single position (centre)\0Double position (alternating)\0")) { b.doubleFeed = fp == 1; editedAny = true; }
+                    }
+                    auto angleRow = [&](const char* label, const char* id, bool& set, double& val, double autoVal, double lo, double hi, const char* tip) {
+                        prop(label, tip);
+                        bool on = set;
+                        if (ImGui::Checkbox(id, &on)) { set = on; if (on) val = std::round(autoVal); editedAny = true; }
+                        if (tipHover()) ImGui::SetTooltip("Ticked: set by hand. Unticked: worked out from the magazine's shape.");
+                        ImGui::SameLine();
+                        ImGui::SetNextItemWidth(-1);
+                        float v = (float)(set ? val : autoVal);
+                        ImGui::BeginDisabled(!set);
+                        if (ImGui::DragFloat((std::string(id) + "v").c_str(), &v, 0.5f, (float)lo, (float)hi, set ? "%.1f\xc2\xb0" : "%.1f\xc2\xb0 (automatic)")) { val = std::clamp((double)v, lo, hi); editedAny = true; }
+                        typeable();
+                        ImGui::EndDisabled();
+                    };
+                    angleRow("Round angle", "##rndset", b.roundSet, b.roundAngle, rd, -60, 60,
+                             "The angle the top round lies at, from the bore: 0 is parallel to it, + nose up.\n"
+                             "It slides off the lips along this line when the bolt pushes it. Nose up meets the feed ramp\n"
+                             "and chamber sooner; nose down can stub on the ramp or the barrel's face (failure to feed).");
+                    angleRow("Feed direction", "##fdset", b.feedSet, b.feedAngle, fd, -180, 180,
+                             "The way the follower pushes the rounds out, from the bore: 90 is straight up toward it,\n"
+                             "less leans forward, more leans back. A raked or curved magazine feeds at its own angle;\n"
+                             "set this to match where the lips actually present the round. Kept at least 25\xc2\xb0 off the round's line.");
+                }
             }
             // feed lips and spring: fitted to the cartridge to start with; these nudge them (physical feeding only)
             ImGui::Dummy({0, 4 * S()});

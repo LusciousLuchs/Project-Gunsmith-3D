@@ -371,6 +371,13 @@ static void drawCartridge(const std::string& bodyId, V2 face, float zc, bool cas
     Vector3 o = W3(f, zc), dir = Vector3Normalize(Vector3Subtract(W3(ax, zc), o));
     drawCartridgeAt(o, dir, caseOnly, 1.f, cart);
 }
+// a round's direction in a magazine whose round angle is set by hand: from the bore, + nose up
+static V2 setRoundDir(const BreechDef& br, const BodyDef& d) {
+    double gx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, gy = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0, l = std::hypot(gx, gy);
+    V2 g = l > 1e-9 ? V2{gx / l, gy / l} : V2{1, 0}, up{g.y, -g.x};
+    double a = d.roundAngle * DEG2RAD;
+    return {g.x * std::cos(a) + up.x * std::sin(a), g.y * std::cos(a) + up.y * std::sin(a)};
+}
 static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top slots shown elsewhere  // rounds stacked inside a magazine, top round at the lips
     auto& br = A.design.breech;
     if (!br.on || rounds <= 0) return;
@@ -402,7 +409,7 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
     if (d.roundPath.size() >= 2) {  // along the path you drew: side by side across it, or nose to tail along it
         bool line = d.roundStyle == "line";
         double dia = br.cart.headDia() * 1.02, oal = br.cart.oal;
-        bool dbl = d.gen.on && d.gen.stack == 2;
+        bool dbl = magStackOf(d) == 2;
         double pitch = line ? oal * 1.01 : (dbl ? dia * 0.56 : dia * 0.98);
         double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0;
         std::vector<double> cum{0};
@@ -418,7 +425,7 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
             V2 u{(b.x - a.x) / l, (b.y - a.y) / l}, m{a.x + u.x * (s - cum[i]), a.y + u.y * (s - cum[i])};
             V2 fwd, head;
             if (line) { fwd = u; head = m; }   // its head towards the mouth, nose pointing in
-            else { fwd = {-u.y, u.x}; if (fwd.x * mx + fwd.y * my < 0) fwd = {-fwd.x, -fwd.y}; head = {m.x - fwd.x * oal / 2, m.y - fwd.y * oal / 2}; }
+            else { fwd = {-u.y, u.x}; if (fwd.x * mx + fwd.y * my < 0) fwd = {-fwd.x, -fwd.y}; if (d.roundSet) fwd = setRoundDir(br, d); head = {m.x - fwd.x * oal / 2, m.y - fwd.y * oal / 2}; }
             float z = (!line && dbl) ? (k % 2 ? 1.f : -1.f) * (float)(dia * 0.25) * U : 0;
             Vector3 o = Vector3Transform({(float)(head.x - c.x) * U, -(float)(head.y - c.y) * U, z}, r.M);
             Vector3 o2 = Vector3Transform({(float)(head.x + fwd.x - c.x) * U, -(float)(head.y + fwd.y - c.y) * U, z}, r.M);
@@ -445,7 +452,7 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
         return;
     }
     if (d.gen.on) {  // generated magazine: rounds follow its centreline, staggered for double stack
-        double dia = br.cart.headDia() * 1.02, pitch = d.gen.stack == 2 ? dia * 0.56 : dia * 0.98;
+        double dia = br.cart.headDia() * 1.02, pitch = magStackOf(d) == 2 ? dia * 0.56 : dia * 0.98;
         double mx = br.hasMuzzle && br.hasFace ? br.muzzle.x - br.face.x : 1, my = br.hasMuzzle && br.hasFace ? br.muzzle.y - br.face.y : 0;
         int n = std::min(rounds, d.magCap);
         for (int k = skip; k < n; k++) {
@@ -453,8 +460,9 @@ static void drawMagRounds(const RB& r, int rounds, int skip = 0) {  // skip: top
             V2 m = magCentre(d.gen, s, &phi);
             V2 fwd{std::cos(phi * DEG2RAD), -std::sin(phi * DEG2RAD)};
             if (fwd.x * mx + fwd.y * my < 0) fwd = {-fwd.x, -fwd.y};   // a magazine on top: they still point at the muzzle
+            if (d.roundSet) fwd = setRoundDir(br, d);
             V2 head{m.x - fwd.x * br.cart.oal / 2, m.y - fwd.y * br.cart.oal / 2};
-            float z = d.gen.stack == 2 ? (k % 2 ? 1.f : -1.f) * (float)(dia * 0.25) * U : 0;
+            float z = magStackOf(d) == 2 ? (k % 2 ? 1.f : -1.f) * (float)(dia * 0.25) * U : 0;
             Vector3 o = Vector3Transform({(float)(head.x - c.x) * U, -(float)(head.y - c.y) * U, z}, r.M);
             Vector3 o2 = Vector3Transform({(float)(head.x + fwd.x - c.x) * U, -(float)(head.y + fwd.y - c.y) * U, z}, r.M);
             drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)));

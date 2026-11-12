@@ -638,6 +638,25 @@ void bbox(Body& b) {
     }
     b.bb[0] = x0; b.bb[1] = y0; b.bb[2] = x1; b.bb[3] = y1;
 }
+bool solidPoint(const Body& A, V2 l, V2& bq, double& d) {
+    if (!inPoly(l.x, l.y, A.lp)) return false;
+    for (auto& c : A.cav) if (carve::inConvex(c, l)) return false;   // in a cut: empty space
+    auto inCut = [&](V2 q) { for (auto& c : A.cav) if (carve::inConvex(c, q)) return true; return false; };
+    double best = 1e18;
+    const size_t n = A.lp.size();
+    for (size_t i = 0; i < n; i++) {
+        double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[(i + 1) % n], &d2);
+        if (d2 < best && (A.cav.empty() || !inCut(q))) { best = d2; bq = q; }
+    }
+    for (auto& c : A.cav)
+        for (size_t i = 0; i < c.size(); i++) {
+            double d2; V2 q = closestOnSeg(l, c[i], c[(i + 1) % c.size()], &d2);
+            if (d2 < best && inPoly(q.x, q.y, A.lp)) { best = d2; bq = q; }
+        }
+    if (best > 1e17) return false;
+    d = std::sqrt(best);
+    return true;
+}
 void contacts(Body& A, Body& B, double mu) {  // push B's boundary samples out of A, with friction
     // (the hot loop of the whole simulation: transforms are worked out once, and a sample is tested against A's
     // outline only if it falls inside A's own bounding box)

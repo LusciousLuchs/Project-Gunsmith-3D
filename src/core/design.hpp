@@ -176,6 +176,13 @@ struct BodyDef {
     double lipRelease = 0.45;            // the lips let the round go once it has been pushed this far forward (fraction of its length;
                                          // not in the panel yet: the round is also let go as soon as its nose enters the chamber)
     double magSpring = 1;                // follower spring strength against a standard spring (1): how hard and fast rounds come up
+    // any box magazine, fitted or drawn by hand (0 = as before: the fitted magazine's stack, else single)
+    int magStack = 0;                    // 1 single stack, 2 double stack (staggered)
+    // the top round: the angle it lies at (and slides off the lips along), and the way the follower pushes it out, both
+    // degrees from the bore (round: 0 = parallel to the bore, + nose up; feed: 90 = straight up toward the bore, less
+    // leans it forward). Off: worked out from the magazine's shape and round path, as before.
+    bool roundSet = false, feedSet = false;
+    double roundAngle = 0, feedAngle = 90;
     bool doubleFeed = false;             // double stack: feed alternately from each side (double position) instead of
                                          // tapering to one central round (single position)
     // a belt: no spring; a part you draw (the pawl) moves it on one round each time it travels pawlStroke from where it
@@ -457,6 +464,10 @@ struct Design {
 void fixShape(BodyDef& b);                                     // keep rad/bulge sized to pts
 std::vector<V2> outlineOf(const BodyDef& b);
 V2 centroidOf(const BodyDef& b);
+int magStackOf(const BodyDef& b);       // 1 or 2: a magazine's stack, set by hand or fitted
+// The top round's angle and the follower's push, degrees from the bore (see BodyDef::roundAngle), as they work out:
+// set by hand, else from the magazine's shape. False if it isn't a box magazine (a tube, a belt...).
+bool magFeedAngles(const Design& D, const BodyDef& b, double& roundDeg, double& feedDeg);
 std::vector<V2> circlePts(V2 c, double r, std::vector<double>* bulge);
 
 // Editing operations (Sprocket-style shaping).

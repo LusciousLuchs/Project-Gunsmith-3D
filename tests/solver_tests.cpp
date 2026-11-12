@@ -1105,6 +1105,31 @@ static void welding() {
     CHECK(d.bodies[1].weld.empty(), "the last part left on its own isn't welded to anything");
 }
 
+// A magazine's round angle, feed direction and stack, set by hand on any magazine (0.6.1)
+static void magazineAngles() {
+    std::printf("magazineAngles\n");
+    Design d = loadPreset("blowback");
+    int mi = -1;
+    for (int i = 0; i < (int)d.bodies.size(); i++) if (d.bodies[i].magazine) { mi = i; break; }
+    double rd = 0, fd = 0;
+    CHECK(mi >= 0 && magFeedAngles(d, d.bodies[mi], rd, fd) && std::fabs(rd) < 0.5 && std::fabs(fd - 90) < 0.5, "a fitted pistol magazine: rounds level, fed straight up");
+    sim::ReliabilityOptions o; o.rounds = 15;
+    auto base = sim::runReliability(d, o);
+    Design e = d; e.bodies[mi].roundSet = e.bodies[mi].feedSet = true; e.bodies[mi].roundAngle = rd; e.bodies[mi].feedAngle = fd;
+    auto same = sim::runReliability(e, o);
+    CHECK(base.fired == same.fired && base.jams == same.jams, "set by hand to the automatic angles: it feeds exactly as before");
+    Design down = d; down.bodies[mi].roundSet = true; down.bodies[mi].roundAngle = -10;
+    auto bad = sim::runReliability(down, o);
+    std::printf("        (round level: %d jams in %d; nose down 10 degrees: %d jams)\n", base.jams, base.fired, bad.jams);
+    CHECK(bad.jams > base.jams, "rounds lying nose down stub on the way in: the angle matters");
+    Design h = d; freezeMagazine(h.bodies[mi], h.breech.cart); h.bodies[mi].magStack = 2;
+    auto dbl = sim::runReliability(h, o);
+    CHECK(magStackOf(h.bodies[mi]) == 2 && dbl.jams == 0 && dbl.fired == 15, "a magazine reshaped by hand can be double stack, and feeds");
+    Design back;
+    h.bodies[mi].roundSet = true; h.bodies[mi].roundAngle = 4; h.bodies[mi].feedSet = true; h.bodies[mi].feedAngle = 80;
+    CHECK(designFromJson(designToJson(h), back) && back.bodies[mi].magStack == 2 && back.bodies[mi].roundSet && std::fabs(back.bodies[mi].roundAngle - 4) < 1e-9
+          && back.bodies[mi].feedSet && std::fabs(back.bodies[mi].feedAngle - 80) < 1e-9 && !d.bodies[mi].roundSet, "stack and angles save and load (and older blueprints stay automatic)");
+}
 static void tubeFeeding() {
     std::printf("Tube feeding (the pump-action example)\n");
     Design d = loadPreset("pump");
@@ -2530,6 +2555,7 @@ int main() {
     carving();
     roundParts();
     welding();
+    magazineAngles();
     tubeFeeding();
     ammoKinds();
     severalChambers();
