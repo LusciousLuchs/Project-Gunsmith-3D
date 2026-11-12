@@ -402,8 +402,14 @@ struct AttachDef {
                                    // grip), rear (its back end: onto a muzzle), front
     std::string muzzleKind = "brake";   // a muzzle device: brake (less kick), compensator (less climb), suppressor
                                         // (quiet, no flash, heard only close by), flashhider (a small flash)
-    OpticDef optic;
+    OpticDef optic;                // (a light or laser shines along this sight line, out of its front end)
+    double beamDeg = 12;           // light: how wide its beam opens (degrees, edge to edge)
+    double lumens = 600;           // light: how bright
+    unsigned beamColor = 0;        // RGBA; 0: its kind's own (a light: warm white; a laser: red)
+    double stab = 0;               // bayonet: damage a stab does (0: from how long the blade sticks out past the muzzle)
 };
+// a light's or laser's colour, its own or its kind's
+unsigned beamColorOf(const AttachDef& a);
 std::vector<ReticleMark> defaultReticle(const std::string& opticKind);   // a dot and ring (reflex), a duplex cross (scope)
 void autoAttach(Design& d);        // fills in what isn't set by hand: the mount spot, the lenses
 const std::vector<std::string>& attachJobs();

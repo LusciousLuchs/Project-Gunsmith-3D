@@ -217,7 +217,7 @@ bool loadLoadout(const std::string& name) {
         if (!s) { wontFit++; continue; }
         double along = s->rail ? fit::snapAlong(*s, e.along) : 0;
         if (!fit::check(A.design, A.fitItems, it.att, *s, along).empty()) { wontFit++; continue; }
-        it.file = e.file; it.site = e.site; it.along = along; it.xf = fit::place(it.att, *s, along);
+        it.file = e.file; it.site = e.site; it.along = along; it.on = e.on; it.xf = fit::place(it.att, *s, along);
         A.fitItems.push_back(it);
     }
     std::string msg = "Loadout " + name + ": " + std::to_string(A.fitItems.size()) + " fitted";

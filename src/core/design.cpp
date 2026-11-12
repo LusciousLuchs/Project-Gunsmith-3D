@@ -1163,6 +1163,14 @@ std::string designToJson(const Design& d, bool pretty) {
                 jo["reticle"] = jr;
                 ja["optic"] = jo;
             }
+            if (a.job == "light" || a.job == "laser") {
+                json jb = json::object();
+                if (a.job == "light") { jb["deg"] = a.beamDeg; jb["lumens"] = a.lumens; }
+                if (a.beamColor) jb["color"] = a.beamColor;
+                if (a.optic.lensSet) { jb["rear"] = {a.optic.rear.x, a.optic.rear.y}; jb["front"] = {a.optic.front.x, a.optic.front.y}; }
+                ja["beam"] = jb;
+            }
+            if (a.job == "bayonet" && a.stab > 0) ja["stab"] = a.stab;
             o["attachment"] = ja;
         }
         json An = json::object();
@@ -1505,6 +1513,15 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         a.face = opt<std::string>(ja, "face", "under");
         a.muzzleKind = opt<std::string>(ja, "muzzleKind", "brake");
         if (ja.contains("at") && ja["at"].is_array() && ja["at"].size() == 3) { a.atSet = true; a.at = {ja["at"][0].get<double>(), ja["at"][1].get<double>()}; a.atZ = ja["at"][2].get<double>(); }
+        a.stab = std::clamp(opt<double>(ja, "stab", 0.0), 0.0, 1000.0);
+        if (ja.contains("beam") && ja["beam"].is_object()) {
+            auto& jb = ja["beam"];
+            a.beamDeg = std::clamp(opt<double>(jb, "deg", 12.0), 1.0, 120.0);
+            a.lumens = std::clamp(opt<double>(jb, "lumens", 600.0), 10.0, 10000.0);
+            a.beamColor = opt<unsigned>(jb, "color", 0u);
+            auto v2 = [&](const char* k, V2& out) { if (jb.contains(k) && jb[k].is_array() && jb[k].size() == 2) { out = {jb[k][0].get<double>(), jb[k][1].get<double>()}; return true; } return false; };
+            a.optic.lensSet = v2("rear", a.optic.rear) && v2("front", a.optic.front);
+        }
         if (ja.contains("optic") && ja["optic"].is_object()) {
             auto& jo = ja["optic"];
             auto& op = a.optic;
@@ -1634,6 +1651,10 @@ std::vector<ReticleMark> defaultReticle(const std::string& kind) {
         r.push_back({0, -2, 0, 2, 0, 0.12}); r.push_back({0, 0, -2, 0, 2, 0.12}); r.push_back({0, 0, 2, 0, 12, 0.6});
     }
     return r;
+}
+unsigned beamColorOf(const AttachDef& a) {
+    if (a.beamColor) return a.beamColor;
+    return a.job == "laser" ? 0xFF2A1EFFu : 0xFFF2DCFFu;
 }
 void autoAttach(Design& d) {
     auto& a = d.attach;

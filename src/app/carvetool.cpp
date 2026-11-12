@@ -419,6 +419,23 @@ void drawMountOverlay() {
             }
             viewText(op.kind == "scope" ? TextFormat("Sight line, %.1fx%s", op.mag, op.magMax > op.mag ? TextFormat("-%.1fx", op.magMax) : "") : "Sight line", ff.x + 8, ff.y - 8, 12, o);
         }
+        if (a.job == "light" || a.job == "laser") {   // its beam: out of the front end
+            const OpticDef& op = a.optic;
+            unsigned bc = beamColorOf(a);
+            Color o{(unsigned char)(bc >> 24), (unsigned char)(bc >> 16), (unsigned char)(bc >> 8), 255};
+            Vector2 rr = toScreen(W3(op.rear, zw)), ff = toScreen(W3(op.front, zw));
+            DrawLineEx(rr, ff, 2, o);
+            DrawCircleLinesV(rr, 4, o); DrawCircleV(ff, 5, o);
+            Vector2 d = Vector2Normalize(Vector2Subtract(ff, rr));
+            if (a.job == "laser") DrawLineEx(ff, Vector2Add(ff, Vector2Scale(d, 120)), 1.5f, o);
+            else {
+                float sp = (float)std::tan(a.beamDeg * DEG2RAD / 2);
+                Vector2 nrm{-d.y, d.x};
+                DrawLineEx(ff, Vector2Add(ff, Vector2Add(Vector2Scale(d, 120), Vector2Scale(nrm, 120 * sp))), 1.5f, o);
+                DrawLineEx(ff, Vector2Add(ff, Vector2Subtract(Vector2Scale(d, 120), Vector2Scale(nrm, 120 * sp))), 1.5f, o);
+            }
+            viewText(a.job == "laser" ? "Laser" : TextFormat("Beam, %.0f deg", a.beamDeg), ff.x + 8, ff.y - 20, 12, o);
+        }
     }
     bool tool = A.tool == Tool::Mount;
     for (size_t i = 0; i < A.design.bodies.size(); i++) {

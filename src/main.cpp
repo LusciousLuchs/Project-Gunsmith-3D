@@ -268,7 +268,7 @@ int main(int argc, char** argv) {
             rlImGuiBegin();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
-            else rangeSpawnerWindow();
+            else { rangeSpawnerWindow(); rangeGadgetWindow(); }
             toastOverlay();
             perf::overlay();
             rlImGuiEnd();

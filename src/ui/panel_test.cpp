@@ -414,6 +414,15 @@ static void fitPanel() {
     for (int k = 0; k < (int)A.fitItems.size(); k++) {
         auto& it = A.fitItems[k];
         total += attachmentMass(it.att);
+        const auto& job = it.att.attach.job;
+        bool sw = job == "light" || job == "laser" || job == "bipod" || (job == "optic" && it.att.attach.optic.lit);
+        if (sw) {   // what can be switched: on or off as it goes to the range (Alt there switches it too)
+            ImGui::PushID(k);
+            ImGui::Checkbox("##on", &it.on);
+            if (tipHover()) ImGui::SetTooltip("%s", job == "bipod" ? "Legs down (ticked) or folded." : job == "optic" ? "Its reticle lit, or not." : "Switched on, or off.");
+            ImGui::PopID();
+            ImGui::SameLine();
+        }
         if (ImGui::Selectable(TextFormat("%s##fit%d", it.att.name.c_str(), k), A.fitSel == k)) A.fitSel = A.fitSel == k ? -1 : k;
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", siteLabel(it.site).c_str());
     }

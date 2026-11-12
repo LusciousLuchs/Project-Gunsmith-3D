@@ -17,4 +17,5 @@ void rangeSpawnerWindow();                                  // its list (ImGui)
 
 void openRangeFitting();   // an attachment crate: the held gun on the fitting bench
 void backToRange();
+void rangeGadgetWindow();   // Alt held on the range: switch the attachments on and off
 void rangeShotExtras(const std::string& loadout, bool aim);   // (screenshots)

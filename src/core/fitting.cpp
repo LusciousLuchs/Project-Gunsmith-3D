@@ -228,7 +228,11 @@ std::string check(const Design& gun, const std::vector<Item>& items, const Desig
 std::string loadoutToJson(const std::string& gun, const std::vector<Item>& items) {
     json o = {{"gunsmithLoadout", 1}, {"gun", gun}};
     json a = json::array();
-    for (auto& it : items) a.push_back({{"file", it.file}, {"site", it.site}, {"along", it.along}});
+    for (auto& it : items) {
+        json j = {{"file", it.file}, {"site", it.site}, {"along", it.along}};
+        if (!it.on) j["on"] = false;
+        a.push_back(j);
+    }
     o["items"] = a;
     return o.dump(1);
 }
@@ -238,7 +242,7 @@ bool loadoutFromJson(const std::string& text, std::string& gun, std::vector<Load
     gun = o.value("gun", "");
     out.clear();
     if (o.contains("items") && o["items"].is_array())
-        for (auto& j : o["items"]) if (j.is_object()) out.push_back({j.value("file", ""), j.value("site", ""), j.value("along", 0.0)});
+        for (auto& j : o["items"]) if (j.is_object()) out.push_back({j.value("file", ""), j.value("site", ""), j.value("along", 0.0), j.value("on", true)});
     return true;
 }
 }  // namespace fit

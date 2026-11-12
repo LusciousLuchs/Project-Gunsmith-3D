@@ -2159,6 +2159,23 @@ static void attachmentsData() {
           std::fabs(b.attach.optic.magMax - 12) < 1e-9 && b.attach.optic.ffp, "an attachment saves and loads whole (job, mount, optic, reticle)");
     Design g = loadPreset("boltaction");
     CHECK(designToJson(g).find("\"attachment\"") == std::string::npos, "guns save as before");
+    // lights, lasers, bayonets: their settings save and load; a loadout keeps what's switched off
+    Design l = a; l.attach.job = "light"; l.attach.beamDeg = 30; l.attach.lumens = 1200; l.attach.optic.lensSet = true; l.attach.optic.front = {55, -12};
+    Design l2;
+    ok = designFromJson(designToJson(l), l2);
+    CHECK(ok && std::fabs(l2.attach.beamDeg - 30) < 1e-9 && std::fabs(l2.attach.lumens - 1200) < 1e-9 && l2.attach.optic.lensSet && std::fabs(l2.attach.optic.front.x - 55) < 1e-9,
+          "a light keeps its beam width, brightness and beam line");
+    CHECK(beamColorOf(l2.attach) == 0xFFF2DCFFu, "a light shines warm white unless coloured");
+    Design z = a; z.attach.job = "laser"; z.attach.beamColor = 0x30FF50FFu;
+    Design z2; designFromJson(designToJson(z), z2);
+    CHECK(beamColorOf(z2.attach) == 0x30FF50FFu, "a laser keeps its colour");
+    Design k = a; k.attach.job = "bayonet"; k.attach.stab = 70;
+    Design k2; designFromJson(designToJson(k), k2);
+    CHECK(std::fabs(k2.attach.stab - 70) < 1e-9, "a bayonet keeps its stab damage");
+    std::vector<fit::Item> its(2); its[0].file = "Light"; its[0].on = false; its[1].file = "Dot";
+    std::string lj = fit::loadoutToJson("Gun", its), gn;
+    std::vector<fit::LoadoutEntry> es;
+    CHECK(fit::loadoutFromJson(lj, gn, es) && es.size() == 2 && !es[0].on && es[1].on, "a loadout keeps which attachments are switched off");
 }
 
 // Fitting attachments: where they sit, and every reason one may not go there

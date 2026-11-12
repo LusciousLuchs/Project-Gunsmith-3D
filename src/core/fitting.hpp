@@ -37,6 +37,7 @@ struct Item {                    // an attachment fitted to the gun
     std::string site;            // Site::key()
     double along = 0;            // on a rail: where its clamp's middle sits, mm from the rail's start (a slot's middle)
     Xf xf;
+    bool on = true;              // switched on (a light, a laser), legs down (a bipod), lit (an optic's reticle)
     P3 spot() const { return {att.attach.at.x, att.attach.at.y, att.attach.atZ}; }
 };
 
@@ -53,6 +54,6 @@ bool kindsMatch(const std::string& a, const std::string& b);
 
 // Loadouts: which attachments go where on which gun, saved apart from the gun (its blueprint is never changed)
 std::string loadoutToJson(const std::string& gun, const std::vector<Item>& items);
-struct LoadoutEntry { std::string file, site; double along = 0; };
+struct LoadoutEntry { std::string file, site; double along = 0; bool on = true; };
 bool loadoutFromJson(const std::string& text, std::string& gun, std::vector<LoadoutEntry>& out);
 }  // namespace fit

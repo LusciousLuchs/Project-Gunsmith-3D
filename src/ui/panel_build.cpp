@@ -1400,6 +1400,36 @@ static void attachmentTab() {
     else if (a.job == "grip") muted("A grip steadies your aim: the gun sways less when you aim.");
     else if (a.job == "stock") muted("A stock or brace puts a one-handed gun in the shoulder: steadier, and it kicks less.");
     else if (a.job == "other") muted("Its weight still counts once it's on a gun.");
+    else if (a.job == "bipod") muted("Legs down (on the range: Alt, then its button), aim with its feet near something to rest on (a bench, a wall, the floor when you're prone): the gun hardly sways and kicks less.\nIts feet are its lowest point as drawn: draw the legs down.");
+    else if (a.job == "bayonet") {
+        muted("V stabs on the range. The blade's point is its front end; it reaches as far as it sticks out past the muzzle.");
+        pNum("Stab damage", a.stab, 1, a.stab > 0 ? "%.0f" : "from its length", "What a stab does to an NPC (they have 100 health; weak spots and armour count as for bullets).\n0: worked out from how far the blade sticks out.");
+        a.stab = std::clamp(a.stab, 0.0, 1000.0);
+    }
+    else if (a.job == "light" || a.job == "laser") {
+        bool light = a.job == "light";
+        muted(light ? "Shines along its beam line, out of its front end. T switches it on and off on the range (or Alt, then its button)."
+                    : "A dot where its line meets something. T switches it on and off on the range (or Alt, then its button).");
+        if (light) {
+            pNum("Beam width", a.beamDeg, 0.5, "%.1f deg", "How wide the beam opens, edge to edge: a narrow throw or a wide flood.");
+            a.beamDeg = std::clamp(a.beamDeg, 1.0, 120.0);
+            pNum("Brightness", a.lumens, 25, "%.0f lm", "Brighter lights reach farther.");
+            a.lumens = std::clamp(a.lumens, 10.0, 10000.0);
+        }
+        unsigned c = beamColorOf(a);
+        float col[3] = {((c >> 24) & 255) / 255.f, ((c >> 16) & 255) / 255.f, ((c >> 8) & 255) / 255.f};
+        prop("Colour", light ? "The light's colour." : "Red, green, or anything (infrared would need night vision, not in the game yet).");
+        if (ImGui::ColorEdit3("##beamc", col, ImGuiColorEditFlags_NoInputs)) {
+            a.beamColor = ((unsigned)(col[0] * 255) << 24) | ((unsigned)(col[1] * 255) << 16) | ((unsigned)(col[2] * 255) << 8) | 255u;
+        }
+        if (ImGui::IsItemDeactivatedAfterEdit()) editedAny = true;
+        if (!light) {
+            ImGui::SameLine(0, 4 * S());
+            if (ImGui::SmallButton("Red")) { a.beamColor = 0xFF2A1EFFu; editedAny = true; }
+            ImGui::SameLine(0, 2 * S());
+            if (ImGui::SmallButton("Green")) { a.beamColor = 0x30FF50FFu; editedAny = true; }
+        }
+    }
     heading("How it mounts");
     bool pic = a.mount == "Picatinny";
     if (accentButton("Picatinny clamp", pic)) { a.mount = "Picatinny"; editedAny = true; }
@@ -1469,6 +1499,18 @@ static void attachmentTab() {
         muted("On a gun, aiming puts your eye on this line (behind it by the eye relief), whatever the gun's pose says.");
         heading("Reticle");
         reticleEditor(op);
+    }
+    if (a.job == "light" || a.job == "laser") {
+        auto& op = a.optic;
+        heading("Its beam line");
+        ImGui::TextDisabled(op.lensSet ? "Set by hand:" : "Through its longest part, end to end (it comes out of the front).");
+        double ry = -op.rear.y, fy = -op.front.y;
+        bool lm = pNumU("Back X##beam", op.rear.x, 0.5, Q::Length, -1, nullptr, SIGNED);
+        if (pNumU("Back Y##beam", ry, 0.5, Q::Length, -1, "+ up.", SIGNED)) { op.rear.y = -ry; lm = true; }
+        lm |= pNumU("Front X##beam", op.front.x, 0.5, Q::Length, -1, "Where it comes out.", SIGNED);
+        if (pNumU("Front Y##beam", fy, 0.5, Q::Length, -1, "+ up.", SIGNED)) { op.front.y = -fy; lm = true; }
+        if (lm) op.lensSet = true;
+        if (op.lensSet && ImGui::SmallButton("Back to its ends##beam")) { op.lensSet = false; editedAny = true; }
     }
 }
 
