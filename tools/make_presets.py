@@ -529,7 +529,7 @@ def main():
         d = fn()
         out.append(f'static const char* NEW_{key.upper().replace("-", "_")} = R"PRESET({json.dumps(d, separators=(",", ":"))})PRESET";')
     blank = {'name': 'Untitled action', 'speed': 0.05, 'bodies': [
-        part('frame', 'Frame', rect(0, 40, 220, 60), thick=20, fixed=True, ghost=True, color='#5d6575')], 'joints': [], 'breech': None}
+        part('frame', 'Frame', rect(0, 40, 220, 60), thick=20, fixed=True, color='#5d6575')], 'joints': [], 'breech': None}
     out.append(f'static const char* PRESET_BLANK = R"PRESET({json.dumps(blank, separators=(",", ":"))})PRESET";')
     out.append('')
     out.append('// ---- older examples (simplified joints and feeding)')

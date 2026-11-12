@@ -454,6 +454,7 @@ static void inspectPart(BodyDef& b) {
     if (section("Part", true)) {
         pCheck("Fixed", b.fixed, "Fixed parts are the frame: they don't move.");
         tutAnchor("part:fixed");
+        pCheck("See-through", b.ghost, "Drawn as a ghost while X-ray is on (the eye button, or X), so you can see what's inside it.\nOnly parts you tick (and magazines, so their rounds show) are see-through.");
         bool solid = b.layer != "none";
         bool solidHit = pCheck("Solid", solid, "Solid parts push on each other wherever they overlap, in the side view and in depth.\nParts that aren't solid (grip panels, covers) pass through everything.");
         tutAnchor("part:solid");
@@ -615,7 +616,7 @@ static void inspectPart(BodyDef& b) {
             std::string tag = "m-" + uid();
             b.mirror = tag; b.mirrorKind = "depth";
             BodyDef cpy = mirrorImage(b);
-            cpy.id = uid(); cpy.name += " (other side)"; cpy.magazine = false; cpy.weld.clear();
+            cpy.id = uid(); cpy.name += " (other side)"; cpy.magazine = false; cpy.weld.clear(); cpy.ghost = false;
             D.bodies.push_back(cpy);
             A.sel = {1, (int)D.bodies.size() - 1, -1};
             commit();
@@ -902,7 +903,7 @@ static void inspectPart(BodyDef& b) {
         if (kind != wasKind) {
             std::string id = b.id;
             auto dropWell = [&] { D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.type == "magwell" && j.a == id; }), D.joints.end()); };
-            if (kind == 0) { b.magazine = false; b.magFixed = false; dropWell(); }
+            if (kind == 0) { b.magazine = false; b.magFixed = false; b.ghost = false; dropWell(); }
             else if (kind == 1) { b.magazine = true; b.magFixed = false; if (b.fixed) b.fixed = false; if (magwellIndex(b.id) < 0) makeMagwell(b); b.ghost = true; }
             else { b.magazine = true; b.magFixed = true; b.fixed = true; dropWell(); }
         }
@@ -1142,7 +1143,6 @@ static void inspectPart(BodyDef& b) {
     }
 
     if (section("Advanced", false)) {
-        pCheck("See-through in X-ray", b.ghost, "Drawn as a ghost when X-ray is on, so you can see what's inside it.");
         if (b.layer != "none") {
             prop("Collision groups", "Solid parts only touch if they share a group. Depth usually does this job better.");
             bool la = b.layer.find('A') != std::string::npos, lb = b.layer.find('B') != std::string::npos, lc = b.layer.find('C') != std::string::npos;

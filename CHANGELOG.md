@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.6.3-alpha
+
+### Fixed
+- **Parts see-through in X-ray when you never asked:** a new design's frame started out see-through, and every part made from it (Duplicate, Mirror, Knife, Copy to the other side, extruding a face) copied that. New designs now start solid, and new parts made from another start solid too. The **See-through** box is now near the top of a part's panel (under Fixed), so you can see and change it. Parts already marked in your saved designs keep it: untick the box.
+- A part cut with the Knife again is named "Frame 3", not "Frame 2 2".
+
 ## 0.6.2-alpha
 
 - **The game updates itself.** When it starts it looks for a newer version online, downloads it and installs it in the background. You'll see "Updated to ..." at the bottom of the main menu: the new version runs next time, or press Restart now. Your designs, maps, character and settings are never touched. Switch it off in Settings > Interface > Updates.

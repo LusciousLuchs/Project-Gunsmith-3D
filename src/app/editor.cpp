@@ -139,6 +139,7 @@ void duplicateSel() {
     if (A.sel.kind != 1 || A.sel.idx >= (int)A.design.bodies.size()) return;
     BodyDef c = A.design.bodies[A.sel.idx];
     c.id = uid(); c.name += " copy"; c.magazine = false; c.weld.clear(); c.mirror.clear();  // a copy is a part on its own
+    c.ghost = false;   // (solid: see-through is only for parts you mark, and magazines)
     for (auto& p : c.pts) { p.x += 10; p.y += 10; }
     carve::moveCarves(c, 10, 10);
     if (c.ctrl != "none") { c.ctrlPt.x += 10; c.ctrlPt.y += 10; }
@@ -479,7 +480,7 @@ void buildInput(bool overUI) {
             std::string tag = "m-" + uid();
             src.mirror = tag; src.mirrorKind = "line"; src.mirrorA = a; src.mirrorB = w;
             BodyDef c = mirrorImage(src);
-            c.id = uid(); c.name += " (mirror)"; c.magazine = false; c.weld.clear();
+            c.id = uid(); c.name += " (mirror)"; c.magazine = false; c.weld.clear(); c.ghost = false;
             D.bodies.push_back(c);
             A.sel = {1, (int)D.bodies.size() - 1, -1}; A.selVs.clear();
             commit(); toast("Mirrored copy added. It's live: change either and the other follows (Unlink in its panel to stop that).");
@@ -493,10 +494,18 @@ void buildInput(bool overUI) {
                 auto pcs = splitBody(D.bodies[i], a, w);
                 if (pcs.size() < 2) continue;
                 std::string base = D.bodies[i].name;
+                {   // "Frame 2" cut again gives "Frame 3", not "Frame 2 2"
+                    size_t sp = base.find_last_of(' ');
+                    if (sp != std::string::npos && sp + 1 < base.size() && base.find_first_not_of("0123456789", sp + 1) == std::string::npos) base = base.substr(0, sp);
+                }
+                auto taken = [&](const std::string& nm) { for (auto& o : D.bodies) if (o.name == nm) return true; return false; };
                 D.bodies[i] = pcs[0];
                 for (size_t k = 1; k < pcs.size(); k++) {
                     BodyDef nb = pcs[k];
-                    nb.id = uid(); nb.name = base + " " + std::to_string(k + 1); nb.magazine = false; nb.ctrl = "none"; nb.weld.clear();
+                    int num = 2;
+                    while (taken(base + " " + std::to_string(num))) num++;
+                    nb.id = uid(); nb.name = base + " " + std::to_string(num); nb.magazine = false; nb.ctrl = "none"; nb.weld.clear();
+                    nb.ghost = false;   // (a new piece starts solid: see-through is only for parts you mark)
                     D.bodies.push_back(nb);
                     last = (int)D.bodies.size() - 1;
                 }

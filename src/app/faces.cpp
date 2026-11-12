@@ -170,7 +170,7 @@ void begin(const App::FacePick& f, bool follow, bool extrude) {
         c.id = uid(); c.name = d0.name + " (extruded)"; c.weld = d0.weld;
         c.carves.clear(); c.mirror.clear(); c.magazine = false; c.magFixed = false; c.gen.on = false; c.barrel.on = false;
         c.depthOff.clear(); c.depthZn.clear(); c.depthZf.clear(); c.depthRef.clear();   // (a plain slab, whatever shape the face had)
-        c.mass = 0; c.ctrl = "none";
+        c.mass = 0; c.ctrl = "none"; c.ghost = false;
         double face = f.kind == 1 ? d0.z + d0.thick / 2 : d0.z - d0.thick / 2;
         c.thick = 0.5; c.z = face + (f.kind == 1 ? 0.25 : -0.25);
         A.design.bodies.push_back(c);
