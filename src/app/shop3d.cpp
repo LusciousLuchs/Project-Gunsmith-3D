@@ -15,6 +15,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <functional>
 #include <string>
@@ -69,7 +70,7 @@ const char* promptFor(const gmap::Entity& e) {
 void openThing(int thing) { gOpen = thing; EnableCursor(); }
 
 // where the people stand
-struct Spot { gmap::V3 at; double yaw; int person; };
+struct Spot { gmap::V3 at; double yaw; int person; std::string name; };
 std::vector<Spot> people() {
     std::vector<Spot> out;
     const gmap::Entity* counter = findType("shop_counter");
@@ -85,7 +86,7 @@ std::vector<Spot> people() {
         for (auto& w : CAREER.walkins) {
             if (w.state != 0) continue;
             gmap::V3 side{-s.z, 0, s.x};
-            out.push_back({counter->pos + s * (0.75 + 0.75 * k) + side * (k % 2 ? 0.25 : -0.1 * k), yaw, w.id});
+            out.push_back({counter->pos + s * (0.75 + 0.75 * k) + side * (k % 2 ? 0.25 : -0.1 * k), yaw, w.id, w.name});
             if (++k >= 6) break;
         }
     }
@@ -110,7 +111,7 @@ std::vector<Spot> people() {
         if (!got && !free.empty()) { got = free.front(); free.erase(free.begin()); }
         if (!got) break;
         gmap::V3 f = frontOf(*got);
-        out.push_back({got->pos + f * 0.7, std::atan2(-f.z, -f.x) * 180 / 3.14159265358979, (int)(std::hash<std::string>()(emp.name) & 0x7fffffff)});
+        out.push_back({got->pos + f * 0.7, std::atan2(-f.z, -f.x) * 180 / 3.14159265358979, (int)(std::hash<std::string>()(emp.name) & 0x7fffffff), emp.name});
     }
     return out;
 }
@@ -157,7 +158,9 @@ void shopDrawPeople() {
         if (x1 > x0 && z1 > z0 && top > 0)
             drawBox({(float)((x0 + x1) / 2), (float)top + 0.05f, (float)((z0 + z1) / 2)}, {(float)(x1 - x0), 0.1f, (float)(z1 - z0)}, Color{150, 146, 138, 255});
     }
-    for (auto& p : people()) drawNpcAt(careerPerson(p.person), {(float)p.at.x, (float)p.at.y, (float)p.at.z}, (float)p.yaw, 0.001f);
+    if (std::getenv("GUNSMITH_PEOPLESHEET"))   // (screenshots) the first dozen people the shop would make, in a row
+        for (int i = 0; i < 12; i++) drawNpcAt(careerPerson(10000 + i, ""), {(float)(-4.4 + 0.8 * i), 0, -1.5f}, 90, 0.001f);
+    for (auto& p : people()) drawNpcAt(careerPerson(p.person, p.name), {(float)p.at.x, (float)p.at.y, (float)p.at.z}, (float)p.yaw, 0.001f);
 }
 
 void shopHud() {
@@ -244,4 +247,15 @@ void shopNewDay() {
     int waiting = 0;
     for (auto& w : CAREER.walkins) if (w.state == 0) waiting++;
     toast(TextFormat("Day %d. %s", CAREER.day, waiting ? TextFormat("%d customer%s at the counter.", waiting, waiting == 1 ? "" : "s") : "Nobody at the counter yet."));
+}
+
+void cursorGuard() {
+    // the cursor is hidden only while you look around on foot (a map walked, the range); anywhere else it shows. In your
+    // shop it also shows while one of its screens, the pause menu or a question is open
+    bool walkingMap = A.screen == Screen::MapEditor && ME.walking;
+    if (A.screen == Screen::Range) return;   // (the range keeps its own: Alt frees it)
+    bool want = walkingMap;
+    if (walkingMap && shopActive()) want = gOpen < 0 && !gAskMissing && !A.showPause && !A.showSettings && !A.showTutorials;
+    else if (walkingMap) want = !A.showPause && !A.showSettings && !A.showTutorials;
+    if (want != IsCursorHidden()) { if (want) DisableCursor(); else EnableCursor(); }
 }

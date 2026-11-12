@@ -109,10 +109,20 @@ bool startBuild(Career& c, const std::string& gun, int qty, std::string* why) {
 }
 
 namespace {
-const std::vector<std::string> FIRST = {"Dale", "Marisol", "Hank", "Priya", "Jo", "Wendell", "Tamsin", "Earl", "Bea", "Luis", "Corinne", "Rusty",
-                                        "Aiyana", "Gus", "Nadia", "Floyd", "Yvette", "Otis", "Kim", "Delbert"};
+const std::vector<std::string> MEN = {"Dale", "Hank", "Wendell", "Earl", "Luis", "Rusty", "Gus", "Floyd", "Otis", "Delbert", "Kenji", "Darnell", "Tomas", "Ravi", "Arturo", "Bo"};
+const std::vector<std::string> WOMEN = {"Marisol", "Priya", "Tamsin", "Bea", "Corinne", "Aiyana", "Nadia", "Yvette", "Mei", "Ingrid", "Lucia", "Shonda"};
+const std::vector<std::string> EITHER = {"Jo", "Kim", "Sam", "Alex"};
+const std::vector<std::string> FIRST = [] { std::vector<std::string> v = MEN; v.insert(v.end(), WOMEN.begin(), WOMEN.end()); v.insert(v.end(), EITHER.begin(), EITHER.end()); return v; }();
 const std::vector<std::string> PLACE = {"Amarillo, TX", "Boise, ID", "Dothan, AL", "Bangor, ME", "Casper, WY", "Flagstaff, AZ", "Duluth, MN",
                                         "Tulsa, OK", "Macon, GA", "Billings, MT", "Erie, PA", "Spokane, WA", "Paducah, KY", "Ely, NV"};
+}  // namespace
+std::string bodyForName(const std::string& name) {
+    std::string first = name.substr(0, name.find(' '));
+    for (auto& n : MEN) if (n == first) return "male";
+    for (auto& n : WOMEN) if (n == first) return "female";
+    return "";
+}
+namespace {
 std::string buyer(Career& c) { return pick(c, FIRST) + " " + std::string(1, (char)('A' + rndInt(c, 0, 25))) + ". (" + pick(c, PLACE) + ")"; }
 
 std::string reviewText(Career& c, const GunSheet& s, int stars, double price) {

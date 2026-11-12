@@ -17,3 +17,4 @@ void shopWalk();            // back on foot where you were (the workstations cou
 void shopOpen(int thing);   // open a screen (0 computer, 1 workstation, 2 counter, 3 door)
 void shopCloseThing();      // close whatever screen is open
 void shopNewDay();          // after the day ends: a word about it
+void cursorGuard();         // every frame: hide the cursor only while looking around on foot, show it everywhere else

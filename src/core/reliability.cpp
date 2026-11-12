@@ -1,4 +1,5 @@
 // Gunsmith3D - reliability test (see reliability.hpp).
+#include <chrono>
 #include "reliability.hpp"
 
 #include <algorithm>
@@ -52,10 +53,18 @@ struct Runner {
             V2 d{grab0.x - hinge.x, grab0.y - hinge.y};
             S.hand.t = {hinge.x + c * d.x - s * d.y, hinge.y + s * d.x + c * d.y};
             run(S, 0.005);
+            if (stop()) return;
         }
     }
 
-    bool stop() const { return cancel && cancel->load(); }
+    double stall = 0;                                  // seconds without a shot before giving up (0: never)
+    std::chrono::steady_clock::time_point lastShot = std::chrono::steady_clock::now();
+    mutable bool stalled = false;
+    bool stop() const {
+        if (cancel && cancel->load()) return true;
+        if (stall > 0 && std::chrono::duration<double>(std::chrono::steady_clock::now() - lastShot).count() > stall) stalled = true;
+        return stalled;
+    }
 
     // move the hand holding the breech from where it is to `to` at about 1.5 m/s, like a shooter's hand
     void handMove(V2 to) {
@@ -66,6 +75,7 @@ struct Runner {
         for (int k = 1; k <= n; k++) {
             S.hand.t = {from.x + (to.x - from.x) * k / n, from.y + (to.y - from.y) * k / n};
             run(S, 0.005);
+            if (stop()) return;
         }
     }
     V2 home(double ahead) const { return {B->x0 + dir.x * ahead, B->y0 + dir.y * ahead}; }
@@ -246,6 +256,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
     BoreLine L0 = boreLine(S);
     Runner run_{S, B, L0.ok ? L0.dir : V2{1, 0}, breechStroke(S, B), B->invIr > 0, cancel};
     run_.findHinge();
+    run_.stall = o.stallSeconds;
     R.manual = run_.rolling || !S.breechSprung;
     R.singleLoad = !S.magTmpl && S.feedMode == "single";
     run(S, 0.1);
@@ -317,8 +328,10 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
             record(S.malf);
             if (!clear()) { R.gaveUp = true; R.note = std::string("Stuck after a ") + malfName(S.malf) + " that racking didn't clear."; break; }
         }
+        if (S.shots > before) run_.lastShot = std::chrono::steady_clock::now();
         if (done) done->store(S.shots);
     }
+    if (run_.stalled) { R.gaveUp = true; R.note = "Gave up: it couldn't fire and reload in time."; }
     R.fired = S.shots;
     if (R.attempts >= limit && R.note.empty()) R.note = "Stopped: too many trigger pulls without a shot.";
     if (run_.stop() && R.note.empty()) R.note = "Stopped early.";

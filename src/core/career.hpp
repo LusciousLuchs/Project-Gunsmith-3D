@@ -108,6 +108,8 @@ struct Career {
     // stage 3
     std::vector<Walkin> walkins;
 };
+// a person's body from their first name: "male", "female", or "" (a name either could have)
+std::string bodyForName(const std::string& name);
 int shopStations(int tier);                // workstations your building has room for
 double shopUpgradeCost(int tier);          // to move up from this tier ($; 0: the biggest)
 const char* shopName(int tier);

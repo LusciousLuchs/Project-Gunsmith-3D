@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.4-alpha
+
+### Career
+- **More varied customers and staff.** People used to come in long runs of the same look. Now men and women, ten skin tones from light to deep, and hair, clothes and glasses are all evenly mixed, and everyone's body matches their name.
+
+### Fixes
+- The mouse cursor no longer goes missing in career mode: it hides only while you walk and look around.
+
 ## 0.7.3-alpha
 
 ### Career

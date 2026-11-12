@@ -16,6 +16,7 @@ struct ReliabilityOptions {
     double powerSpread = 0.05;    // ammunition power, +- this fraction (1 standard deviation)
     double frictionSpread = 0.3;  // action friction from clean to dirty: up to this fraction more
     double limpMax = 0.25;        // the loosest hold, 0 firm .. 1 a gun held by nothing
+    double stallSeconds = 0;      // give up when this long (real time) goes by without a shot; 0: never
 };
 
 struct ReliabilityEvent {

@@ -35,7 +35,7 @@ void careerTick();
 void careerRenderPortraits();         // (before the panels each frame: draws any not drawn yet)
 Texture2D careerPortrait(int walkinId);
 struct NpcDef;
-const NpcDef& careerPerson(int id);  // a person (a customer by their number, staff by a number from their name), kept
+const NpcDef& careerPerson(int id, const std::string& name = "");  // a person (a customer by their number, staff by a number from their name), kept
                     // every frame: a finished demonstration takes you back to the office
 
 // your guns (the blueprints in the user folder), each read once and kept until its file changes

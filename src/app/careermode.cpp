@@ -310,21 +310,38 @@ void careerShutdown() {
 // ---------------------------------------------------------------- customers' faces
 namespace {
 std::map<int, RenderTexture2D> gPortraits;
-CharLook lookFor(int id) {
-    unsigned r = (unsigned)id * 2654435761u + 12345u;
-    auto next = [&](int n) { r = r * 1664525u + 1013904223u; return (int)((r >> 8) % (unsigned)n); };
-    static const char* skins[] = {"#f1d3bd", "#e0b394", "#c8a088", "#a5785a", "#7a5238", "#4e3424"};
-    static const char* hairC[] = {"#2a1d14", "#3b2a1e", "#6b4a2b", "#a8834a", "#c9c2b5", "#121212", "#7a2f1a"};
-    static const char* hairs[] = {"none", "buzz", "short", "short", "long", "ponytail", "bun"};
-    static const char* cloth[] = {"#4f5d52", "#3d4a63", "#6b2f2f", "#8a7a5a", "#2f3033", "#5e6b75", "#a0563a", "#c9b994"};
+CharLook lookFor(int id, const std::string& name) {
+    // every draw from a well-mixed hash of the number (neighbouring numbers used to come out alike: long runs of one
+    // body, skin tones that hardly changed from one customer to the next)
+    unsigned long long st = (unsigned long long)(unsigned)id * 0x9E3779B97F4A7C15ull + 0x632BE59BD9B4E019ull;
+    auto next = [&](int n) {
+        unsigned long long z = (st += 0x9E3779B97F4A7C15ull);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull; z = (z ^ (z >> 27)) * 0x94D049BB133111EBull; z ^= z >> 31;
+        return (int)(z % (unsigned long long)n);
+    };
+    // skin, light to deep, evenly likely
+    static const char* skins[] = {"#f3dccb", "#ebc9ae", "#e2b896", "#d9a982", "#c99470", "#b8835e", "#a06c48", "#865636", "#6b4229", "#4e301e"};
+    static const char* hairDark[] = {"#121212", "#1e1612", "#2a1d14", "#3b2a1e"};
+    static const char* hairAny[] = {"#2a1d14", "#3b2a1e", "#6b4a2b", "#a8834a", "#d2b57a", "#7a2f1a", "#121212"};
+    static const char* grey = "#c9c2b5";
+    static const char* eyes[] = {"#3b2a1e", "#4a3424", "#5a4a2a", "#4a6a8a", "#5a7a5a"};
+    static const char* cloth[] = {"#4f5d52", "#3d4a63", "#6b2f2f", "#8a7a5a", "#2f3033", "#5e6b75", "#a0563a", "#c9b994", "#2e4a3a", "#56406a"};
     static const char* tops[] = {"tshirt", "longsleeve", "tank"};
     CharLook L; L.on = true;
-    L.body = next(2) ? "male" : "female";
+    std::string b = career::bodyForName(name);
+    L.body = !b.empty() ? b : (next(2) ? "male" : "female");
+    bool man = L.body == "male";
     L.height = 0.9 + next(25) / 100.0; L.build = 0.85 + next(40) / 100.0;
-    L.skin = skins[next(6)]; L.hair = hairs[next(7)]; L.hairColor = hairC[next(7)];
-    L.top = tops[next(3)]; L.topColor = cloth[next(8)]; L.pants = next(5) ? "long" : "shorts"; L.pantsColor = cloth[next(8)];
+    int tone = next(10);
+    L.skin = skins[tone];
+    L.eyes = tone >= 5 ? eyes[next(3)] : eyes[next(5)];
+    static const char* menHair[] = {"none", "buzz", "buzz", "short", "short", "short", "long", "ponytail"};
+    static const char* womenHair[] = {"short", "long", "long", "ponytail", "ponytail", "bun", "bun", "buzz"};
+    L.hair = man ? menHair[next(8)] : womenHair[next(8)];
+    L.hairColor = next(9) == 0 ? grey : tone >= 5 ? hairDark[next(4)] : hairAny[next(7)];
+    L.top = tops[next(3)]; L.topColor = cloth[next(10)]; L.pants = next(5) ? "long" : "shorts"; L.pantsColor = cloth[next(10)];
     L.belt = next(2); L.hat = next(4) == 0; L.headphones = false; L.glasses = next(4) == 0;
-    L.hatColor = cloth[next(8)];
+    L.hatColor = cloth[next(10)];
     return L;
 }
 }  // namespace
@@ -332,7 +349,7 @@ void careerRenderPortraits() {
     for (auto& w : CAREER.walkins) {
         if (gPortraits.count(w.id)) continue;
         RenderTexture2D rt = LoadRenderTexture(256, 320);
-        NpcDef n = characterFromLook(lookFor(w.id));
+        NpcDef n = characterFromLook(lookFor(w.id, w.name));
         double h = npcHeight(n) / 1000;
         Camera3D cam{};
         cam.position = {0, (float)(h * 0.86), 1.25f}; cam.target = {0, (float)(h * 0.8), 0}; cam.up = {0, 1, 0}; cam.fovy = 34; cam.projection = CAMERA_PERSPECTIVE;
@@ -357,12 +374,14 @@ void careerRenderPortraits() {
             if (!here) { UnloadRenderTexture(it->second); it = gPortraits.erase(it); } else ++it;
         }
 }
-const NpcDef& careerPerson(int id) {
+const NpcDef& careerPerson(int id, const std::string& name) {
     static std::map<int, NpcDef> people;
     auto it = people.find(id);
     if (it != people.end()) return it->second;
     if (people.size() > 200) people.clear();
-    return people[id] = characterFromLook(lookFor(id));
+    std::string nm = name;
+    if (nm.empty()) for (auto& w : CAREER.walkins) if (w.id == id) nm = w.name;
+    return people[id] = characterFromLook(lookFor(id, nm));
 }
 Texture2D careerPortrait(int id) { auto it = gPortraits.find(id); return it == gPortraits.end() ? Texture2D{} : it->second.texture; }
 

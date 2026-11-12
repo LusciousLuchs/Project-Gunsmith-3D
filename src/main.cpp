@@ -276,6 +276,7 @@ int main(int argc, char** argv) {
     int frame = 0;
     while (!WindowShouldClose() && !A.quit) {
         perf::frameStart();
+        cursorGuard();
         if (actPressed(Act::PerfOverlay)) perf::toggle();
         if (actPressed(Act::Fullscreen)) toggleFullscreenKey();
         if (CFG.uiScaleAuto && IsWindowResized()) setUiScale(autoUiScale(), false);   // (auto size follows the window)   // F3: the frame rate and what's slowing the game down
