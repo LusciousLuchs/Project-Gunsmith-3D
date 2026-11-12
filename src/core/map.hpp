@@ -57,6 +57,12 @@ struct Entity {
     std::string ref;      // npc_spawn: which NPC (its name in the map's own copies, or in user/npcs)
     int count = 1;        // npc_spawn: how many; armor_plate: how many plates lie here
     double respawn = 0;   // armor_plate: seconds until taken plates come back (0 = never)
+    // light: a lamp (type "light"). Lights everything within its reach, brightest close up; a spot only in its cone
+    double color[3] = {1.0, 0.86, 0.66};
+    double power = 3;     // how bright (about how many times a dim room's light at 1 m)
+    double range = 10;    // metres: nothing past this
+    double cone = 0;      // degrees edge to edge: 0 shines all round; a spot (a floodlight, a ceiling spot) otherwise
+    double pitch = -90;   // a spot's aim: up (+) or down from level, toward `yaw`
 };
 struct Look {
     double sunYaw = 35, sunPitch = 55;      // degrees: where the sunlight comes from
@@ -65,7 +71,12 @@ struct Look {
     double skyTop[3] = {0.36, 0.55, 0.80};
     double skyHorizon[3] = {0.78, 0.84, 0.90};
     double fogStart = 60, fogEnd = 450;    // metres
+    double daylight = 1;                    // 1 broad daylight .. 0 night (lit only by the map's lights); older maps 1
 };
+// What a map's light entity shines like, ready for drawing (positions in metres)
+struct LampAt { V3 pos, dir; double color[3]; double power, range, cosCone; };   // cosCone -2: all round
+LampAt lampOf(const Entity& e);
+
 struct Map {
     std::string name = "Untitled";
     std::vector<Brush> brushes;
@@ -75,6 +86,10 @@ struct Map {
     std::vector<std::pair<std::string, std::string>> npcs;
     std::vector<std::pair<std::string, std::string>> npcGuns;   // and the guns made for NPCs they carry (name, blueprint JSON)
 };
+
+// How lit a point is (red, green, blue, about 0..1+) facing normal n: the map's daylight and ambient plus its lights.
+// (For things drawn without the lighting shader; matches it closely.)
+void lightAt(const Map& m, V3 p, V3 n, double out[3]);
 
 // ---- brush geometry
 std::vector<V3> facePolygon(const Brush& b, int face);   // counter-clockwise seen from outside; empty if the face is gone

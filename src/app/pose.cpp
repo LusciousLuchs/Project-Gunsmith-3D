@@ -525,7 +525,7 @@ void drawPoseBody() {
         handed = Vector3DotProduct(X, Vector3CrossProduct(Y, Z)) >= 0 ? 1.f : -1.f;
         if (handed < 0) rlDisableBackfaceCulling();
         for (int i = 0; i < (int)n.bones.size(); i++)
-            if (armOf[i] < 0) drawNpcBone(n.bones[i], stand[i], hexColor(n.bones[i].color));
+            if (armOf[i] < 0 && !npcBodyBone(n, i)) drawNpcBone(n.bones[i], stand[i], hexColor(n.bones[i].color));
         if (handed < 0) rlEnableBackfaceCulling();
     } else {
     // torso in a shirt, the neck, the head (eyes, nose), ear defenders on a band over the top
@@ -568,6 +568,8 @@ void drawPoseBody() {
     }
     // arms and hands
     ViewHands VH = viewHands();
+    std::vector<Matrix> bodyM = stand;   // (the one-piece body: as it stands, its arms where they reach, drawn after both)
+    bool bodyStrain = false;
     for (int side = 0; side < 2; side++) {
         Limb LB = sideLimb(F, VH, side);
         HandGeo& g = LB.g;
@@ -587,9 +589,11 @@ void drawPoseBody() {
                 return boneM(from, Vector3Scale(X, U), Vector3Scale(Y, U), Vector3Scale(Z, U));
             };
             Matrix now[2] = {segM(CF.upper[side], a.s, a.e), segM(CF.fore[side], a.e, a.w)};
+            bodyM[CF.upper[side]] = now[0]; bodyM[CF.fore[side]] = now[1];
+            bodyStrain |= strain;
             if (handed < 0) rlDisableBackfaceCulling();
             for (int i = 0; i < (int)n.bones.size(); i++) {
-                if (armOf[i] != side || onHand[i]) continue;   // (the hand and its fingers: the posed finger skeleton, below)
+                if (armOf[i] != side || onHand[i] || npcBodyBone(n, i)) continue;   // (the hand and its fingers: the posed finger skeleton, below)
                 Color c = strain ? STRAIN : hexColor(n.bones[i].color);
                 if (i == CF.upper[side]) drawNpcBone(n.bones[i], now[0], c);
                 else if (i == CF.fore[side]) drawNpcBone(n.bones[i], now[1], c);
@@ -629,6 +633,7 @@ void drawPoseBody() {
             }
         } else drawSphereLit(a.w, 45 * U, SKIN);
     }
+    if (CF.ok && CF.n->look.on) { Color red = STRAIN; drawCharacterBody(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // the one-piece body, arms reaching
 }
 
 // the gun's own handles in an animation: its middle (move it) and its muzzle (aim it)

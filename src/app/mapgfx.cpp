@@ -255,31 +255,58 @@ void mapDrawWorld() {
 }
 
 // ---------------------------------------------------------------- light and sky
-static Color c3(const double* c) { return Color{(unsigned char)std::clamp(c[0] * 255, 0.0, 255.0), (unsigned char)std::clamp(c[1] * 255, 0.0, 255.0), (unsigned char)std::clamp(c[2] * 255, 0.0, 255.0), 255}; }
-Color mapSkyHorizon(const gmap::Look& L) { return c3(L.skyHorizon); }
+static Color c3(const double* c, double k = 1) { return Color{(unsigned char)std::clamp(c[0] * k * 255, 0.0, 255.0), (unsigned char)std::clamp(c[1] * k * 255, 0.0, 255.0), (unsigned char)std::clamp(c[2] * k * 255, 0.0, 255.0), 255}; }
+static double skyK(const gmap::Look& L) { double d = std::clamp(L.daylight, 0.0, 1.0); return 0.05 + 0.95 * std::pow(d, 0.8); }   // the sky darkens with the day
+Color mapSkyHorizon(const gmap::Look& L) { return c3(L.skyHorizon, skyK(L)); }
 
+static int gWorkLight = 0;
+void mapWorkLight(int mode) { gWorkLight = mode; }
 void mapApplyLook(const gmap::Look& L) {
     Lighting g;
+    const double day = std::clamp(L.daylight, 0.0, 1.0);
     double yw = L.sunYaw * DEG2RAD, pt = L.sunPitch * DEG2RAD;
     g.dir[0] = (float)(std::cos(pt) * std::cos(yw)); g.dir[1] = (float)std::sin(pt); g.dir[2] = (float)(std::cos(pt) * std::sin(yw));
     g.fill[0] = -g.dir[0]; g.fill[1] = 0.35f; g.fill[2] = -g.dir[2];
-    for (int i = 0; i < 3; i++) {
-        g.col[i] = (float)L.sun[i] * 1.15f;
-        g.fillCol[i] = (float)L.skyTop[i];
-        g.ambSky[i] = (float)L.ambient[i] * 1.2f;
-        g.ambGround[i] = (float)L.ambient[i] * 0.75f;
+    for (int i = 0; i < 3; i++) {   // (never pitch black: a little light so you can just make things out)
+        g.col[i] = (float)(L.sun[i] * 1.15 * day);
+        g.fillCol[i] = (float)(L.skyTop[i] * day);
+        g.ambSky[i] = (float)std::max(L.ambient[i] * 1.2 * day, 0.05);
+        g.ambGround[i] = (float)std::max(L.ambient[i] * 0.75 * day, 0.05);
+        if (gWorkLight) { g.ambSky[i] = std::max(g.ambSky[i], 0.62f); g.ambGround[i] = std::max(g.ambGround[i], 0.45f); }   // (the editor's work light)
     }
     g.fog[0] = (float)L.fogStart; g.fog[1] = (float)std::max(1.0, L.fogEnd - L.fogStart); g.fog[2] = 1.0f;
+    if (gWorkLight == 2)   // fullbright: every face its own colour, no sun, no shade, no fog
+        for (int i = 0; i < 3; i++) { g.col[i] = g.fillCol[i] = 0; g.ambSky[i] = g.ambGround[i] = 1.43f; g.fog[2] = 0; }
     setLighting(g);
-    setFog(c3(L.skyHorizon));
+    setFog(c3(L.skyHorizon, skyK(L)));
 }
-void mapRestoreLook() { setLighting(Lighting{}); setFog(Color{199, 219, 239, 255}); }
+void mapRestoreLook() { setLighting(Lighting{}); setFog(Color{199, 219, 239, 255}); setLamps({}); }
+
+void mapSetLamps(const gmap::Map& m, gmap::V3 eye, const std::vector<Lamp>& extra) {
+    if (gWorkLight == 2) { setLamps({}); return; }   // (fullbright: lamps would only wash it out)
+    std::vector<Lamp> out(extra.begin(), extra.begin() + std::min((int)extra.size(), MAX_LAMPS));
+    struct C { double score; Lamp L; };
+    std::vector<C> cand;
+    for (auto& e : m.ents) {
+        if (e.type != "light" || e.power <= 0) continue;
+        gmap::LampAt a = gmap::lampOf(e);
+        Lamp L;
+        L.pos[0] = (float)a.pos.x; L.pos[1] = (float)a.pos.y; L.pos[2] = (float)a.pos.z;
+        L.dir[0] = (float)a.dir.x; L.dir[1] = (float)a.dir.y; L.dir[2] = (float)a.dir.z;
+        for (int i = 0; i < 3; i++) L.col[i] = (float)a.color[i];
+        L.power = (float)a.power; L.range = (float)a.range; L.cosCone = (float)a.cosCone;
+        cand.push_back({gmap::len(a.pos - eye) - a.range, L});   // the nearest edges of light first
+    }
+    std::sort(cand.begin(), cand.end(), [](const C& a, const C& b) { return a.score < b.score; });
+    for (auto& c : cand) { if ((int)out.size() >= MAX_LAMPS) break; out.push_back(c.L); }
+    setLamps(out);
+}
 
 void mapDrawSky(const gmap::Look& L, float x, float y, float w, float h, float pitch, float fovY) {
     // the horizon sits where a level line of sight lands on screen
     float t = std::tan(pitch) / std::tan(fovY * DEG2RAD / 2);
     float hy = y + h / 2 + t * h / 2;
-    Color top = c3(L.skyTop), hor = c3(L.skyHorizon);
+    Color top = c3(L.skyTop, skyK(L)), hor = c3(L.skyHorizon, skyK(L));
     float span = h * 0.9f;
     float y0 = hy - span;
     auto lerpC = [&](float k) { k = std::clamp(k, 0.f, 1.f); return Color{(unsigned char)(top.r + (hor.r - top.r) * k), (unsigned char)(top.g + (hor.g - top.g) * k), (unsigned char)(top.b + (hor.b - top.b) * k), 255}; };

@@ -28,6 +28,7 @@ struct NpcBone {
     bool vital = false;           // a weak spot: hits here do triple damage (a head, a glowing core)
     double armor = 0;             // 0 .. 1: how much of a hit it stops
     bool gen = false;             // made by the character maker (rebuilt from its choices; your own gear isn't)
+    bool body = false;            // drawn as part of the one-piece body (the character maker's torso, neck, arms and legs)
 };
 
 // The player character's choices (the character maker): the body is built from these, not shaped bone by bone

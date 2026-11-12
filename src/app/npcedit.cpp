@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <map>
 #include <unordered_map>
 
 namespace fs = std::filesystem;
@@ -397,8 +398,14 @@ void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float k, int highl
         (void)i;
         return MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixScale(k, k, k), R), MatrixTranslate(a.x * k, a.y * k, a.z * k)), toWorld);
     };
+    std::vector<Matrix> bodyM(n.look.on ? P.size() : 0);
     for (size_t i = 0; i < P.size(); i++) {
         const NpcBone& b = n.bones[i];
+        if (npcBodyBone(n, (int)i)) {   // (part of the one-piece body, drawn below)
+            bodyM[i] = frame((int)i, P[i].a, axis(P[i].x), axis(P[i].y), axis(P[i].z));
+            continue;
+        }
+        if (n.look.on) bodyM[i] = frame((int)i, P[i].a, axis(P[i].x), axis(P[i].y), axis(P[i].z));
         Color c = hexColor(b.color);
         if ((int)i == highlight) c = Color{(unsigned char)std::min(255, c.r + 50), (unsigned char)std::min(255, c.g + 40), (unsigned char)std::min(255, c.b + 10), 255};
         Vector3 X = axis(P[i].x), Y = axis(P[i].y), Z = axis(P[i].z);
@@ -420,6 +427,7 @@ void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float k, int highl
             else drawMesh(G.sphere, J, c);
         }
     }
+    if (n.look.on) drawCharacterBody(n, bodyM);   // the torso, neck, arms and legs: one skin
 }
 
 bool npcByName(const gmap::Map& m, const std::string& name, NpcDef& out) {
@@ -523,4 +531,128 @@ void npcEditorRender() {
     }
     DrawText("Right drag: turn   Wheel: zoom   Middle drag: up and down   Click a bone to select it   Ctrl+Z: undo", 12, GetScreenHeight() - 26, 14, Color{170, 176, 186, 255});
     DrawText("1.8 m", (int)toScreenV({-12, 18.3f, 0}).x - 16, (int)toScreenV({-12, 18.3f, 0}).y - 16, 14, Color{220, 150, 90, 255});
+}
+
+// ---------------------------------------------------------------- the one-piece body
+// The character maker's torso, neck, arms and legs as one continuous low-poly skin: rings of points round the bones,
+// joined into tubes that run through the joints (a ring at a joint follows both bones half and half, so an elbow or a
+// knee bends without a gap), drawn faceted. Clothes are colours on it: a sleeve is where the shirt's colour stops.
+namespace {
+struct RingAt { int a = -1, b = -1; double ta = 0, tb = 0, w = 0, shrink = 1; };   // where: on bone a at ta, blended toward b at tb
+struct Tube { std::vector<RingAt> rings; std::vector<Color> cols; int sides = 8; };
+int boneNamed(const NpcDef& n, const std::string& nm) { for (int i = 0; i < (int)n.bones.size(); i++) if (n.bones[i].name == nm) return i; return -1; }
+}  // namespace
+
+bool npcBodyBone(const NpcDef& n, int i) { return n.look.on && i >= 0 && i < (int)n.bones.size() && n.bones[i].body; }
+
+void drawCharacterBody(const NpcDef& n, const std::vector<Matrix>& M, const Color* tint) {
+    if (!n.look.on || M.size() < n.bones.size()) return;
+    const CharLook& L = n.look;
+    Color skin = hexColor(L.skin), top = hexColor(L.topColor), pants = hexColor(L.pantsColor);
+    auto T = [&](Color c) { return tint ? *tint : c; };
+    std::vector<Tube> tubes;
+    int pel = boneNamed(n, "Pelvis"), che = boneNamed(n, "Chest"), nec = boneNamed(n, "Neck");
+    if (pel < 0 || che < 0 || nec < 0) return;
+    {   // the torso: from below the hips up through the chest, closing in to the base of the neck
+        Tube t; t.sides = 10;
+        t.rings = {{pel, -1, -0.12, 0, 0, 0.55}, {pel, -1, 0.0, 0, 0, 0.95}, {pel, -1, 0.5, 0, 0, 1}, {pel, che, 1, 0, 0.5, 1}, {che, -1, 0.35, 0, 0, 1},
+                   {che, -1, 0.72, 0, 0, 1}, {che, -1, 0.9, 0, 0, 0.97}, {che, -1, 1.0, 0, 0, 0.8}, {che, -1, 1.07, 0, 0, 0.5}, {che, -1, 1.1, 0, 0, 0.3}};   // (the shoulders slope in to the neck)
+        // below the belt line: the pants' colour; above: the top's
+        t.cols = {T(pants), T(pants), T(pants), T(top), T(top), T(top), T(top), T(top), T(top)};
+        tubes.push_back(t);
+    }
+    {   // the neck: from inside the shoulders up into the head
+        Tube t; t.sides = 8;
+        t.rings = {{nec, -1, -0.35, 0, 0, 1}, {nec, -1, 0.0, 0, 0, 1}, {nec, -1, 1.0, 0, 0, 1}, {nec, -1, 1.2, 0, 0, 0.9}};
+        t.cols = {T(L.top == "tank" ? skin : top), T(skin), T(skin)};
+        tubes.push_back(t);
+    }
+    for (const char* sd : {"left", "right"}) {
+        std::string s = std::string(" (") + sd + ")";
+        int ua = boneNamed(n, "Upper arm" + s), fa = boneNamed(n, "Forearm" + s), th = boneNamed(n, "Thigh" + s), sh = boneNamed(n, "Shin" + s);
+        if (ua >= 0 && fa >= 0) {   // an arm: from inside the shoulder to the wrist
+            Tube t; t.sides = 8;
+            t.rings = {{ua, -1, 0.02, 0, 0, 0.45}, {ua, -1, 0.08, 0, 0, 0.9}, {ua, -1, 0.2, 0, 0, 1},   // (its top flush with the shoulder) {ua, -1, 0.42, 0, 0, 1}, {ua, -1, 0.75, 0, 0, 1},
+                       {ua, fa, 1, 0, 0.5, 0.97}, {fa, -1, 0.3, 0, 0, 1}, {fa, -1, 0.7, 0, 0, 1}, {fa, -1, 1.0, 0, 0, 0.95}, {fa, -1, 1.04, 0, 0, 0.5}};
+            Color sl = L.top == "longsleeve" ? top : skin;
+            Color upper = L.top == "tank" ? skin : top;
+            t.cols = {T(upper), T(upper), T(upper), T(L.top == "longsleeve" ? top : skin), T(sl), T(sl), T(sl), T(sl), T(sl)};
+            tubes.push_back(t);
+        }
+        if (th >= 0 && sh >= 0) {   // a leg: from inside the hips to the ankle
+            Tube t; t.sides = 8;
+            Color low = L.pants == "shorts" ? skin : pants;
+            t.rings = {{th, -1, -0.15, 0, 0, 0.6}, {th, -1, 0.0, 0, 0, 1}, {th, -1, 0.35, 0, 0, 1}, {th, -1, 0.7, 0, 0, 1}, {th, sh, 1, 0, 0.5, 0.95},
+                       {sh, -1, 0.3, 0, 0, 1}, {sh, -1, 0.7, 0, 0, 1}, {sh, -1, 1.0, 0, 0, 0.9}, {sh, -1, 1.06, 0, 0, 0.5}};
+            t.cols = {T(pants), T(pants), T(pants), T(L.pants == "shorts" ? pants : pants), T(low), T(low), T(low), T(low)};
+            tubes.push_back(t);
+        }
+    }
+    // build: each colour its own faceted mesh (flat normals per triangle), drawn and freed at once
+    std::map<unsigned, std::vector<float>> pos, nrm;
+    std::map<unsigned, Color> colOf;
+    auto key = [](Color c) { return ((unsigned)c.r << 24) | ((unsigned)c.g << 16) | ((unsigned)c.b << 8) | c.a; };
+    auto ringPts = [&](const RingAt& r, int sides) {
+        std::vector<Vector3> out(sides);
+        auto on = [&](int bi, double t, double cx, double cz) {
+            const NpcBone& b = n.bones[bi];
+            double rad = npcBoneRadius(b, std::clamp(t, 0.0, 1.0)) * r.shrink;
+            bool sq = b.shape == "box" || b.shape == "wedge";
+            double ex = sq ? 3.5 : 2;   // a rounded square across a box-shaped bone (the chest), round elsewhere
+            double px = (cx < 0 ? -1 : 1) * std::pow(std::fabs(cx), 2 / ex), pz = (cz < 0 ? -1 : 1) * std::pow(std::fabs(cz), 2 / ex);
+            return Vector3Transform(Vector3{(float)(px * rad * b.width), (float)(t * b.len), (float)(pz * rad * b.depth)}, M[bi]);
+        };
+        for (int k = 0; k < sides; k++) {
+            double th = 2 * PI * (k + 0.5) / sides, cx = std::cos(th), cz = std::sin(th);
+            Vector3 p = on(r.a, r.ta, cx, cz);
+            if (r.b >= 0 && r.w > 0) p = Vector3Lerp(p, on(r.b, r.tb, cx, cz), (float)r.w);
+            out[k] = p;
+        }
+        return out;
+    };
+    auto tri = [&](Color c, Vector3 a, Vector3 b, Vector3 d) {
+        Vector3 nn = Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(d, a));
+        if (Vector3Length(nn) < 1e-12f) return;
+        nn = Vector3Normalize(nn);
+        unsigned k = key(c); colOf[k] = c;
+        auto& P = pos[k]; auto& N = nrm[k];
+        for (Vector3 v : {a, b, d}) { P.insert(P.end(), {v.x, v.y, v.z}); N.insert(N.end(), {nn.x, nn.y, nn.z}); }
+    };
+    for (auto& t : tubes) {
+        std::vector<std::vector<Vector3>> R;
+        for (auto& r : t.rings) R.push_back(ringPts(r, t.sides));
+        for (size_t i = 0; i + 1 < R.size(); i++) {
+            Color c = t.cols[std::min(i, t.cols.size() - 1)];
+            for (int k = 0; k < t.sides; k++) {
+                int k2 = (k + 1) % t.sides;
+                tri(c, R[i][k], R[i + 1][k], R[i + 1][k2]);
+                tri(c, R[i][k], R[i + 1][k2], R[i][k2]);
+            }
+        }
+        for (int end = 0; end < 2; end++) {   // the ends closed with a fan (they're inside the body, but never open)
+            auto& ring = end ? R.back() : R.front();
+            Vector3 c{0, 0, 0};
+            for (auto& v : ring) c = Vector3Add(c, v);
+            c = Vector3Scale(c, 1.f / ring.size());
+            Color col = end ? t.cols.back() : t.cols.front();
+            for (int k = 0; k < t.sides; k++) {
+                int k2 = (k + 1) % t.sides;
+                if (end) tri(col, c, ring[k], ring[k2]); else tri(col, c, ring[k2], ring[k]);
+            }
+        }
+    }
+    rlDisableBackfaceCulling();   // (a mirrored frame turns the winding round: the shader lights either side)
+    for (auto& [k, P] : pos) {
+        Mesh m{};
+        m.vertexCount = (int)P.size() / 3; m.triangleCount = m.vertexCount / 3;
+        std::vector<float> uv(m.vertexCount * 2, 0.f);
+        m.vertices = P.data(); m.normals = nrm[k].data(); m.texcoords = uv.data();
+        UploadMesh(&m, false);
+        drawMesh(m, MatrixIdentity(), colOf[k]);
+        rlUnloadVertexArray(m.vaoId);   // (the arrays are ours: free only what the upload made)
+        for (int b = 0; b < 9; b++) if (m.vboId[b])   // (raylib keeps up to 9 buffers a mesh)
+             rlUnloadVertexBuffer(m.vboId[b]);
+        RL_FREE(m.vboId);
+    }
+    rlEnableBackfaceCulling();
 }

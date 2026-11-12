@@ -20,6 +20,7 @@ in vec2 fragTexCoord; in vec3 fragNormal; in vec3 fragPos;
 uniform sampler2D texture0; uniform vec4 colDiffuse; uniform vec3 viewPos; uniform float spec;
 uniform vec3 lightDir; uniform vec3 lightCol; uniform vec3 fillDir; uniform vec3 fillCol;
 uniform vec3 ambSky; uniform vec3 ambGround; uniform vec3 fogColor; uniform vec3 fogParam;
+uniform int nLamps; uniform vec4 lampPos[16]; uniform vec4 lampCol[16]; uniform vec4 lampDir[16];
 out vec4 finalColor;
 void main(){ vec4 tex=texture(texture0,fragTexCoord); vec3 n=normalize(fragNormal);
  vec3 V=normalize(viewPos-fragPos);
@@ -33,6 +34,18 @@ void main(){ vec4 tex=texture(texture0,fragTexCoord); vec3 n=normalize(fragNorma
  float s=pow(max(dot(n,H),0.0),mix(24.0,64.0,spec))*spec*(0.25+0.75*d);
  float rim=pow(1.0-max(dot(n,V),0.0),3.0)*0.14;
  c+=lightCol*s+amb*rim;
+ vec3 lampAcc=vec3(0.0); vec3 lampSpec=vec3(0.0);
+ for(int i=0;i<nLamps;i++){   // the map's lamps, a gun's light, a muzzle flash: xyz + reach; colour x power; aim + cone
+  vec3 Lv=lampPos[i].xyz-fragPos; float dl=length(Lv); float r=lampPos[i].w;
+  if(dl>r) continue;
+  vec3 l=Lv/max(dl,1e-4); float q=dl/r; float w=max(0.0,1.0-q*q*q*q);
+  float att=w*w/(1.0+dl*dl);
+  if(lampDir[i].w>-1.5){ float cs=dot(-l,lampDir[i].xyz); float inner=min(1.0,lampDir[i].w+0.08); att*=smoothstep(lampDir[i].w,inner,cs); }
+  float ld=max(dot(n,l),0.0);
+  vec3 hl=normalize(l+V); float ls=pow(max(dot(n,hl),0.0),mix(24.0,64.0,spec))*spec*ld;
+  lampAcc+=lampCol[i].rgb*att*ld; lampSpec+=lampCol[i].rgb*att*ls;
+ }
+ c+=base*0.9*lampAcc/(1.0+0.45*lampAcc)+lampSpec/(1.0+0.6*lampSpec);   // (bright close up, without burning out to white)
  float dist=length(viewPos-fragPos); float f=clamp((dist-fogParam.x)/fogParam.y,0.0,fogParam.z); c=mix(c,fogColor,f);
  finalColor=vec4(c,tex.a*colDiffuse.a); })";
 
@@ -47,6 +60,21 @@ void setLighting(const Lighting& L) {
     SetShaderValue(G.lit, G.locAmbSky, L.ambSky, SHADER_UNIFORM_VEC3);
     SetShaderValue(G.lit, G.locAmbGround, L.ambGround, SHADER_UNIFORM_VEC3);
     SetShaderValue(G.lit, G.locFogParam, L.fog, SHADER_UNIFORM_VEC3);
+}
+void setLamps(const std::vector<Lamp>& lamps) {
+    int n = std::min((int)lamps.size(), MAX_LAMPS);
+    float P[MAX_LAMPS * 4] = {0}, C[MAX_LAMPS * 4] = {0}, D[MAX_LAMPS * 4] = {0};
+    for (int i = 0; i < n; i++) {
+        const Lamp& L = lamps[i];
+        for (int k = 0; k < 3; k++) { P[i * 4 + k] = L.pos[k]; C[i * 4 + k] = L.col[k] * L.power; D[i * 4 + k] = L.dir[k]; }
+        P[i * 4 + 3] = L.range; D[i * 4 + 3] = L.cosCone;
+    }
+    SetShaderValue(G.lit, G.locNLamps, &n, SHADER_UNIFORM_INT);
+    if (n > 0) {
+        SetShaderValueV(G.lit, G.locLampPos, P, SHADER_UNIFORM_VEC4, n);
+        SetShaderValueV(G.lit, G.locLampCol, C, SHADER_UNIFORM_VEC4, n);
+        SetShaderValueV(G.lit, G.locLampDir, D, SHADER_UNIFORM_VEC4, n);
+    }
 }
 void setFog(Color c) { float f[3] = {c.r / 255.f, c.g / 255.f, c.b / 255.f}; SetShaderValue(G.lit, G.locFog, f, SHADER_UNIFORM_VEC3); }
 void drawMesh(const Mesh& m, Matrix M, Color c, float alpha) {
@@ -355,6 +383,9 @@ void initGfx() {
     G.locFill = GetShaderLocation(G.lit, "fillDir"); G.locFillCol = GetShaderLocation(G.lit, "fillCol");
     G.locAmbSky = GetShaderLocation(G.lit, "ambSky"); G.locAmbGround = GetShaderLocation(G.lit, "ambGround");
     G.locFogParam = GetShaderLocation(G.lit, "fogParam");
+    G.locNLamps = GetShaderLocation(G.lit, "nLamps");
+    G.locLampPos = GetShaderLocation(G.lit, "lampPos"); G.locLampCol = GetShaderLocation(G.lit, "lampCol"); G.locLampDir = GetShaderLocation(G.lit, "lampDir");
+    setLamps({});
     setLighting(Lighting{});
     setSpecular(0.3f);
     setFog(Color{199, 219, 239, 255});
@@ -438,3 +469,26 @@ void drawAttachmentCrate(Vector3 base, float yawDeg, Color tint) {
         drawBox(Vector3Add(base, off), {0.05f, 0.46f, 0.52f}, band, R);
     }
 }
+void drawAmmoBox(Vector3 base, float yawDeg, Color tint) {
+    // a stack of olive steel ammo cans, each with its lid latch and carry handle
+    Matrix R = MatrixRotateY(-yawDeg * DEG2RAD);
+    Color can = tint.a ? tint : Color{78, 88, 54, 255}, dark{44, 48, 34, 255}, mark{214, 196, 96, 255};
+    for (int k = 0; k < 3; k++) {
+        Vector3 off = Vector3Transform({k == 2 ? 0.0f : (k ? 0.17f : -0.17f), k == 2 ? 0.2f : 0.0f, 0}, R);
+        Vector3 c = Vector3Add(base, off);
+        drawBox(Vector3Add(c, {0, 0.1f, 0}), {0.3f, 0.2f, 0.16f}, can, R);                       // the can
+        drawBox(Vector3Add(c, {0, 0.205f, 0}), {0.31f, 0.012f, 0.17f}, dark, R);                 // its lid
+        drawBox(Vector3Add(c, {0, 0.215f, 0}), {0.12f, 0.012f, 0.025f}, dark, R);                // the handle
+        drawBox(Vector3Add(c, Vector3Transform({0, 0.1f, 0.081f}, R)), {0.12f, 0.035f, 0.004f}, mark, R);   // a painted band
+    }
+}
+void drawWeaponCrate(Vector3 base, float yawDeg, Color tint) {
+    // a long wooden rifle crate with rope handles at the ends and stencilled boards
+    Matrix R = MatrixRotateY(-yawDeg * DEG2RAD);
+    Color wood = tint.a ? tint : Color{122, 96, 60, 255}, slat{96, 74, 46, 255}, rope{168, 150, 110, 255};
+    drawBox(Vector3Add(base, {0, 0.2f, 0}), {1.3f, 0.4f, 0.48f}, wood, R);
+    for (float x : {-0.6f, 0.0f, 0.6f}) drawBox(Vector3Add(base, Vector3Transform({x, 0.2f, 0}, R)), {0.06f, 0.42f, 0.5f}, slat, R);
+    drawBox(Vector3Add(base, {0, 0.41f, 0}), {1.32f, 0.03f, 0.5f}, slat, R);
+    for (float x : {-0.67f, 0.67f}) drawBox(Vector3Add(base, Vector3Transform({x, 0.3f, 0}, R)), {0.03f, 0.04f, 0.2f}, rope, R);
+}
+

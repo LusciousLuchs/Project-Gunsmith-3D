@@ -223,6 +223,7 @@ std::string npcToJson(const NpcDef& n) {
         if (!b.texture.empty()) { B[i]["texture"] = b.texture; B[i]["texScale"] = b.texScale; }
         if (b.fwd != 0) B[i]["fwd"] = b.fwd;
         if (b.gen) B[i]["gen"] = true;
+        if (b.body) B[i]["body"] = true;
     }
     o["bones"] = B;
     o["fight"] = {{"health", n.health}, {"speed", n.speed}, {"attack", n.attack}, {"damage", n.damage}, {"reach", n.reach},
@@ -259,6 +260,7 @@ bool npcFromJson(const std::string& text, NpcDef& out, std::string* err) {
         b.texture = str(jb, "texture", ""); b.texScale = std::clamp(num(jb, "texScale", 150), 1.0, 5000.0);
         b.fwd = num(jb, "fwd", 0);
         b.gen = jb.contains("gen") && jb["gen"].is_boolean() && jb["gen"].get<bool>();
+        b.body = jb.contains("body") && jb["body"].is_boolean() && jb["body"].get<bool>();
         n.bones.push_back(b);
     }
     if (n.bones.empty()) { if (err) *err = "it has no bones"; return false; }
@@ -335,7 +337,12 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
         hd.len = 88 * H;   // the palm: the fingers carry on from its end
         hd.twist = (std::string(sd) == "left" ? 1 : -1) * HAND_TWIST;   // the palm toward the thigh
     }
-    for (auto& b : n.bones) b.gen = true;
+    for (auto& b : n.bones) {
+        b.gen = true;
+        // the torso, neck, arms and legs are one continuous skin over these bones (drawn by the app), not pieces
+        for (const char* nm : {"Pelvis", "Chest", "Neck", "Upper arm", "Forearm", "Thigh", "Shin"})
+            if (b.name.rfind(nm, 0) == 0) b.body = true;
+    }
     // more pieces: hang one off a bone by name
     auto add = [&](const char* parent, NpcBone b) { b.parent = find(parent); b.gen = true; n.bones.push_back(b); return (int)n.bones.size() - 1; };
     auto piece = [&](const char* name, double at, double side, double fwd, double len, double r0, double r1, double bend, double turn,
@@ -356,8 +363,8 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     };
     for (int s : {-1, 1}) {
         double x = s * 0.36 * hw;
-        int e = add("Head", piece(s < 0 ? "Eye (left)" : "Eye (right)", 0.56, x, front(0.56, x) - 13, 22, 12, 12, 90, 0, "#eeeae4", "ball"));
-        NpcBone iris = piece(s < 0 ? "Iris (left)" : "Iris (right)", 0.62, 0, 0, 10, 6.5, 6.5, 0, 0, L.eyes, "ball");
+        int e = add("Head", piece(s < 0 ? "Eye (left)" : "Eye (right)", 0.56, x, front(0.56, x) - 14, 16, 11, 11, 90, 0, "#eeeae4", "ball"));
+        NpcBone iris = piece(s < 0 ? "Iris (left)" : "Iris (right)", 0.72, 0, 0, 6, 5.5, 5.5, 0, 0, L.eyes, "ball");   // (just showing out of the white)
         iris.parent = e; iris.gen = true; n.bones.push_back(iris);
     }
     add("Head", piece("Nose", 0.53, 0, front(0.45, 0) - 4, 46, 7, 13, 180, 0, L.skin, "box", 1.0, 1.6));
@@ -365,13 +372,7 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     // the chest
     if (fem)
         for (int s : {-1, 1}) add("Chest", piece(s < 0 ? "Bust (left)" : "Bust (right)", 0.58, s * 46, 32, 92, 52, 52, 90, s * 8, L.topColor, "ball", 1, 1));
-    // sleeves: a t-shirt's cover the top of the arm
-    if (L.top == "tshirt")
-        for (const char* sd : {"left", "right"}) {
-            std::string nm = std::string("Upper arm (") + sd + ")";
-            const NpcBone& ua = I(nm.c_str());
-            add(nm.c_str(), piece((std::string("Sleeve (") + sd + ")").c_str(), 0, 0, 0, ua.len / H * 0.45, ua.r0 / H + 6, ua.r0 / H + 3, 0, 0, L.topColor, "cylinder"));
-        }
+    // (sleeves, shorts and a tank top are colours on the one-piece body: see drawCharacterBody in the app)
     // fingers: three pieces each, from the end of the palm, a little curled; the thumb from the side of the palm
     for (const char* sd : {"left", "right"}) {
         std::string hn = std::string("Hand (") + sd + ")";
@@ -410,30 +411,57 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     // extras
     if (L.belt) {
         const NpcBone& pv = I("Pelvis");
-        add("Pelvis", piece("Belt", 0.72, 0, 0, 34, pv.r1 / H * 1.06 + 3, pv.r1 / H * 1.06 + 3, 0, 0, L.beltColor, "box", pv.width * 1.0, pv.depth * 1.08));
-        add("Pelvis", piece("Buckle", 0.77, 0, pv.r1 / H * pv.depth + 2, 6, 15, 15, 90, 0, "#b8a46a", "box", 1.3, 1));
+        // hugging the body at the waist: its thickness there, a little out (the body is a rounded square across)
+        double rw = npcBoneRadius(pv, 0.72) / H;
+        add("Pelvis", piece("Belt", 0.66, 0, 0, 30, rw * 1.04 + 2, rw * 1.04 + 2, 0, 0, L.beltColor, "cylinder", pv.width, pv.depth));
+        add("Pelvis", piece("Buckle", 0.76, 0, rw * pv.depth * 1.04 + 1, 6, 14, 14, 90, 0, "#b8a46a", "box", 1.3, 1));
     }
     if (L.hat) {
         add("Head", piece("Cap", 0.3, 0, -hr * 0.12, head.len / H * 0.78, hr + 14, hr + 14, 0, 0, L.hatColor, "ball", head.width * 1.04, 1.0));
         add("Head", piece("Cap brim", 0.62, 0, hr * 0.78, 70, 62, 52, 98, 0, L.hatColor, "box", 1.45, 0.1));
     }
-    if (L.headphones) {
-        // two cups over the ears, a band from each up over the top of the head
-        const double Lh = head.len / H, y0 = 0.48 * Lh + 30, x0 = hw + 18, x1 = hw * 0.45, y1 = Lh * 0.985 + 20;
-        const double bl = std::hypot(x0 - x1, y1 - y0), lean = std::atan2(x0 - x1, y1 - y0) * 57.2957795;
+    if (L.headphones) {   // ear defenders: tall oval cups with a soft cushion against the head, a wide padded band over the top
+        const double Lh = head.len / H, yc = 0.47 * Lh;   // (before height: piece() scales)
+        const double hairW = L.hair == "none" ? hw : (hr + 10) * head.width * 1.04;
         for (int s : {-1, 1}) {
-            add("Head", piece(s < 0 ? "Ear cup (left)" : "Ear cup (right)", 0.48, s * (hw - 4), -4, 28, 40, 40, 0, s * 90, L.headphonesColor, "cylinder"));
-            add("Head", piece(s < 0 ? "Headband (left)" : "Headband (right)", y0 / Lh, s * x0, -4, bl, 8, 8, 0, -s * lean, L.headphonesColor, "cylinder", 1, 2.2));
+            add("Head", piece(s < 0 ? "Ear cushion (left)" : "Ear cushion (right)", yc / Lh, s * (hw - 8), -6, 16, 33, 33, 0, s * 90, "#1d1f22", "cylinder", 1.3, 1));
+            add("Head", piece(s < 0 ? "Ear cup (left)" : "Ear cup (right)", yc / Lh, s * (hw + 6), -6, 26, 37, 34, 0, s * 90, L.headphonesColor, "capsule", 1.3, 1));
         }
-        add("Head", piece("Headband", y1 / Lh, -x1, -4, 2 * x1, 8, 8, 0, 90, L.headphonesColor, "cylinder", 1, 2.2));
+        // the band: a half-ellipse from the top of one cup, over the hair, down into the other, as a chain of pieces
+        // each turned a little more than the last
+        const double a = std::max(hw + 20, hairW + 10), y0 = yc + 28, top = L.hair == "none" ? Lh + 12 : 0.14 * Lh + Lh * 0.9 + 8 + 16;
+        const double bb = std::max(40.0, top - y0);
+        const int N = 22;   // (short pieces, square-ended: the band bends smoothly, no lumps)
+        std::vector<std::pair<double, double>> P;
+        for (int k = 0; k <= N; k++) { double th = 3.14159265358979 * (1 - (double)k / N); P.push_back({a * std::cos(th), y0 + bb * std::sin(th)}); }
+        double prevAng = 0; int prev = -1;
+        for (int k = 0; k < N; k++) {
+            double dx = P[k + 1].first - P[k].first, dy = P[k + 1].second - P[k].second;
+            double ang = std::atan2(dx, dy) * 57.2957795;   // from straight up toward the right
+            NpcBone seg = piece("Headband", k == 0 ? y0 / Lh : 1, k == 0 ? P[0].first : 0, k == 0 ? -2 : 0, std::hypot(dx, dy), 7, 7, 0, k == 0 ? ang : ang - prevAng,
+                                L.headphonesColor, "box", 1, 3.0);
+            seg.parent = k == 0 ? find("Head") : prev; seg.gen = true;
+            n.bones.push_back(seg);
+            prev = (int)n.bones.size() - 1; prevAng = ang;
+        }
     }
-    if (L.glasses) {
+    if (L.glasses) {   // sunglasses: two lenses in front of the eyes, a bridge, and arms back along the head to the ears
+        // a piece from p to q, given in the head's frame (x right, y up from the head's start, z forward; before height)
+        auto between = [&](const char* name, double x0, double y0, double z0, double x1, double y1, double z1, double r, const char* shape, double w, double dpt) {
+            double dx = x1 - x0, dy = y1 - y0, dz = z1 - z0, l = std::sqrt(dx * dx + dy * dy + dz * dz);
+            double bend = std::asin(std::clamp(dz / l, -1.0, 1.0)) * 57.2957795, turn = std::atan2(dx, dy) * 57.2957795;
+            add("Head", piece(name, y0 / (head.len / H), x0, z0, l, r, r, bend, turn, L.glassesColor, shape, w, dpt));
+        };
+        const double Lh = head.len / H, y = 0.56 * Lh, ex = 0.36 * hw, lw = 23;   // lens half-width
+        const double zl = front(0.56, ex) + 9;   // just in front of the eyes
         for (int s : {-1, 1}) {
-            double x = s * 0.36 * hw;
-            add("Head", piece(s < 0 ? "Lens (left)" : "Lens (right)", 0.56, x, front(0.56, x) + 6, 4, 21, 21, 90, 0, L.glassesColor, "cylinder"));
-            add("Head", piece(s < 0 ? "Glasses arm (left)" : "Glasses arm (right)", 0.57, s * (hw * 0.97), front(0.56, x) + 4, hr * 1.0, 3, 3, -90, 0, L.glassesColor, "cylinder"));
+            // a lens: a short wide cylinder facing forward (its width across, a little less tall)
+            add("Head", piece(s < 0 ? "Lens (left)" : "Lens (right)", y / Lh, s * ex, zl - 2, 4, lw / 1.15, lw / 1.15, 90, 0, L.glassesColor, "cylinder", 1.15, 1));
+            double xo = s * (ex + lw), xs = s * (hw + 3), zs = front(0.56, hw * 0.92) + 8;
+            between(s < 0 ? "Glasses hinge (left)" : "Glasses hinge (right)", xo, y + 4, zl, xs, y + 4, zs, 2.6, "cylinder", 1, 1);
+            between(s < 0 ? "Glasses arm (left)" : "Glasses arm (right)", xs, y + 4, zs, s * (hw + 1), y - 6, -hr * 0.25, 2.6, "cylinder", 1, 1);
         }
-        add("Head", piece("Glasses bridge", 0.57, -0.16 * hw, front(0.56, 0.36 * hw) + 8, 0.32 * hw, 4, 4, 0, 90, L.glassesColor, "cylinder"));
+        between("Glasses bridge", -(ex - lw) - 3, y + 6, zl + 1, (ex - lw) + 3, y + 6, zl + 1, 2.6, "cylinder", 1, 1);
     }
     // your own gear, kept: on the bone of the same name (else the chest)
     if (keep)

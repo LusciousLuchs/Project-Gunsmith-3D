@@ -341,6 +341,52 @@ static V3 jv3(const json& j) { return {j.at(0).get<double>(), j.at(1).get<double
 static json c3j(const double* c) { return json::array({c[0], c[1], c[2]}); }
 static void jc3(const json& j, double* c) { for (int i = 0; i < 3; i++) c[i] = j.at(i).get<double>(); }
 
+LampAt lampOf(const Entity& e) {
+    LampAt L;
+    L.pos = e.pos;
+    double y = e.yaw * 3.14159265358979 / 180, p = e.pitch * 3.14159265358979 / 180;
+    L.dir = {std::cos(p) * std::cos(y), std::sin(p), std::cos(p) * std::sin(y)};
+    for (int i = 0; i < 3; i++) L.color[i] = e.color[i];
+    L.power = e.power; L.range = e.range;
+    L.cosCone = e.cone > 0 ? std::cos(e.cone / 2 * 3.14159265358979 / 180) : -2;
+    return L;
+}
+// one lamp on a point (the shader does the same): brightest close, gone at its reach; a spot fades at its cone's edge
+static double lampFalloff(const LampAt& L, V3 p, V3 n) {
+    V3 d = L.pos - p;
+    double dist = len(d);
+    if (dist > L.range) return 0;
+    V3 l = dist > 1e-6 ? d * (1 / dist) : V3{0, 1, 0};
+    double q = dist / L.range, win = std::max(0.0, 1 - q * q * q * q);   // (fades out only near its reach)
+    double att = L.power * win * win / (1 + dist * dist);
+    if (L.cosCone > -1.5) {
+        double c = dot(l * -1, L.dir), inner = std::min(1.0, L.cosCone + 0.08);
+        double t = std::clamp((c - L.cosCone) / std::max(1e-4, inner - L.cosCone), 0.0, 1.0);
+        att *= t * t * (3 - 2 * t);
+    }
+    return att * std::max(0.0, dot(n, l));
+}
+void lightAt(const Map& m, V3 p, V3 n, double out[3]) {
+    const Look& k = m.look;
+    double day = std::clamp(k.daylight, 0.0, 1.0);
+    double yw = k.sunYaw * 3.14159265358979 / 180, pt = k.sunPitch * 3.14159265358979 / 180;
+    V3 sun{std::cos(pt) * std::cos(yw), std::sin(pt), std::cos(pt) * std::sin(yw)};
+    double sd = std::max(0.0, dot(n, sun)) * day, hemi = 0.5 + 0.5 * n.y;
+    double floorAmb = 0.035;   // (never pitch black: you can just make things out)
+    for (int i = 0; i < 3; i++) {
+        double amb = k.ambient[i] * (0.75 + 0.45 * hemi) * day;
+        out[i] = 0.7 * std::max(amb, floorAmb) + 0.58 * k.sun[i] * 1.15 * sd;
+    }
+    double acc[3] = {0, 0, 0};
+    for (auto& e : m.ents)
+        if (e.type == "light") {
+            LampAt L = lampOf(e);
+            double a = lampFalloff(L, p, n);
+            for (int i = 0; i < 3; i++) acc[i] += a * L.color[i];
+        }
+    for (int i = 0; i < 3; i++) out[i] += 0.9 * acc[i] / (1 + 0.45 * acc[i]) / 0.7;   // (as the shader: bright, not burnt out)
+}
+
 std::string mapToJson(const Map& m) {
     json j;
     j["format"] = "gunsmith3d-map";
@@ -348,6 +394,7 @@ std::string mapToJson(const Map& m) {
     j["name"] = m.name;
     j["look"] = {{"sunYaw", m.look.sunYaw}, {"sunPitch", m.look.sunPitch}, {"sun", c3j(m.look.sun)}, {"ambient", c3j(m.look.ambient)},
                  {"skyTop", c3j(m.look.skyTop)}, {"skyHorizon", c3j(m.look.skyHorizon)}, {"fogStart", m.look.fogStart}, {"fogEnd", m.look.fogEnd}};
+    if (m.look.daylight != 1) j["look"]["daylight"] = m.look.daylight;
     json bs = json::array();
     for (auto& b : m.brushes) {
         json fs = json::array();
@@ -366,6 +413,7 @@ std::string mapToJson(const Map& m) {
         if (!e.ref.empty()) je["ref"] = e.ref;
         if (e.count != 1) je["count"] = e.count;
         if (e.respawn > 0) je["respawn"] = e.respawn;
+        if (e.type == "light") je["light"] = {{"color", c3j(e.color)}, {"power", e.power}, {"range", e.range}, {"cone", e.cone}, {"pitch", e.pitch}};
         es.push_back(je);
     }
     j["entities"] = es;
@@ -396,6 +444,7 @@ bool mapFromJson(const std::string& s, Map& out) {
             if (l.contains("skyTop")) jc3(l["skyTop"], m.look.skyTop);
             if (l.contains("skyHorizon")) jc3(l["skyHorizon"], m.look.skyHorizon);
             m.look.fogStart = l.value("fogStart", m.look.fogStart); m.look.fogEnd = l.value("fogEnd", m.look.fogEnd);
+            m.look.daylight = std::clamp(l.value("daylight", 1.0), 0.0, 1.0);
         }
         for (auto& jb : j.value("brushes", json::array())) {
             Brush b;
@@ -418,6 +467,14 @@ bool mapFromJson(const std::string& s, Map& out) {
             e.ref = je.value("ref", "");
             e.count = std::max(1, je.value("count", 1));
             e.respawn = std::max(0.0, je.value("respawn", 0.0));
+            if (je.contains("light") && je["light"].is_object()) {
+                auto& jl = je["light"];
+                if (jl.contains("color")) jc3(jl["color"], e.color);
+                e.power = std::clamp(jl.value("power", 3.0), 0.0, 1000.0);
+                e.range = std::clamp(jl.value("range", 10.0), 0.5, 500.0);
+                e.cone = std::clamp(jl.value("cone", 0.0), 0.0, 179.0);
+                e.pitch = std::clamp(jl.value("pitch", -90.0), -90.0, 90.0);
+            }
             m.ents.push_back(e);
         }
         if (j.contains("npcs") && j["npcs"].is_object())
@@ -492,10 +549,28 @@ Map builtinRange() {
         box({x, 0, z - 0.05}, {x + 0.1, 0.9, z + 0.05}, steel);           // post
         box({x - 0.03, 0.9, z - 0.25}, {x + 0.0, 1.4, z + 0.25}, orange);  // plate
     }
+    // evening: the range is lit by its own lamps (under the roof, over each target, on the steel)
+    m.look.daylight = 0.05;
+    auto lamp = [&](V3 at, double power, double range, double cone, double yaw, double pitch, double r, double g, double b) {
+        Entity e; e.type = "light"; e.pos = at; e.power = power; e.range = range; e.cone = cone; e.yaw = yaw; e.pitch = pitch;
+        e.color[0] = r; e.color[1] = g; e.color[2] = b; m.ents.push_back(e);
+    };
+    for (double z : {-8.0, 0.0, 8.0}) lamp({-3.2, 2.75, z}, 3.5, 9, 0, 0, -90, 1.0, 0.85, 0.65);       // warm lamps under the roof
+    for (int lane = -3; lane <= 3; lane++) {                                                         // a light over each paper target
+        double z = lane * 3.2, x = lane % 3 == 0 ? 25 : (std::abs(lane) == 1 ? 7 : 15);
+        lamp({x - 1.2, 2.8, z}, 6, 7, 90, 0, -50, 0.95, 0.97, 1.0);
+    }
+    lamp({58, 4.5, -13.5}, 70, 40, 70, 60, -12, 0.9, 0.95, 1.0);                                     // floodlights on the steel
+    lamp({58, 4.5, 13.5}, 70, 40, 70, -60, -12, 0.9, 0.95, 1.0);
+    lamp({1.3, 2.6, 0}, 30, 30, 50, 0, -8, 0.95, 0.97, 1.0);                                          // the firing line's floodlight
     Entity plates; plates.type = "armor_plate"; plates.pos = {-3.6, 0, 2.2}; plates.count = 3; plates.respawn = 20; plates.yaw = 20;   // to try the armour bar
     m.ents.push_back(plates);
     Entity crate; crate.type = "attachment_crate"; crate.pos = {-3.6, 0, -2.2}; crate.yaw = -20;   // to try attachments
     m.ents.push_back(crate);
+    Entity ammo; ammo.type = "ammo_box"; ammo.pos = {-3.6, 0, 4.4}; ammo.yaw = 10;      // spare ammunition
+    m.ents.push_back(ammo);
+    Entity guns; guns.type = "weapon_crate"; guns.pos = {-3.8, 0, -4.6}; guns.yaw = -10;   // more guns
+    m.ents.push_back(guns);
     Entity start;
     start.pos = {-3, 0, 0};
     start.yaw = 0;

@@ -70,7 +70,10 @@ void mapToolbar() {
         {ICON_FA_PERSON, "Player start", MTool::Start}, {ICON_FA_GHOST, "NPC: place an NPC from the NPC editor", MTool::Npc},
         {ICON_FA_BOX_OPEN, "Gun spawner: a stand players take guns from", MTool::Spawner},
         {ICON_FA_SHIELD_HALVED, "Armour plates: walk over them to fill the armour bar", MTool::Armor},
-        {ICON_FA_TOOLBOX, "Attachment crate: fit attachments to the gun in your hands", MTool::Crate}};
+        {ICON_FA_TOOLBOX, "Attachment crate: fit attachments to the gun in your hands", MTool::Crate},
+        {ICON_FA_LIGHTBULB, "Light: a lamp or a spotlight. Click a ceiling, a wall or the floor", MTool::Light},
+        {ICON_FA_BOXES_STACKED, "Ammo box: press F by it to fill up the ammunition for every gun you carry", MTool::Ammo},
+        {ICON_FA_BOX, "Weapon crate: press F by it to take any of your guns (like a gun spawner)", MTool::Weapons}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -98,8 +101,15 @@ void mapToolbar() {
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
     unitsSwitch(ImGui::GetFrameHeight());
     // right side
-    float right = 4 * (sz + 4 * S()) + 110 * S() + 10 * S();
+    float right = 5 * (sz + 4 * S()) + 110 * S() + 10 * S();
     ImGui::SameLine(GetScreenWidth() - right);
+    {   // how the view is lit while you build: click to go round the three
+        static const char* tips[] = {"As players will see it: lit only by its daylight and its own lights.\nClick: a work light", "Work light: dark maps still show while you build, the lamps on top.\nClick: fullbright",
+                                     "Fullbright: every face in its own colour, no shading, no fog: easiest for placing things.\nClick: as players will see it"};
+        const char* icons[] = {ICON_FA_MOON, ICON_FA_SUN, ICON_FA_LIGHTBULB};
+        if (iconBtn(icons[ME.lightMode], tips[ME.lightMode], ME.lightMode > 0)) ME.lightMode = (ME.lightMode + 1) % 3;
+    }
+    gap(4);
     if (iconBtn(ICON_FA_BORDER_ALL, "Ground grid", ME.showGrid)) ME.showGrid = !ME.showGrid;
     gap(4);
     if (iconBtn(ICON_FA_MAP, ME.top ? "3D view (V)" : "Top view (V)", ME.top)) { if (!ME.top) ME.topC = {ME.cam.x, 0, ME.cam.z}; ME.top = !ME.top; }
@@ -139,6 +149,52 @@ static void editTab() {
         } else if (e.type == "gun_spawner") {
             heading("Gun spawner");
             ImGui::TextDisabled("Walk up to it on the map and press F: take any of your guns.");
+        } else if (e.type == "light") {
+            heading("Light");
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled("Lights everything within its reach. It doesn't cast shadows yet: it shines through walls, so keep its reach to its room.");
+            ImGui::PopTextWrapPos();
+            static bool ed = false;
+            auto tr = [&](bool changed) {
+                if (changed) { if (!ed) { meSnapshot(); ed = true; } ME.version++; }
+                if (ImGui::IsItemDeactivatedAfterEdit()) { ed = false; meChanged(); }
+            };
+            float col[3] = {(float)e.color[0], (float)e.color[1], (float)e.color[2]};
+            prop("Colour");
+            if (ImGui::ColorEdit3("##lcol", col, ImGuiColorEditFlags_NoInputs)) { for (int k = 0; k < 3; k++) e.color[k] = col[k]; tr(true); } else tr(false);
+            ImGui::SameLine(0, 8 * S());
+            struct Pre { const char* n; double c[3]; } pres[] = {{"Warm", {1.0, 0.82, 0.58}}, {"White", {0.95, 0.97, 1.0}}, {"Blue", {0.72, 0.84, 1.0}}, {"Red", {1.0, 0.18, 0.12}}};
+            for (auto& q : pres) { if (ImGui::SmallButton(q.n)) { meSnapshot(); for (int k = 0; k < 3; k++) e.color[k] = q.c[k]; meChanged(); } ImGui::SameLine(0, 2 * S()); }
+            ImGui::NewLine();
+            float pw = (float)e.power, rg = (float)e.range;
+            prop("Brightness", "How bright it is close up: 3 a room lamp, 30 a work light, 100 and up a floodlight.");
+            if (ImGui::SliderFloat("##lpow", &pw, 0, 200, "%.1f", ImGuiSliderFlags_Logarithmic)) { e.power = pw; tr(true); } else tr(false);
+            typeable();
+            prop("Reach", "Nothing past this distance gets its light.");
+            if (ImGui::SliderFloat("##lrange", &rg, 1, 150, "%.1f m", ImGuiSliderFlags_Logarithmic)) { e.range = rg; tr(true); } else tr(false);
+            typeable();
+            bool spot = e.cone > 0;
+            prop("Spotlight", "A cone of light, aimed (a floodlight, a ceiling spot). Off: it shines all round.");
+            if (ImGui::Checkbox("##lspot", &spot)) { meSnapshot(); e.cone = spot ? 60 : 0; meChanged(); }
+            if (spot) {
+                float cn = (float)e.cone, pt = (float)e.pitch;
+                prop("Cone");
+                if (ImGui::SliderFloat("##lcone", &cn, 5, 170, "%.0f deg")) { e.cone = cn; tr(true); } else tr(false);
+                typeable();
+                prop("Aim up / down", "-90 straight down, 0 level, 90 straight up. Facing (below) turns it.");
+                if (ImGui::SliderFloat("##lpitch", &pt, -90, 90, "%.0f deg")) { e.pitch = pt; tr(true); } else tr(false);
+                typeable();
+            }
+        } else if (e.type == "ammo_box") {
+            heading("Ammo box");
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled("Walk up to it and press F: every gun you carry gets its spare ammunition filled (ten magazines' worth). It never runs out.");
+            ImGui::PopTextWrapPos();
+        } else if (e.type == "weapon_crate") {
+            heading("Weapon crate");
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled("Walk up to it and press F: take any of your guns, as from a gun spawner.");
+            ImGui::PopTextWrapPos();
         } else if (e.type == "attachment_crate") {
             heading("Attachment crate");
             ImGui::TextDisabled("Walk up to it on the map and press F: fit attachments from your Attachments folder\nto the gun in your hands (or load a loadout).");
@@ -366,6 +422,15 @@ static void mapTab() {
     prop("Name");
     std::string name = ME.map.name;
     if (inputText("##name", name)) { ME.map.name = name; ME.dirty = true; }
+    if (section("Light", true)) {
+        float day = (float)L.daylight;
+        prop("Daylight", "1: broad daylight. 0: night, or indoors with no windows: only the map's own lights (the Light tool) and a gun's light show anything.");
+        track(ImGui::SliderFloat("##day", &day, 0, 1, "%.2f")); typeable(); L.daylight = std::clamp((double)day, 0.0, 1.0);
+        int lamps = 0; for (auto& e : ME.map.ents) if (e.type == "light") lamps++;
+        ImGui::TextDisabled("%d light%s on this map (the nearest %d shine at once).", lamps, lamps == 1 ? "" : "s", MAX_LAMPS);
+        prop("View while building", "How the editor lights the view (also the button at the top right). Players always see it as played.");
+        ImGui::Combo("##lmode", &ME.lightMode, "As played\0Work light\0Fullbright\0");
+    }
     if (section("Sun and sky", true)) {
         float yw = (float)L.sunYaw, pt = (float)L.sunPitch;
         prop("Sun direction");

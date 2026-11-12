@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons };
 
 struct MapEd {
     gmap::Map map;
@@ -24,6 +24,7 @@ struct MapEd {
     int mat = 1;                           // material for new brushes
     int cylSides = 12, stairSteps = 8;
     bool showGrid = true;
+    int lightMode = 1;                     // 0 as players will see it, 1 a work light (dark maps still show), 2 fullbright (no shading, no fog)
     // camera
     gmap::V3 cam{-10, 4, 0};
     double yaw = 0, pitch = -0.25;         // radians, yaw 0 looks along +X

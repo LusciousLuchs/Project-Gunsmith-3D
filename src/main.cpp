@@ -219,6 +219,11 @@ int main(int argc, char** argv) {
         if (const char* e = std::getenv("GUNSMITH_MAPFACE")) ME.face = std::atoi(e);
         if (std::getenv("GUNSMITH_MAPTOP")) { ME.top = true; ME.topC = {40, 0, 0}; ME.topH = 70; }
         if (const char* e = std::getenv("GUNSMITH_MAPTOOL")) ME.tool = (MTool)std::atoi(e);
+        if (const char* e = std::getenv("GUNSMITH_MAPLIGHT")) ME.lightMode = std::atoi(e);   // (screenshots) 0 as played, 1 work light, 2 fullbright
+        if (const char* e = std::getenv("GUNSMITH_MAPENT")) {   // (screenshots) pick the nth light
+            int k = std::atoi(e), seen = 0;
+            for (size_t i = 0; i < ME.map.ents.size(); i++) if (ME.map.ents[i].type == "light" && seen++ == k) { ME.ent = (int)i; ME.sel.clear(); }
+        }
         if (const char* e = std::getenv("GUNSMITH_MAPCAM")) std::sscanf(e, "%lf,%lf,%lf,%lf,%lf", &ME.cam.x, &ME.cam.y, &ME.cam.z, &ME.yaw, &ME.pitch);
         if (walkArg) meWalk(false);
     }

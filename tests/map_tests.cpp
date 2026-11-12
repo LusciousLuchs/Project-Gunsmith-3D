@@ -17,6 +17,32 @@ using namespace gmap;
 static bool near(double a, double b, double e = 1e-6) { return std::fabs(a - b) < e; }
 
 void mapTests(int& failures) {
+    std::printf("Map lighting: daylight and lamps\n");
+    {
+        Map m;
+        Map back;
+        CHECK(mapFromJson(mapToJson(m), back) && near(back.look.daylight, 1) && mapToJson(m).find("daylight") == std::string::npos, "older maps stay in daylight (and save as before)");
+        m.look.daylight = 0;
+        double dark[3]; lightAt(m, {0, 0, 0}, {0, 1, 0}, dark);
+        CHECK(dark[0] < 0.05 && dark[1] < 0.05, "a night map with no lights is nearly black");
+        Entity l; l.type = "light"; l.pos = {0, 2.5, 0}; l.power = 6; l.range = 8; l.color[0] = 1; l.color[1] = 0.5; l.color[2] = 0.25; m.ents.push_back(l);
+        double under[3], far[3], beyond[3];
+        lightAt(m, {0, 0, 0}, {0, 1, 0}, under); lightAt(m, {4, 0, 0}, {0, 1, 0}, far); lightAt(m, {9, 0, 0}, {0, 1, 0}, beyond);
+        CHECK(under[0] > 0.5 && far[0] < under[0] && far[0] > dark[0] && near(beyond[0], dark[0], 1e-9), "a lamp lights the floor under it, less further off, nothing past its reach");
+        CHECK(under[0] > under[1] && under[1] > under[2], "in its own colour");
+        double wall[3]; lightAt(m, {0, 0, 0}, {0, -1, 0}, wall);
+        CHECK(near(wall[0], dark[0], 1e-9), "a face turned away from it gets none");
+        m.ents[0].cone = 40; m.ents[0].pitch = -90;
+        double inCone[3], outCone[3];
+        lightAt(m, {0, 0, 0}, {0, 1, 0}, inCone); lightAt(m, {3, 0, 0}, {0, 1, 0}, outCone);
+        CHECK(inCone[0] > 0.5 && near(outCone[0], dark[0], 1e-9), "a spotlight lights only inside its cone");
+        CHECK(mapFromJson(mapToJson(m), back) && back.ents.size() == 1 && back.ents[0].type == "light" && near(back.ents[0].power, 6) && near(back.ents[0].range, 8) &&
+              near(back.ents[0].cone, 40) && near(back.ents[0].color[1], 0.5) && near(back.look.daylight, 0), "a map keeps its daylight and its lights");
+        Map r = builtinRange();
+        int lamps = 0; for (auto& e : r.ents) if (e.type == "light") lamps++;
+        double paper[3]; lightAt(r, {7, 1.45, 0}, {-1, 0, 0}, paper);
+        CHECK(r.look.daylight < 0.2 && lamps >= 8 && paper[0] > 0.3, "the practice range is dark, lit by its own lamps (its paper targets well lit)");
+    }
     std::printf("Armour: the bar and plates\n");
     {
         double bar = 0;

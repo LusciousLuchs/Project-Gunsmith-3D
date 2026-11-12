@@ -43,8 +43,8 @@ namespace {
 struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; double mass = 0.008; int npc = -1; double dmg = 0; };   // dmg: an NPC gun's set damage to you (0: by energy)   // npc: fired by that NPC (-1: by you)
 struct Impact { V3 p, n; bool steel = false; double r = 0.005; };
 struct Target { V3 c, n; double size = 0.6; };
-struct Carried { Design d; std::unique_ptr<sim::Sim> S; std::vector<fit::Item> fit; };   // (fit: its attachments)   // a gun you carry (the one in your hands lives in A.design / A.S)
-struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; std::vector<fit::Item> fit; };   // one lying on the ground
+struct Carried { Design d; std::unique_ptr<sim::Sim> S; std::vector<fit::Item> fit; int reserve = -1; };   // (fit: its attachments)   // a gun you carry (the one in your hands lives in A.design / A.S)
+struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; std::vector<fit::Item> fit; int reserve = -1; };   // one lying on the ground
 
 struct Range {
     gmap::Map map;
@@ -95,6 +95,9 @@ struct Range {
     bool bayonet = false; fit::P3 tip; double stabDmg = 12, reach = 0.25;   // (no bayonet: a hit with the muzzle)
     float stabT = -1; bool stabHit = false;   // a stab under way: how long since it started
     bool freeMouse = false;              // Alt held: the mouse is free for the attachments' buttons
+    // ammunition: magazines never run out, rounds do. The gun in your hands carries `reserve` rounds besides what's in it
+    // (up to 10 magazines' worth); an ammo box fills it up again
+    int reserve = 0, reserveMax = 0, roundsIn = -1;
     RenderTexture2D pip{}; bool pipOk = false;   // a scope's magnified picture
     double zero = 0;                     // the bore tipped up so bullets meet the line of sight at the zero distance (rad)
 };
@@ -301,8 +304,52 @@ void stepBullets(double dt) {
     R.bullets.erase(std::remove_if(R.bullets.begin(), R.bullets.end(), [](const Bullet& b) { return b.life < 0; }), R.bullets.end());
 }
 
+static int magCapacity(const Design& d) {
+    int cap = 0;
+    for (auto& b : d.bodies) if (b.magazine) cap = std::max(cap, b.magCap);
+    return std::max(1, cap);
+}
+// What's been loaded, so new rounds can be counted: which magazine is in the gun (its index; -1 none) and its rounds
+// when last seen, and the rounds in built-in magazines (a tube, a fixed box)
+static int gMagIdx = -1, gMagRounds = 0, gBuiltIn = 0;
+static void seeAmmo(sim::Sim& S) {
+    sim::Body* M = sim::seatedMag(S);
+    gMagIdx = M ? (int)(M - &S.bodies[0]) : -1;
+    gMagRounds = M ? M->rounds : 0;
+    gBuiltIn = 0;
+    for (auto& b : S.bodies) if (b.builtInMag && !b.gone) gBuiltIn += b.rounds;
+}
+static void armAmmo(int reserve) {   // the gun in your hands: its reserve (-1: a fresh gun, full)
+    R.reserveMax = std::max(10, 10 * magCapacity(A.design));
+    R.reserve = reserve < 0 ? R.reserveMax : std::min(reserve, R.reserveMax);
+    R.roundsIn = -1;
+}
+// after the gun has run: a magazine put in takes its rounds out of the reserve, and the one taken out gives back what
+// was left in it; topping up a magazine or a tube takes what went in. Not enough spare: only what there was goes in.
+static void countAmmo(sim::Sim& S) {
+    if (R.roundsIn < 0) { seeAmmo(S); R.roundsIn = 0; return; }   // (a gun just taken up: what's in it is free)
+    auto take = [&](int want, int& from) {   // the reserve pays for `want` rounds; the rest come back out of `from`
+        int k = std::min(want, R.reserve);
+        R.reserve -= k;
+        from -= want - k;
+    };
+    sim::Body* M = sim::seatedMag(S);
+    int idx = M ? (int)(M - &S.bodies[0]) : -1;
+    if (idx != gMagIdx) {
+        if (gMagIdx >= 0) R.reserve = std::min(R.reserveMax, R.reserve + gMagRounds);   // the old one out: its rounds back
+        if (M) take(M->rounds, M->rounds);
+    } else if (M && M->rounds > gMagRounds) take(M->rounds - gMagRounds, M->rounds);
+    int built = 0;
+    for (auto& b : S.bodies) if (b.builtInMag && !b.gone) built += b.rounds;
+    if (built > gBuiltIn) {
+        int over = built - gBuiltIn;
+        for (auto& b : S.bodies) if (over > 0 && b.builtInMag && !b.gone) { int k = std::min(over, b.rounds); int before = b.rounds; take(k, b.rounds); over -= k; (void)before; }
+    }
+    seeAmmo(S);
+}
 void reload() {
     if (!A.S) return;
+    if (R.reserve <= 0) { toast("Out of ammunition: find an ammo box."); return; }
     auto& S = *A.S;
     S.design.anims = A.design.anims;
     bool empty = sim::seatedMag(S) && sim::seatedMag(S)->rounds == 0 && !S.chambered;
@@ -313,7 +360,7 @@ void reload() {
         return;
     }
     if (sim::fillMagazines(S) > 0) { toast("Topped up."); return; }
-    if (sim::handLoad(S)) return;
+    if (sim::handLoad(S)) { R.reserve--; return; }   // (one round, by hand)
     toast("Open the action first (B), then reload.");
 }
 }  // namespace
@@ -402,18 +449,20 @@ static void armGun() {
 }
 // hands: put the gun in your hands back in its slot, and take slot k (-1: nothing)
 static void holdSlot(int k) {
+    if (R.cur >= 0 && R.cur < (int)R.inv.size()) R.inv[R.cur].reserve = R.reserve;
     if (R.cur >= 0 && R.cur < (int)R.inv.size()) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); std::swap(A.fitItems, R.inv[R.cur].fit); }
     else { A.design = Design(); A.S.reset(); A.fitItems.clear(); }
     R.cur = k >= 0 && k < (int)R.inv.size() ? k : -1;
     if (R.cur >= 0) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); std::swap(A.fitItems, R.inv[R.cur].fit); }
     else { A.design = Design(); A.S.reset(); A.fitItems.clear(); }
     armGun();
+    armAmmo(R.cur >= 0 ? R.inv[R.cur].reserve : 0);
 }
 // a new gun into your hands (a free slot, or in place of the one you hold, which is dropped)
-static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr, std::vector<fit::Item> fitted = {}) {
+static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr, std::vector<fit::Item> fitted = {}, int reserve = -1) {
     if (R.inv.size() >= 4 && R.cur >= 0) {   // full: what you hold goes on the ground
         holdSlot(R.cur);   // (back in its slot)
-        WorldGun w; w.d = std::move(R.inv[R.cur].d); w.S = std::move(R.inv[R.cur].S); w.fit = std::move(R.inv[R.cur].fit);
+        WorldGun w; w.d = std::move(R.inv[R.cur].d); w.S = std::move(R.inv[R.cur].S); w.fit = std::move(R.inv[R.cur].fit); w.reserve = R.inv[R.cur].reserve;
         w.pos = R.pl.feet + gmap::playerForward(R.pl) * 0.6; w.pos.y = R.pl.feet.y; w.yaw = R.pl.yaw * RAD2DEG;
         R.ground.push_back(std::move(w));
         R.inv.erase(R.inv.begin() + R.cur);
@@ -430,11 +479,12 @@ static void takeGun(const Design& d, std::unique_ptr<sim::Sim> S = nullptr, std:
     if (S) A.S = std::move(S); else restartTest();
     A.mode = Mode::Test;
     armGun();
+    armAmmo(reserve);
 }
 // the gun in your hands, put down on the ground in front of you
 static void dropGun() {
     if (R.cur < 0) return;
-    WorldGun w; w.d = A.design; w.S = std::move(A.S); w.fit = std::move(A.fitItems); A.fitItems.clear();
+    WorldGun w; w.d = A.design; w.S = std::move(A.S); w.fit = std::move(A.fitItems); A.fitItems.clear(); w.reserve = R.reserve;
     V3 f = gmap::playerForward(R.pl); f.y = 0; f = gmap::norm(f);
     w.pos = R.pl.feet + f * 0.7; w.pos.y = R.pl.feet.y; w.yaw = R.pl.yaw * RAD2DEG + 90;
     R.ground.push_back(std::move(w));
@@ -525,7 +575,7 @@ bool rangeSpawnerOpen() { return inRange() && R.spawnerOpen; }
 // an attachment crate: the gun in your hands on the fitting bench (the designer's view, the gun itself locked)
 static bool gForceAim = false, gForceFree = false;
 void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) a loadout on the gun in hand; aiming held
-    if (!loadout.empty() && R.cur >= 0) { loadLoadout(loadout); restartTest(); armGun(); }
+    if (!loadout.empty() && R.cur >= 0) { loadLoadout(loadout); restartTest(); armGun(); R.roundsIn = -1; }
     gForceAim = aim;
     gForceFree = std::getenv("GUNSMITH_RANGEALT") != nullptr;   // (the attachments' buttons shown)
     if (std::getenv("GUNSMITH_RANGEPRONE")) R.want = gmap::Stance::Prone;   // (lying down)
@@ -545,6 +595,7 @@ void backToRange() {
     A.screen = Screen::Range;
     A.mode = Mode::Test;
     restartTest();   // (built again: the attachments' weight is in it now)
+    R.roundsIn = -1;   // (the rebuilt gun's rounds aren't new ammunition)
     armGun();
     R.lastYaw = R.pl.yaw; R.lastPitch = R.pl.pitch;
     DisableCursor();
@@ -688,7 +739,7 @@ void rangeUpdate(float dt, bool modal) {
         int spawner = -1, ground = -1, crate = -1;
         double best = 1e9;
         for (size_t i = 0; i < R.map.ents.size(); i++) {
-            if (R.map.ents[i].type != "gun_spawner") continue;
+            if (R.map.ents[i].type != "gun_spawner" && R.map.ents[i].type != "weapon_crate") continue;   // (a crate of guns: the same)
             V3 d = R.map.ents[i].pos - me; d.y = 0;
             double l = gmap::len(d);
             if (l < 1.8 && l < best) { best = l; spawner = (int)i; }
@@ -699,19 +750,37 @@ void rangeUpdate(float dt, bool modal) {
             double l = gmap::len(d);
             if (l < 1.6 && l < best) { best = l; crate = (int)i; spawner = -1; }
         }
+        int ammo = -1;
+        for (size_t i = 0; i < R.map.ents.size(); i++) {   // ammo boxes: fill up every gun you carry
+            if (R.map.ents[i].type != "ammo_box") continue;
+            V3 d = R.map.ents[i].pos - me; d.y = 0;
+            double l = gmap::len(d);
+            if (l < 1.6 && l < best) { best = l; ammo = (int)i; spawner = -1; crate = -1; }
+        }
         for (size_t i = 0; i < R.ground.size(); i++) {
             V3 d = R.ground[i].pos - me; d.y = 0;
             double l = gmap::len(d);
             if (l < 1.6 && gmap::dot(gmap::norm(d), V3{fw.x, 0, fw.z}) > 0.2 && l < best) { best = l; ground = (int)i; spawner = -1; }
         }
+        if (ground >= 0) ammo = -1;
         if (ground >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": pick up the " + R.ground[ground].d.name;
+        else if (ammo >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (R.inv.empty() ? ": ammunition (no gun to fill)" : R.reserve >= R.reserveMax ? ": ammunition (you're full)" : ": take ammunition");
         else if (spawner >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": take a gun";
         else if (crate >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (R.cur >= 0 ? ": fit attachments to the " + A.design.name : ": attachments (hold a gun first)");
         if (actPressed(Act::Use)) {
             if (ground >= 0) {
                 WorldGun w = std::move(R.ground[ground]);
                 R.ground.erase(R.ground.begin() + ground);
-                takeGun(w.d, std::move(w.S), std::move(w.fit));
+                takeGun(w.d, std::move(w.S), std::move(w.fit), w.reserve);
+            } else if (ammo >= 0) {
+                if (R.cur >= 0) R.inv[R.cur].reserve = R.reserve;
+                int got = 0;
+                for (auto& c : R.inv) {   // every gun you carry: up to ten magazines' worth (each its own cartridge)
+                    int mx = std::max(10, 10 * magCapacity(&c == &R.inv[std::max(0, R.cur)] && R.cur >= 0 ? A.design : c.d));
+                    if (c.reserve < mx) { got += mx - std::max(0, c.reserve); c.reserve = mx; }
+                }
+                if (R.cur >= 0) { got += 0; R.reserve = R.inv[R.cur].reserve; R.reserveMax = std::max(10, 10 * magCapacity(A.design)); }
+                if (got > 0) { R.feed = TextFormat("Ammunition: +%d rounds", got); R.feedT = 2.5f; playAction(0.3, 1.5); }
             } else if (spawner >= 0) { R.spawnerOpen = true; EnableCursor(); return; }
             else if (crate >= 0 && R.cur >= 0) { openRangeFitting(); return; }
         }
@@ -771,6 +840,7 @@ void rangeUpdate(float dt, bool modal) {
         else S.magRelease = held[0];
         sim::setKey(S, "k1", held[1]); sim::setKey(S, "k2", held[2]); sim::setKey(S, "k3", held[3]); sim::setKey(S, "k4", held[4]);
         { perf::Scope t(perf::Physics); perf::substeps(sim::run(S, dt, 1200)); }
+        countAmmo(S);   // what went into the gun came out of your ammunition
         // a dropped magazine and the spent cases fly with the gun's frame here, so they're cleared once they've fallen away
         sim::tidy(S, dt, 1.2, 0.8, 2);
         const auto& br = A.design.breech;
@@ -860,6 +930,7 @@ void rangeUpdate(float dt, bool modal) {
 }
 
 // everything on the map besides its brushes: targets, bullet holes, NPCs, spawners, plates, crates, guns on the ground
+static std::vector<Lamp> gunLamps();
 static void drawRangeThings() {
     // paper targets: rings on a white sheet
     for (auto& t : R.targets) {
@@ -875,13 +946,24 @@ static void drawRangeThings() {
         };
         double h = t.size / 2;
         V3 o = t.c + t.n * 0.002;
+        double lit[3]; gmap::lightAt(R.map, t.c, t.n, lit);   // (drawn without the shader: lit by hand, with the gun's light)
+        for (auto& gl : gunLamps()) {
+            V3 lp{gl.pos[0], gl.pos[1], gl.pos[2]}, ld = lp - t.c;
+            double dl = gmap::len(ld); if (dl > gl.range || dl < 1e-6) continue;
+            V3 l = ld * (1 / dl);
+            double q4 = std::pow(dl / gl.range, 4), w = std::max(0.0, 1 - q4), att = gl.power * w * w / (1 + dl * dl);
+            if (gl.cosCone > -1.5) { double cs = -(l.x * gl.dir[0] + l.y * gl.dir[1] + l.z * gl.dir[2]); double in2 = std::min(1.0, gl.cosCone + 0.08), q = std::clamp((cs - gl.cosCone) / std::max(1e-4, in2 - gl.cosCone), 0.0, 1.0); att *= q * q * (3 - 2 * q); }
+            att *= std::max(0.0, gmap::dot(t.n, l)) * 0.7;
+            for (int k = 0; k < 3; k++) lit[k] += att * gl.col[k];
+        }
+        auto shade = [&](Color c) { return Color{(unsigned char)std::clamp(c.r * lit[0] * 1.25, 0.0, 255.0), (unsigned char)std::clamp(c.g * lit[1] * 1.25, 0.0, 255.0), (unsigned char)std::clamp(c.b * lit[2] * 1.25, 0.0, 255.0), c.a}; };
         V3 a = o - side * h - tu * h, b = o + side * h - tu * h, c = o + side * h + tu * h, d = o - side * h + tu * h;
-        Color paper{238, 234, 222, 255};
+        Color paper = shade(Color{238, 234, 222, 255});
         DrawTriangle3D(rv(a), rv(b), rv(c), paper); DrawTriangle3D(rv(a), rv(c), rv(b), paper);
         DrawTriangle3D(rv(a), rv(c), rv(d), paper); DrawTriangle3D(rv(a), rv(d), rv(c), paper);
         for (int ring = 5; ring >= 1; ring--)
-            disc(h * ring / 5.0 * 0.95, ring % 2 ? Color{30, 30, 32, 255} : paper, 0.003 + (5 - ring) * 0.0006);
-        disc(h * 0.05, Color{200, 60, 40, 255}, 0.0065);
+            disc(h * ring / 5.0 * 0.95, ring % 2 ? shade(Color{30, 30, 32, 255}) : paper, 0.003 + (5 - ring) * 0.0006);
+        disc(h * 0.05, shade(Color{200, 60, 40, 255}), 0.0065);
     }
     // where bullets landed
     for (auto& im : R.impacts) {
@@ -924,6 +1006,8 @@ static void drawRangeThings() {
         for (int k = 0; k < R.plates[i]; k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
     }
     for (auto& e : R.map.ents) if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
+    for (auto& e : R.map.ents) if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw);
+    for (auto& e : R.map.ents) if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
     for (auto& g : R.ground)   // a gun case on the floor (the gun itself is drawn once it's in your hands)
         drawBox(rv(g.pos + V3{0, 0.06, 0}), {0.75f, 0.12f, 0.28f}, Color{58, 52, 44, 255}, MatrixRotateY((float)(-g.yaw * DEG2RAD)));
     // bullets in flight: a faint streak
@@ -946,6 +1030,42 @@ static void drawReticle(Vector2 c, double k, const OpticDef& op, float alpha) {
 }
 // where a point on the gun (design mm) is on screen now
 static Vector2 gunToScreen(fit::P3 p) { return GetWorldToScreen(rv(gunToMap({p.x, p.y}, (float)(p.z * U))), A.cam); }
+// the gun's own light for the lit shader: each light switched on (a spot as bright as its lumens through its beam), and
+// the muzzle flash for a moment
+static std::vector<Lamp> gunLamps() {
+    std::vector<Lamp> out;
+    if (R.cur < 0) return out;
+    for (auto& bm : R.beams) {
+        if (bm.laser || !gadgetOn(bm)) continue;
+        V3 a = gunToMap({bm.a.x, bm.a.y}, (float)(bm.a.z * U)), b = gunToMap({bm.b.x, bm.b.y}, (float)(bm.b.z * U));
+        V3 d = b - a;
+        if (gmap::len(d) < 1e-6) continue;
+        d = gmap::norm(d);
+        double half = std::clamp(bm.deg, 1.0, 120.0) * DEG2RAD / 2;
+        double candela = bm.lumens / (2 * PI * (1 - std::cos(half)));   // its lumens squeezed into its beam
+        Lamp L;
+        V3 o = b + d * 0.02;
+        L.pos[0] = (float)o.x; L.pos[1] = (float)o.y; L.pos[2] = (float)o.z;
+        L.dir[0] = (float)d.x; L.dir[1] = (float)d.y; L.dir[2] = (float)d.z;
+        L.col[0] = ((bm.color >> 24) & 255) / 255.f; L.col[1] = ((bm.color >> 16) & 255) / 255.f; L.col[2] = ((bm.color >> 8) & 255) / 255.f;
+        L.power = (float)std::clamp(candela / 300, 0.5, 80.0);   // (1 = about 300 lux at 1 m)
+        L.range = 70;
+        L.cosCone = (float)std::cos(half * 1.15);
+        out.push_back(L);
+    }
+    if (A.flash > 0 && R.flashK > 0) {   // the muzzle flash lights the room for a moment
+        const auto& br = A.design.breech;
+        int ci = A.design.bodyIndex(br.chamber);
+        V3 m = gunToMap(curMM(br.chamber, br.muzzle), ci >= 0 ? bodyZ(ci) : 0);
+        Lamp L;
+        L.pos[0] = (float)m.x; L.pos[1] = (float)m.y; L.pos[2] = (float)m.z;
+        L.col[0] = 1; L.col[1] = 0.72f; L.col[2] = 0.38f;
+        L.power = (float)(8 * std::min(1.0, A.flash / 0.06) * std::min(1.0, R.flashK));
+        L.range = 9;
+        out.push_back(L);
+    }
+    return out;
+}
 // lights and lasers switched on: a beam out of each, a lit spot (a light) or a dot (a laser) where it meets something
 static void drawBeams() {
     if (R.cur < 0 || R.beams.empty()) return;
@@ -994,9 +1114,7 @@ static void drawBeams() {
         } else {
             double half = std::tan(bm.deg * DEG2RAD / 2), r = std::max(0.03, dist * half);
             double k = std::clamp(bm.lumens / 60 / (1 + dist * dist * 0.15), 0.0, 1.0);   // brighter close up and for a stronger light
-            if (dist < far && k > 0.01)
-                for (int ring = 4; ring >= 1; ring--)   // brightest in the middle, soft at the edge
-                    disc(hit + n * (0.004 + 0.0005 * ring), r * ring / 4, Color{c.r, c.g, c.b, (unsigned char)(60 * k)});
+            (void)r; (void)k;   // (the lit spot itself: the light's lamp in the shader, gunLamps)
             double len = std::min(dist, 4.0);   // a faint cone of light in the air
             V3 cs = gmap::norm(gmap::cross(d, std::fabs(d.y) > 0.9 ? V3{1, 0, 0} : V3{0, 1, 0})), ct = gmap::cross(d, cs);
             const int N = 16;
@@ -1029,6 +1147,7 @@ static void renderScopePicture(V3 up) {
     mapDrawSky(R.map.look, 0, 0, SZ, SZ, (float)std::asin(std::clamp(d.y, -1.0, 1.0)), c.fovy);
     BeginMode3D(c);
     mapApplyLook(R.map.look);
+    mapSetLamps(R.map, wf, gunLamps());
     mapDrawWorld();
     drawRangeThings();
     drawBeams();
@@ -1051,12 +1170,13 @@ void rangeRender() {
     A.cam = cam;
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
     mapDrawSky(R.map.look, 0, 0, W, H, (float)R.pl.pitch, cam.fovy);
+    // the gun, in the hands (placed first: its light shines on everything)
+    placeGun(eye, f, gmap::norm(gmap::cross(f, up)), up);
     mapBeginViewport(cam, 0, 0, W, H);
     mapApplyLook(R.map.look);
+    mapSetLamps(R.map, eye, gunLamps());
     mapDrawWorld();
     drawRangeThings();
-    // the gun, in the hands
-    placeGun(eye, f, gmap::norm(gmap::cross(f, up)), up);
     drawBeams();
     if (std::getenv("GUNSMITH_RANGEDBG")) {
         const auto& br = A.design.breech;
@@ -1187,6 +1307,12 @@ void rangeHud() {
     float w = viewTextWidth(b, fs);
     viewText(b, W - w - 36, H - 70, fs, Color{240, 242, 245, 240});
     const char* mag = M || S.chambered ? (M ? "in the magazine, + in the chamber" : "in the chamber") : "empty: R to reload";
+    {   // what you carry besides
+        std::string rs = TextFormat("%d spare", R.reserve);
+        Color rc = R.reserve == 0 ? Color{255, 120, 100, 240} : R.reserve < R.reserveMax / 5 ? Color{255, 200, 90, 230} : Color{200, 204, 212, 200};
+        viewText(rs.c_str(), W - viewTextWidth(rs.c_str(), 15) - 36, H - 96, 15, rc);
+        if (R.reserve == 0) mag = "no spare ammunition: find an ammo box";
+    }
     viewText(mag, W - viewTextWidth(mag, 12) - 36, H - 32, 12, Color{200, 204, 212, 200});
     std::snprintf(b, sizeof b, "%s   %d shot%s", A.design.name.c_str(), R.shots, R.shots == 1 ? "" : "s");
     viewText(b, 24, H - 32, 13, Color{235, 238, 242, 220});

@@ -259,6 +259,8 @@ void meNew() {
     meSnapshot();
     ME.map = gmap::Map();
     ME.map.name = "New map";
+    ME.map.look.daylight = 0.05;   // dark until you light it (Map > Light: Daylight; the Light tool)
+    { gmap::Entity l; l.type = "light"; l.pos = {0, 4, 0}; l.power = 14; l.range = 22; ME.map.ents.push_back(l); }
     ME.map.brushes.push_back(gmap::makeBox({-16, -0.5, -16}, {16, 0, 16}, gmap::materialIndex("dev_grid")));
     gmap::Entity s; s.pos = {-6, 0, 0}; ME.map.ents.push_back(s);
     ME.sel.clear(); ME.face = -1; ME.ent = -1;
@@ -515,7 +517,8 @@ static int entityUnderMouse(double* tOut) {
     int best = -1; double bt = 1e30;
     for (size_t i = 0; i < ME.map.ents.size(); i++) {
         V3 p = ME.map.ents[i].pos;
-        gmap::Brush b = gmap::makeBox(p - V3{0.3, 0, 0.3}, p + V3{0.3, 1.8, 0.3}, 0);
+        bool lamp = ME.map.ents[i].type == "light";   // (a lamp: a small ball where it hangs)
+        gmap::Brush b = lamp ? gmap::makeBox(p - V3{0.22, 0.22, 0.22}, p + V3{0.22, 0.22, 0.22}, 0) : gmap::makeBox(p - V3{0.3, 0, 0.3}, p + V3{0.3, 1.8, 0.3}, 0);
         gmap::Hit h = gmap::rayBrush(b, o, d, 5000);
         if (h.brush >= 0 && h.t < bt) { bt = h.t; best = (int)i; }
     }
@@ -622,16 +625,33 @@ static void toolInput() {
             ME.clipPts.push_back(s);
             break;
         }
-        case MTool::Npc: case MTool::Spawner: case MTool::Armor: case MTool::Crate: {   // an NPC standing here, a stand to take guns from, armour plates
+        case MTool::Npc: case MTool::Spawner: case MTool::Armor: case MTool::Crate: case MTool::Ammo: case MTool::Weapons: {   // an NPC standing here, a stand to take guns from, armour plates
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
             if (ME.tool == MTool::Npc && ME.npcPick.empty()) { toast("Pick which NPC in the panel first (make one in the NPC editor)."); break; }
             meSnapshot();
             gmap::Entity e;
-            e.type = ME.tool == MTool::Npc ? "npc_spawn" : ME.tool == MTool::Armor ? "armor_plate" : ME.tool == MTool::Crate ? "attachment_crate" : "gun_spawner";
+            e.type = ME.tool == MTool::Npc ? "npc_spawn" : ME.tool == MTool::Armor ? "armor_plate" : ME.tool == MTool::Crate ? "attachment_crate"
+                   : ME.tool == MTool::Ammo ? "ammo_box" : ME.tool == MTool::Weapons ? "weapon_crate" : "gun_spawner";
             e.ref = ME.tool == MTool::Npc ? ME.npcPick : "";
             e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);   // facing you
+            ME.map.ents.push_back(e);
+            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meChanged();
+            break;
+        }
+        case MTool::Light: {   // a lamp: a little out from the surface clicked (under a ceiling, on a wall, over a floor)
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            meSnapshot();
+            gmap::Entity e; e.type = "light";
+            double out = n.y > 0.7 ? 2.4 : 0.15;   // on a floor: up at head height and more
+            e.pos = p + n * out;
+            if (n.y < -0.7) { e.cone = 0; e.pitch = -90; }                         // under a ceiling: all round
+            else if (std::fabs(n.y) <= 0.7) {                                       // on a wall: a spot, out and a little down
+                e.cone = 90; e.pitch = -30; e.yaw = std::atan2(n.z, n.x) * RAD2DEG;
+            }
             ME.map.ents.push_back(e);
             ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
             meChanged();
@@ -794,6 +814,31 @@ static void drawFaceFill(const gmap::Brush& b, int fi, Color c) {
     V3 off = b.faces[fi].n * 0.004;
     for (size_t k = 1; k + 1 < p.size(); k++) DrawTriangle3D(rv(p[0] + off), rv(p[k] + off), rv(p[k + 1] + off), c);
 }
+static void drawLampMarker(const gmap::Entity& e, bool sel) {   // a glowing bulb in its colour; a spot's aim; its reach when picked
+    Color c{(unsigned char)std::clamp(e.color[0] * 255, 0.0, 255.0), (unsigned char)std::clamp(e.color[1] * 255, 0.0, 255.0), (unsigned char)std::clamp(e.color[2] * 255, 0.0, 255.0), 255};
+    rlDrawRenderBatchActive();
+    DrawSphere(rv(e.pos), 0.09f, c);   // (unlit: it's the light itself)
+    DrawSphereWires(rv(e.pos), 0.14f, 6, 8, sel ? Color{255, 205, 60, 255} : Color{40, 44, 52, 255});
+    gmap::LampAt L = gmap::lampOf(e);
+    if (e.cone > 0) {
+        double len = std::min(1.5, e.range * 0.3), half = e.cone / 2 * DEG2RAD;
+        V3 d = L.dir, s = gmap::norm(gmap::cross(d, std::fabs(d.y) > 0.9 ? V3{1, 0, 0} : V3{0, 1, 0})), t = gmap::cross(d, s);
+        V3 tip = e.pos + d * len;
+        DrawLine3D(rv(e.pos), rv(tip), c);
+        for (int k = 0; k < 8; k++) {
+            double a = 2 * PI * k / 8;
+            V3 rim = tip + (s * std::cos(a) + t * std::sin(a)) * (len * std::tan(std::min(half, 1.4)));
+            DrawLine3D(rv(e.pos), rv(rim), Color{c.r, c.g, c.b, 120});
+        }
+    }
+    if (sel) {   // how far it reaches: a ring on the floor below it and round it
+        const int N = 48;
+        for (int k = 0; k < N; k++) {
+            double a0 = 2 * PI * k / N, a1 = 2 * PI * (k + 1) / N;
+            DrawLine3D(rv(e.pos + V3{std::cos(a0) * e.range, 0, std::sin(a0) * e.range}), rv(e.pos + V3{std::cos(a1) * e.range, 0, std::sin(a1) * e.range}), Color{c.r, c.g, c.b, 140});
+        }
+    }
+}
 static void drawSpawner(const gmap::Entity& e, bool sel) {   // a crate on legs with a screen: the gun spawner
     Color c = sel ? Color{255, 205, 60, 255} : Color{70, 120, 170, 255};
     V3 p = e.pos;
@@ -900,6 +945,9 @@ static void drawEditor3D() {
         if (e.type == "player_start") drawStart(e, (int)i == ME.ent);
         else if (e.type == "npc_spawn") drawNpcSpawn(e, (int)i == ME.ent);
         else if (e.type == "gun_spawner") drawSpawner(e, (int)i == ME.ent);
+        else if (e.type == "light") drawLampMarker(e, (int)i == ME.ent);
+        else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++)
             drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k), (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
@@ -990,8 +1038,11 @@ void mapEditorRender() {
     mapBeginViewport(cam, v.x, v.y, v.w, v.h);
     gmap::Look look = ME.map.look;
     if (ME.top && !ME.walking) { look.fogStart = 1e6; look.fogEnd = 2e6; }  // the top-view camera sits far above the map
+    mapWorkLight(ME.walking ? 0 : ME.lightMode);
     mapApplyLook(look);
+    mapSetLamps(ME.map, ME.walking ? gmap::playerEye(ME.pl, ME.map) : ME.cam);
     mapDrawWorld();
+    mapWorkLight(false);
     if (!ME.walking) drawEditor3D();
     EndMode3D();
     mapEndViewport();

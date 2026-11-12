@@ -6,7 +6,7 @@
 struct Gfx {
     Shader lit{};
     int locView = -1, locFog = -1, locSpec = -1;
-    int locLight = -1, locLightCol = -1, locFill = -1, locFillCol = -1, locAmbSky = -1, locAmbGround = -1, locFogParam = -1;
+    int locLight = -1, locLightCol = -1, locFill = -1, locFillCol = -1, locAmbSky = -1, locAmbGround = -1, locFogParam = -1, locNLamps = -1, locLampPos = -1, locLampCol = -1, locLampDir = -1;
     Material mat{};
     Mesh cube{}, cyl{}, cone{}, sphere{}, plate{};
     Texture2D plateTex{};
@@ -22,12 +22,18 @@ struct Lighting {
     float fog[3] = {90.f, 500.f, 0.65f};   // start distance, length, strongest fog
 };
 void setLighting(const Lighting& L);
+// Lamps for the lit shader (world units, as drawn): a map's lights, a gun's light, a muzzle flash
+constexpr int MAX_LAMPS = 16;
+struct Lamp { float pos[3] = {0, 0, 0}, dir[3] = {0, -1, 0}, col[3] = {1, 1, 1}; float power = 1, range = 10, cosCone = -2; };
+void setLamps(const std::vector<Lamp>& lamps);   // (the nearest MAX_LAMPS; empty: none)
 void setSpecular(float s);          // 0 matte .. 1 polished, for the following draws
 void setFog(Color c);               // far things fade to this colour
 void drawMesh(const Mesh& m, Matrix M, Color c, float alpha = 1.f);
 void drawMeshTex(const Mesh& m, Matrix M, Color c, Texture2D tex, float alpha = 1);  // with a picture on it (tinted by c)
 void drawBox(Vector3 center, Vector3 size, Color c, Matrix rot = MatrixIdentity(), float alpha = 1.f);
 void drawAttachmentCrate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});   // a crate of attachments (metres)
+void drawAmmoBox(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});           // ammo cans: take ammunition (metres)
+void drawWeaponCrate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});       // a crate of guns (metres)
 void drawArmorPlate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});   // an armour plate lying flat (metres)
 void drawCyl(Vector3 a, Vector3 b, float r, Color c, float alpha = 1.f, const Mesh* mesh = nullptr);
 void drawSphereLit(Vector3 p, float r, Color c, float alpha = 1.f);

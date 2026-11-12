@@ -42,6 +42,10 @@ std::vector<std::string> npcGunFiles(); // the blueprints in user/guns made for 
 #include "raylib.h"
 // One bone drawn with M taking its own frame (millimetres; y along it from its start) to the world
 void drawNpcBone(const NpcBone& b, Matrix M, Color c);
+// The character maker's one-piece body (torso, neck, arms, legs) over the bones; M[i]: bone i's frame (bone mm -> world).
+// `tint`: one colour for all of it (an arm reaching too far shows red). npcBodyBone: drawn as part of it, not as a piece.
+void drawCharacterBody(const NpcDef& n, const std::vector<Matrix>& M, const Color* tint = nullptr);
+bool npcBodyBone(const NpcDef& n, int i);
 void drawNpcAt(const NpcDef& n, Vector3 origin, float yawDeg, float unitsPerMm, int highlight = -1,
                Vector3 fallAxis = {0, 0, 0}, float fallAngle = 0);   // fallen: turned about its feet
 // NPCs and maps: a map carries copies of the NPCs its spawn points use, so a shared map brings its enemies along

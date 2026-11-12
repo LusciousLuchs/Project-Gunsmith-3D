@@ -8,6 +8,26 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.4.21-alpha
+
+### New: light and dark
+- **Maps can be dark now, lit by their own lights.** Each map has a **Daylight** setting (Level editor > Map > Light): 1 is broad daylight, 0 is night. Maps you've already made stay in daylight; new maps start dark with one lamp.
+- **The Light tool** in the Level editor: click a ceiling, a wall or the floor to hang a lamp. Set its colour, brightness and reach, or make it a **spotlight** with a cone you aim. Up to 16 lights shine at once (the nearest). They don't cast shadows yet, so a light shines through walls: keep its reach to its room.
+- **The practice range is now an evening range**, lit by lamps under the roof, a light over each paper target, floodlights on the steel and the firing line.
+- **Weapon lights are real spotlights:** they light up whatever they point at, as bright as their lumens and beam width say. **Muzzle flashes** light the room for a moment.
+- **Level editor view:** the light button at the top right goes round three views: **as played**, a **work light** (dark maps still show while you build), and **fullbright** (every face in its own colour, no shading, no fog: easiest for placing things).
+
+### New: ammunition
+- **Magazines never run out; rounds do.** Each gun carries spare ammunition: ten magazines' worth (at least 10 rounds). Reloading takes a full magazine's worth from it. A magazine taken out with rounds in it gives them back. When the spare runs short, the new magazine only gets what's left. The spare count is on screen.
+- **Ammo boxes** (Level editor, and by the practice range's start): press F by one to fill the spare ammunition of every gun you carry.
+- **Weapon crates:** press F by one to take any of your guns, as from a gun spawner.
+
+### Changed: your character
+- **One-piece body:** the torso, neck, arms and legs are one continuous, faceted body that bends at the shoulders, elbows, hips and knees with no gaps, in a low-poly style. Sleeves, a tank top and shorts are colours on it.
+- **Ear defenders:** tall cups with a soft cushion against the head, and a wide padded band in one smooth arc over the top.
+- **Glasses:** sunglass lenses over the eyes, a bridge, and arms that run back along the head to the ears.
+- **T-shirt sleeves** now cover the shoulder. **Belts** hug the waist. **Eyes** sit in the face instead of bulging out.
+
 ## 0.4.20-alpha
 
 ### New: your character
