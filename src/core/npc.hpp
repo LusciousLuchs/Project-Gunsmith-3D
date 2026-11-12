@@ -68,6 +68,7 @@ struct NpcDef {
 // The character maker: a person built from the choices (hands with fingers, a face, hair, clothes, extras). Gear of
 // your own on `keep` (bones not made by the maker) is kept, on the bone of the same name.
 NpcDef characterFromLook(const CharLook& look, const NpcDef* keep = nullptr);
+void npcRelaxedStance(NpcDef& n, unsigned seed);   // standing at ease, a little different for each seed (character-maker people only)
 bool npcCoreBone(const std::string& name);   // a human's own bones (the character can't lose them; gear can be added)
 
 std::string npcToJson(const NpcDef& n);

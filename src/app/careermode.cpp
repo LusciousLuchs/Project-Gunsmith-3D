@@ -354,6 +354,7 @@ void careerRenderPortraits() {
         if (gPortraits.count(w.id)) continue;
         RenderTexture2D rt = LoadRenderTexture(256, 320);
         NpcDef n = characterFromLook(lookFor(w.id, w.name));
+        npcRelaxedStance(n, (unsigned)w.id);
         double h = npcHeight(n) / 1000;
         Camera3D cam{};
         cam.position = {0, (float)(h * 0.86), 1.25f}; cam.target = {0, (float)(h * 0.8), 0}; cam.up = {0, 1, 0}; cam.fovy = 34; cam.projection = CAMERA_PERSPECTIVE;
@@ -385,7 +386,9 @@ const NpcDef& careerPerson(int id, const std::string& name) {
     if (people.size() > 200) people.clear();
     std::string nm = name;
     if (nm.empty()) for (auto& w : CAREER.walkins) if (w.id == id) nm = w.name;
-    return people[id] = characterFromLook(lookFor(id, nm));
+    NpcDef p = characterFromLook(lookFor(id, nm));
+    npcRelaxedStance(p, (unsigned)id);
+    return people[id] = p;
 }
 Texture2D careerPortrait(int id) { auto it = gPortraits.find(id); return it == gPortraits.end() ? Texture2D{} : it->second.texture; }
 

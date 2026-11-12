@@ -323,7 +323,7 @@ bool npcCoreBone(const std::string& name) {
 }
 
 // ---------------------------------------------------------------- the character maker
-static const double HAND_TWIST = -90, CURL = 1, THUMB_TURN = 12;   // the palm toward the thigh, the fingers a little curled
+static const double HAND_TWIST = -90, CURL = 3.2, THUMB_CURL = 1.6, THUMB_TURN = 12;   // (a loose, relaxed hand)   // the palm toward the thigh, the fingers a little curled
 NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     NpcDef n = npcPreset("human");
     n.look = L; n.look.on = true;
@@ -418,7 +418,7 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
         const double tl[3] = {36, 30, 24};
         for (int k = 0; k < 3; k++) {
             NpcBone b = piece((std::string("Thumb ") + std::to_string(k + 1) + " (" + sd + ")").c_str(), k == 0 ? 0.25 : 1, k == 0 ? sg * 27 : 0, k == 0 ? 6 : 0,
-                              tl[k], 10 - k * 1.1, 9 - k * 1.1, CURL * (k == 0 ? 20 : 10), k == 0 ? sg * THUMB_TURN : 0, L.skin, "cylinder");
+                              tl[k], 10 - k * 1.1, 9 - k * 1.1, THUMB_CURL * (k == 0 ? 20 : 10), k == 0 ? sg * THUMB_TURN : 0, L.skin, "cylinder");
             b.parent = prev; b.gen = true; n.bones.push_back(b);
             prev = (int)n.bones.size() - 1;
         }
@@ -507,4 +507,28 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
         }
     n.name = keep ? keep->name : "My character";
     return n;
+}
+
+// ---------------------------------------------------------------- a relaxed stance
+// A person from the character maker standing at ease: arms a little away from the body, elbows soft, the head turned a
+// touch, each a bit different (from `seed`). Only the core bones' angles change; nothing is added.
+void npcRelaxedStance(NpcDef& n, unsigned seed) {
+    if (!n.look.on) return;
+    unsigned long long st = seed * 0x9E3779B97F4A7C15ull + 0x2545F4914F6CDD1Dull;
+    auto rnd = [&]() {   // 0..1
+        unsigned long long z = (st += 0x9E3779B97F4A7C15ull);
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull; z = (z ^ (z >> 27)) * 0x94D049BB133111EBull; z ^= z >> 31;
+        return (z >> 11) * (1.0 / 9007199254740992.0);
+    };
+    auto find = [&](const std::string& nm) -> NpcBone* { for (auto& b : n.bones) if (b.name == nm) return &b; return nullptr; };
+    double out = 5 + 5 * rnd(), elbow = 14 + 16 * rnd(), lean = 4 * (rnd() - 0.5);
+    for (const char* sd : {"left", "right"}) {
+        std::string s = std::string(" (") + sd + ")";
+        double sg = std::string(sd) == "left" ? 1 : -1;
+        if (NpcBone* ua = find("Upper arm" + s)) { ua->turn -= sg * 0 + out; ua->bend += 4 + 6 * rnd(); }
+        if (NpcBone* fa = find("Forearm" + s)) fa->bend += elbow + 6 * (rnd() - 0.5);
+        if (NpcBone* th = find("Thigh" + s)) th->turn -= 2 + 2 * rnd();   // (feet a little apart)
+    }
+    if (NpcBone* hd = find("Head")) { hd->turn += 10 * (rnd() - 0.5); hd->bend += lean + 3; }
+    if (NpcBone* ch = find("Chest")) ch->bend += lean;
 }
