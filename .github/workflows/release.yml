@@ -78,3 +78,21 @@ jobs:
           [ "${{ steps.v.outputs.repo }}" = "$GITHUB_REPOSITORY" ] && target="--target $GITHUB_SHA"
           gh release create "v${{ steps.v.outputs.full }}" "Gunsmith3D-${{ steps.v.outputs.full }}.zip" \
             --repo "${{ steps.v.outputs.repo }}" $target --title "Gunsmith3D ${{ steps.v.outputs.full }}" --notes-file notes.md --latest
+
+      # Posts the release to a Discord channel. Needs the repository secret DISCORD_WEBHOOK (a channel's webhook link,
+      # from Discord: Server Settings > Integrations > Webhooks). Without it this step does nothing. Discord takes
+      # at most 2000 characters a message, so long notes are cut and end with the link to the full release.
+      - name: Post to Discord
+        if: steps.v.outputs.skip != '1'
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then echo "No DISCORD_WEBHOOK secret: not posting."; exit 0; fi
+          full="${{ steps.v.outputs.full }}"
+          link="https://github.com/${{ steps.v.outputs.repo }}/releases/tag/v$full"
+          head="**Gunsmith3D $full is out!** The game updates itself, or download it here: <$link>"
+          body=$(cat notes.md)
+          room=$((1900 - ${#head}))
+          if [ ${#body} -gt $room ]; then body="${body:0:$room}"; body="${body%$'\n'*}"$'\n'"...and more in the full notes."; fi
+          jq -n --arg c "$head"$'\n\n'"$body" '{content: $c, allowed_mentions: {parse: []}}' > discord.json
+          curl -sS --fail-with-body -H "Content-Type: application/json" -d @discord.json "$DISCORD_WEBHOOK"
