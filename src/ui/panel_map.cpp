@@ -204,6 +204,23 @@ static void editTab() {
                 if (ImGui::SliderFloat("##lpitch", &pt, -90, 90, "%.0f deg")) { e.pitch = pt; tr(true); } else tr(false);
                 typeable();
             }
+        } else if (gmap::isDisplay(e.type) || gmap::isDecor(e.type)) {
+            static const char* names[][2] = {{"display_case", "Gun display case"}, {"display_rack", "Gun wall rack"}, {"display_stand", "Accessory stand"},
+                                             {"decor_plant", "Plant"}, {"decor_poster", "Poster"}, {"decor_rug", "Rug"}, {"decor_sign", "Shop sign"}, {"decor_seat", "Bench seat"}};
+            const char* nm = "Display"; for (auto& p : names) if (e.type == p[0]) nm = p[1];
+            heading(nm);
+            bool inStore = ME.map.store.has(e.pos, 0.3);
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled(inStore ? "In your storefront: it counts toward the store's rating." : "Outside your storefront: it doesn't count toward the store's rating.");
+            ImGui::PopTextWrapPos();
+            if (e.type == "display_case" || e.type == "display_rack") {
+                prop("Gun shown", "One of your guns on show. Customers who see it may ask for it (and pay a little more for it).");
+                if (ImGui::BeginCombo("##dispgun", e.ref.empty() ? "Empty" : e.ref.c_str())) {
+                    if (ImGui::Selectable("Empty", e.ref.empty())) { meSnapshot(); e.ref.clear(); meChanged(); }
+                    for (auto& g : careerGuns()) if (ImGui::Selectable(g.name.c_str(), e.ref == g.name)) { meSnapshot(); e.ref = g.name; meChanged(); }
+                    ImGui::EndCombo();
+                }
+            }
         } else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0) {
             static const char* names[][2] = {{"station_bench", "Workbench"}, {"station_lathe", "Lathe"}, {"station_mill", "Milling machine"}, {"station_qc", "Test bench"}, {"shop_counter", "Shop counter"}, {"shop_computer", "Office computer"}, {"shop_door", "Front door"}};
             const char* nm = "Workstation"; for (auto& p : names) if (e.type == p[0]) nm = p[1];
@@ -389,8 +406,11 @@ static void toolOptions() {
         ImGui::TextDisabled("A copy of each NPC you place is saved in the map file.");
     }
     if (ME.tool == MTool::Station) {
-        static const char* kinds[][2] = {{"bench", "Workbench"}, {"lathe", "Lathe"}, {"mill", "Milling machine"}, {"qc", "Test bench"}, {"counter", "Shop counter"}, {"computer", "Office computer"}, {"door", "Front door"}};
-        prop("Which", "Career mode: your staff work at these (a machinist fastest at a lathe or mill, a finisher at a test bench).\nThe counter is where customers come in; the computer runs your online store, contracts and staff;\nthe front door is where you close up at the end of the day. Your building holds only so many workstations.");
+        static const char* kinds[][2] = {{"bench", "Workbench"}, {"lathe", "Lathe"}, {"mill", "Milling machine"}, {"qc", "Test bench"}, {"counter", "Shop counter"}, {"computer", "Office computer"}, {"door", "Front door"},
+                                         {"display_case", "Gun display case"}, {"display_rack", "Gun wall rack"}, {"display_stand", "Accessory stand"},
+                                         {"decor_plant", "Plant"}, {"decor_poster", "Poster"}, {"decor_rug", "Rug"}, {"decor_sign", "Shop sign"}, {"decor_seat", "Bench seat"}};
+        prop("Which", "Career mode: your staff work at these (a machinist fastest at a lathe or mill, a finisher at a test bench).\nThe counter is where customers come in; the computer runs your online store, contracts and staff;\nthe front door is where you close up at the end of the day. Your building holds only so many workstations.\n"
+                      "Displays and decoration in the storefront raise its rating: more customers, bigger budgets. Put your guns on the displays.");
         const char* cur = "Workbench"; for (auto& k : kinds) if (ME.stationKind == k[0]) cur = k[1];
         if (ImGui::BeginCombo("##station", cur)) {
             for (auto& k : kinds) if (ImGui::Selectable(k[1], ME.stationKind == k[0])) ME.stationKind = k[0];

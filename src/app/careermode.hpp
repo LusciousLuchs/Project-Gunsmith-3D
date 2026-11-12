@@ -3,6 +3,7 @@
 // core/career; the screen is ui/panel_career.
 #pragma once
 #include "career.hpp"
+#include "map.hpp"
 #include "raylib.h"
 
 #include <string>
@@ -28,7 +29,10 @@ bool inCareer();                     // in career mode (the office, or the desig
 void careerBackToOffice();           // from the designer
 void careerOpenWorkshop(bool walk);  // your workshop in the level editor (walk: straight in, on foot)
 void careerWorkshopToOffice();       // back from it: its workstations counted
-void careerCountStations();          // from your workshop's map file
+void careerCountStations();          // every property's stations, store rating and displayed guns, from their map files
+void careerNoteMap(const gmap::Map& m, int propertyId);   // ...one property's, from its map as it is now
+void careerGoTo(int propertyId);     // travel to another of your properties (on foot there)
+std::string careerPropertyFile(int propertyId);
 void careerDemoStart(int contractId); // a big order's range demonstration, with its gun
 void careerTick();
 // a customer's face at your counter: a person from the character maker, their look picked from their number

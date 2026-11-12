@@ -1921,23 +1921,25 @@ static void careerStages() {
     std::printf("Career mode: staff, the counter, big orders\n");
     using namespace career;
     Career c = newCareer(11);
+    c.props[0].kind = "shack";   // (a garage has no room for staff: these are about workstations)
+    auto setSt = [](Career& k, std::map<std::string, int> st) { k.props[0].stations = st; sumStations(k); };
     CHECK(c.stations["bench"] == 1 && c.stations["counter"] == 1 && c.candidates.size() == 3 && !c.walkins.empty(), "you start with a bench, a counter, people looking for work and customers");
     std::string why;
     CHECK(!hire(c, 0, &why) && why.find("workstation") != std::string::npos, "nobody can be hired with no free workstation (you're at the only bench)");
-    c.stations["bench"] = 2; c.stations["lathe"] = 1;
+    setSt(c, {{"bench", 2}, {"lathe", 1}, {"counter", 1}});
     double alone = workHours(c);
     Employee mach; mach.name = "M"; mach.specialty = "machinist"; mach.skill = 0.6; mach.wage = 200;
     c.candidates = {mach, mach, mach};
-    CHECK(hire(c, 0) && hire(c, 0) && !hire(c, 0, &why), "three stations (all a garage holds): you and two staff, and no more");
+    CHECK(hire(c, 0) && hire(c, 0) && !hire(c, 0, &why), "three workstations: you and two staff, and no more");
     double withM = workHours(c);
-    Career c2 = c; c2.stations["lathe"] = 0; c2.stations["bench"] = 3;
+    Career c2 = c; setSt(c2, {{"bench", 3}, {"counter", 1}});
     std::printf("        (hours a day: you alone %.1f, with a machinist at a lathe %.1f, at a bench %.1f)\n", alone, withM, workHours(c2));
     CHECK(withM > alone + 6 && workHours(c2) < withM, "a machinist adds a day's work, more at a lathe than at a bench");
     double m0 = c.money; endDay(c);
     CHECK(c.money <= m0 - 400 + 1e-6, "wages are paid at the end of each day");
     // flaws: an unskilled crew makes flawed copies; a finisher at a test bench catches most
     auto flawRate = [&](double skill, bool finisher) {
-        Career t = newCareer(5); t.shopTier = 3; t.stations = {{"bench", 6}, {"qc", 1}};
+        Career t = newCareer(5); t.props[0].kind = "warehouse"; setSt(t, {{"bench", 6}, {"qc", 1}});
         for (int i = 0; i < 4; i++) { Employee e; e.name = "A"; e.specialty = "assembler"; e.skill = skill; e.wage = 0; t.staff.push_back(e); }
         if (finisher) { Employee f; f.name = "F"; f.specialty = "finisher"; f.skill = 0.9; f.wage = 0; t.staff.push_back(f); }
         GunSheet g = sheetOf(loadPreset("blowback")); g.rated = true; g.name = "G"; t.sheets["G"] = g; t.money = 1e9;
@@ -1950,7 +1952,7 @@ static void careerStages() {
     CHECK(raw > good * 2 && checked < raw * 0.5, "green hands make more flawed copies; a finisher at a test bench catches most of them");
     // the counter: one in a hundred can't buy
     Career q = newCareer(17); int trouble = 0, n = 0;
-    q.stations["counter"] = 1;
+    q.props[0].stations["counter"] = 1; sumStations(q);
     for (int d = 0; d < 1500; d++) { endDay(q); for (auto& w : q.walkins) { n++; if (!w.trouble.empty()) trouble++; } }
     std::printf("        (%d customers, %d couldn't buy: %.2f%%)\n", n, trouble, 100.0 * trouble / n);
     CHECK(n > 2000 && trouble > 0 && 100.0 * trouble / n < 2.5 && 100.0 * trouble / n > 0.3, "about one customer in a hundred can't buy");
@@ -2051,6 +2053,55 @@ static void reliabilityTimeout() {
     o.rounds = 10;
     auto R2 = sim::runReliability(loadPreset("blowback"), o);
     CHECK(!R2.gaveUp && R2.fired == 10, "a working gun is untouched by the limit");
+}
+static void propertiesTest() {
+    std::printf("properties\n");
+    career::Career c = career::newCareer(7);
+    CHECK(c.props.size() == 1 && c.props[0].kind == "garage", "a new career starts in the home garage");
+    CHECK(career::staffRoom(c) == 0, "no room for staff in a garage");
+    c.candidates.clear(); career::refreshCandidates(c);
+    c.props[0].stations = {{"bench", 3}, {"counter", 1}}; career::sumStations(c);
+    std::string why;
+    CHECK(!career::hire(c, 0, &why) && why.find("garage") != std::string::npos, "hiring in a garage is refused, saying why");
+    CHECK(!career::buyProperty(c, "warehouse", "both", &why), "a warehouse is too dear on day 1");
+    c.money = 100000;
+    CHECK(career::buyProperty(c, "shack", "workshop", &why) && c.props.size() == 2, "a shack bought, as a workshop");
+    c.props[1].stations = {{"bench", 4}, {"lathe", 2}}; career::sumStations(c);
+    CHECK(career::staffRoom(c) == 3, "the shack has room for 3 staff");
+    CHECK(career::stationRoom(c) == 3 + 5, "workstations count up to each building's size (3 + 5)");
+    CHECK(career::hire(c, 0, &why), "now someone can be hired");
+    c.props[1].role = "store"; career::sumStations(c);
+    CHECK(career::staffRoom(c) == 0 && career::stationRoom(c) == 3, "set as a store only: its benches and staff room don't count");
+    c.props[1].role = "both"; career::sumStations(c);
+    // a store that looks good gets more customers
+    auto walkinsWith = [&](double rating) {
+        career::Career k = c; k.props[0].rating = rating; k.props[0].stations["counter"] = 1; k.props[1].stations.erase("counter");
+        int n = 0;
+        for (int d = 0; d < 20; d++) { career::endDay(k); for (auto& w : k.walkins) if (w.prop == k.props[0].id) n++; }
+        return n;
+    };
+    int plain = walkinsWith(0), smart = walkinsWith(5);
+    std::printf("    walk-ins over 20 days: rating 0 -> %d, rating 5 -> %d\n", plain, smart);
+    CHECK(smart > plain * 1.7, "a five-star store gets close to twice the walk-ins of a bare one");
+    double before = c.money;
+    CHECK(career::sellProperty(c, c.props[1].id, &why) && c.props.size() == 1 && c.money > before, "selling the shack gives money back");
+    CHECK(!career::sellProperty(c, c.props[0].id, &why), "the last place can't be sold");
+    // a shell's walls are locked, and its storefront rating grows with displays
+    gmap::Map m = gmap::propertyShell("retail");
+    bool locked = !m.brushes.empty(); for (auto& b : m.brushes) locked = locked && b.locked;
+    CHECK(locked && m.build.on() && m.store.on(), "a retail unit's walls come locked, with its build area and storefront");
+    double r0 = gmap::storeRating(m);
+    for (int i = 0; i < 3; i++) { gmap::Entity e; e.type = "display_case"; e.ref = "Gun"; e.pos = {-3, 0, -2.0 + i * 1.5}; m.ents.push_back(e); }
+    for (const char* d : {"decor_plant", "decor_rug", "decor_poster", "decor_sign"}) { gmap::Entity e; e.type = d; e.pos = {-2, 0, 0}; m.ents.push_back(e); }
+    double r1 = gmap::storeRating(m);
+    std::printf("    store rating: bare %.2f, decorated %.2f\n", r0, r1);
+    CHECK(r1 > r0 + 1.5 && r1 <= 5, "displays and decoration raise the store's rating");
+    gmap::Map back; gmap::mapFromJson(gmap::mapToJson(m), back);
+    CHECK(back.build.on() && back.brushes[0].locked && std::fabs(back.roofY - m.roofY) < 1e-9, "zones, locked walls and the roof survive saving");
+    // an older career's shop becomes its first property
+    career::Career old = career::newCareer(3); old.props.clear(); old.shopTier = 1;
+    career::Career loaded; career::careerFromJson(career::careerToJson(old), loaded);
+    CHECK(loaded.props.size() == 1 && loaded.props[0].kind == "shack", "an older career's shop (tier 1) becomes a shack");
 }
 static void shopChecks() {
     std::printf("shopChecks\n");
@@ -2679,6 +2730,7 @@ int main() {
     shopChecks();
     reliabilityTimeout();
     holdOpenTest();
+    propertiesTest();
     npcDesigns();
     careerRules();
     careerStages();

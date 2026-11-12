@@ -5,6 +5,8 @@
 struct RB { int tmpl; Matrix M; float roll; sim::Body* sb; };
 Mesh buildPartMesh(const BodyDef& d, bool rough);   // a part's solid (see render.cpp)
 void drawAttachments(const std::vector<RB>& list);
+// a whole design (a gun on a shop display), its meshes kept under `key`; M takes the design frame (mm x U) to the world
+void drawDesignModel(const std::string& key, const Design& d, Matrix M);
 void setOpticSeeThrough(float alpha);   // the range: an optic fades while you aim through it   // fitted attachments on the gun, riding on their parts  // one part to draw: template index, pose, live body (Test)
 // A rotating bolt's handle as drawn: it turns with the bolt about the bore axis.
 struct BoltHandle {

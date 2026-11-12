@@ -404,9 +404,15 @@ std::string mapToJson(const Map& m) {
             if (f.shiftU != 0 || f.shiftV != 0) jf["shift"] = json::array({f.shiftU, f.shiftV});
             fs.push_back(jf);
         }
-        bs.push_back({{"faces", fs}});
+        json jb = {{"faces", fs}};
+        if (b.locked) jb["locked"] = true;
+        bs.push_back(jb);
     }
     j["brushes"] = bs;
+    if (m.build.on() || m.store.on()) {
+        auto zj = [](const Zone& z) { return json::array({z.x0, z.z0, z.x1, z.z1}); };
+        j["career"] = {{"build", zj(m.build)}, {"store", zj(m.store)}, {"roof", m.roofY}};
+    }
     json es = json::array();
     for (auto& e : m.ents) {
         json je = {{"type", e.type}, {"pos", v3j(e.pos)}, {"yaw", e.yaw}};
@@ -457,7 +463,14 @@ bool mapFromJson(const std::string& s, Map& out) {
                 if (jf.contains("shift")) { f.shiftU = jf["shift"].at(0).get<double>(); f.shiftV = jf["shift"].at(1).get<double>(); }
                 b.faces.push_back(f);
             }
+            b.locked = jb.value("locked", false);
             if (brushValid(b)) m.brushes.push_back(b);
+        }
+        if (j.contains("career") && j["career"].is_object()) {
+            auto zr = [](const json& a, Zone& z) { if (a.is_array() && a.size() == 4) { z.x0 = a[0].get<double>(); z.z0 = a[1].get<double>(); z.x1 = a[2].get<double>(); z.z1 = a[3].get<double>(); } };
+            if (j["career"].contains("build")) zr(j["career"]["build"], m.build);
+            if (j["career"].contains("store")) zr(j["career"]["store"], m.store);
+            m.roofY = j["career"].value("roof", 0.0);
         }
         for (auto& je : j.value("entities", json::array())) {
             Entity e;
@@ -583,6 +596,118 @@ int shopRepair(Map& m) {
         added++;
     }
     return added;
+}
+bool isDisplay(const std::string& t) { return t == "display_case" || t == "display_rack" || t == "display_stand"; }
+bool isDecor(const std::string& t) { return t.rfind("decor_", 0) == 0; }
+double storeRating(const Map& m, std::vector<std::string>* tips) {
+    double guns = 0, empty = 0, acc = 0, decor = 0, lights = 0;
+    bool counter = false;
+    std::map<std::string, int> kinds;
+    for (auto& e : m.ents) {
+        if (!m.store.has(e.pos, 0.3)) continue;
+        if (e.type == "shop_counter") counter = true;
+        else if (e.type == "display_stand") acc++;
+        else if (isDisplay(e.type)) { if (e.ref.empty()) empty++; else guns++; }
+        else if (isDecor(e.type)) { decor++; kinds[e.type]++; }
+        else if (e.type == "light") lights++;
+    }
+    // each thing adds less than the one before (a shop full of plants isn't five stars), and variety counts
+    auto soft = [](double n, double k) { return k * (1 - std::exp(-n / k)); };
+    double score = soft(guns, 2.2) * 0.9 + soft(empty, 1.0) * 0.25 + soft(acc, 1.5) * 0.45 + soft(decor, 2.5) * 0.5
+                 + std::min<double>((double)kinds.size(), 5) * 0.12 + soft(lights, 1.5) * 0.35 + (counter ? 0.4 : 0);
+    double stars = std::clamp(score, 0.0, 5.0);
+    if (tips) {
+        tips->clear();
+        if (!counter) tips->push_back("Put your counter in the storefront");
+        if (guns < 2) tips->push_back(empty > 0 ? "Put guns on your displays (pick one in the display's panel)" : "Add gun displays: cases and wall racks");
+        if (acc < 1) tips->push_back("An accessory stand");
+        if (decor < 3) tips->push_back("Decorate: plants, posters, rugs, signs, seats");
+        else if (kinds.size() < 3) tips->push_back("More kinds of decoration");
+        if (lights < 2) tips->push_back("More light in the storefront");
+    }
+    return stars;
+}
+
+Map propertyShell(const std::string& kind) {
+    Map m;
+    int concrete = materialIndex("concrete"), dark = materialIndex("concrete_dark"), ply = materialIndex("plywood"), plaster = materialIndex("plaster"),
+        brick = materialIndex("brick"), corr = materialIndex("corrugated"), planks = materialIndex("wood_planks"), asphalt = materialIndex("asphalt"),
+        grass = materialIndex("grass"), tile = materialIndex("tile"), metal = materialIndex("metal_plate"), white = materialIndex("paint_white");
+    auto box = [&](V3 a, V3 b, int mat) { Brush br = makeBox(a, b, mat); br.locked = true; m.brushes.push_back(br); };
+    auto ent = [&](const char* type, V3 at, double yaw) { Entity e; e.type = type; e.pos = at; e.yaw = yaw; m.ents.push_back(e); };
+    auto lamp = [&](V3 at, double power, double range) { Entity e; e.type = "light"; e.pos = at; e.power = power; e.range = range; m.ents.push_back(e); };
+    // a room from x0..x1 (front at x1, toward +x), z0..z1, walls t thick and h high; a gap in the front wall from gz0 to gz1
+    // up to gh high
+    struct Gap { double z0, z1, h; };
+    auto roomG = [&](double x0, double x1, double z0, double z1, double h, double t, int wall, std::vector<Gap> gaps) {
+        box({x0 - t, 0, z0 - t}, {x0, h, z1 + t}, wall);
+        box({x0, 0, z0 - t}, {x1, h, z0}, wall);
+        box({x0, 0, z1}, {x1, h, z1 + t}, wall);
+        std::sort(gaps.begin(), gaps.end(), [](const Gap& a, const Gap& b) { return a.z0 < b.z0; });
+        double at = z0 - t;
+        for (auto& g : gaps) {   // the front wall in pieces between its openings, with a lintel over each
+            if (g.z0 > at) box({x1, 0, at}, {x1 + t, h, g.z0}, wall);
+            if (g.h < h) box({x1, g.h, g.z0}, {x1 + t, h, g.z1}, wall);
+            at = g.z1;
+        }
+        if (z1 + t > at) box({x1, 0, at}, {x1 + t, h, z1 + t}, wall);
+    };
+    auto room = [&](double x0, double x1, double z0, double z1, double h, double t, int wall, double gz0, double gz1, double gh) {
+        std::vector<Gap> g;
+        if (gz1 > gz0) g.push_back({gz0, gz1, gh});
+        roomG(x0, x1, z0, z1, h, t, wall, g);
+    };
+    m.look.daylight = 0.35;
+    if (kind == "shack") {
+        m.name = "Workshop shack";
+        box({-30, -0.5, -20}, {30, -0.05, 20}, grass);
+        box({-9, -0.05, -4}, {6, 0, 4}, dark);
+        room(-8, 0, -3, 3, 2.7, 0.15, planks, -0.6, 0.6, 2.1);
+        m.build = {-8, -3, 0, 3}; m.store = {-2.5, -3, 0, 3}; m.roofY = 2.7;
+        ent("player_start", {-4, 0, 0}, 0); ent("station_bench", {-7.2, 0, -2.2}, 90); ent("shop_counter", {-1.4, 0, 1.6}, 180);
+        ent("shop_computer", {-7.3, 0, 2.2}, 0); ent("shop_door", {-0.5, 0, 0}, 180);
+        lamp({-5.5, 2.5, 0}, 7, 8); lamp({-1.5, 2.5, 0}, 6, 6);
+    } else if (kind == "retail") {
+        m.name = "Strip-mall unit";
+        box({-40, -0.5, -30}, {30, -0.05, 30}, asphalt);
+        box({-14, -0.05, -6}, {3, 0, 6}, tile);
+        room(-12, 0, -5, 5, 3.4, 0.2, brick, -3.5, 3.5, 2.6);   // (a wide shop window, its glass left to you)
+        box({-6.1, 0, -5}, {-5.9, 3.4, 2.8}, plaster);           // the wall between the store and the workshop, with a doorway
+        box({-6.1, 2.2, 2.8}, {-5.9, 3.4, 5}, plaster);
+        box({-26, 0, -6}, {-12.2, 4.0, 6}, brick); box({-12.2, 0, -18}, {0.2, 4.0, -5.2}, brick); box({-12.2, 0, 5.2}, {0.2, 4.0, 18}, brick);   // the neighbours
+        box({0.3, 3.4, -18}, {2.2, 3.6, 18}, metal);           // the awning
+        m.build = {-12, -5, 0, 5}; m.store = {-6, -5, 0, 5}; m.roofY = 3.4;
+        ent("player_start", {-3, 0, 0}, 180); ent("station_bench", {-11.2, 0, -4.2}, 90); ent("shop_counter", {-4.2, 0, -3.2}, 90);
+        ent("shop_computer", {-11.3, 0, 4.2}, 0); ent("shop_door", {-0.5, 0, 0}, 180);
+        lamp({-9, 3.2, 0}, 8, 9); lamp({-3, 3.2, -2.5}, 7, 7); lamp({-3, 3.2, 2.5}, 7, 7);
+    } else if (kind == "warehouse") {
+        m.name = "Warehouse";
+        box({-60, -0.5, -40}, {30, -0.05, 40}, asphalt);
+        box({-31, -0.05, -11}, {0.5, 0, 11}, concrete);
+        roomG(-30, 0, -10, 10, 6, 0.25, corr, {{-7, -1, 4.5}, {5.4, 6.6, 2.2}});   // a roll-up door, and the office's front door
+        box({-8.1, 0, 2}, {-7.9, 3, 10}, plaster);             // the office store in the front corner, a doorway through
+        box({-8, 0, 1.9}, {-2.5, 3, 2.1}, plaster);
+        box({-1.3, 2.2, 1.9}, {0, 3, 2.1}, plaster);
+        box({-8.1, 3, 1.9}, {0, 3.1, 10}, white);              // its ceiling
+        m.build = {-30, -10, 0, 10}; m.store = {-8, 2, 0, 10}; m.roofY = 6.0;
+        ent("player_start", {-4, 0, 5}, 180); ent("station_bench", {-28.5, 0, -8.5}, 90); ent("shop_counter", {-5, 0, 7.6}, 90);
+        ent("shop_computer", {-7.3, 0, 9.2}, 0); ent("shop_door", {-0.6, 0, 6}, 180);
+        lamp({-20, 5.6, -4}, 12, 14); lamp({-10, 5.6, -4}, 12, 14); lamp({-20, 5.6, 6}, 10, 12); lamp({-4, 2.8, 6}, 7, 7);
+    } else {   // the home garage: a house behind, a driveway in front
+        m.name = "Home garage";
+        box({-30, -0.5, -25}, {25, -0.05, 25}, grass);
+        box({-6, -0.05, -3}, {8, 0, 3}, concrete);              // the floor and the driveway
+        room(-6, 0, -3, 3, 2.6, 0.15, plaster, -2.4, 2.4, 2.2);  // the big door, open
+        box({-12, 0, 3.15}, {0.6, 5, 12}, brick);                // the house, beside the garage
+        box({-12.4, 5, 2.9}, {1.0, 5.3, 12.4}, materialIndex("wood_planks"));     // its roof
+        box({0.6, -0.05, 6}, {6, 0, 7.2}, concrete);             // the path to its door
+        m.build = {-6, -3, 0, 3}; m.store = {-2, -3, 0, 3}; m.roofY = 2.6;
+        ent("player_start", {-3, 0, 0}, 0); ent("station_bench", {-5.3, 0, -2.2}, 90); ent("shop_counter", {-1, 0, 1.8}, 180);
+        ent("shop_computer", {-5.3, 0, 2.2}, 0); ent("shop_door", {-0.4, 0, -0.5}, 180);
+        lamp({-3, 2.4, 0}, 7, 7);
+        (void)ply;
+    }
+    return m;
 }
 std::map<std::string, int> workshopStations(const Map& m) {
     std::map<std::string, int> n;

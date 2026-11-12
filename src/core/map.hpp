@@ -49,6 +49,7 @@ struct Brush {
     // (brushBounds remembers its answer until the faces' planes change: collision asks it constantly)
     mutable double boundsCache[6] = {0, 0, 0, 0, 0, 0};
     mutable unsigned long long boundsKey = 0;
+    bool locked = false;   // part of a building that comes with a career property (its walls): can't be changed
 };
 struct Entity {
     std::string type = "player_start";   // player_start, target_paper, npc_spawn (an NPC stands here), gun_spawner
@@ -78,8 +79,16 @@ struct Look {
 struct LampAt { V3 pos, dir; double color[3]; double power, range, cosCone; };   // cosCone -2: all round
 LampAt lampOf(const Entity& e);
 
+// An area on the ground (x, z): a career property's floor you may build on, and its storefront
+struct Zone {
+    double x0 = 0, z0 = 0, x1 = 0, z1 = 0;
+    bool on() const { return x1 > x0 && z1 > z0; }
+    bool has(V3 p, double pad = 0) const { return !on() || (p.x >= x0 - pad && p.x <= x1 + pad && p.z >= z0 - pad && p.z <= z1 + pad); }
+};
 struct Map {
     std::string name = "Untitled";
+    Zone build, store;   // career properties: where you may build, and the storefront (off: anywhere)
+    double roofY = 0;    // career properties: the ceiling's height, drawn over the build area on foot (0: worked out from the walls)
     std::vector<Brush> brushes;
     std::vector<Entity> ents;
     Look look;
@@ -139,6 +148,14 @@ struct ShopNeed { std::string what, tool; };   // tool: where to place one in th
 std::vector<ShopNeed> shopMissing(const Map& m);
 // puts in whatever shopMissing finds, on the floor near where you start (else the middle of the room)
 int shopRepair(Map& m);
+// Career properties: the fixed building for a kind (garage, shack, retail, warehouse): locked walls, a floor, the build
+// area and the storefront, and a starter bench, counter, computer, door, start and lights
+Map propertyShell(const std::string& kind);
+// How good the storefront looks, 0..5 stars: displays (with a gun on them most), decoration, light, a counter. `tips`
+// gets what would help most.
+double storeRating(const Map& m, std::vector<std::string>* tips = nullptr);
+bool isDisplay(const std::string& type);   // display_case, display_rack, display_stand
+bool isDecor(const std::string& type);     // decor_*
 // career mode: the workstations placed in a workshop map (entities station_bench/lathe/mill/qc, shop_counter -> counter)
 std::map<std::string, int> workshopStations(const Map& m);
 

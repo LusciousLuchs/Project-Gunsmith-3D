@@ -8,6 +8,8 @@
 #include "app/settings.hpp"
 #include "app/view.hpp"
 #include "app/gfx.hpp"
+#include "app/render.hpp"
+#include "raymath.h"
 #include "app/fonts.hpp"
 #include "ui/ui.hpp"
 #include "map.hpp"
@@ -58,7 +60,7 @@ int facing() {
 const char* promptFor(const gmap::Entity& e) {
     static char buf[160];
     int waiting = 0;
-    for (auto& w : CAREER.walkins) if (w.state == 0) waiting++;
+    for (auto& w : CAREER.walkins) if (w.state == 0 && (CAREER.props.empty() || w.prop == CAREER.here)) waiting++;
     switch (thingOf(e.type)) {
         case 0: return "F  Use the computer: online store, contracts, staff";
         case 1: return e.type == "station_bench" ? "F  Your guns: rate them, build copies" : "F  Your guns (at the workstation)";
@@ -82,9 +84,20 @@ std::vector<Spot> people() {
             if (to.x * f.x + to.z * f.z > 0) s = f;
         }
         double yaw = std::atan2(-s.z, -s.x) * 180 / 3.14159265358979;
-        int k = 0;
+        // the displays they look at while they wait (each stands in front of one, facing it), then the queue
+        std::vector<const gmap::Entity*> shows;
+        for (auto& e : ME.map.ents) if (gmap::isDisplay(e.type)) shows.push_back(&e);
+        int k = 0, browsing = 0;
+        bool first = true;
         for (auto& w : CAREER.walkins) {
-            if (w.state != 0) continue;
+            if (w.state != 0 || (!CAREER.props.empty() && w.prop != CAREER.here)) continue;
+            if (!first && browsing < (int)shows.size()) {   // (the first waits at the counter; the others look round)
+                const gmap::Entity& d = *shows[browsing++];
+                gmap::V3 f = frontOf(d);
+                out.push_back({d.pos + f * 0.75, std::atan2(f.z, f.x) * 180 / 3.14159265358979 + 180, w.id, w.name});
+                continue;
+            }
+            first = false;
             gmap::V3 side{-s.z, 0, s.x};
             out.push_back({counter->pos + s * (0.75 + 0.75 * k) + side * (k % 2 ? 0.25 : -0.1 * k), yaw, w.id, w.name});
             if (++k >= 6) break;
@@ -113,6 +126,10 @@ std::vector<Spot> people() {
         gmap::V3 f = frontOf(*got);
         out.push_back({got->pos + f * 0.7, std::atan2(-f.z, -f.x) * 180 / 3.14159265358979, (int)(std::hash<std::string>()(emp.name) & 0x7fffffff), emp.name});
     }
+    if (ME.map.build.on()) {   // (everyone inside the building)
+        const gmap::Zone& z = ME.map.build;
+        for (auto& p : out) { p.at.x = std::clamp(p.at.x, z.x0 + 0.35, z.x1 - 0.35); p.at.z = std::clamp(p.at.z, z.z0 + 0.35, z.z1 - 0.35); }
+    }
     return out;
 }
 }  // namespace
@@ -127,7 +144,7 @@ void shopEnter() {
     if (int n = (int)(ME.map.ents.size() - had); n > 0) toast(TextFormat("Your shop was missing %d thing%s it needs: put back near where you start.", n, n == 1 ? "" : "s"));
     ME.version++;
     gOpen = -1;
-    CAREER.stations = gmap::workshopStations(ME.map);
+    careerNoteMap(ME.map, CAREER.here);
 }
 
 bool shopWalkUpdate(float dt) {
@@ -147,7 +164,20 @@ bool shopWalkUpdate(float dt) {
 }
 
 void shopDrawPeople() {
-    if (ME.walking) {   // a ceiling over the walls while you're inside on foot (the workshop is built without a roof, so build mode sees in)
+    if (!ME.walking && ME.map.build.on()) {   // build mode: the property's floor (white) and its storefront (gold), outlined
+        auto outline = [](const gmap::Zone& z, Color c) {
+            float y = 0.03f;
+            Vector3 a{(float)z.x0, y, (float)z.z0}, b{(float)z.x1, y, (float)z.z0}, cc{(float)z.x1, y, (float)z.z1}, d{(float)z.x0, y, (float)z.z1};
+            DrawLine3D(a, b, c); DrawLine3D(b, cc, c); DrawLine3D(cc, d, c); DrawLine3D(d, a, c);
+            for (float t = 0.02f; t < 0.06f; t += 0.02f) { DrawLine3D({a.x, t, a.z}, {b.x, t, b.z}, c); DrawLine3D({b.x, t, b.z}, {cc.x, t, cc.z}, c); DrawLine3D({cc.x, t, cc.z}, {d.x, t, d.z}, c); DrawLine3D({d.x, t, d.z}, {a.x, t, a.z}, c); }
+        };
+        outline(ME.map.build, Color{230, 235, 240, 255});
+        if (ME.map.store.on()) outline(ME.map.store, Color{255, 196, 70, 255});
+    }
+    if (ME.walking && ME.map.build.on() && ME.map.roofY > 0) {   // a property: its ceiling over its floor
+        const gmap::Zone& z = ME.map.build;
+        drawBox({(float)((z.x0 + z.x1) / 2), (float)ME.map.roofY + 0.05f, (float)((z.z0 + z.z1) / 2)}, {(float)(z.x1 - z.x0) + 0.6f, 0.1f, (float)(z.z1 - z.z0) + 0.6f}, Color{150, 146, 138, 255});
+    } else if (ME.walking) {   // a ceiling over the walls while you're inside on foot (the workshop is built without a roof, so build mode sees in)
         double x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9, top = 0;
         for (auto& b : ME.map.brushes) {
             gmap::V3 mn, mx;
@@ -160,6 +190,24 @@ void shopDrawPeople() {
     }
     if (std::getenv("GUNSMITH_PEOPLESHEET"))   // (screenshots) the first dozen people the shop would make, in a row
         for (int i = 0; i < 12; i++) drawNpcAt(careerPerson(10000 + i, ""), {(float)(-4.4 + 0.8 * i), 0, -1.5f}, 90, 0.001f);
+    // your guns on the displays
+    for (auto& e : ME.map.ents) {
+        if ((e.type != "display_case" && e.type != "display_rack") || e.ref.empty()) continue;
+        const CareerGun* g = careerGun(e.ref);
+        if (!g || g->d.bodies.empty()) continue;
+        double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+        for (auto& b : g->d.bodies) for (auto& q : b.pts) { x0 = std::min(x0, q.x); x1 = std::max(x1, q.x); y0 = std::min(y0, q.y); y1 = std::max(y1, q.y); }
+        double len = std::max(1.0, x1 - x0);
+        float k = (float)(0.001 / U) * (float)std::min(1.0, 1250.0 / len);   // (metres; a long gun shrunk to fit the display)
+        Matrix M = MatrixMultiply(MatrixTranslate(-(float)((x0 + x1) / 2) * U, (float)((y0 + y1) / 2) * U, 0), MatrixScale(k, k, k));
+        bool lying = e.type == "display_case";
+        if (lying) M = MatrixMultiply(M, MatrixRotateX(-PI / 2));   // (on its side, under the glass)
+        M = MatrixMultiply(M, MatrixRotateY(PI / 2));
+        M = MatrixMultiply(M, MatrixRotateY(-(float)e.yaw * DEG2RAD));
+        Vector3 off = Vector3Transform(lying ? Vector3{0, 0.9f, 0} : Vector3{0.06f, 1.45f, 0}, MatrixRotateY(-(float)e.yaw * DEG2RAD));
+        M = MatrixMultiply(M, MatrixTranslate((float)e.pos.x + off.x, (float)e.pos.y + off.y, (float)e.pos.z + off.z));
+        drawDesignModel("display:" + e.ref, g->d, M);
+    }
     for (auto& p : people()) drawNpcAt(careerPerson(p.person, p.name), {(float)p.at.x, (float)p.at.y, (float)p.at.z}, (float)p.yaw, 0.001f);
 }
 
@@ -167,7 +215,12 @@ void shopHud() {
     auto& C = CAREER;
     float s = CFG.uiScale;
     // the day, money and how well known you are, top left
-    const char* top = TextFormat("Day %d    %s    %s", C.day, TextFormat("$%.0f", C.money), career::tierName(C.reputation));
+    std::string where;
+    if (const career::Property* hp = career::propertyById(C, C.here)) {
+        where = hp->name.empty() ? career::propertyKind(hp->kind).name : hp->name;
+        if (hp->sells()) where += TextFormat("   store %.1f / 5", hp->rating);
+    }
+    const char* top = TextFormat("Day %d    %s    %s    %s", C.day, TextFormat("$%.0f", C.money), career::tierName(C.reputation), where.c_str());
     float w = viewTextWidth(top, 15);
     DrawRectangleRounded({12 * s, 12 * s, w + 24 * s, 30 * s}, 0.4f, 6, Color{20, 23, 28, 170});
     viewText(top, 24 * s, 19 * s, 15, Color{235, 238, 242, 240});
@@ -236,7 +289,7 @@ void shopBuildMode() {
 void shopWalk() {
     if (!shopActive()) return;
     if (!gmap::shopMissing(ME.map).empty()) { gAskMissing = true; return; }   // (the window in shopWindows asks what to do)
-    CAREER.stations = gmap::workshopStations(ME.map);
+    careerNoteMap(ME.map, CAREER.here);
     careerSave();
     meWalk(false);
     if (gHaveStood) { ME.pl = gStood; }

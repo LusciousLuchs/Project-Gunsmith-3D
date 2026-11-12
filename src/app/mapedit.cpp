@@ -139,7 +139,24 @@ static void writeAutosave() {
     embedMapNpcs(ME.map);   // (the NPCs its spawn points use go with it)
     std::ofstream(mapAutosave()) << gmap::mapToJson(ME.map);
 }
+// a career property: its walls come with it, and you build inside it
+static bool careerZoned() { return !ME.careerFile.empty() && ME.map.build.on(); }
+static bool insideProperty(const gmap::Map& m) {
+    const double pad = 0.35;
+    for (auto& b : m.brushes) {
+        if (b.locked) continue;
+        V3 mn, mx; gmap::brushBounds(b, mn, mx);
+        if (mn.x < m.build.x0 - pad || mx.x > m.build.x1 + pad || mn.z < m.build.z0 - pad || mx.z > m.build.z1 + pad) return false;
+    }
+    for (auto& e : m.ents) if (!m.build.has(e.pos, pad)) return false;
+    return true;
+}
 void meChanged() {
+    if (careerZoned() && !insideProperty(ME.map) && !ME.undo.empty()) {   // (outside the property: put it back)
+        gmap::Map m;
+        if (gmap::mapFromJson(ME.undo.back(), m)) { ME.map = m; ME.undo.pop_back(); ME.sel.clear(); ME.ent = -1; ME.face = -1; }
+        toast("That's outside your property: build inside its walls.");
+    }
     ME.version++;
     ME.dirty = true;
     if (CFG.autosave != AutosaveEvery::Off) writeAutosave();
@@ -172,6 +189,7 @@ static std::string fileName(const std::string& name) {
     }
     return f.empty() ? "untitled" : f;
 }
+void meSaveQuiet() { writeAutosave(); ME.dirty = false; }
 bool meSave() {
     if (!ME.careerFile.empty()) { writeAutosave(); ME.dirty = false; toast("Workshop saved."); return true; }
     std::error_code ec;
@@ -425,6 +443,13 @@ void enterCareerWorkshop(const std::string& file, bool walk) {
     ME.version++;
     ME.walking = false;
     ME.cam = {-10, 7, 9}; ME.yaw = -0.6; ME.pitch = -0.45;
+    if (ME.map.build.on()) {   // a property: from out front and above, looking in
+        const gmap::Zone& z = ME.map.build;
+        double cx = (z.x0 + z.x1) / 2, cz = (z.z0 + z.z1) / 2, span = std::max(z.x1 - z.x0, z.z1 - z.z0);
+        ME.cam = {z.x1 + span * 0.55, std::max(ME.map.roofY, 2.5) + span * 0.55, cz - span * 0.45};
+        double dx = cx - ME.cam.x, dy = 0 - ME.cam.y, dz = cz - ME.cam.z;
+        ME.yaw = std::atan2(dz, dx); ME.pitch = -std::atan2(-dy, std::hypot(dx, dz));
+    }
     if (walk) meWalk(false);
 }
 void leaveCareerWorkshop() {
@@ -670,7 +695,8 @@ static void toolInput() {
             if (!surfaceUnderMouse(p, n, b, f)) break;
             meSnapshot();
             gmap::Entity e;
-            e.type = (ME.stationKind == "counter" || ME.stationKind == "computer" || ME.stationKind == "door" ? "shop_" : "station_") + ME.stationKind;
+            if (ME.stationKind.rfind("display_", 0) == 0 || ME.stationKind.rfind("decor_", 0) == 0) e.type = ME.stationKind;
+            else e.type = (ME.stationKind == "counter" || ME.stationKind == "computer" || ME.stationKind == "door" ? "shop_" : "station_") + ME.stationKind;
             e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
             ME.map.ents.push_back(e);
@@ -1000,7 +1026,7 @@ static void drawEditor3D() {
         else if (e.type == "npc_spawn") drawNpcSpawn(e, (int)i == ME.ent);
         else if (e.type == "gun_spawner") drawSpawner(e, (int)i == ME.ent);
         else if (e.type == "light") drawLampMarker(e, (int)i == ME.ent);
-        else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0) drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0 || gmap::isDisplay(e.type) || gmap::isDecor(e.type)) drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
@@ -1064,6 +1090,8 @@ static void drawWalkHud() {
 
 // ---------------------------------------------------------------- the frame
 void mapEditorUpdate(float dt, bool modal) {
+    if (careerZoned())   // (the building's own walls can't be picked: they come with the property)
+        ME.sel.erase(std::remove_if(ME.sel.begin(), ME.sel.end(), [](int b) { return b < 0 || b >= (int)ME.map.brushes.size() || ME.map.brushes[b].locked; }), ME.sel.end());
     if (!modal) {
         if (ME.walking) walkUpdate(dt);
         else {
@@ -1103,7 +1131,7 @@ void mapEditorRender() {
     mapWorkLight(false);
     if (!ME.walking) drawEditor3D();
     else for (auto& e : ME.map.ents) {   // on foot: the things you'd see (not the editor's markers)
-        if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0) drawStation(e.type, rv(e.pos), (float)e.yaw);
+        if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0 || gmap::isDisplay(e.type) || gmap::isDecor(e.type)) drawStation(e.type, rv(e.pos), (float)e.yaw);
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw);
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);

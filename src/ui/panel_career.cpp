@@ -2,6 +2,7 @@
 // store with its reviews, and customers' contracts. (Rules: core/career; the save and the bench test: app/career.)
 #include "app/careermode.hpp"
 #include "app/shop3d.hpp"
+#include "app/mapedit.hpp"
 #include "app/app.hpp"
 #include "app/fonts.hpp"
 #include "app/settings.hpp"
@@ -9,6 +10,7 @@
 #include "extras/IconsFontAwesome6.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cmath>
 #include <cstdio>
 
@@ -240,19 +242,72 @@ static void contractsTab() {
 // ---------------------------------------------------------------- your workshop and your people
 static void workshopTab() {
     auto& C = CAREER;
-    int used = 0;
-    for (auto& [k, n] : C.stations) if (k != "counter") used += n;
-    int room = career::shopStations(C.shopTier);
-    heading("Your building");
-    ImGui::Text("%s: room for %d workstations. You have %d placed.", career::shopName(C.shopTier), room, used);
-    if (used > room) ImGui::TextColored({1, 0.6f, 0.4f, 1}, "%d of them don't fit: only %d are used.", used - room, room);
-    double up = career::shopUpgradeCost(C.shopTier);
-    if (up > 0) {
-        if (ImGui::Button(TextFormat("Move to %s (%d workstations) for %s", career::shopName(C.shopTier + 1), career::shopStations(C.shopTier + 1), usd(up).c_str()))) {
-            if (C.money >= up) { C.money -= up; C.shopTier++; careerSave(); toast(std::string("You've moved to ") + career::shopName(C.shopTier) + ". Build it out in your workshop."); }
-            else toast("Not enough money for that yet.");
+    career::ensureProperties(C);
+    heading("Your properties");
+    static const char* roles[] = {"store", "workshop", "both"};
+    static const char* roleNames[] = {"Store (sells to walk-ins)", "Workshop (makes guns)", "Store and workshop"};
+    int sellId = -1;
+    for (auto& p : C.props) {
+        const career::PropertyKind& k = career::propertyKind(p.kind);
+        ImGui::PushID(p.id);
+        ImGui::Separator();
+        ImGui::PushFont(gFontBold, 0.0f);
+        ImGui::Text("%s%s", p.name.empty() ? k.name : p.name.c_str(), p.id == C.here ? "  (you're here)" : "");
+        ImGui::PopFont();
+        int placed = 0; for (auto& [kk, nn] : p.stations) if (kk != "counter") placed += nn;
+        ImGui::TextDisabled("%d of %d workstations   staff room %d   upkeep %s a day", std::min(placed, k.stations), k.stations, k.staff, usd(k.upkeep).c_str());
+        if (placed > k.stations) ImGui::TextColored({1, 0.6f, 0.4f, 1}, "%d workstations don't fit: only %d count.", placed - k.stations, k.stations);
+        if (p.sells()) {
+            ImGui::TextDisabled("Store rating:"); ImGui::SameLine();
+            stars((int)std::lround(p.rating));
+            ImGui::SameLine(); ImGui::TextDisabled("(%.1f)%s", p.rating, p.shown.empty() ? "" : TextFormat("   %d gun%s on display", (int)p.shown.size(), p.shown.size() == 1 ? "" : "s"));
         }
-    } else ImGui::TextDisabled("The biggest there is.");
+        int ri = p.role == "store" ? 0 : p.role == "workshop" ? 1 : 2;
+        ImGui::SetNextItemWidth(230 * CFG.uiScale);
+        if (ImGui::Combo("##role", &ri, roleNames, 3)) {
+            p.role = roles[ri];
+            career::sumStations(C);
+            while ((int)C.staff.size() > career::staffRoom(C) && !C.staff.empty()) { toast(C.staff.back().name + " had to go: no room for them now."); C.staff.pop_back(); }
+            careerSave();
+        }
+        if (p.id != C.here) {
+            ImGui::SameLine();
+            if (ImGui::Button("Go there")) { ImGui::PopID(); careerGoTo(p.id); return; }
+        }
+        if (C.props.size() > 1) {
+            ImGui::SameLine();
+            if (dangerButton(TextFormat("Sell (%s)", usd(k.price * 0.6).c_str()))) sellId = p.id;
+        }
+        ImGui::PopID();
+    }
+    if (sellId >= 0) {
+        bool wasHere = sellId == C.here;
+        std::string why;
+        if (career::sellProperty(C, sellId, &why)) { careerSave(); toast("Sold."); if (wasHere) { careerOpenWorkshop(true); return; } }
+        else toast(why);
+    }
+    heading("Buy a property");
+    static int buyRole = 2;
+    for (auto& k : career::propertyKinds()) {
+        if (k.price <= 0) continue;
+        ImGui::PushID(k.id);
+        ImGui::Separator();
+        ImGui::PushFont(gFontBold, 0.0f); ImGui::Text("%s", k.name); ImGui::PopFont();
+        ImGui::SameLine(); ImGui::TextColored({0.55f, 0.92f, 0.6f, 1}, "%s", usd(k.price).c_str());
+        wrappedDim(std::string(k.blurb) + TextFormat("  Room for %d workstations and %d staff; %s a day to keep.", k.stations, k.staff, usd(k.upkeep).c_str()));
+        ImGui::SetNextItemWidth(230 * CFG.uiScale);
+        ImGui::Combo("##brole", &buyRole, roleNames, 3);
+        ImGui::SameLine();
+        ImGui::BeginDisabled(C.money < k.price);
+        if (accentButton("Buy", true)) {
+            std::string why;
+            if (career::buyProperty(C, k.id, roles[buyRole], &why)) { careerSave(); toast(std::string("Bought: ") + k.name + ". Go there from this list or the front door."); }
+            else toast(why);
+        }
+        ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+    heading("This property");
     auto st = [&](const char* k) { auto it = C.stations.find(k); return it == C.stations.end() ? 0 : it->second; };
     ImGui::Text("Workbenches %d   Lathes %d   Milling machines %d   Test benches %d   Counter: %s", st("bench"), st("lathe"), st("mill"), st("qc"), st("counter") ? "yes" : "none");
     if (ImGui::Button(ICON_FA_TOOLBOX "  Build mode (B)")) { shopBuildMode(); return; }
@@ -294,22 +349,33 @@ static void workshopTab() {
 static void counterTab() {
     auto& C = CAREER;
     auto st = C.stations.find("counter");
-    if (st == C.stations.end() || st->second == 0) { wrappedDim("You have no counter: place one in your workshop (Workshop & staff > Build your workshop, the Workstation tool) and customers will come in."); return; }
+    if (st == C.stations.end() || st->second == 0) { wrappedDim("You have no counter: place one in your workshop (build mode, the Workstation tool) and customers will come in."); return; }
     static int sel = -1;
     int waiting = 0;
-    for (auto& w : C.walkins) if (w.state == 0) waiting++;
+    auto hereW = [&](const career::Walkin& w) { return C.props.empty() || w.prop == C.here; };
+    for (auto& w : C.walkins) if (w.state == 0 && hereW(w)) waiting++;
+    if (const career::Property* hp = career::propertyById(C, C.here)) {
+        if (!hp->sells()) { wrappedDim("This property is set up as a workshop only: customers go to your stores. Change it under Properties & staff on the computer."); return; }
+        ImGui::TextDisabled("Store rating:"); ImGui::SameLine(); stars((int)std::lround(hp->rating)); ImGui::SameLine(); ImGui::TextDisabled("(%.1f)", hp->rating);
+        if (shopActive()) {
+            std::vector<std::string> tips;
+            gmap::storeRating(ME.map, &tips);
+            if (!tips.empty()) { std::string t = "To raise it: "; for (size_t i = 0; i < tips.size(); i++) t += (i ? "; " : "") + tips[i]; wrappedDim(t + "."); }
+        }
+    }
     ImGui::Text("Today, day %d, 2031. %d customer%s waiting.", C.day, waiting, waiting == 1 ? "" : "s");
     if (C.walkins.empty()) { wrappedDim("Nobody's come in yet: they come each day."); return; }
     ImGui::BeginChild("##queue", {230 * CFG.uiScale, 0}, ImGuiChildFlags_Borders);
     for (auto& w : C.walkins) {
+        if (!hereW(w)) continue;
         const char* tag = w.state == 0 ? "" : w.state == 1 ? "  (bought)" : w.state == 2 ? "  (left)" : "  (taken away)";
         if (ImGui::Selectable((w.name + tag + "##w" + std::to_string(w.id)).c_str(), sel == w.id)) sel = w.id;
     }
     ImGui::EndChild();
     ImGui::SameLine();
     career::Walkin* W = nullptr;
-    for (auto& w : C.walkins) if (w.id == sel) W = &w;
-    if (!W) { for (auto& w : C.walkins) if (w.state == 0) { W = &w; sel = w.id; break; } }
+    for (auto& w : C.walkins) if (w.id == sel && hereW(w)) W = &w;
+    if (!W) { for (auto& w : C.walkins) if (w.state == 0 && hereW(w)) { W = &w; sel = w.id; break; } }
     if (!W) { ImGui::TextDisabled("Pick a customer."); return; }
     auto& w = *W;
     ImGui::BeginChild("##customer", {0, 0});
@@ -322,6 +388,7 @@ static void counterTab() {
     ImGui::BeginGroup();
     ImGui::PushFont(gFontBold, 16.0f); ImGui::Text("%s", w.name.c_str()); ImGui::PopFont();
     wrapped("\"" + w.request + "\"");
+    if (!w.interest.empty()) ImGui::TextColored({0.95f, 0.8f, 0.45f, 1}, "They saw the %s on display and want a look at it.", w.interest.c_str());
     ImGui::TextDisabled("They mention about %s to spend.", usd(w.budget).c_str());
     ImGui::Dummy({0, 6 * CFG.uiScale});
     // their form and their ID, side by side: they should match, and the ID shouldn't have run out
@@ -416,10 +483,20 @@ bool careerThingWindow(int thing) {
         if (busy && tipHover()) ImGui::SetTooltip("A bench test is still running.");
         ImGui::SameLine();
         if (ImGui::Button("Save and go to the main menu")) { careerSave(); ImGui::End(); shopCloseThing(); backToMenu(); return false; }
+        if (C.props.size() > 1) {
+            heading("Go to another of your places");
+            for (auto& p : C.props) {
+                if (p.id == C.here) continue;
+                const career::PropertyKind& k = career::propertyKind(p.kind);
+                if (ImGui::Button(TextFormat("%s  (%s)##go%d", p.name.empty() ? k.name : p.name.c_str(), p.role.c_str(), p.id))) { int id = p.id; ImGui::End(); shopCloseThing(); careerGoTo(id); return false; }
+            }
+        }
     } else if (ImGui::BeginTabBar("##thingtabs")) {
-        const char* names[] = {"Today", "Your guns", "Online store", "Contracts", "Workshop & staff", "Counter"};
+        const char* names[] = {"Today", "Your guns", "Online store", "Contracts", "Properties & staff", "Counter"};
+        static int forced = -2;
+        if (forced == -2) { const char* e = std::getenv("GUNSMITH_SHOPTAB"); forced = e ? std::atoi(e) : -1; }   // (screenshots) which tab
         for (int i : tabs) {
-            if (ImGui::BeginTabItem(names[i])) {
+            if (ImGui::BeginTabItem(names[i], nullptr, forced == i ? ImGuiTabItemFlags_SetSelected : 0)) {
                 ImGui::BeginChild("##thingtab");
                 if (i == 0) todayTab(); else if (i == 1) gunsTab(); else if (i == 2) storeTab(); else if (i == 3) contractsTab(); else if (i == 4) workshopTab(); else counterTab();
                 ImGui::EndChild();
@@ -427,6 +504,7 @@ bool careerThingWindow(int thing) {
             }
         }
         ImGui::EndTabBar();
+        forced = -1;
     }
     ImGui::End();
     return open;
@@ -466,7 +544,7 @@ void careerScreen() {
     if (ImGui::Button("Main menu")) { careerSave(); backToMenu(); ImGui::End(); return; }
     ImGui::Separator();
     if (ImGui::BeginTabBar("##ctabs")) {
-        const char* names[] = {"Today", "Your guns", "Online store", "Contracts", "Workshop & staff", "Counter"};
+        const char* names[] = {"Today", "Your guns", "Online store", "Contracts", "Properties & staff", "Counter"};
         for (int i = 0; i < 6; i++) {
             ImGuiTabItemFlags f = tab == i ? ImGuiTabItemFlags_SetSelected : 0;
             bool open = ImGui::BeginTabItem(names[i], nullptr, f);

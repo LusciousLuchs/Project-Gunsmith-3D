@@ -538,6 +538,43 @@ void drawStation(const std::string& type, Vector3 base, float yawDeg, Color tint
         box(0.75f, 0.45f, 0, 0.45f, 0.06f, 0.45f, grey);                // a chair
         box(0.95f, 0.75f, 0, 0.05f, 0.55f, 0.45f, grey);
         box(0.75f, 0.22f, 0, 0.06f, 0.44f, 0.06f, dark);
+    } else if (type == "display_case") {  // a glass-topped case on a dark base, lit inside
+        box(0, 0.4f, 0, 0.6f, 0.8f, 1.4f, dark);
+        box(0, 0.82f, 0, 0.62f, 0.04f, 1.42f, top);
+        drawBox(at(0, 0.97f, 0), {0.58f, 0.26f, 1.38f}, Color{190, 220, 235, 255}, R, 0.25f);   // (glass)
+        box(0, 0.85f, 0, 0.5f, 0.01f, 1.3f, Color{120, 30, 36, 255});   // the felt it lies on
+    } else if (type == "display_rack") {  // a wall rack: a backboard with pegs, the gun hangs on its face
+        box(-0.05f, 1.45f, 0, 0.04f, 1.0f, 1.3f, Color{60, 50, 42, 255});
+        for (float y : {1.15f, 1.75f}) for (float z : {-0.45f, 0.45f}) box(0.02f, y, z, 0.1f, 0.03f, 0.03f, steel);
+    } else if (type == "display_stand") { // an accessory stand: three shelves of boxes, scopes and grips
+        box(-0.15f, 0.8f, 0, 0.04f, 1.6f, 1.0f, dark);
+        for (int k = 0; k < 3; k++) {
+            float y = 0.45f + 0.45f * k;
+            box(0, y, 0, 0.32f, 0.03f, 1.0f, top);
+            for (int j = 0; j < 3; j++) box(0.02f, y + 0.07f, -0.32f + 0.32f * j, 0.16f, 0.11f, 0.18f, (k + j) % 3 == 0 ? Color{70, 90, 120, 255} : (k + j) % 3 == 1 ? Color{150, 60, 50, 255} : grey);
+        }
+        drawCyl(at(0.02f, 1.43f, -0.2f), at(0.02f, 1.43f, 0.2f), 0.035f, tint.a ? tint : dark);   // a scope
+    } else if (type == "decor_plant") {   // a potted plant
+        drawCyl(at(0, 0, 0), at(0, 0.35f, 0), 0.18f, tint.a ? tint : Color{150, 90, 60, 255});
+        for (int k = 0; k < 7; k++) {
+            float a = k * 0.9f, r = 0.12f + 0.05f * (k % 3);
+            drawCyl(at(0, 0.32f, 0), at(r * std::cos(a), 0.75f + 0.12f * (k % 3), r * std::sin(a)), 0.05f, tint.a ? tint : Color{60, 120, 64, 255});
+        }
+    } else if (type == "decor_poster") {  // a framed poster on the wall
+        box(-0.02f, 1.6f, 0, 0.02f, 0.9f, 0.65f, dark);
+        box(0.0f, 1.6f, 0, 0.01f, 0.82f, 0.57f, Color{190, 150, 70, 255});
+        box(0.01f, 1.75f, 0, 0.01f, 0.2f, 0.4f, Color{60, 70, 90, 255});
+    } else if (type == "decor_rug") {     // a rug on the floor
+        box(0, 0.006f, 0, 1.6f, 0.012f, 2.4f, Color{120, 50, 44, 255});
+        box(0, 0.013f, 0, 1.2f, 0.004f, 2.0f, Color{170, 130, 80, 255});
+    } else if (type == "decor_sign") {    // a hanging shop sign
+        box(0, 2.25f, 0, 0.05f, 0.45f, 1.3f, Color{30, 34, 40, 255});
+        box(0.03f, 2.25f, 0, 0.01f, 0.32f, 1.15f, tint.a ? tint : Color{230, 160, 60, 255});
+        for (float z : {-0.5f, 0.5f}) box(0, 2.6f, z, 0.02f, 0.3f, 0.02f, steel);
+    } else if (type == "decor_seat") {    // a bench seat for customers
+        box(0, 0.45f, 0, 0.45f, 0.06f, 1.4f, wood);
+        box(-0.2f, 0.75f, 0, 0.05f, 0.5f, 1.4f, wood);
+        for (float z : {-0.6f, 0.6f}) box(0, 0.22f, z, 0.4f, 0.44f, 0.06f, dark);
     } else if (type == "shop_door") {     // the front door: close up here at the end of the day
         box(0, 0.01f, 0, 0.6f, 0.02f, 1.0f, Color{70, 60, 50, 255});      // the mat
         box(0.15f, 1.2f, 0.62f, 0.04f, 0.05f, 0.05f, dark);              // a sign by the door: OPEN

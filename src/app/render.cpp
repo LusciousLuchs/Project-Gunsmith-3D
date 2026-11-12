@@ -743,6 +743,25 @@ static void drawAttachment(const std::string& file, const Design& att, Matrix Mf
     if (pass == 1) rlEnableDepthMask();
     }
 }
+void drawDesignModel(const std::string& key, const Design& d, Matrix M) {
+    // (the same design object as last time: its meshes are still good; comparing whole blueprints every frame is slow)
+    static std::map<std::string, const Design*> seen;
+    auto it = gAttMeshes.find(key);
+    if (it == gAttMeshes.end() || seen[key] != &d || it->second.m.size() != d.bodies.size()) { attMeshes(key, d); seen[key] = &d; }
+    const auto& ms = gAttMeshes[key].m;
+    for (int pass = 0; pass < 2; pass++) {
+        if (pass == 1) rlDisableDepthMask();
+        for (size_t i = 0; i < d.bodies.size() && i < ms.size(); i++) {
+            const BodyDef& b = d.bodies[i];
+            if ((b.opacity < 0.99) != (pass == 1)) continue;
+            V2 c = centroidOf(b);
+            Matrix Mb = MatrixMultiply(MatrixTranslate((float)c.x * U, -(float)c.y * U, (float)(b.z * U)), M);
+            if (!b.texture.empty()) drawMeshTex(ms[i], Mb, hexColor(b.color), userTexture(b.texture), (float)b.opacity);
+            else drawMesh(ms[i], Mb, hexColor(b.color), (float)b.opacity);
+        }
+        if (pass == 1) rlEnableDepthMask();
+    }
+}
 static float gOpticAlpha = 1;   // the optic you're aiming through fades (you look through it, not at it)
 void setOpticSeeThrough(float alpha) { gOpticAlpha = alpha; }
 void drawAttachments(const std::vector<RB>& list) {

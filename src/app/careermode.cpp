@@ -159,15 +159,47 @@ void careerStartNew() {
     CAREER = career::newCareer((unsigned)(GetTime() * 1000) ^ 0x5bd1e995u);
     careerSave();
 }
-std::string careerWorkshopFile() { return careerDir() + "/workshop.gsmap"; }
+// each property's building is its own map: the first in workshop.gsmap (as before properties), the others property_<id>
+std::string careerPropertyFile(int id) { return careerDir() + (id <= 1 ? std::string("/workshop.gsmap") : "/property_" + std::to_string(id) + ".gsmap"); }
+std::string careerWorkshopFile() { return careerPropertyFile(CAREER.here); }
+static void ensurePropertyMap(int id) {   // a property bought (or a new career's garage): its building, as it comes
+    std::error_code ec;
+    std::string f = careerPropertyFile(id);
+    if (fs::exists(f, ec)) return;
+    const career::Property* p = career::propertyById(CAREER, id);
+    fs::create_directories(fs::path(f).parent_path(), ec);
+    std::ofstream(f) << gmap::mapToJson(gmap::propertyShell(p ? p->kind : "garage"));
+}
+void careerNoteMap(const gmap::Map& m, int id) {
+    career::Property* p = career::propertyById(CAREER, id);
+    if (!p) return;
+    p->stations = gmap::workshopStations(m);
+    p->rating = gmap::storeRating(m);
+    p->shown.clear();
+    for (auto& e : m.ents) if ((e.type == "display_case" || e.type == "display_rack") && !e.ref.empty() && m.store.has(e.pos, 0.3)) p->shown.push_back(e.ref);
+    career::sumStations(CAREER);
+}
 void careerCountStations() {
-    std::ifstream in(careerWorkshopFile());
-    if (!in) return;   // (not built yet: the career's own start, a bench and a counter)
-    std::stringstream ss; ss << in.rdbuf();
-    gmap::Map m;
-    if (gmap::mapFromJson(ss.str(), m)) CAREER.stations = gmap::workshopStations(m);
+    career::ensureProperties(CAREER);
+    for (auto& p : CAREER.props) {
+        std::ifstream in(careerPropertyFile(p.id));
+        if (!in) continue;   // (not built yet: as it comes)
+        std::stringstream ss; ss << in.rdbuf();
+        gmap::Map m;
+        if (gmap::mapFromJson(ss.str(), m)) careerNoteMap(m, p.id);
+    }
+    career::sumStations(CAREER);
+}
+void careerGoTo(int id) {
+    if (!career::propertyById(CAREER, id) || id == CAREER.here) return;
+    if (shopActive()) { meSaveQuiet(); careerNoteMap(ME.map, CAREER.here); }
+    CAREER.here = id;
+    careerSave();
+    careerOpenWorkshop(true);
 }
 void careerOpenWorkshop(bool walk) {
+    career::ensureProperties(CAREER);
+    ensurePropertyMap(CAREER.here);
     enterCareerWorkshop(careerWorkshopFile(), walk);
     gIn = true;
     shopEnter();

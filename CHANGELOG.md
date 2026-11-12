@@ -8,6 +8,20 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.0-alpha
+
+### Career: properties
+- **You start in your home garage**: a bench or two and a counter by the open door, no room for staff. Grow into a **workshop shack**, a **strip-mall unit** (a real store at the front, a workshop out back) and a **warehouse** (an office store by the entrance, a big production floor). Buy them on the computer's **Properties & staff** page; you can own several.
+- **Each property is a store, a workshop, or both.** Stores get walk-in customers; workshops' workstations and staff room count toward your building. Each costs upkeep every day. Travel between them from the front door or the properties page; sell one for 60% back.
+- **Fixed buildings, free inside.** The walls and storefront come with each place (build mode shows the floor in white and the storefront in gold); place anything you like inside, but nothing outside its walls.
+- Older careers keep their workshop as their first property.
+
+### Career: displays and store rating
+- **Gun display cases and wall racks** (pick one of your guns in the display's panel: it's shown on it), **accessory stands**, and decoration: **plants, posters, rugs, shop signs, bench seats** (Workstation tool).
+- **Store rating** (0 to 5) from what's in the storefront: guns on display most, then accessories, decoration (variety counts), light and a counter. The counter tells you what would raise it. Measured: a five-star store gets about twice the walk-ins of a bare one, and they bring bigger budgets.
+- **Customers browse your displays** while they wait, and some ask for a gun they saw on display (they'll pay a little more for it).
+- **People stand at ease** now: arms relaxed, hands loosely curled, each a little different.
+
 ## 0.7.9-alpha
 
 ### Designer

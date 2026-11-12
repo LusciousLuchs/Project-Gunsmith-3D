@@ -81,6 +81,27 @@ struct Walkin {
     bool checked = false;
     std::string result;                    // the background check's answer: PROCEED or DENIED
     int state = 0;                         // 0 waiting, 1 sold, 2 sent away, 3 reported to the police
+    int prop = 1;                          // the property they came into
+    std::string interest;                  // a gun they saw on display there and want to see ("" none)
+};
+
+// Properties (0.8, the owner's plan): you start selling out of your home garage and move up to a shack, a strip-mall unit
+// and a warehouse, and can own several at once. Each is a fixed building (its walls and storefront come with it) that
+// you fill as you like, up to its size; each is set to sell (a store: walk-ins, displays), make (a workshop: its
+// workstations and staff count) or both.
+struct PropertyKind { const char* id; const char* name; const char* blurb; double price, upkeep; int stations, staff; };
+const std::vector<PropertyKind>& propertyKinds();   // garage, shack, retail, warehouse
+const PropertyKind& propertyKind(const std::string& id);
+struct Property {
+    int id = 1;
+    std::string kind = "garage";
+    std::string role = "both";               // store, workshop, both
+    std::string name;                         // "" = the kind's name
+    std::map<std::string, int> stations;      // what's placed in it (from its map): bench, lathe, mill, qc, counter
+    double rating = 0;                        // the store's rating, 0..5 stars (from its map: displays, decoration, light)
+    std::vector<std::string> shown;           // the guns on its displays
+    bool sells() const { return role != "workshop"; }
+    bool makes() const { return role != "store"; }
 };
 
 struct Career {
@@ -107,7 +128,19 @@ struct Career {
     std::map<std::string, int> flawed;     // of the stock, copies with a flaw nobody caught (they jam more)
     // stage 3
     std::vector<Walkin> walkins;
+    // properties (0.8)
+    std::vector<Property> props;
+    int here = 1;                           // the property you're in
 };
+Property* propertyById(Career& c, int id);
+const Property* propertyById(const Career& c, int id);
+void ensureProperties(Career& c);           // an older career: its one shop becomes its first property
+bool buyProperty(Career& c, const std::string& kind, const std::string& role, std::string* why = nullptr);   // (the new one's id is the last in props)
+bool sellProperty(Career& c, int id, std::string* why = nullptr);   // 60% back; never the last one
+int stationRoom(const Career& c);           // workstations that count today: each making property's, up to its size
+int staffRoom(const Career& c);             // employees you have room for
+double dailyUpkeep(const Career& c);
+void sumStations(Career& c);                // Career::stations from the making properties' own (call after a property's map changes)
 // a person's body from their first name: "male", "female", or "" (a name either could have)
 std::string bodyForName(const std::string& name);
 int shopStations(int tier);                // workstations your building has room for

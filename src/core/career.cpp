@@ -204,6 +204,88 @@ Contract offer(Career& c) {
 int shopStations(int tier) { static const int n[] = {3, 6, 10, 16}; return n[std::max(0, std::min(3, tier))]; }
 double shopUpgradeCost(int tier) { static const double m[] = {12000, 35000, 90000, 0}; return m[std::max(0, std::min(3, tier))]; }
 const char* shopName(int tier) { static const char* n[] = {"A garage", "A small shop", "A workshop", "A factory floor"}; return n[std::max(0, std::min(3, tier))]; }
+const std::vector<PropertyKind>& propertyKinds() {
+    static const std::vector<PropertyKind> k = {
+        {"garage", "Home garage", "Your own garage at home: a bench or two and a table by the door to sell from. No room for staff.", 0, 0, 3, 0},
+        {"shack", "Workshop shack", "A shed of your own on a cheap lot: room for a few machines, a couple of hands and a small counter.", 18000, 30, 5, 3},
+        {"retail", "Strip-mall unit", "A shopfront in a strip mall: a proper store at the front, a workshop out back.", 65000, 120, 9, 7},
+        {"warehouse", "Warehouse", "A warehouse with an office store by the entrance and a big floor for a production line.", 240000, 350, 20, 18}};
+    return k;
+}
+const PropertyKind& propertyKind(const std::string& id) {
+    for (auto& k : propertyKinds()) if (id == k.id) return k;
+    return propertyKinds()[0];
+}
+Property* propertyById(Career& c, int id) { for (auto& p : c.props) if (p.id == id) return &p; return nullptr; }
+const Property* propertyById(const Career& c, int id) { for (auto& p : c.props) if (p.id == id) return &p; return nullptr; }
+void ensureProperties(Career& c) {
+    if (!c.props.empty()) { if (!propertyById(c, c.here)) c.here = c.props.front().id; return; }
+    Property p;   // (the one shop an older career had: its size as it was)
+    static const char* byTier[] = {"garage", "shack", "retail", "warehouse"};
+    p.id = 1; p.kind = byTier[std::max(0, std::min(3, c.shopTier))]; p.role = "both";
+    p.stations = c.stations;
+    c.props.push_back(p);
+    c.here = 1;
+}
+void sumStations(Career& c) {
+    std::map<std::string, int> sum;
+    for (auto& p : c.props) {
+        for (auto& [k, n] : p.stations) {
+            if (k == "counter") { if (p.sells()) sum[k] += n; continue; }
+            if (p.makes()) sum[k] += n;
+        }
+    }
+    c.stations = sum;
+}
+int stationRoom(const Career& c) {
+    int room = 0;
+    for (auto& p : c.props) {
+        if (!p.makes()) continue;
+        int placed = 0;
+        for (auto& [k, n] : p.stations) if (k != "counter") placed += n;
+        room += std::min(placed, propertyKind(p.kind).stations);
+    }
+    return room;
+}
+int staffRoom(const Career& c) {
+    int room = 0;
+    for (auto& p : c.props) if (p.makes()) room += propertyKind(p.kind).staff;
+    return room;
+}
+double dailyUpkeep(const Career& c) {
+    double u = 0;
+    for (auto& p : c.props) u += propertyKind(p.kind).upkeep;
+    return u;
+}
+bool buyProperty(Career& c, const std::string& kind, const std::string& role, std::string* why) {
+    const PropertyKind& k = propertyKind(kind);
+    if (kind != k.id) { if (why) *why = "no such place"; return false; }
+    if (c.money < k.price) { if (why) *why = "you need " + money(k.price); return false; }
+    Property p;
+    p.id = 1;
+    for (auto& q : c.props) p.id = std::max(p.id, q.id + 1);
+    p.kind = kind; p.role = role == "store" || role == "workshop" ? role : "both";
+    c.money -= k.price;
+    c.props.push_back(p);
+    char b[200];
+    std::snprintf(b, sizeof b, "You bought a %s for %s.", k.name, money(k.price).c_str());
+    c.news.push_back(b);
+    return true;
+}
+bool sellProperty(Career& c, int id, std::string* why) {
+    if (c.props.size() <= 1) { if (why) *why = "it's the only place you have"; return false; }
+    for (size_t i = 0; i < c.props.size(); i++) {
+        if (c.props[i].id != id) continue;
+        const PropertyKind& k = propertyKind(c.props[i].kind);
+        c.money += k.price * 0.6;
+        c.props.erase(c.props.begin() + i);
+        if (c.here == id) c.here = c.props.front().id;
+        sumStations(c);
+        while ((int)c.staff.size() > staffRoom(c)) c.staff.pop_back();   // (no room for them now)
+        return true;
+    }
+    return false;
+}
 const char* tierName(double r) {
     return r >= 80 ? "Defense supplier" : r >= 60 ? "National brand" : r >= 35 ? "Regional maker" : r >= 15 ? "Local gunsmith" : "Garage gunsmith";
 }
@@ -214,7 +296,7 @@ Crew crewToday(const Career& c) {
     Crew w;
     auto get = [&](const char* k) { auto it = c.stations.find(k); return it == c.stations.end() ? 0 : it->second; };
     int bench = get("bench"), lathe = get("lathe"), mill = get("mill"), qc = get("qc");
-    int room = shopStations(c.shopTier);   // (stations past what your building holds don't count)
+    int room = c.props.empty() ? shopStations(c.shopTier) : stationRoom(c);   // (stations past what your buildings hold don't count)
     auto cut = [&](int& n) { int k = std::min(n, room); room -= k; n = k; };
     cut(bench); cut(lathe); cut(mill); cut(qc);
     double flawHours = 0;
@@ -258,7 +340,12 @@ bool hire(Career& c, int i, std::string* why) {
     if (i < 0 || i >= (int)c.candidates.size()) return false;
     int stations = 0;
     for (auto& [k, n] : c.stations) if (k != "counter") stations += n;
-    stations = std::min(stations, shopStations(c.shopTier));
+    stations = std::min(stations, c.props.empty() ? shopStations(c.shopTier) : stationRoom(c));
+    if (!c.props.empty() && (int)c.staff.size() >= staffRoom(c)) {
+        if (why) *why = staffRoom(c) == 0 ? "a home garage has no room for employees: buy a shack or bigger (and set it to make guns)"
+                                          : "no room for more staff in your workshops: buy a bigger place";
+        return false;
+    }
     if ((int)c.staff.size() + 1 >= stations + 0) {   // (you take a bench too)
         if (why) *why = "no free workstation: place another in your workshop (a bench, a lathe, a mill or a test bench)";
         return false;
@@ -276,6 +363,7 @@ Career newCareer(unsigned seed) {
     c.rng = seed ? seed : 12345;
     for (int k = 0; k < 2; k++) c.contracts.push_back(offer(c));   // (a couple of customers waiting on day 1)
     c.stations = {{"bench", 1}, {"counter", 1}};   // (your workshop: a bench and a counter, until you build it up)
+    { Property p; p.id = 1; p.kind = "garage"; p.role = "both"; p.stations = c.stations; c.props.push_back(p); c.here = 1; }
     refreshCandidates(c);
     for (int i = 0; i < 2; i++) c.walkins.push_back(walkin(c));
     c.news = {"Day 1. You've opened your shop. Design a gun, rate it on the bench, build some copies and list them in your online store.",
@@ -399,9 +487,26 @@ void endDay(Career& c) {
     if (c.contracts.size() > 60) c.contracts.erase(c.contracts.begin(), c.contracts.begin() + (c.contracts.size() - 60));
     // tomorrow's customers at your counter (if you have one): yesterday's who didn't buy have gone
     c.walkins.clear();
-    if (c.stations.count("counter") && c.stations["counter"] > 0) {
-        int n = std::min(5, 1 + (int)(c.reputation / 25) + (rnd(c) < 0.5 ? 1 : 0));
-        for (int i = 0; i < n; i++) c.walkins.push_back(walkin(c));
+    if (c.props.empty()) {
+        if (c.stations.count("counter") && c.stations["counter"] > 0) {
+            int n = std::min(5, 1 + (int)(c.reputation / 25) + (rnd(c) < 0.5 ? 1 : 0));
+            for (int i = 0; i < n; i++) c.walkins.push_back(walkin(c));
+        }
+    } else for (auto& p : c.props) {   // each store: more come in the better it looks, and some ask after what's on display
+        if (!p.sells() || !p.stations.count("counter") || p.stations.at("counter") <= 0) continue;
+        double base = 1 + c.reputation / 25 + (rnd(c) < 0.5 ? 1 : 0);
+        int n = std::min(8, (int)std::lround(base * (0.75 + 0.25 * std::clamp(p.rating, 0.0, 5.0))));   // (bare: three quarters of before; five stars: twice)
+        for (int i = 0; i < n; i++) {
+            Walkin w = walkin(c);
+            w.prop = p.id;
+            w.budget = std::round(w.budget * (1 + 0.04 * std::clamp(p.rating, 0.0, 5.0)) / 10) * 10;
+            if (!p.shown.empty() && rnd(c) < 0.35 + 0.08 * p.rating) w.interest = p.shown[rndInt(c, 0, (int)p.shown.size() - 1)];
+            c.walkins.push_back(w);
+        }
+    }
+    if (!c.props.empty()) {   // what your places cost to keep
+        double u = dailyUpkeep(c);
+        if (u > 0) { c.money -= u; char bb[160]; std::snprintf(bb, sizeof bb, "Rent and upkeep on your properties: %s.", money(u).c_str()); c.news.push_back(bb); }
     }
     c.day++;
     std::snprintf(b, sizeof b, "Day %d.%s", c.day, income > 0 ? (" Online sales yesterday: " + money(income) + ".").c_str() : "");
@@ -494,8 +599,15 @@ std::string careerToJson(const Career& c) {
     json W = json::array();
     for (auto& w : c.walkins)
         W.push_back({{"id", w.id}, {"name", w.name}, {"idName", w.idName}, {"request", w.request}, {"hands", w.hands}, {"minEnergy", w.minEnergy}, {"maxEnergy", w.maxEnergy},
-                     {"budget", w.budget}, {"dob", w.dob}, {"idDob", w.idDob}, {"idExpires", w.idExpires}, {"trouble", w.trouble}, {"checked", w.checked}, {"result", w.result}, {"state", w.state}});
+                     {"budget", w.budget}, {"dob", w.dob}, {"idDob", w.idDob}, {"idExpires", w.idExpires}, {"trouble", w.trouble}, {"checked", w.checked}, {"result", w.result}, {"state", w.state},
+                     {"prop", w.prop}, {"interest", w.interest}});
     o["walkins"] = W;
+    json P = json::array();
+    for (auto& p : c.props) {
+        json st = json::object(); for (auto& [k, n] : p.stations) st[k] = n;
+        P.push_back({{"id", p.id}, {"kind", p.kind}, {"role", p.role}, {"name", p.name}, {"stations", st}, {"rating", p.rating}, {"shown", p.shown}});
+    }
+    o["properties"] = P; o["here"] = c.here;
     o["news"] = c.news;
     return o.dump(1);
 }
@@ -543,15 +655,26 @@ bool careerFromJson(const std::string& text, Career& out) {
         w.id = j.value("id", 0); w.name = j.value("name", ""); w.idName = j.value("idName", ""); w.request = j.value("request", ""); w.hands = j.value("hands", 0);
         w.minEnergy = j.value("minEnergy", 0.0); w.maxEnergy = j.value("maxEnergy", 0.0); w.budget = j.value("budget", 0.0); w.dob = j.value("dob", ""); w.idDob = j.value("idDob", "");
         w.idExpires = j.value("idExpires", ""); w.trouble = j.value("trouble", ""); w.checked = j.value("checked", false); w.result = j.value("result", ""); w.state = j.value("state", 0);
+        w.prop = j.value("prop", 1); w.interest = j.value("interest", "");
         c.walkins.push_back(w);
     }
     if (o.contains("news") && o["news"].is_array()) for (auto& n : o["news"]) if (n.is_string()) c.news.push_back(n.get<std::string>());
+    for (auto& j : o.value("properties", json::array())) {
+        Property p;
+        p.id = j.value("id", 1); p.kind = j.value("kind", "garage"); p.role = j.value("role", "both"); p.name = j.value("name", "");
+        if (j.contains("stations") && j["stations"].is_object()) for (auto& [k, n] : j["stations"].items()) p.stations[k] = n.get<int>();
+        p.rating = j.value("rating", 0.0);
+        if (j.contains("shown") && j["shown"].is_array()) for (auto& g : j["shown"]) if (g.is_string()) p.shown.push_back(g.get<std::string>());
+        c.props.push_back(p);
+    }
+    c.here = o.value("here", 1);
     if (c.stations.empty()) {   // a career from before the workshop (0.5): it starts with what a new one has (once the
                                 // workshop is built, its map is counted instead)
         c.stations = {{"bench", 1}, {"counter", 1}};
         if (c.candidates.empty()) refreshCandidates(c);
         if (c.walkins.empty()) for (int i = 0; i < 2; i++) c.walkins.push_back(walkin(c));
     }
+    ensureProperties(c);   // (an older career: its shop becomes its first property)
     out = c;
     return true;
 }
@@ -581,13 +704,14 @@ bool sellToWalkin(Career& c, int id, const std::string& gun, double price, std::
     if (w->hands == 2 && (!s.posed || !s.twoHands)) return no("\"I wanted a long gun.\"");
     if (w->minEnergy > 0 && s.energy < w->minEnergy) return no("\"Bit light for what I need.\"");
     if (w->maxEnergy > 0 && s.energy > w->maxEnergy) return no("\"That's more gun than I want.\"");
-    if (price > w->budget) return no("\"That's more than I can spend.\"");
+    bool wanted = !w->interest.empty() && w->interest == gun;   // the one they saw on display
+    if (price > w->budget * (wanted ? 1.15 : 1.0)) return no("\"That's more than I can spend.\"");
     bool bad = c.flawed[gun] > 0 && rnd(c) * c.stock[gun] < c.flawed[gun];
     if (bad) c.flawed[gun]--;
     c.stock[gun]--;
     c.money += price;
     w->state = 1;
-    c.reputation = std::min(100.0, c.reputation + 0.3);
+    c.reputation = std::min(100.0, c.reputation + (wanted ? 0.5 : 0.3));
     char b[200];
     std::snprintf(b, sizeof b, "Sold a %s over the counter to %s for %s.", gun.c_str(), w->name.c_str(), money(price).c_str());
     c.news.push_back(b);
