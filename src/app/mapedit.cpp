@@ -2,6 +2,7 @@
 // Gunsmith3D - The map editor (see mapedit.hpp).
 #include "app/paths.hpp"
 #include "app/mapedit.hpp"
+#include "app/doors.hpp"
 #include "app/shop3d.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
@@ -704,6 +705,19 @@ static void toolInput() {
             meChanged();
             break;
         }
+        case MTool::Door: {   // a door: in a doorway on the floor, across the way you're looking
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            meSnapshot();
+            gmap::Entity e;
+            e.type = "door"; e.ref = ME.doorStyle; e.width = ME.doorWidth;
+            e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 90) * 90 + 720, 360);
+            ME.map.ents.push_back(e);
+            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meChanged();
+            break;
+        }
         case MTool::Npc: case MTool::Spawner: case MTool::Armor: case MTool::Crate: case MTool::Ammo: case MTool::Weapons: {   // an NPC standing here, a stand to take guns from, armour plates
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
@@ -879,6 +893,8 @@ static void walkUpdate(float dt) {
     in.want = wantStance;
     in.lean = (actDown(Act::LeanRight) ? 1 : 0) - (actDown(Act::LeanLeft) ? 1 : 0);
     gmap::playerStep(ME.pl, ME.map, in, dt);
+    doors::step(ME.map, ME.pl, dt);
+    if (actPressed(Act::Use)) { int d = doors::facing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl)); if (d >= 0) doors::toggle(ME.map, d, ME.pl.feet); }
 }
 
 // ---------------------------------------------------------------- drawing
@@ -1082,6 +1098,14 @@ static void drawWalkHud() {
     if (CFG.units == Units::Imperial) std::snprintf(b, sizeof b, "%s   %.1f mph", st, sp * 2.23694);
     else std::snprintf(b, sizeof b, "%s   %.1f km/h", st, sp * 3.6);
     viewText(b, 18, GetScreenHeight() - 30.f, 13, Color{235, 238, 242, 230});
+    {   // a door you're facing
+        int d = doors::facing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
+        if (d >= 0) {
+            const char* p = TextFormat("%s  %s the door", keyName(keyOf(Act::Use)), doors::isOpen(ME.map, d) ? "Shut" : "Open");
+            float pw = viewTextWidth(p, 15);
+            viewText(p, cx - pw / 2, cy + 50, 15, Color{255, 214, 120, 255});
+        }
+    }
     const char* help = "Walking the map. Esc goes back to the editor.";
     float w = viewTextWidth(help, 13);
     DrawRectangleRounded({cx - w / 2 - 12, 14, w + 24, 24}, 0.4f, 6, Color{20, 23, 28, 150});
@@ -1137,6 +1161,7 @@ void mapEditorRender() {
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
     }
+    doors::draw(ME.map, ME.walking ? -1 : ME.ent);
     if (shopActive()) shopDrawPeople();   // (career: customers at the counter, staff at their workstations)
     EndMode3D();
     mapEndViewport();

@@ -19,6 +19,7 @@
 #include "app/settings.hpp"
 #include "app/updater.hpp"
 #include "app/shop3d.hpp"
+#include "app/doors.hpp"
 #include "app/paths.hpp"
 #include "app/usertex.hpp"
 #include "app/fonts.hpp"
@@ -225,6 +226,8 @@ int main(int argc, char** argv) {
             auto& v = ME.map.ents;
             v.erase(std::remove_if(v.begin(), v.end(), [&](const gmap::Entity& x) { return t.find("," + x.type + ",") != std::string::npos; }), v.end());
         }
+        if (std::getenv("GUNSMITH_DOOROPEN"))   // (screenshots) open every door on the map, as if from where you stand
+            for (int i = 0; i < (int)ME.map.ents.size(); i++) if (ME.map.ents[i].type == "door") doors::toggle(ME.map, i, ME.pl.feet);
         if (const char* e = std::getenv("GUNSMITH_SHOPWALK")) { (void)e; shopWalk(); }   // (screenshots) press Walk
         if (const char* e = std::getenv("GUNSMITH_SHOPOPEN")) shopOpen(std::atoi(e));   // (screenshots) a thing in your shop, used
         if (const char* e = std::getenv("GUNSMITH_CAREERDAYS")) for (int k = std::atoi(e); k > 0; k--) career::endDay(CAREER);

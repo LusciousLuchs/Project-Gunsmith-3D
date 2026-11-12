@@ -5,6 +5,7 @@
 // and leaves a mark where it lands. Recoil kicks the view by the cartridge's push against the gun's weight, a heavy gun
 // swings more slowly, and one held in one hand kicks more than one in the shoulder.
 #include "app/range.hpp"
+#include "app/doors.hpp"
 #include "app/fitbench.hpp"
 #include "app/view.hpp"
 #include "app/perf.hpp"
@@ -790,7 +791,10 @@ void rangeUpdate(float dt, bool modal) {
         else if (ammo >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (R.inv.empty() ? ": ammunition (no gun to fill)" : R.reserve >= R.reserveMax ? ": ammunition (you're full)" : ": take ammunition");
         else if (spawner >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": take a gun";
         else if (crate >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (R.cur >= 0 ? ": fit attachments to the " + A.design.name : ": attachments (hold a gun first)");
-        if (actPressed(Act::Use)) {
+        int door = (ground < 0 && ammo < 0 && spawner < 0 && crate < 0) ? doors::facing(R.map, gmap::playerEye(R.pl, R.map), gmap::playerForward(R.pl)) : -1;
+        if (door >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (doors::isOpen(R.map, door) ? ": shut the door" : ": open the door");
+        if (door >= 0 && actPressed(Act::Use)) doors::toggle(R.map, door, R.pl.feet);
+        else if (actPressed(Act::Use)) {
             if (ground >= 0) {
                 WorldGun w = std::move(R.ground[ground]);
                 R.ground.erase(R.ground.begin() + ground);
@@ -836,6 +840,7 @@ void rangeUpdate(float dt, bool modal) {
     in.lean = (actDown(Act::LeanRight) ? 1 : 0) - (actDown(Act::LeanLeft) ? 1 : 0);
     if (R.dead) { in = gmap::PlayerInput(); in.want = gmap::Stance::Prone; }   // (down)
     gmap::playerStep(R.pl, R.map, in, dt);
+    doors::step(R.map, R.pl, dt);
     // aiming: right mouse; a heavy gun comes up more slowly
     bool aimWant = IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && !R.freeMouse;
     float rate = 1.f / (0.12f + (float)R.mass * 0.05f);
@@ -969,6 +974,7 @@ void rangeUpdate(float dt, bool modal) {
 // everything on the map besides its brushes: targets, bullet holes, NPCs, spawners, plates, crates, guns on the ground
 static std::vector<Lamp> gunLamps();
 static void drawRangeThings() {
+    doors::draw(R.map);
     // paper targets: rings on a white sheet
     for (auto& t : R.targets) {
         V3 side = gmap::norm(gmap::cross(t.n, {0, 1, 0})), tu = gmap::cross(side, t.n);

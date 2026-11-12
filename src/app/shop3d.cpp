@@ -9,6 +9,7 @@
 #include "app/view.hpp"
 #include "app/gfx.hpp"
 #include "app/render.hpp"
+#include "app/doors.hpp"
 #include "raymath.h"
 #include "app/fonts.hpp"
 #include "ui/ui.hpp"
@@ -245,6 +246,8 @@ bool shopWalkUpdate(float dt) {
     if (actPressed(Act::Use)) {
         int i = facing();
         if (i >= 0) { openThing(thingOf(ME.map.ents[i].type)); return true; }
+        int d = doors::facing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
+        if (d >= 0) { doors::toggle(ME.map, d, ME.pl.feet); return true; }
     }
     return false;
 }
@@ -319,6 +322,13 @@ void shopHud() {
     float cx = GetScreenWidth() / 2.0f, cy = GetScreenHeight() / 2.0f;
     DrawCircleV({cx, cy}, 2.5f * s, Color{240, 240, 240, 200});   // where you're looking
     int i = facing();
+    int dr = i < 0 ? doors::facing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl)) : -1;
+    if (dr >= 0) {
+        const char* p = TextFormat("F  %s the door", doors::isOpen(ME.map, dr) ? "Shut" : "Open");
+        float pw = viewTextWidth(p, 15);
+        DrawRectangleRounded({cx - pw / 2 - 14 * s, cy + 40 * s, pw + 28 * s, 30 * s}, 0.4f, 6, Color{20, 23, 28, 190});
+        viewText(p, cx - pw / 2, cy + 47 * s, 15, Color{255, 214, 120, 255});
+    }
     if (i >= 0) {
         const char* p = promptFor(ME.map.ents[i]);
         float pw = viewTextWidth(p, 15);

@@ -18,11 +18,14 @@ static constexpr double PI = 3.14159265358979323846;
 static std::vector<std::string>& registry() {
     static std::vector<std::string> n = {
         "dev_grid", "concrete", "concrete_dark", "plywood", "brick", "plaster", "metal_plate", "corrugated",
-        "dirt", "grass", "sand", "gravel", "wood_planks", "asphalt", "tile", "steel", "paint_white", "paint_orange"};
+        "dirt", "grass", "sand", "gravel", "wood_planks", "asphalt", "tile", "steel", "paint_white", "paint_orange",
+        // (0.8.4: added after the first 18, so older maps' materials keep their places)
+        "institutional", "formwork", "cinderblock", "old_brick", "metal_panels", "rust", "wallpaper", "parquet", "carpet",
+        "checker_tile", "stone_wall", "shingles", "marble", "door_wood", "door_metal"};
     return n;
 }
 const std::vector<std::string>& materialNames() { return registry(); }
-int builtInMaterials() { return 18; }
+int builtInMaterials() { return 33; }
 bool isUserMaterial(int m) { return m >= builtInMaterials() && m < (int)registry().size(); }
 int materialIndex(const std::string& name) {
     auto& n = registry();
@@ -419,6 +422,7 @@ std::string mapToJson(const Map& m) {
         if (!e.ref.empty()) je["ref"] = e.ref;
         if (e.count != 1) je["count"] = e.count;
         if (e.respawn > 0) je["respawn"] = e.respawn;
+        if (e.type == "door") je["width"] = e.width;
         if (e.type == "light") je["light"] = {{"color", c3j(e.color)}, {"power", e.power}, {"range", e.range}, {"cone", e.cone}, {"pitch", e.pitch}};
         es.push_back(je);
     }
@@ -480,6 +484,7 @@ bool mapFromJson(const std::string& s, Map& out) {
             e.ref = je.value("ref", "");
             e.count = std::max(1, je.value("count", 1));
             e.respawn = std::max(0.0, je.value("respawn", 0.0));
+            e.width = std::clamp(je.value("width", 0.9), 0.4, 4.0);
             if (je.contains("light") && je["light"].is_object()) {
                 auto& jl = je["light"];
                 if (jl.contains("color")) jc3(jl["color"], e.color);

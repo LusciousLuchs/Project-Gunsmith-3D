@@ -85,7 +85,8 @@ void mapToolbar() {
         {ICON_FA_LIGHTBULB, "Light: a lamp or a spotlight. Click a ceiling, a wall or the floor", MTool::Light},
         {ICON_FA_BOXES_STACKED, "Ammo box: press F by it to fill up the ammunition for every gun you carry", MTool::Ammo},
         {ICON_FA_BOX, "Weapon crate: press F by it to take any of your guns (like a gun spawner)", MTool::Weapons},
-        {ICON_FA_INDUSTRY, "Workstation (career mode): a bench, a lathe, a mill, a test bench, or your shop counter", MTool::Station}};
+        {ICON_FA_INDUSTRY, "Workstation (career mode): a bench, a lathe, a mill, a test bench, or your shop counter", MTool::Station},
+        {ICON_FA_DOOR_OPEN, "Door: click a floor in a doorway. F opens and shuts it on foot (it swings away from you)", MTool::Door}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -204,6 +205,17 @@ static void editTab() {
                 if (ImGui::SliderFloat("##lpitch", &pt, -90, 90, "%.0f deg")) { e.pitch = pt; tr(true); } else tr(false);
                 typeable();
             }
+        } else if (e.type == "door") {
+            heading("Door");
+            static const char* styles[][2] = {{"wood", "Wood, panelled"}, {"metal", "Steel, with a window"}, {"glass", "Glass"}};
+            prop("Style");
+            const char* cur = "Wood, panelled"; for (auto& k : styles) if (e.ref == k[0]) cur = k[1];
+            if (ImGui::BeginCombo("##edstyle", cur)) { for (auto& k : styles) if (ImGui::Selectable(k[1], e.ref == k[0])) { meSnapshot(); e.ref = k[0]; meChanged(); } ImGui::EndCombo(); }
+            prop("Width");
+            double w = e.width;
+            if (lenDrag("##edwidth", w, 0.05)) { e.width = std::clamp(w, 0.4, 4.0); ME.version++; }
+            if (ImGui::IsItemDeactivatedAfterEdit()) meChanged();
+            ImGui::TextDisabled("On foot, F opens and shuts it. NPCs and bullets aren't stopped by doors yet.");
         } else if (gmap::isDisplay(e.type) || gmap::isDecor(e.type)) {
             static const char* names[][2] = {{"display_case", "Gun display case"}, {"display_rack", "Gun wall rack"}, {"display_stand", "Accessory stand"},
                                              {"decor_plant", "Plant"}, {"decor_poster", "Poster"}, {"decor_rug", "Rug"}, {"decor_sign", "Shop sign"}, {"decor_seat", "Bench seat"}};
@@ -404,6 +416,16 @@ static void toolOptions() {
             ImGui::EndCombo();
         }
         ImGui::TextDisabled("A copy of each NPC you place is saved in the map file.");
+    }
+    if (ME.tool == MTool::Door) {
+        static const char* styles[][2] = {{"wood", "Wood, panelled"}, {"metal", "Steel, with a window"}, {"glass", "Glass"}};
+        prop("Style");
+        const char* cur = "Wood, panelled"; for (auto& k : styles) if (ME.doorStyle == k[0]) cur = k[1];
+        if (ImGui::BeginCombo("##dstyle", cur)) { for (auto& k : styles) if (ImGui::Selectable(k[1], ME.doorStyle == k[0])) ME.doorStyle = k[0]; ImGui::EndCombo(); }
+        prop("Width");
+        lenDrag("##dwidth", ME.doorWidth, 0.05);
+        ME.doorWidth = std::clamp(ME.doorWidth, 0.4, 4.0);
+        ImGui::TextDisabled("It stands across the doorway, facing you: turn the view to turn it. 2.1 m tall.");
     }
     if (ME.tool == MTool::Station) {
         static const char* kinds[][2] = {{"bench", "Workbench"}, {"lathe", "Lathe"}, {"mill", "Milling machine"}, {"qc", "Test bench"}, {"counter", "Shop counter"}, {"computer", "Office computer"}, {"door", "Front door"},

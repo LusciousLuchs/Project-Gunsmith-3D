@@ -7,9 +7,13 @@
 #include "rlgl.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <atomic>
+#include <thread>
 
 using gmap::V3;
 
@@ -36,14 +40,18 @@ static float rnd(int a, int b, int s) { return (hash3(a, b, s) & 0xffff) / 65535
 static unsigned char cl(float v) { return (unsigned char)std::clamp(v, 0.f, 255.f); }
 static Color rgbf(float r, float g, float b) { return Color{cl(r), cl(g), cl(b), 255}; }
 
-static constexpr int N = 256;
+static constexpr int N = 512;   // texture size (the patterns below were laid out on a 256 grid: B)
+static constexpr int B = 256;
+static Color texelNew(int m, int I, int J, float u, float v);
 
-static Color texel(int m, int i, int j) {
-    float u = (i + 0.5f) / N, v = (j + 0.5f) / N;
+static Color texel(int m, int I, int J) {
+    float u = (I + 0.5f) / N, v = (J + 0.5f) / N;
+    if (m >= 18) return texelNew(m, I, J, u, v);
+    int i = I * B / N, j = J * B / N;   // (the older patterns' lines and bricks, at the same size as before)
     switch (m) {
     case 0: {  // dev grid: orange with lines every quarter metre, a brighter border every metre
         float r = 214, g = 128, b = 60;
-        int ci = i % (N / 4), cj = j % (N / 4);
+        int ci = i % (B / 4), cj = j % (B / 4);
         if (ci < 2 || cj < 2) { r = 168; g = 92; b = 42; }
         if (i < 3 || j < 3) { r = 246; g = 182; b = 112; }
         float n = (fbm(u, v, 8, 3, 1) - 0.5f) * 14;
@@ -65,8 +73,8 @@ static Color texel(int m, int i, int j) {
         return rgbf((198 + n) * k, (160 + n) * k, (108 + n * 0.6f) * k);
     }
     case 4: {  // brick: 4 bricks across, 16 courses, staggered
-        int rowH = N / 16, row = j / rowH, colW = N / 4;
-        int x = (i + (row % 2) * colW / 2) % N, col = x / colW;
+        int rowH = B / 16, row = j / rowH, colW = B / 4;
+        int x = (i + (row % 2) * colW / 2) % B, col = x / colW;
         bool mortar = (j % rowH) < 2 || (x % colW) < 3;
         if (mortar) { float n = (fbm(u, v, 32, 2, 7) - 0.5f) * 20; return rgbf(176 + n, 170 + n, 158 + n); }
         float t = rnd(col, row, 8) * 30 - 15, n = (fbm(u, v, 32, 3, 9) - 0.5f) * 26;
@@ -105,7 +113,7 @@ static Color texel(int m, int i, int j) {
         return rgbf(202 + n, 182 + n, 138 + n * 0.8f);
     }
     case 11: {  // gravel: random stones over dark grit (cells of 16 px, so it tiles cleanly)
-        const int C = 16, CN = N / C;
+        const int C = 16, CN = B / C;
         float best = 9, val = 0;
         int ci = i / C, cj = j / C;
         for (int a = -1; a <= 1; a++)
@@ -123,11 +131,11 @@ static Color texel(int m, int i, int j) {
         return rgbf(sh, sh * 0.98f, sh * 0.94f);
     }
     case 12: {  // wood planks: five boards per tile along u
-        int board = j / (N / 5);
+        int board = j / (B / 5);
         float g = fbm(u + rnd(board, 0, 24), v, 4, 4, 25);
         float grain = std::sin((v * 60 + g * 8) * 3.14159f) * 0.5f + 0.5f;
         float t = rnd(board, 1, 26) * 24 - 12;
-        float k = (j % (N / 5)) < 2 ? 0.55f : 0.85f + grain * 0.15f;
+        float k = (j % (B / 5)) < 2 ? 0.55f : 0.85f + grain * 0.15f;
         return rgbf((150 + t) * k, (108 + t * 0.7f) * k, (70 + t * 0.4f) * k);
     }
     case 13: {  // asphalt
@@ -136,7 +144,7 @@ static Color texel(int m, int i, int j) {
         return rgbf(60 + n + s, 60 + n + s, 63 + n + s);
     }
     case 14: {  // tiles: 4 x 4 per metre
-        int t = N / 4;
+        int t = B / 4;
         bool grout = (i % t) < 3 || (j % t) < 3;
         float n = (fbm(u, v, 16, 3, 29) - 0.5f) * 10;
         return grout ? rgbf(150 + n, 148 + n, 142 + n) : rgbf(226 + n, 226 + n, 220 + n);
@@ -157,16 +165,156 @@ static Color texel(int m, int i, int j) {
     }
 }
 
+// The newer materials (18 on), drawn at full size. Several lean on the look of mid-2000s shooters' city buildings:
+// two-tone institutional paint, formwork concrete, riveted panels, old brick.
+static Color texelNew(int m, int I, int J, float u, float v) {
+    auto grain = [&](float k, int s) { return (fbm(u, v, 8, 5, s) - 0.5f) * k + (fbm(u, v, 64, 3, s + 1) - 0.5f) * k * 0.5f; };
+    switch (m) {
+    case 18: {  // institutional wall: green-grey below a dark stripe, cream above, scuffed
+        float n = grain(12, 101), scuff = std::max(0.f, fbm(u, v, 16, 4, 102) - 0.62f) * 120;
+        if (v > 0.56f) return rgbf(86 + n - scuff * 0.3f, 104 + n - scuff * 0.3f, 88 + n - scuff * 0.3f);   // (v grows downward: the lower part)
+        if (v > 0.52f) return rgbf(52 + n, 58 + n, 50 + n);
+        return rgbf(214 + n - scuff * 0.2f, 206 + n - scuff * 0.2f, 176 + n - scuff * 0.25f);
+    }
+    case 19: {  // poured concrete: formwork panels with tie holes and stains
+        float n = grain(30, 103);
+        int pw = N / 2, ph = N / 4;
+        int x = I % pw, y = J % ph;
+        if (x < 3 || y < 3) n -= 22;
+        float hx = (x - pw / 2.f), hy = (y - ph / 2.f);
+        for (float ox : {-pw * 0.3f, pw * 0.3f}) if (std::hypot(hx - ox, hy) < 6) n -= 50;
+        float stain = std::max(0.f, fbm(u * 0.5f, v * 2, 4, 4, 104) - 0.58f) * 110;
+        return rgbf(150 + n - stain, 150 + n - stain, 146 + n - stain);
+    }
+    case 20: {  // cinder block, painted
+        int bw = N / 2, bh = N / 8, row = J / bh;
+        int x = (I + (row % 2) * bw / 2) % N;
+        bool mortar = (J % bh) < 5 || (x % bw) < 5;
+        float n = grain(16, 105) + (rnd(I / 2, J / 2, 106) - 0.5f) * 14;
+        return mortar ? rgbf(160 + n, 158 + n, 150 + n) : rgbf(196 + n, 194 + n, 184 + n);
+    }
+    case 21: {  // old brick: darker, uneven, sooty
+        int rowH = N / 16, row = J / rowH, colW = N / 4;
+        int x = (I + (row % 2) * colW / 2) % N, col = x / colW;
+        bool mortar = (J % rowH) < 4 || (x % colW) < 5;
+        float soot = fbm(u, v, 4, 4, 107) * 50;
+        if (mortar) { float n = grain(18, 108); return rgbf(120 + n - soot * 0.5f, 114 + n - soot * 0.5f, 104 + n - soot * 0.5f); }
+        float t = rnd(col, row, 109) * 40 - 20, n = grain(28, 110);
+        return rgbf(118 + t + n - soot, 58 + t * 0.4f + n * 0.6f - soot * 0.6f, 44 + n * 0.5f - soot * 0.5f);
+    }
+    case 22: {  // riveted metal panels
+        int p = N / 2, x = I % p, y = J % p;
+        float n = grain(18, 111);
+        float edge = (x < 4 || y < 4) ? -30 : (x < 8 || y < 8) ? 14 : 0;
+        float rivet = 0;
+        for (int k = 1; k < 4; k++) for (auto [rx, ry] : {std::pair<int, int>{k * p / 4, 14}, {14, k * p / 4}}) {
+            float d = std::hypot((float)(x - rx), (float)(y - ry));
+            if (d < 5) rivet = 40 - d * 6;
+        }
+        return rgbf(112 + n + edge + rivet, 118 + n + edge + rivet, 120 + n + edge + rivet);
+    }
+    case 23: {  // rusted metal
+        float r = fbm(u, v, 8, 6, 112), n = grain(20, 113);
+        float t = std::clamp((r - 0.35f) * 2.2f, 0.f, 1.f);
+        return rgbf(96 + n + t * 70, 92 + n + t * 18, 90 + n - t * 20);
+    }
+    case 24: {  // wallpaper: faded stripes and a small pattern
+        int sw = N / 8;
+        bool stripe = (I / sw) % 2 == 0;
+        float n = grain(10, 114), dot = 0;
+        int cx = I % (sw), cy = J % (sw);
+        if (std::hypot(cx - sw / 2.f, cy - sw / 2.f) < sw * 0.12f) dot = -18;
+        float fade = fbm(u, v, 4, 3, 115) * 20;
+        return stripe ? rgbf(178 + n + dot + fade, 160 + n + dot + fade, 126 + n + dot + fade) : rgbf(196 + n + fade, 182 + n + fade, 150 + n + fade);
+    }
+    case 25: {  // parquet: herringbone of short boards
+        int b = N / 8;
+        int a = (I + J) / b, c = (I - J + N) / b;
+        bool dir = ((a + c) & 1) == 0;
+        float along = dir ? u : v, g = fbm(dir ? u : v, dir ? v : u, 4, 4, 116 + (a * 7 + c) % 5);
+        float gr = std::sin((along * 90 + g * 10) * 3.14159f) * 0.5f + 0.5f;
+        float t = rnd(a, c, 117) * 26 - 13;
+        float seam = ((I + J) % b < 2 || (I - J + N) % b < 2) ? 0.6f : 1;
+        float k = (0.85f + gr * 0.15f) * seam;
+        return rgbf((158 + t) * k, (112 + t * 0.7f) * k, (70 + t * 0.4f) * k);
+    }
+    case 26: {  // carpet: fine fibres, a little pattern
+        float n = (rnd(I, J, 118) - 0.5f) * 30 + grain(14, 119);
+        float pat = std::sin(u * 3.14159f * 16) * std::sin(v * 3.14159f * 16) > 0.6f ? 12 : 0;
+        return rgbf(70 + n + pat, 64 + n + pat, 92 + n + pat);
+    }
+    case 27: {  // checker tile
+        int t = N / 4;
+        bool grout = (I % t) < 4 || (J % t) < 4, dark = ((I / t) + (J / t)) % 2;
+        float n = grain(10, 120);
+        if (grout) return rgbf(120 + n, 118 + n, 112 + n);
+        return dark ? rgbf(48 + n, 50 + n, 54 + n) : rgbf(222 + n, 220 + n, 212 + n);
+    }
+    case 28: {  // stone wall: cells of rough stones
+        const int C = 64, CN = N / C;
+        float best = 9, second = 9; float val = 0;
+        int ci = I / C, cj = J / C;
+        for (int a = -1; a <= 1; a++) for (int b = -1; b <= 1; b++) {
+            int x = ci + a, y = cj + b, wx = ((x % CN) + CN) % CN, wy = ((y % CN) + CN) % CN;
+            float px = (x + 0.15f + 0.7f * rnd(wx, wy, 121)) * C, py = (y + 0.15f + 0.7f * rnd(wx, wy, 122)) * C;
+            float d = std::hypot(px - I, py - J);
+            if (d < best) { second = best; best = d; val = rnd(wx, wy, 123); } else if (d < second) second = d;
+        }
+        float n = grain(26, 124);
+        if (second - best < 6) return rgbf(82 + n * 0.5f, 80 + n * 0.5f, 76 + n * 0.5f);   // the mortar between
+        float g = 128 + val * 50;
+        return rgbf(g + n, g * 0.96f + n, g * 0.9f + n);
+    }
+    case 29: {  // roof shingles
+        int rh = N / 8, row = J / rh, w = N / 6;
+        int x = (I + (row % 2) * w / 2) % N;
+        float n = grain(18, 125), shade = (float)(J % rh) / rh * 26;
+        bool gap = (x % w) < 3 || (J % rh) < 3;
+        float t = rnd(x / w, row, 126) * 20 - 10;
+        return gap ? rgbf(30, 30, 32) : rgbf(76 + n + t - shade, 70 + n + t - shade, 70 + n + t - shade);
+    }
+    case 30: {  // marble: soft veins
+        float w = fbm(u, v, 4, 6, 127);
+        float vein = std::pow(std::fabs(std::sin((u * 6 + v * 3 + w * 6) * 3.14159f)), 0.18f);
+        float n = grain(6, 128);
+        float k = 160 + vein * 74;
+        return rgbf(k + n, k + n - 2, k + n - 6);
+    }
+    case 31: {  // wood door face (tiled as a wall: planks with a frame)
+        float g = fbm(u, v * 0.3f, 4, 5, 129), gr = std::sin((v * 40 + g * 8) * 3.14159f) * 0.5f + 0.5f;
+        int x = I % (N / 2), y = J % (N / 2);
+        bool groove = x < 4 || y < 4 || std::abs(x - N / 4) < 2;
+        float k = (0.78f + gr * 0.22f) * (groove ? 0.6f : 1);
+        return rgbf(122 * k, 82 * k, 50 * k);
+    }
+    case 32: default: {  // painted metal door face, tiled: worn green paint, dents
+        float n = grain(16, 130), wear = std::max(0.f, fbm(u, v, 16, 4, 131) - 0.66f) * 200;
+        int x = I % (N / 2), y = J % (N / 2);
+        float rim = (x < 6 || y < 6) ? -24 : 0;
+        return rgbf(62 + n + rim + wear * 0.5f, 84 + n + rim + wear * 0.45f, 74 + n + rim + wear * 0.4f);
+    }
+    }
+}
+
 static std::vector<Texture2D> TEX;
 static std::vector<Material> MATS;
 
 void mapGfxInit() {
     if (!TEX.empty()) return;
     int count = gmap::builtInMaterials();  // (the player's pictures are added as they're needed)
-    std::vector<Color> px(N * N);
+    // the pictures are worked out on every core at once (a second or two on one), then handed to the graphics card
+    std::vector<std::vector<Color>> px(count);
+    std::atomic<int> next{0};
+    auto work = [&]() { for (int m; (m = next++) < count;) { px[m].resize(N * N); for (int j = 0; j < N; j++) for (int i = 0; i < N; i++) px[m][j * N + i] = texel(m, i, j); } };
+    double t0 = GetTime();
+    unsigned nt = std::max(1u, std::min(8u, std::thread::hardware_concurrency()));
+    std::vector<std::thread> pool;
+    for (unsigned k = 1; k < nt; k++) pool.emplace_back(work);
+    work();
+    for (auto& t : pool) t.join();
+    if (std::getenv("GUNSMITH_TEXTIME")) { std::printf("TEXTIME all %d in %.0f ms on %u threads\n", count, (GetTime() - t0) * 1000, nt); std::fflush(stdout); }
     for (int m = 0; m < count; m++) {
-        for (int j = 0; j < N; j++) for (int i = 0; i < N; i++) px[j * N + i] = texel(m, i, j);
-        Image img{px.data(), N, N, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
+        Image img{px[m].data(), N, N, 1, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8};
         Texture2D t = LoadTextureFromImage(img);
         GenTextureMipmaps(&t);
         SetTextureFilter(t, TEXTURE_FILTER_TRILINEAR);

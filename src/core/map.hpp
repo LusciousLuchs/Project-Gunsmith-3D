@@ -65,6 +65,8 @@ struct Entity {
     double range = 10;    // metres: nothing past this
     double cone = 0;      // degrees edge to edge: 0 shines all round; a spot (a floodlight, a ceiling spot) otherwise
     double pitch = -90;   // a spot's aim: up (+) or down from level, toward `yaw`
+    double width = 0.9;   // door: how wide the doorway is (m); its style is `ref`: wood, metal, glass. It stands at `pos`
+                          // (the middle of the doorway's floor), facing along `yaw` when shut
 };
 struct Look {
     double sunYaw = 35, sunPitch = 55;      // degrees: where the sunlight comes from

@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.4-alpha
+
+### Maps
+- **Doors that open.** The Level editor's new **Door** tool puts a door in a doorway: panelled wood, steel with a wired window and kick plate, or glass, any width. On foot (on maps, the range and in your shop) press **F** to open or shut the one you face; it swings away from you and blocks you when shut. (NPCs and bullets aren't stopped by doors yet.)
+- **Sharper, more textures.** Every map texture is now twice as sharp, and there are 15 new ones: institutional two-tone wall, formwork concrete, cinder block, old brick, riveted metal panels, rust, wallpaper, parquet, carpet, checker tile, stone wall, roof shingles, marble, and wood and steel door faces for walls.
+
 ## 0.8.3-alpha
 
 ### Career

@@ -7,9 +7,11 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station, Door };
 
 struct MapEd {
+    std::string doorStyle = "wood";       // the Door tool: wood, metal, glass
+    double doorWidth = 0.9;
     gmap::Map map;
     unsigned version = 1, built = 0;      // the meshes are rebuilt when these differ
     bool dirty = false;                    // changed since the last save
