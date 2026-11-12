@@ -490,6 +490,23 @@ bool mapFromJson(const std::string& s, Map& out) {
 
 // ---------------------------------------------------------------- the starter range
 // Downrange is +X. The firing line is at x = 0 under a shed; lanes run out to a backstop berm at 100 m.
+void addShopBasics(Map& m) {
+    bool computer = false, door = false;
+    for (auto& e : m.ents) { if (e.type == "shop_computer") computer = true; if (e.type == "shop_door") door = true; }
+    auto lamp = [&](V3 at) { Entity e; e.type = "light"; e.pos = at; e.power = 6; e.range = 6; m.ents.push_back(e); };
+    if (!computer) {   // against the back wall, with a light over it (and over the counter, where you serve customers)
+        Entity c; c.type = "shop_computer"; c.pos = {-7.3, 0, 3.6}; c.yaw = 0; m.ents.push_back(c);
+        lamp({-6.6, 2.7, 3.6});
+        for (auto& e : m.ents) if (e.type == "shop_counter") { V3 at = e.pos; at.y = 2.7; lamp(at); break; }
+    }
+    if (!door) {   // just inside the front door (the default room's), else where you start
+        Entity d; d.type = "shop_door"; d.pos = {7.4, 0, 0}; d.yaw = 180;
+        bool defaultRoom = false;
+        for (auto& e : m.ents) if (e.type == "shop_counter" && std::fabs(e.pos.x - 5.5) < 0.01 && std::fabs(e.pos.z - 3.2) < 0.01) defaultRoom = true;
+        if (!defaultRoom) for (auto& e : m.ents) if (e.type == "player_start") { d.pos = e.pos; d.yaw = e.yaw; }
+        m.ents.push_back(d);
+    }
+}
 Map defaultWorkshop() {
     // a plain room to start a gun business in: a concrete floor, plywood walls with a door at the front, a roof, three
     // lamps, your first bench, and a counter by the door
@@ -512,6 +529,7 @@ Map defaultWorkshop() {
     Entity start; start.pos = {-2, 0, 0}; start.yaw = 0; m.ents.push_back(start);
     Entity bench; bench.type = "station_bench"; bench.pos = {-6.5, 0, -4.6}; bench.yaw = 90; m.ents.push_back(bench);
     Entity counter; counter.type = "shop_counter"; counter.pos = {5.5, 0, 3.2}; counter.yaw = 180; m.ents.push_back(counter);
+    addShopBasics(m);
     return m;
 }
 std::map<std::string, int> workshopStations(const Map& m) {

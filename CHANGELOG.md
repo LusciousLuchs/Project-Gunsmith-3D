@@ -8,6 +8,21 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.0-alpha
+
+### Career mode: your shop in 3D
+- **You walk round your shop now.** Career mode starts on foot in your workshop. Walk up to things and press **F**:
+  - the **office computer**: your online store, contracts, staff and building (and the designer)
+  - a **workbench** or other workstation: your guns: rate them, build copies
+  - the **counter**: the customer in front of you: their form and ID, the background check, the sale
+  - the **front door**: the day's news, and **close up for the day**
+- **Customers queue at your counter** and **your staff stand at their workstations**: real people you can see.
+- **B is build mode:** the level editor's tools on your shop (walls, lights, and the Workstation tool, which now also places the office computer and the front door). B again and you're back on foot where you stood.
+- Older workshops get a computer, a front door and two more lights added.
+
+### Updates
+- **Check for updates** button on the main menu (and Settings > Interface > Updates).
+
 ## 0.6.4-alpha
 
 - **Click through holes:** where you've cut a hole or slot through a part, clicking there picks the part behind it, as you'd expect. Clicking the solid part still picks it (Alt-click for the part behind).

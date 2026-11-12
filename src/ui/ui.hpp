@@ -77,6 +77,7 @@ void cartridgeDesigner();
 void mapToolbar();
 void careerScreen();   // career mode's office (panel_career.cpp)
 void careerSetTab(int t);
+bool careerThingWindow(int thing);   // career on foot: 0 the office computer, 1 a workstation, 2 the counter, 3 the front door; false once closed
 void mapPanel();
 // menu.cpp
 void mainMenu();

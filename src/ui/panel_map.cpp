@@ -6,6 +6,7 @@
 #include "app/npcedit.hpp"
 #include "app/mapgfx.hpp"
 #include "app/careermode.hpp"
+#include "app/shop3d.hpp"
 #include "app/settings.hpp"
 #include "ui/ui.hpp"
 #include "npcai.hpp"
@@ -65,7 +66,7 @@ void mapToolbar() {
     ImGui::TextDisabled(ME.careerFile.empty() ? "Map editor" : "Your workshop");
     gap(18);
     if (!ME.careerFile.empty()) {   // career mode: back to the office (it counts your workstations)
-        if (accentButton(ICON_FA_STORE "  Office", true, {0, sz})) { careerWorkshopToOffice(); ImGui::End(); return; }
+        if (accentButton(ICON_FA_PERSON_WALKING "  Walk (B)", true, {0, sz})) { shopWalk(); ImGui::End(); return; }
         if (tipHover()) ImGui::SetTooltip("Back to your office. Your workshop is kept as you go.");
         gap(12);
     }
@@ -192,12 +193,14 @@ static void editTab() {
                 if (ImGui::SliderFloat("##lpitch", &pt, -90, 90, "%.0f deg")) { e.pitch = pt; tr(true); } else tr(false);
                 typeable();
             }
-        } else if (e.type.rfind("station_", 0) == 0 || e.type == "shop_counter") {
-            static const char* names[][2] = {{"station_bench", "Workbench"}, {"station_lathe", "Lathe"}, {"station_mill", "Milling machine"}, {"station_qc", "Test bench"}, {"shop_counter", "Shop counter"}};
+        } else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0) {
+            static const char* names[][2] = {{"station_bench", "Workbench"}, {"station_lathe", "Lathe"}, {"station_mill", "Milling machine"}, {"station_qc", "Test bench"}, {"shop_counter", "Shop counter"}, {"shop_computer", "Office computer"}, {"shop_door", "Front door"}};
             const char* nm = "Workstation"; for (auto& p : names) if (e.type == p[0]) nm = p[1];
             heading(nm);
             ImGui::PushTextWrapPos(0);
             ImGui::TextDisabled(e.type == "shop_counter" ? "Career mode: customers come to your counter each day, if you have one."
+                                : e.type == "shop_computer" ? "Career mode: your online store, contracts, staff and building."
+                                : e.type == "shop_door" ? "Career mode: close up here to end the day."
                                 : e.type == "station_qc" ? "Career mode: a finisher here test-fires copies and catches most flaws."
                                 : e.type == "station_bench" ? "Career mode: where you and your assemblers work. Machinists can use one too, slower."
                                 : "Career mode: where a machinist works fastest (turned and cut parts).");
@@ -375,8 +378,8 @@ static void toolOptions() {
         ImGui::TextDisabled("A copy of each NPC you place is saved in the map file.");
     }
     if (ME.tool == MTool::Station) {
-        static const char* kinds[][2] = {{"bench", "Workbench"}, {"lathe", "Lathe"}, {"mill", "Milling machine"}, {"qc", "Test bench"}, {"counter", "Shop counter"}};
-        prop("Which", "Career mode: your staff work at these (a machinist fastest at a lathe or mill, a finisher at a test bench).\nThe counter is where customers come in. Your building holds only so many: see the office.");
+        static const char* kinds[][2] = {{"bench", "Workbench"}, {"lathe", "Lathe"}, {"mill", "Milling machine"}, {"qc", "Test bench"}, {"counter", "Shop counter"}, {"computer", "Office computer"}, {"door", "Front door"}};
+        prop("Which", "Career mode: your staff work at these (a machinist fastest at a lathe or mill, a finisher at a test bench).\nThe counter is where customers come in; the computer runs your online store, contracts and staff;\nthe front door is where you close up at the end of the day. Your building holds only so many workstations.");
         const char* cur = "Workbench"; for (auto& k : kinds) if (ME.stationKind == k[0]) cur = k[1];
         if (ImGui::BeginCombo("##station", cur)) {
             for (auto& k : kinds) if (ImGui::Selectable(k[1], ME.stationKind == k[0])) ME.stationKind = k[0];

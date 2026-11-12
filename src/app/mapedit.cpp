@@ -2,6 +2,7 @@
 // Gunsmith3D - The map editor (see mapedit.hpp).
 #include "app/paths.hpp"
 #include "app/mapedit.hpp"
+#include "app/shop3d.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "app/fonts.hpp"
@@ -379,6 +380,7 @@ void meWalk(bool fromCamera) {
         if (!ME.top) ME.pl.yaw = ME.yaw;
     }
     if (const char* e = std::getenv("GUNSMITH_WALKYAW")) ME.pl.yaw = std::atof(e);   // (screenshots) which way you face
+    if (const char* e = std::getenv("GUNSMITH_WALKAT")) { double x = 0, z = 0; if (std::sscanf(e, "%lf,%lf", &x, &z) == 2) { ME.pl.feet.x = x; ME.pl.feet.z = z; } }   // (screenshots) where you stand
     ME.walking = true;
     DisableCursor();
 }
@@ -386,6 +388,7 @@ static void stopWalking() {
     ME.walking = false;
     EnableCursor();
 }
+void meStopWalking() { stopWalking(); }
 
 // ---------------------------------------------------------------- entering and leaving
 void enterMapEditor() {
@@ -662,7 +665,7 @@ static void toolInput() {
             if (!surfaceUnderMouse(p, n, b, f)) break;
             meSnapshot();
             gmap::Entity e;
-            e.type = ME.stationKind == "counter" ? "shop_counter" : "station_" + ME.stationKind;
+            e.type = (ME.stationKind == "counter" || ME.stationKind == "computer" || ME.stationKind == "door" ? "shop_" : "station_") + ME.stationKind;
             e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
             ME.map.ents.push_back(e);
@@ -828,6 +831,7 @@ static void keyInput() {
 
 // ---------------------------------------------------------------- walking
 static void walkUpdate(float dt) {
+    if (shopActive() && shopWalkUpdate(dt)) return;   // (your shop in career mode: F uses things, B builds, Esc is the menu)
     if (IsKeyPressed(KEY_ESCAPE)) { stopWalking(); return; }
     Vector2 md = GetMouseDelta();
     double s = 0.0021 * CFG.mouseSens;
@@ -991,7 +995,7 @@ static void drawEditor3D() {
         else if (e.type == "npc_spawn") drawNpcSpawn(e, (int)i == ME.ent);
         else if (e.type == "gun_spawner") drawSpawner(e, (int)i == ME.ent);
         else if (e.type == "light") drawLampMarker(e, (int)i == ME.ent);
-        else if (e.type.rfind("station_", 0) == 0 || e.type == "shop_counter") drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0) drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
@@ -1057,7 +1061,10 @@ static void drawWalkHud() {
 void mapEditorUpdate(float dt, bool modal) {
     if (!modal) {
         if (ME.walking) walkUpdate(dt);
-        else { flyCamera(dt); toolInput(); keyInput(); }
+        else {
+            if (shopActive() && IsKeyPressed(KEY_B) && !ImGui::GetIO().WantCaptureKeyboard) { shopWalk(); return; }   // (career: back on foot)
+            flyCamera(dt); toolInput(); keyInput();
+        }
     }
     if (ME.built != ME.version) { mapBuildMeshes(ME.map); ME.built = ME.version; }
 }
@@ -1091,15 +1098,16 @@ void mapEditorRender() {
     mapWorkLight(false);
     if (!ME.walking) drawEditor3D();
     else for (auto& e : ME.map.ents) {   // on foot: the things you'd see (not the editor's markers)
-        if (e.type.rfind("station_", 0) == 0 || e.type == "shop_counter") drawStation(e.type, rv(e.pos), (float)e.yaw);
+        if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0) drawStation(e.type, rv(e.pos), (float)e.yaw);
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw);
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
     }
+    if (shopActive()) shopDrawPeople();   // (career: customers at the counter, staff at their workstations)
     EndMode3D();
     mapEndViewport();
     mapRestoreLook();
-    if (ME.walking) drawWalkHud();
+    if (ME.walking) { if (shopActive()) shopHud(); else drawWalkHud(); }
     else drawEditorOverlay();
 }

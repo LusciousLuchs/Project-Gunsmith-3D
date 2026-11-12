@@ -131,6 +131,8 @@ std::string mapToJson(const Map& m);
 bool mapFromJson(const std::string& s, Map& m);
 Map builtinRange();      // the starter practice range
 Map defaultWorkshop();   // career mode: the room you start your business in (a bench, a counter)
+// Career mode: the office computer and the front door (added where missing, in older workshops too)
+void addShopBasics(Map& m);
 // career mode: the workstations placed in a workshop map (entities station_bench/lathe/mill/qc, shop_counter -> counter)
 std::map<std::string, int> workshopStations(const Map& m);
 

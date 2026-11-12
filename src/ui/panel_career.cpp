@@ -1,6 +1,7 @@
 // Gunsmith3D - Career mode's office: your shop's day, your guns and their rating sheets, building copies, the online
 // store with its reviews, and customers' contracts. (Rules: core/career; the save and the bench test: app/career.)
 #include "app/careermode.hpp"
+#include "app/shop3d.hpp"
 #include "app/app.hpp"
 #include "app/fonts.hpp"
 #include "app/settings.hpp"
@@ -254,10 +255,8 @@ static void workshopTab() {
     } else ImGui::TextDisabled("The biggest there is.");
     auto st = [&](const char* k) { auto it = C.stations.find(k); return it == C.stations.end() ? 0 : it->second; };
     ImGui::Text("Workbenches %d   Lathes %d   Milling machines %d   Test benches %d   Counter: %s", st("bench"), st("lathe"), st("mill"), st("qc"), st("counter") ? "yes" : "none");
-    if (ImGui::Button(ICON_FA_TOOLBOX "  Build your workshop")) { careerOpenWorkshop(false); return; }
-    if (tipHover()) ImGui::SetTooltip("Your workshop in the level editor: walls, lights, and the Workstation tool for benches, lathes, mills,\nthe test bench and your counter. Come back with Office (top left).");
-    ImGui::SameLine();
-    if (ImGui::Button(ICON_FA_PERSON_WALKING "  Walk around it")) { careerOpenWorkshop(true); return; }
+    if (ImGui::Button(ICON_FA_TOOLBOX "  Build mode (B)")) { shopBuildMode(); return; }
+    if (tipHover()) ImGui::SetTooltip("Build and rearrange your shop with the level editor's tools: walls, lights, and the Workstation tool for\nbenches, lathes, mills, test benches, the counter, the computer and the front door. B (or Walk) takes you back in.");
     heading("Your people");
     ImGui::Text("A working day: %.0f hours (yours %.0f).", career::workHours(C), C.hoursPerDay);
     if (C.staff.empty()) ImGui::TextDisabled("Just you so far.");
@@ -374,6 +373,63 @@ static void counterTab() {
     ImGui::SameLine();
     if (dangerButton("Refuse and call the police")) { career::refuseWalkin(C, w.id, true); careerSave(); toast(C.news.empty() ? "" : C.news.back()); }
     ImGui::EndChild();
+}
+
+// Career on foot: the window a thing in your shop opens (F). False once it's closed.
+bool careerThingWindow(int thing) {
+    auto& C = CAREER;
+    careerTestPoll();
+    float w = std::min((float)GetScreenWidth() - 60, 1100 * CFG.uiScale), h = std::min((float)GetScreenHeight() - 80, 720 * CFG.uiScale);
+    ImGui::SetNextWindowPos({(GetScreenWidth() - w) / 2, (GetScreenHeight() - h) / 2}, ImGuiCond_Always);
+    ImGui::SetNextWindowSize({w, h}, ImGuiCond_Always);
+    static const char* titles[] = {"Office computer", "Workbench", "Counter", "Front door"};
+    bool open = true;
+    ImGui::Begin(TextFormat("%s###shopthing", titles[std::clamp(thing, 0, 3)]), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
+    // the shop's day, money and name, as at the top of the office
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("Day %d", C.day);
+    ImGui::SameLine(0, 20 * CFG.uiScale);
+    ImGui::TextColored(C.money < 0 ? ImVec4(1, 0.45f, 0.4f, 1) : ImVec4(0.55f, 0.92f, 0.6f, 1), "%s", usd(C.money).c_str());
+    ImGui::SameLine(0, 20 * CFG.uiScale);
+    ImGui::TextDisabled("Reputation");
+    ImGui::SameLine();
+    ImGui::ProgressBar((float)(C.reputation / 100), {120 * CFG.uiScale, 0}, TextFormat("%.0f", C.reputation));
+    ImGui::SameLine(); ImGui::TextColored({0.95f, 0.8f, 0.45f, 1}, "%s", career::tierName(C.reputation));
+    if (thing == 0 || thing == 1) {
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_PEN_RULER "  Designer")) { ImGui::End(); shopCloseThing(); enterWorkshop(false); return false; }
+        if (tipHover()) ImGui::SetTooltip("Design and change guns. Save them, then come back (Office, top left of the designer).");
+    }
+    ImGui::Separator();
+    std::vector<int> tabs;
+    if (thing == 0) tabs = {0, 2, 3, 4};
+    else if (thing == 1) tabs = {1};
+    else if (thing == 2) tabs = {5};
+    if (thing == 3) {   // the front door: the day's news, and closing up
+        todayTab();
+        ImGui::Dummy({0, 8 * CFG.uiScale});
+        float prog = 0;
+        bool busy = careerTestRunning(&prog);
+        ImGui::BeginDisabled(busy);
+        if (accentButton(ICON_FA_MOON "  Close up and end the day", true)) { career::endDay(C); careerSave(); shopNewDay(); }
+        ImGui::EndDisabled();
+        if (busy && tipHover()) ImGui::SetTooltip("A bench test is still running.");
+        ImGui::SameLine();
+        if (ImGui::Button("Save and go to the main menu")) { careerSave(); ImGui::End(); shopCloseThing(); backToMenu(); return false; }
+    } else if (ImGui::BeginTabBar("##thingtabs")) {
+        const char* names[] = {"Today", "Your guns", "Online store", "Contracts", "Workshop & staff", "Counter"};
+        for (int i : tabs) {
+            if (ImGui::BeginTabItem(names[i])) {
+                ImGui::BeginChild("##thingtab");
+                if (i == 0) todayTab(); else if (i == 1) gunsTab(); else if (i == 2) storeTab(); else if (i == 3) contractsTab(); else if (i == 4) workshopTab(); else counterTab();
+                ImGui::EndChild();
+                ImGui::EndTabItem();
+            }
+        }
+        ImGui::EndTabBar();
+    }
+    ImGui::End();
+    return open;
 }
 
 void careerScreen() {

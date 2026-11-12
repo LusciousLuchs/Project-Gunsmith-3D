@@ -243,7 +243,7 @@ void mainMenu() {
         ImGui::SameLine(0, 14 * S());
         switch (u.state) {
             case update::State::Checking: ImGui::TextDisabled("Checking for updates..."); break;
-            case update::State::UpToDate: ImGui::TextDisabled("Up to date"); break;
+            case update::State::UpToDate: ImGui::TextDisabled("Up to date"); ImGui::SameLine(); if (ImGui::SmallButton("Check again")) update::checkNow(); break;
             case update::State::Downloading: ImGui::TextDisabled("Downloading %s...", u.latest.c_str()); break;
             case update::State::Installing: ImGui::TextDisabled("Installing %s...", u.latest.c_str()); break;
             case update::State::Installed:
@@ -253,8 +253,9 @@ void mainMenu() {
                 break;
             case update::State::Failed:
                 ImGui::TextDisabled("Update: %s", u.note.c_str());
+                ImGui::SameLine(); if (ImGui::SmallButton("Try again")) update::checkNow();
                 break;
-            default: break;
+            default: if (ImGui::SmallButton("Check for updates")) update::checkNow(); break;
         }
     }
     ImGui::End();
@@ -495,6 +496,17 @@ void interfacePage() {
                                 "background. It runs the next time you start the game (or at once with Restart now, on the main menu).\n"
                                 "Your designs, maps and settings are never touched.");
     if (ImGui::Checkbox("##autoupd", &CFG.autoUpdate)) { saveSettings(); if (CFG.autoUpdate) update::start(); }
+    row("Check for updates", "Looks for a new version right now (and installs it, as above).");
+    if (ImGui::Button("Check now##updnow")) update::checkNow();
+    {
+        update::Status u = update::status();
+        ImGui::SameLine();
+        if (u.state == update::State::UpToDate) ImGui::TextDisabled("Up to date (%s).", u.latest.c_str());
+        else if (u.state == update::State::Checking) ImGui::TextDisabled("Checking...");
+        else if (u.state == update::State::Downloading || u.state == update::State::Installing) ImGui::TextDisabled("Getting %s...", u.latest.c_str());
+        else if (u.state == update::State::Installed) ImGui::TextColored({0.55f, 0.85f, 0.55f, 1}, "%s is installed: it starts next time.", u.latest.c_str());
+        else if (u.state == update::State::Failed) ImGui::TextDisabled("%s", u.note.c_str());
+    }
     ImGui::SeparatorText("Performance");
     row("Performance overlay", "The frame rate, a graph of how long each frame takes, and with full details what the time goes on\n"
                                 "(the gun's physics, NPCs, drawing) and the heaviest parts of a design. F3 changes it anywhere.");

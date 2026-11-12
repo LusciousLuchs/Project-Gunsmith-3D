@@ -75,5 +75,6 @@ std::vector<std::string> meGroupFiles();   // their names
 bool mePlaceGroup(const std::string& name);   // in front of the camera, selected so it can be moved straight away
 std::vector<std::string> meMapFiles();
 void meWalk(bool fromCamera);
+void meStopWalking();                      // back to the editor (the mouse freed)
 void meFocus();
 std::string meLen(double metres);          // in the player's units

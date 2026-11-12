@@ -1,8 +1,10 @@
 // Gunsmith3D - Career mode in the app (see careermode.hpp).
 #include "app/careermode.hpp"
+#include <cstdlib>
 #include "app/app.hpp"
 #include "app/paths.hpp"
 #include "app/mapedit.hpp"
+#include "app/shop3d.hpp"
 #include "app/range.hpp"
 #include "app/mapgfx.hpp"
 #include "map.hpp"
@@ -69,6 +71,7 @@ void careerCountStations() {
 void careerOpenWorkshop(bool walk) {
     enterCareerWorkshop(careerWorkshopFile(), walk);
     gIn = true;
+    shopEnter();
 }
 void careerWorkshopToOffice() {
     leaveCareerWorkshop();
@@ -99,22 +102,21 @@ void careerDemoStart(int id) {
 }
 void careerTick() {
     if (A.screen == Screen::Range && rangeDemoOver()) backToMenu();   // (the course is shot: the result goes in as you leave)
-    if (gBackToOffice && A.screen == Screen::Menu) { gBackToOffice = false; gIn = true; A.screen = Screen::Career; EnableCursor(); }
+    if (gBackToOffice && A.screen == Screen::Menu) { gBackToOffice = false; careerOpenWorkshop(true); }   // (back in your shop)
 }
 void enterCareer() {
     if (!careerLoad()) careerStartNew();
     careerCountStations();
     gIn = true;
-    A.screen = Screen::Career;
     A.showPause = A.showSettings = A.showBenchPicker = A.showRangePicker = false;
-    EnableCursor();
+    if (std::getenv("GUNSMITH_CAREERTAB")) { A.screen = Screen::Career; EnableCursor(); return; }   // (screenshots: the screens on their own)
+    careerOpenWorkshop(true);   // you start in your shop, on foot
 }
 bool inCareer() { return gIn; }
 void careerLeave() { gIn = false; }
 void careerBackToOffice() {
     backToMenu();          // (saves the design, leaves the bench)
-    gIn = true;
-    A.screen = Screen::Career;
+    careerOpenWorkshop(true);   // back in your shop
 }
 
 // ---------------------------------------------------------------- your guns
@@ -254,6 +256,13 @@ void careerRenderPortraits() {
             bool here = false; for (auto& w : CAREER.walkins) if (w.id == it->first) here = true;
             if (!here) { UnloadRenderTexture(it->second); it = gPortraits.erase(it); } else ++it;
         }
+}
+const NpcDef& careerPerson(int id) {
+    static std::map<int, NpcDef> people;
+    auto it = people.find(id);
+    if (it != people.end()) return it->second;
+    if (people.size() > 200) people.clear();
+    return people[id] = characterFromLook(lookFor(id));
 }
 Texture2D careerPortrait(int id) { auto it = gPortraits.find(id); return it == gPortraits.end() ? Texture2D{} : it->second.texture; }
 

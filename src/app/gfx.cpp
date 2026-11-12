@@ -528,6 +528,21 @@ void drawStation(const std::string& type, Vector3 base, float yawDeg, Color tint
         box(0, 0.95f, 0, 0.62f, 0.08f, 2.42f, top);
         drawBox(at(0, 1.0f, 0), {0.55f, 0.02f, 2.3f}, Color{170, 210, 230, 255}, R, 0.45f);   // (glass)
         box(0, 1.1f, -0.85f, 0.35f, 0.22f, 0.32f, dark);                // the till
+    } else if (type == "shop_computer") { // your office desk: the computer for the online store, contracts and staff
+        box(0, 0.74f, 0, 0.7f, 0.05f, 1.4f, top);
+        for (float z : {-0.62f, 0.62f}) for (float x : {-0.28f, 0.28f}) box(x, 0.36f, z, 0.05f, 0.72f, 0.05f, wood);
+        box(-0.2f, 1.04f, 0, 0.04f, 0.38f, 0.6f, dark);                  // the monitor
+        drawBox(at(-0.175f, 1.05f, 0), {0.01f, 0.32f, 0.54f}, tint.a ? tint : Color{70, 120, 160, 255}, R);   // (its screen, lit blue)
+        box(-0.24f, 0.8f, 0, 0.12f, 0.08f, 0.06f, dark);                // its stand
+        box(0.1f, 0.78f, 0, 0.18f, 0.02f, 0.45f, dark);                 // keyboard
+        box(0.75f, 0.45f, 0, 0.45f, 0.06f, 0.45f, grey);                // a chair
+        box(0.95f, 0.75f, 0, 0.05f, 0.55f, 0.45f, grey);
+        box(0.75f, 0.22f, 0, 0.06f, 0.44f, 0.06f, dark);
+    } else if (type == "shop_door") {     // the front door: close up here at the end of the day
+        box(0, 0.01f, 0, 0.6f, 0.02f, 1.0f, Color{70, 60, 50, 255});      // the mat
+        box(0.15f, 1.2f, 0.62f, 0.04f, 0.05f, 0.05f, dark);              // a sign by the door: OPEN
+        box(0.15f, 0.6f, 0.62f, 0.04f, 1.2f, 0.04f, dark);
+        box(0.15f, 1.4f, 0.62f, 0.03f, 0.25f, 0.5f, tint.a ? tint : Color{70, 150, 90, 255});
     }
 }
 

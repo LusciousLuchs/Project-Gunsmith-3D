@@ -151,18 +151,29 @@ fs::path gExe;   // where this program was started from (taken before an update 
 
 void work() {
     set(State::Checking);
-    const char* over = std::getenv("GUNSMITH_UPDATE_API");   // (testing) somewhere else to ask
-    std::string api = over ? over : std::string("https://api.github.com/repos/") + REPO + "/releases/latest";
-    std::string body;
-    if (!httpGet(api, body, L"application/vnd.github+json")) { set(State::Failed, "Couldn't reach the update server (offline?)."); return; }
-    nlohmann::json j = nlohmann::json::parse(body, nullptr, false);
-    if (!j.is_object() || !j.contains("tag_name")) { set(State::Failed, "The update server's answer didn't make sense."); return; }
-    std::string tag = j.value("tag_name", "");
-    std::string latest = tag.size() && (tag[0] == 'v' || tag[0] == 'V') ? tag.substr(1) : tag;
-    if (!newer(latest, version::text())) { set(State::UpToDate, "", latest); return; }
-    std::string zipUrl;
-    for (auto& a : j.value("assets", nlohmann::json::array()))
-        if (a.is_object()) { std::string n = a.value("name", ""); if (n.size() > 4 && n.substr(n.size() - 4) == ".zip") { zipUrl = a.value("browser_download_url", ""); break; } }
+    // ask each place releases are published (the downloads page, then the game's own repository) and take the
+    // newest version that has a zip
+    std::vector<std::string> apis;
+    if (const char* over = std::getenv("GUNSMITH_UPDATE_API")) apis = {over};   // (testing) somewhere else to ask
+    else for (const char* r : {REPO, CODE_REPO}) apis.push_back(std::string("https://api.github.com/repos/") + r + "/releases/latest");
+    std::string latest, zipUrl;
+    bool reached = false;
+    for (auto& api : apis) {
+        std::string body;
+        if (!httpGet(api, body, L"application/vnd.github+json")) continue;
+        nlohmann::json j = nlohmann::json::parse(body, nullptr, false);
+        if (!j.is_object() || !j.contains("tag_name")) continue;
+        reached = true;
+        std::string tag = j.value("tag_name", "");
+        std::string v = tag.size() && (tag[0] == 'v' || tag[0] == 'V') ? tag.substr(1) : tag;
+        std::string url;
+        for (auto& a : j.value("assets", nlohmann::json::array()))
+            if (a.is_object()) { std::string nm = a.value("name", ""); if (nm.size() > 4 && nm.substr(nm.size() - 4) == ".zip") { url = a.value("browser_download_url", ""); break; } }
+        if (url.empty()) continue;
+        if (latest.empty() || newer(v, latest)) { latest = v; zipUrl = url; }
+    }
+    if (!reached) { set(State::Failed, "Couldn't reach the update server (offline?)."); return; }
+    if (latest.empty() || !newer(latest, version::text())) { set(State::UpToDate, "", latest.empty() ? version::text() : latest); return; }
     if (zipUrl.empty()) { set(State::Failed, "The new version has no download yet.", latest); return; }
     set(State::Downloading, "", latest);
     std::string zip;
@@ -216,6 +227,14 @@ void work() {
 }
 }  // namespace
 
+void checkNow() {   // (a press of Check for updates: again, even after an answer)
+    {
+        std::lock_guard<std::mutex> l(gMu);
+        if (gStatus.state == State::Checking || gStatus.state == State::Downloading || gStatus.state == State::Installing || gStatus.state == State::Installed) return;
+        gStatus = Status{};
+    }
+    start();
+}
 void start() {
     if (std::getenv("GUNSMITH_NO_UPDATE")) return;
     {
@@ -250,6 +269,7 @@ void cleanup() {
 #else   // other systems: updates come from the zip (the game ships for Windows)
 namespace update {
 void start() {}
+void checkNow() {}
 bool restart() { return false; }
 void cleanup() {}
 }  // namespace update

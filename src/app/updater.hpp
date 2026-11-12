@@ -14,9 +14,11 @@ struct Status {
     std::string latest;   // the newest release's version ("0.6.2-alpha")
     std::string note;     // what went wrong, in plain words
 };
-constexpr const char* REPO = "LusciousLuchs/Gunsmith3D-Releases";   // public: downloads only (the code is private)
+constexpr const char* REPO = "LusciousLuchs/Gunsmith3D-Releases";   // the downloads page (if there is one)
+constexpr const char* CODE_REPO = "LusciousLuchs/Project-Gunsmith-3D";   // the game's own repository (public)
 void start();             // check (and if newer, download and install) in the background; nothing on other systems
 Status status();
+void checkNow();          // Check for updates (a button): ask again now
 bool restart();           // start the new version and quit this one
 void cleanup();           // remove the old .exe left by the last update (call at start)
 // a.b.c[-stage] newer than b? (numbers only; the stage doesn't count)

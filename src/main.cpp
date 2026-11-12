@@ -17,6 +17,7 @@
 #include "app/reltest.hpp"
 #include "app/settings.hpp"
 #include "app/updater.hpp"
+#include "app/shop3d.hpp"
 #include "app/paths.hpp"
 #include "app/usertex.hpp"
 #include "app/fonts.hpp"
@@ -214,6 +215,7 @@ int main(int argc, char** argv) {
         if (std::getenv("GUNSMITH_CAREERDESIGN")) enterWorkshop(false);   // (the designer, opened from the office)
         if (const char* e = std::getenv("GUNSMITH_CAREERDEMO")) careerDemoStart(std::atoi(e));   // (a contract's range demonstration)
         if (const char* e = std::getenv("GUNSMITH_CAREERSHOP")) careerOpenWorkshop(std::atoi(e) == 2);   // (your workshop: 1 to build, 2 on foot)
+        if (const char* e = std::getenv("GUNSMITH_SHOPOPEN")) shopOpen(std::atoi(e));   // (screenshots) a thing in your shop, used
         if (const char* e = std::getenv("GUNSMITH_CAREERDAYS")) for (int k = std::atoi(e); k > 0; k--) career::endDay(CAREER);
     }
     if (const char* c = std::getenv("GUNSMITH_NPCCAM")) std::sscanf(c, "%f,%f,%f,%f", &NE.dist, &NE.yaw, &NE.pitch, &NE.targetY);   // (screenshots) the NPC editor's camera
@@ -313,8 +315,10 @@ int main(int argc, char** argv) {
             BeginDrawing();
             ClearBackground(Color{30, 34, 41, 255});
             { perf::Scope t(perf::Scene); mapEditorRender(); }
+            if (shopActive()) careerRenderPortraits();   // (career: customers' faces for the counter's screen)
             rlImGuiBegin();
             if (!ME.walking) { mapToolbar(); mapPanel(); }
+            else if (shopActive()) shopWindows();
             tutorialPanel();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
