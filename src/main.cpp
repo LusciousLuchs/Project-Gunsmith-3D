@@ -201,6 +201,15 @@ int main(int argc, char** argv) {
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();
     if (charArg) enterCharacterEditor();
+    if (const char* c = std::getenv("GUNSMITH_NPCCAM")) std::sscanf(c, "%f,%f,%f,%f", &NE.dist, &NE.yaw, &NE.pitch, &NE.targetY);   // (screenshots) the NPC editor's camera
+    if (const char* c = std::getenv("GUNSMITH_LOOK")) {   // (screenshots) the character maker's choices: body,hair,top,pants,extras
+        char body[16] = "", hair[16] = "", top[16] = "", pants[16] = "", ex[16] = "";
+        std::sscanf(c, "%15[^,],%15[^,],%15[^,],%15[^,],%15s", body, hair, top, pants, ex);
+        CharLook L; L.on = true; L.body = body; L.hair = hair; L.top = top; L.pants = pants;
+        std::string e = ex; L.belt = e.find('b') != std::string::npos; L.hat = e.find('c') != std::string::npos; L.headphones = e.find('h') != std::string::npos; L.glasses = e.find('g') != std::string::npos;
+        NE.npc = characterFromLook(L, &NE.npc);
+        npcCommit();
+    }
     if (npcArg) { if (const char* k = std::getenv("GUNSMITH_NPC")) NE.npc = npcPreset(k); enterNpcEditor(); if (const char* k = std::getenv("GUNSMITH_NPC")) { NE.npc = npcPreset(k); NE.sel = 0; npcFrame(); } }
     if (!mapArg.empty()) {
         enterMapEditor();

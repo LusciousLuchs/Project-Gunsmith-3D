@@ -507,13 +507,15 @@ void drawPoseBody() {
     // your character: its body as it stands (everything but its arms, which reach for the hands below)
     std::vector<int> armOf, anchor;      // which arm a bone belongs to (-1: none); the arm bone it rides with
     std::vector<Matrix> stand;           // each bone's standing frame, in the world
+    std::vector<char> onHand;            // a hand, or a finger on one
     float handed = 1;                    // (a mirrored fit draws its meshes inside out unless culling is off)
     if (CF.ok) {
         const NpcDef& n = *CF.n;
-        armOf.assign(n.bones.size(), -1); anchor.assign(n.bones.size(), -1);
+        armOf.assign(n.bones.size(), -1); anchor.assign(n.bones.size(), -1); onHand.assign(n.bones.size(), 0);
         for (int i = 0; i < (int)n.bones.size(); i++) {
             for (int k = 0; k < 2; k++) if (i == CF.upper[k]) armOf[i] = k;
             if (armOf[i] < 0 && n.bones[i].parent >= 0) armOf[i] = armOf[n.bones[i].parent];
+            onHand[i] = i == CF.hand[0] || i == CF.hand[1] || (n.bones[i].parent >= 0 && n.bones[i].parent < i && onHand[n.bones[i].parent] && n.bones[i].gen);
             anchor[i] = (i == CF.upper[0] || i == CF.upper[1] || i == CF.fore[0] || i == CF.fore[1]) ? i
                       : (i == CF.hand[0] ? CF.fore[0] : i == CF.hand[1] ? CF.fore[1] : n.bones[i].parent >= 0 ? anchor[n.bones[i].parent] : -1);
             const NpcBoneAt& q = CF.P[i];
@@ -587,7 +589,7 @@ void drawPoseBody() {
             Matrix now[2] = {segM(CF.upper[side], a.s, a.e), segM(CF.fore[side], a.e, a.w)};
             if (handed < 0) rlDisableBackfaceCulling();
             for (int i = 0; i < (int)n.bones.size(); i++) {
-                if (armOf[i] != side || i == CF.hand[side]) continue;   // (the hand is drawn with fingers, below)
+                if (armOf[i] != side || onHand[i]) continue;   // (the hand and its fingers: the posed finger skeleton, below)
                 Color c = strain ? STRAIN : hexColor(n.bones[i].color);
                 if (i == CF.upper[side]) drawNpcBone(n.bones[i], now[0], c);
                 else if (i == CF.fore[side]) drawNpcBone(n.bones[i], now[1], c);

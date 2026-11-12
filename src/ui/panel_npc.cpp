@@ -31,8 +31,8 @@ void npcToolbar() {
     if (NE.player) {   // the character is kept as you go; Start again is the only other choice
         if (ImGui::Button(ICON_FA_ROTATE_LEFT "  Start again")) ImGui::OpenPopup("##charreset");
         if (ImGui::BeginPopup("##charreset")) {
-            ImGui::TextUnformatted("Start your character again from the plain human? (Undo brings it back.)");
-            if (ImGui::Button("Start again")) { std::string nm = NE.npc.name; NE.npc = npcPreset("human"); NE.npc.name = nm; NE.sel = 0; npcCommit(); npcFrame(); ImGui::CloseCurrentPopup(); }
+            ImGui::TextUnformatted("Start your character again from the character maker's first choices? (Undo brings it back.)");
+            if (ImGui::Button("Start again")) { std::string nm = NE.npc.name; CharLook L; L.on = true; NE.npc = characterFromLook(L); NE.npc.name = nm; NE.sel = 0; npcCommit(); npcFrame(); ImGui::CloseCurrentPopup(); }
             ImGui::EndPopup();
         }
     } else {
@@ -67,8 +67,167 @@ void npcToolbar() {
     }
 }
 
+// ---------------------------------------------------------------- your character: the character maker
+namespace {
+// a row of choice buttons; true if one was clicked
+bool choices(const char* id, std::string& v, std::initializer_list<std::pair<const char*, const char*>> opts) {
+    bool hit = false;
+    float avail = ImGui::GetContentRegionAvail().x, x = 0, sp = 2 * CFG.uiScale;
+    ImGui::PushID(id);
+    for (auto& [key, label] : opts) {
+        float w = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2;
+        if (x > 0 && x + sp + w <= avail) ImGui::SameLine(0, sp); else x = 0;
+        if (accentButton(label, v == key)) { if (v != key) { v = key; hit = true; } }
+        x += w + sp;
+    }
+    ImGui::PopID();
+    return hit;
+}
+bool colour(const char* id, std::string& hex) {
+    Color c = hexColor(hex);
+    float col[3] = {c.r / 255.f, c.g / 255.f, c.b / 255.f};
+    if (ImGui::ColorEdit3(id, col, ImGuiColorEditFlags_NoInputs)) { hex = colorHex(col); return true; }
+    return false;
+}
+// a bone of your own gear: where it hangs, its shape and size, its look
+void gearEditor(NpcDef& n, NpcBone& b, bool& done) {
+    auto fin = [&]() { if (ImGui::IsItemDeactivatedAfterEdit()) done = true; };
+    prop("Name"); inputText("##gname", b.name); fin();
+    prop("Hangs off");
+    if (ImGui::BeginCombo("##gparent", n.bones[b.parent].name.c_str())) {
+        for (int k = 0; k < NE.sel; k++)
+            if (ImGui::Selectable((n.bones[k].name + "##gp" + std::to_string(k)).c_str(), b.parent == k)) { b.parent = k; done = true; }
+        ImGui::EndCombo();
+    }
+    pNum("Where on it", b.at, 0.01, "%.2f", "0: its start, 1: its end."); b.at = std::clamp(b.at, 0.0, 1.0); fin();
+    pNumU("Across", b.side, 1, Q::Length, 0, "To its right (+) or left.", SIGNED); fin();
+    pNumU("In front", b.fwd, 1, Q::Length, 0, "In front of it (+) or behind.", SIGNED); fin();
+    pNumU("Length", b.len, 2, Q::Length, 0); b.len = std::max(1.0, b.len); fin();
+    pNumU("Thick at start", b.r0, 1, Q::Length, 0); b.r0 = std::max(0.5, b.r0); fin();
+    pNumU("Thick at end", b.r1, 1, Q::Length, 0); b.r1 = std::max(0.5, b.r1); fin();
+    static const char* shapes[] = {"capsule", "cylinder", "box", "ball", "wedge"};
+    int sh = 0;
+    for (int k = 0; k < 5; k++) if (b.shape == shapes[k]) sh = k;
+    prop("Shape");
+    if (ImGui::Combo("##gshape", &sh, "Rounded\0Cylinder\0Box\0Ball / egg\0Wedge\0")) { b.shape = shapes[sh]; done = true; }
+    double wp = b.width * 100, dp = b.depth * 100;
+    if (pNum("Width", wp, 1, "%.0f%%")) b.width = std::clamp(wp / 100, 0.05, 10.0);
+    fin();
+    if (pNum("Depth", dp, 1, "%.0f%%")) b.depth = std::clamp(dp / 100, 0.05, 10.0);
+    fin();
+    prop("Colour"); colour("##gcol", b.color); fin();
+    prop("Picture", "One of the gun finishes, or your own from your Textures folder.");
+    if (texturePicker(b.texture)) done = true;
+    pNum("Bend", b.bend, 1, "%.0f\xc2\xb0", "Forward (+) or back. Or drag the dot at its end in the view."); fin();
+    pNum("Turn", b.turn, 1, "%.0f\xc2\xb0"); fin();
+    pNum("Twist", b.twist, 1, "%.0f\xc2\xb0"); fin();
+}
+}  // namespace
+
+static void characterPanel() {
+    auto& n = NE.npc;
+    CharLook& L = n.look;
+    bool rebuild = false, done = false;
+    auto fin = [&]() { if (ImGui::IsItemDeactivatedAfterEdit()) done = true; };
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled("Your character holds your guns in Pose (Test bench > Pose). It's kept as you go.");
+    ImGui::PopTextWrapPos();
+    prop("Name"); inputText("##cname", n.name); fin();
+    ImGui::TextDisabled("%.2f m tall", npcHeight(n) / 1000);
+    if (section("Body", true)) {
+        rebuild |= choices("body", L.body, {{"male", "Male"}, {"female", "Female"}});
+        double hp = L.height * 100, bp = L.build * 100;
+        if (pNum("Height", hp, 0.5, "%.0f%%", "Taller or shorter than average: arms and legs too.")) { L.height = std::clamp(hp / 100, 0.85, 1.15); rebuild = true; }
+        fin();
+        if (pNum("Build", bp, 0.5, "%.0f%%", "Slim (low) to heavy (high).")) { L.build = std::clamp(bp / 100, 0.8, 1.3); rebuild = true; }
+        fin();
+        prop("Skin"); rebuild |= colour("##skin", L.skin); fin();
+        ImGui::SameLine();
+        for (const char* sk : {"#f1d3bd", "#e0b394", "#c8a088", "#a5785a", "#7a5238", "#4e3424"}) {   // a few to start from
+            Color c = hexColor(sk);
+            ImGui::PushID(sk);
+            if (ImGui::ColorButton("##sw", ImVec4(c.r / 255.f, c.g / 255.f, c.b / 255.f, 1), ImGuiColorEditFlags_NoTooltip, {16 * CFG.uiScale, 16 * CFG.uiScale})) { L.skin = sk; rebuild = done = true; }
+            ImGui::PopID();
+            ImGui::SameLine(0, 2 * CFG.uiScale);
+        }
+        ImGui::NewLine();
+        prop("Eyes"); rebuild |= colour("##eyes", L.eyes); fin();
+    }
+    if (section("Hair", true)) {
+        rebuild |= choices("hair", L.hair, {{"none", "None"}, {"buzz", "Buzz cut"}, {"short", "Short"}, {"long", "Long"}, {"ponytail", "Ponytail"}, {"bun", "Bun"}});
+        if (L.hair != "none") { prop("Colour"); rebuild |= colour("##hairc", L.hairColor); fin(); }
+    }
+    if (section("Clothes", true)) {
+        prop("Top");
+        rebuild |= choices("top", L.top, {{"longsleeve", "Long sleeves"}, {"tshirt", "T-shirt"}, {"tank", "Tank top"}});
+        prop("Its colour"); rebuild |= colour("##topc", L.topColor); fin();
+        prop("Pants");
+        rebuild |= choices("pants", L.pants, {{"long", "Long"}, {"shorts", "Shorts"}});
+        prop("Their colour"); rebuild |= colour("##pantc", L.pantsColor); fin();
+        prop("Shoes"); rebuild |= colour("##shoes", L.shoes); fin();
+    }
+    if (section("Extras", true)) {
+        auto extra = [&](const char* label, bool& on, std::string& col, const char* id) {
+            if (ImGui::Checkbox(label, &on)) { rebuild = done = true; }
+            if (on) { ImGui::SameLine(PANEL_W * 0.55f); rebuild |= colour(id, col); fin(); }
+        };
+        extra("Belt", L.belt, L.beltColor, "##beltc");
+        extra("Cap", L.hat, L.hatColor, "##hatc");
+        extra("Ear defenders", L.headphones, L.headphonesColor, "##hpc");
+        extra("Glasses", L.glasses, L.glassesColor, "##glc");
+    }
+    if (rebuild) {
+        int keepSel = NE.sel;
+        n = characterFromLook(L, &n);
+        if (keepSel >= (int)n.bones.size()) keepSel = 0;
+        NE.sel = keepSel;
+        if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || !ImGui::IsMouseDown(ImGuiMouseButton_Left)) done = true;
+    }
+    if (section("Your own gear", true)) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("Anything else: a helmet, a vest, pouches. Click a part of your character in the view, then add gear to it.");
+        ImGui::PopTextWrapPos();
+        for (size_t i = 0; i < n.bones.size(); i++) {
+            const NpcBone& g = n.bones[i];
+            if (g.gen || npcCoreBone(g.name)) continue;
+            ImGui::PushID((int)i);
+            if (ImGui::Selectable(g.name.c_str(), NE.sel == (int)i)) { NE.sel = (int)i; NE.endPicked = false; }
+            ImGui::PopID();
+        }
+        if (NE.sel >= (int)n.bones.size()) NE.sel = 0;
+        float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        if (ImGui::Button("Add gear", {w2, 0})) {
+            NpcBone b; b.parent = NE.sel; b.name = "Gear " + std::to_string(n.bones.size() + 1);
+            const NpcBone& p = n.bones[NE.sel];
+            b.len = std::max(30.0, p.len * 0.5); b.r0 = b.r1 = p.r1 * 1.1; b.at = 0.5; b.color = "#4a5240"; b.shape = "box";
+            n.bones.push_back(b); NE.sel = (int)n.bones.size() - 1; done = true;
+        }
+        if (tipHover()) ImGui::SetTooltip("A piece of gear on %s.", n.bones[NE.sel].name.c_str());
+        ImGui::SameLine();
+        NpcBone& b = n.bones[NE.sel];
+        bool mine = !b.gen && !npcCoreBone(b.name);
+        ImGui::BeginDisabled(!mine);
+        if (dangerButton("Delete", {w2, 0})) { npcRemoveBone(n, NE.sel); NE.sel = 0; done = true; }
+        ImGui::EndDisabled();
+        if (NE.sel < (int)n.bones.size()) {
+            NpcBone& sb = n.bones[NE.sel];
+            if (!sb.gen && !npcCoreBone(sb.name)) { heading(sb.name.c_str()); gearEditor(n, sb, done); }
+            else ImGui::TextDisabled("Picked: %s (part of your character).", sb.name.c_str());
+        }
+    }
+    if (done) npcCommit();
+}
+
 void npcPanel() {
     auto& n = NE.npc;
+    if (NE.player && n.look.on) {
+        ImGui::SetNextWindowPos({GetScreenWidth() - PANEL_W, TOOLBAR_H});
+        ImGui::SetNextWindowSize({PANEL_W, GetScreenHeight() - TOOLBAR_H});
+        ImGui::Begin("##npcpanel", nullptr, FIXED);
+        characterPanel();
+        ImGui::End();
+        return;
+    }
     ImGui::SetNextWindowPos({GetScreenWidth() - PANEL_W, TOOLBAR_H});
     ImGui::SetNextWindowSize({PANEL_W, GetScreenHeight() - TOOLBAR_H});
     ImGui::Begin("##npcpanel", nullptr, FIXED);
@@ -76,9 +235,14 @@ void npcPanel() {
     auto fin = [&]() { if (ImGui::IsItemDeactivatedAfterEdit()) done = true; };
     if (NE.player) {
         ImGui::PushTextWrapPos(0);
-        ImGui::TextDisabled("Your character holds your guns in Pose (Test bench > Pose) instead of the mannequin, with its own arm lengths. "
-                            "Shape it, colour it, put pictures on it, add gear (a helmet, a vest, pouches). It's kept as you go.");
+        ImGui::TextDisabled("This character was shaped bone by bone. The character maker is simpler: pick a body, hair, clothes and extras.");
         ImGui::PopTextWrapPos();
+        if (accentButton("Use the character maker", true, {-1, 0})) {
+            CharLook L; L.on = true;
+            n = characterFromLook(L, &n);   // (your own gear comes along; Undo brings the old one back)
+            NE.sel = 0; npcCommit(); npcFrame();
+        }
+        if (tipHover()) ImGui::SetTooltip("Builds your character from choices. Gear you added is kept. Undo brings this one back.");
         ImGui::Dummy({0, 4 * CFG.uiScale});
     }
     prop("Name"); if (inputText("##nname", n.name)) {} fin();
@@ -169,12 +333,14 @@ void npcPanel() {
         pNum("Bend", b.bend, 1, "%.0f\xc2\xb0", "Forward (+) or back, from the bone it hangs off."); fin();
         pNum("Turn", b.turn, 1, "%.0f\xc2\xb0", "To its right (+) or left."); fin();
         pNum("Twist", b.twist, 1, "%.0f\xc2\xb0", "About its own length."); fin();
-        heading("When it's hit");
-        pCheck("Weak spot", b.vital, "Hits here do triple damage: a head, a glowing core.");
-        if (ImGui::IsItemEdited()) done = true;
-        double ar = b.armor * 100;
-        if (pNum("Armour", ar, 1, "%.0f%%", "How much of a hit it stops.")) b.armor = std::clamp(ar / 100, 0.0, 1.0);
-        fin();
+        if (!NE.player) {   // (your character: armour is the armour bar, plates you pick up)
+            heading("When it's hit");
+            pCheck("Weak spot", b.vital, "Hits here do triple damage: a head, a glowing core.");
+            if (ImGui::IsItemEdited()) done = true;
+            double ar = b.armor * 100;
+            if (pNum("Armour", ar, 1, "%.0f%%", "How much of a hit it stops.")) b.armor = std::clamp(ar / 100, 0.0, 1.0);
+            fin();
+        }
     }
     if (!NE.player && section("In a fight", false)) {
         ImGui::PushTextWrapPos(0);

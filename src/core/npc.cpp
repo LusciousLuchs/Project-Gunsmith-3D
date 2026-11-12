@@ -46,7 +46,7 @@ std::vector<NpcBoneAt> npcPose(const NpcDef& n) {
             const NpcBoneAt& p = out[pi];
             frame = mul(R[pi], local(b.bend, b.turn, b.twist));
             double t = std::clamp(b.at, 0.0, 1.0);
-            for (int k = 0; k < 3; k++) a[k] = p.a[k] + (p.b[k] - p.a[k]) * t + p.x[k] * b.side;
+            for (int k = 0; k < 3; k++) a[k] = p.a[k] + (p.b[k] - p.a[k]) * t + p.x[k] * b.side + p.z[k] * b.fwd;
         }
         R[i] = frame;
         NpcBoneAt& o = out[i];
@@ -221,11 +221,20 @@ std::string npcToJson(const NpcDef& n) {
         if (b.depth != 1) B[i]["depth"] = b.depth;
         if (b.bulge != 0) B[i]["bulge"] = b.bulge;
         if (!b.texture.empty()) { B[i]["texture"] = b.texture; B[i]["texScale"] = b.texScale; }
+        if (b.fwd != 0) B[i]["fwd"] = b.fwd;
+        if (b.gen) B[i]["gen"] = true;
     }
     o["bones"] = B;
     o["fight"] = {{"health", n.health}, {"speed", n.speed}, {"attack", n.attack}, {"damage", n.damage}, {"reach", n.reach},
                   {"gun", n.gun}, {"sight", n.sight}, {"behaviour", n.behaviour}, {"team", n.team}};
     if (n.armorBar > 0) o["fight"]["armor"] = n.armorBar;
+    if (n.look.on) {
+        const CharLook& L = n.look;
+        o["look"] = {{"body", L.body}, {"height", L.height}, {"build", L.build}, {"skin", L.skin}, {"eyes", L.eyes}, {"hair", L.hair},
+                     {"hairColor", L.hairColor}, {"top", L.top}, {"topColor", L.topColor}, {"pants", L.pants}, {"pantsColor", L.pantsColor},
+                     {"shoes", L.shoes}, {"belt", L.belt}, {"hat", L.hat}, {"headphones", L.headphones}, {"glasses", L.glasses},
+                     {"beltColor", L.beltColor}, {"hatColor", L.hatColor}, {"headphonesColor", L.headphonesColor}, {"glassesColor", L.glassesColor}};
+    }
     return o.dump(1);
 }
 
@@ -248,6 +257,8 @@ bool npcFromJson(const std::string& text, NpcDef& out, std::string* err) {
         b.width = std::clamp(num(jb, "width", 1), 0.05, 10.0); b.depth = std::clamp(num(jb, "depth", 1), 0.05, 10.0);
         b.bulge = std::clamp(num(jb, "bulge", 0), -0.9, 3.0);
         b.texture = str(jb, "texture", ""); b.texScale = std::clamp(num(jb, "texScale", 150), 1.0, 5000.0);
+        b.fwd = num(jb, "fwd", 0);
+        b.gen = jb.contains("gen") && jb["gen"].is_boolean() && jb["gen"].get<bool>();
         n.bones.push_back(b);
     }
     if (n.bones.empty()) { if (err) *err = "it has no bones"; return false; }
@@ -259,6 +270,182 @@ bool npcFromJson(const std::string& text, NpcDef& out, std::string* err) {
         n.reach = num(f, "reach", 1.5); n.gun = str(f, "gun", ""); n.sight = num(f, "sight", 30); n.behaviour = str(f, "behaviour", "chase"); n.team = (int)num(f, "team", 1);
         n.armorBar = std::max(0.0, num(f, "armor", 0));
     }
+    if (o.contains("look") && o["look"].is_object()) {
+        auto& j = o["look"];
+        CharLook& L = n.look;
+        const CharLook d;
+        auto flag = [&](const char* k, bool def) { return j.contains(k) && j[k].is_boolean() ? j[k].get<bool>() : def; };
+        L.on = true;
+        L.body = str(j, "body", d.body); L.height = std::clamp(num(j, "height", 1), 0.85, 1.15); L.build = std::clamp(num(j, "build", 1), 0.8, 1.3);
+        L.skin = str(j, "skin", d.skin); L.eyes = str(j, "eyes", d.eyes); L.hair = str(j, "hair", d.hair); L.hairColor = str(j, "hairColor", d.hairColor);
+        L.top = str(j, "top", d.top); L.topColor = str(j, "topColor", d.topColor); L.pants = str(j, "pants", d.pants); L.pantsColor = str(j, "pantsColor", d.pantsColor);
+        L.shoes = str(j, "shoes", d.shoes);
+        L.belt = flag("belt", d.belt); L.hat = flag("hat", d.hat); L.headphones = flag("headphones", d.headphones); L.glasses = flag("glasses", d.glasses);
+        L.beltColor = str(j, "beltColor", d.beltColor); L.hatColor = str(j, "hatColor", d.hatColor);
+        L.headphonesColor = str(j, "headphonesColor", d.headphonesColor); L.glassesColor = str(j, "glassesColor", d.glassesColor);
+    }
     out = n;
     return true;
+}
+
+bool npcCoreBone(const std::string& name) {
+    static std::vector<std::string> core;
+    if (core.empty()) for (auto& b : npcPreset("human").bones) core.push_back(b.name);
+    return std::find(core.begin(), core.end(), name) != core.end();
+}
+
+// ---------------------------------------------------------------- the character maker
+static const double HAND_TWIST = -90, CURL = 1, THUMB_TURN = 12;   // the palm toward the thigh, the fingers a little curled
+NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
+    NpcDef n = npcPreset("human");
+    n.look = L; n.look.on = true;
+    const bool fem = L.body == "female";
+    const double H = std::clamp(L.height, 0.85, 1.15), B = std::clamp(L.build, 0.8, 1.3);
+    auto find = [&](const char* nm) { for (int i = 0; i < (int)n.bones.size(); i++) if (n.bones[i].name == nm) return i; return -1; };
+    // the body: the human's bones, sized and coloured
+    for (auto& b : n.bones) {
+        b.len *= H; b.side *= H;
+        double rk = B * (fem ? 0.9 : 1.0);
+        b.r0 *= rk; b.r1 *= rk;
+        b.vital = false; b.armor = 0;
+    }
+    n.rootHeight *= H;
+    auto I = [&](const char* nm) -> NpcBone& { return n.bones[find(nm)]; };
+    I("Head").vital = true;   // (where a hit hurts most, as for any NPC)
+    I("Neck").color = I("Head").color = L.skin;
+    I("Chest").color = L.topColor;
+    I("Pelvis").color = L.pantsColor;
+    if (fem) {
+        I("Chest").r0 *= 0.95; I("Chest").r1 *= 0.86; I("Chest").width = 1.12;
+        I("Pelvis").r0 *= 1.06; I("Pelvis").r1 *= 1.1; I("Pelvis").width = 1.38;
+        I("Head").r0 *= 0.95; I("Head").r1 *= 0.95; I("Head").len *= 0.96;
+        I("Neck").r0 *= 0.85; I("Neck").r1 *= 0.85;
+    }
+    for (const char* sd : {"left", "right"}) {
+        std::string s = std::string("(") + sd + ")";
+        auto& ua = I(("Upper arm " + s).c_str()); auto& fa = I(("Forearm " + s).c_str()); auto& hd = I(("Hand " + s).c_str());
+        auto& th = I(("Thigh " + s).c_str()); auto& sh = I(("Shin " + s).c_str()); auto& ft = I(("Foot " + s).c_str());
+        if (fem) { ua.side *= 0.9; th.side *= 1.05; }
+        ua.color = L.top == "longsleeve" ? L.topColor : L.skin;
+        fa.color = L.top == "longsleeve" ? L.topColor : L.skin;
+        hd.color = L.skin;
+        th.color = L.pantsColor;
+        sh.color = L.pants == "shorts" ? L.skin : L.pantsColor;
+        ft.color = L.shoes;
+        hd.len = 88 * H;   // the palm: the fingers carry on from its end
+        hd.twist = (std::string(sd) == "left" ? 1 : -1) * HAND_TWIST;   // the palm toward the thigh
+    }
+    for (auto& b : n.bones) b.gen = true;
+    // more pieces: hang one off a bone by name
+    auto add = [&](const char* parent, NpcBone b) { b.parent = find(parent); b.gen = true; n.bones.push_back(b); return (int)n.bones.size() - 1; };
+    auto piece = [&](const char* name, double at, double side, double fwd, double len, double r0, double r1, double bend, double turn,
+                     const std::string& color, const char* shape, double width = 1, double depth = 1) {
+        NpcBone b; b.name = name; b.at = at; b.side = side * H; b.fwd = fwd * H; b.len = len * H; b.r0 = r0 * H; b.r1 = r1 * H;
+        b.bend = bend; b.turn = turn; b.color = color; b.shape = shape; b.width = width; b.depth = depth;
+        return b;
+    };
+    const NpcBone& head = I("Head");
+    const double hr = (head.r0 + head.r1) / 2 / H;   // the head's radius (before height), front to back
+    const double hw = hr * head.width;               // ...and side to side
+    // the face: eyes (white, then the coloured middle), a nose (narrow at the bridge, wide at the bottom), a mouth;
+    // each on the head's surface: how far its front is from its middle line at t along it (before height)
+    auto front = [&](double t, double across) {
+        double ph = 3.14159265358979 * t, R = hr * std::sin(ph) * (1 + head.bulge * std::sin(ph));
+        double u = std::clamp(across / std::max(1.0, R * head.width), -0.95, 0.95);
+        return R * head.depth * std::sqrt(1 - u * u);
+    };
+    for (int s : {-1, 1}) {
+        double x = s * 0.36 * hw;
+        int e = add("Head", piece(s < 0 ? "Eye (left)" : "Eye (right)", 0.56, x, front(0.56, x) - 13, 22, 12, 12, 90, 0, "#eeeae4", "ball"));
+        NpcBone iris = piece(s < 0 ? "Iris (left)" : "Iris (right)", 0.62, 0, 0, 10, 6.5, 6.5, 0, 0, L.eyes, "ball");
+        iris.parent = e; iris.gen = true; n.bones.push_back(iris);
+    }
+    add("Head", piece("Nose", 0.53, 0, front(0.45, 0) - 4, 46, 7, 13, 180, 0, L.skin, "box", 1.0, 1.6));
+    add("Head", piece("Mouth", 0.3, 0, front(0.3, 0) - 3, 6, 15, 15, 90, 0, "#9a5a52", "cylinder", 1.7, 0.3));
+    // the chest
+    if (fem)
+        for (int s : {-1, 1}) add("Chest", piece(s < 0 ? "Bust (left)" : "Bust (right)", 0.58, s * 46, 32, 92, 52, 52, 90, s * 8, L.topColor, "ball", 1, 1));
+    // sleeves: a t-shirt's cover the top of the arm
+    if (L.top == "tshirt")
+        for (const char* sd : {"left", "right"}) {
+            std::string nm = std::string("Upper arm (") + sd + ")";
+            const NpcBone& ua = I(nm.c_str());
+            add(nm.c_str(), piece((std::string("Sleeve (") + sd + ")").c_str(), 0, 0, 0, ua.len / H * 0.45, ua.r0 / H + 6, ua.r0 / H + 3, 0, 0, L.topColor, "cylinder"));
+        }
+    // fingers: three pieces each, from the end of the palm, a little curled; the thumb from the side of the palm
+    for (const char* sd : {"left", "right"}) {
+        std::string hn = std::string("Hand (") + sd + ")";
+        const double sg = std::string(sd) == "left" ? 1 : -1;   // (which way across the palm is the thumb's side)
+        const char* names[4] = {"Index", "Middle", "Ring", "Little"};
+        const double lens[4][3] = {{40, 24, 20}, {44, 28, 21}, {41, 27, 20}, {32, 20, 18}};
+        const double across[4] = {21, 7, -7, -20};
+        for (int f = 0; f < 4; f++) {
+            int prev = find(hn.c_str());
+            double r = f == 3 ? 7.5 : 8.5;
+            for (int k = 0; k < 3; k++) {
+                NpcBone b = piece((std::string(names[f]) + " " + std::to_string(k + 1) + " (" + sd + ")").c_str(), k == 0 ? 1 : 1, k == 0 ? sg * across[f] : 0, 0,
+                                  lens[f][k], r - k * 0.9, r - (k + 1) * 0.9, CURL * (k == 0 ? 12 : 18), 0, L.skin, "cylinder");
+                b.parent = prev; b.gen = true; n.bones.push_back(b);
+                prev = (int)n.bones.size() - 1;
+            }
+        }
+        int prev = find(hn.c_str());
+        const double tl[3] = {36, 30, 24};
+        for (int k = 0; k < 3; k++) {
+            NpcBone b = piece((std::string("Thumb ") + std::to_string(k + 1) + " (" + sd + ")").c_str(), k == 0 ? 0.25 : 1, k == 0 ? sg * 27 : 0, k == 0 ? 6 : 0,
+                              tl[k], 10 - k * 1.1, 9 - k * 1.1, CURL * (k == 0 ? 20 : 10), k == 0 ? sg * THUMB_TURN : 0, L.skin, "cylinder");
+            b.parent = prev; b.gen = true; n.bones.push_back(b);
+            prev = (int)n.bones.size() - 1;
+        }
+    }
+    // hair
+    const std::string& hc = L.hairColor;
+    if (L.hair != "none") {
+        double grow = L.hair == "buzz" ? 3 : 8;
+        add("Head", piece("Hair", 0.14, 0, -hr * 0.17, head.len / H * 0.9 + grow, hr + grow, hr + grow, 0, 0, hc, "ball", head.width * 1.04, 1.0));
+        if (L.hair == "long") add("Head", piece("Long hair", 0.78, 0, -hr * 0.62, 250, hr * 0.72, hr * 0.55, 180, 0, hc, "box", 1.25, 0.38));
+        if (L.hair == "ponytail") add("Head", piece("Ponytail", 0.68, 0, -hr * 0.95, 190, 22, 12, 150, 0, hc, "capsule"));
+        if (L.hair == "bun") add("Head", piece("Bun", 0.86, 0, -hr * 0.8, 70, 34, 34, -50, 0, hc, "ball"));
+    }
+    // extras
+    if (L.belt) {
+        const NpcBone& pv = I("Pelvis");
+        add("Pelvis", piece("Belt", 0.72, 0, 0, 34, pv.r1 / H * 1.06 + 3, pv.r1 / H * 1.06 + 3, 0, 0, L.beltColor, "box", pv.width * 1.0, pv.depth * 1.08));
+        add("Pelvis", piece("Buckle", 0.77, 0, pv.r1 / H * pv.depth + 2, 6, 15, 15, 90, 0, "#b8a46a", "box", 1.3, 1));
+    }
+    if (L.hat) {
+        add("Head", piece("Cap", 0.3, 0, -hr * 0.12, head.len / H * 0.78, hr + 14, hr + 14, 0, 0, L.hatColor, "ball", head.width * 1.04, 1.0));
+        add("Head", piece("Cap brim", 0.62, 0, hr * 0.78, 70, 62, 52, 98, 0, L.hatColor, "box", 1.45, 0.1));
+    }
+    if (L.headphones) {
+        // two cups over the ears, a band from each up over the top of the head
+        const double Lh = head.len / H, y0 = 0.48 * Lh + 30, x0 = hw + 18, x1 = hw * 0.45, y1 = Lh * 0.985 + 20;
+        const double bl = std::hypot(x0 - x1, y1 - y0), lean = std::atan2(x0 - x1, y1 - y0) * 57.2957795;
+        for (int s : {-1, 1}) {
+            add("Head", piece(s < 0 ? "Ear cup (left)" : "Ear cup (right)", 0.48, s * (hw - 4), -4, 28, 40, 40, 0, s * 90, L.headphonesColor, "cylinder"));
+            add("Head", piece(s < 0 ? "Headband (left)" : "Headband (right)", y0 / Lh, s * x0, -4, bl, 8, 8, 0, -s * lean, L.headphonesColor, "cylinder", 1, 2.2));
+        }
+        add("Head", piece("Headband", y1 / Lh, -x1, -4, 2 * x1, 8, 8, 0, 90, L.headphonesColor, "cylinder", 1, 2.2));
+    }
+    if (L.glasses) {
+        for (int s : {-1, 1}) {
+            double x = s * 0.36 * hw;
+            add("Head", piece(s < 0 ? "Lens (left)" : "Lens (right)", 0.56, x, front(0.56, x) + 6, 4, 21, 21, 90, 0, L.glassesColor, "cylinder"));
+            add("Head", piece(s < 0 ? "Glasses arm (left)" : "Glasses arm (right)", 0.57, s * (hw * 0.97), front(0.56, x) + 4, hr * 1.0, 3, 3, -90, 0, L.glassesColor, "cylinder"));
+        }
+        add("Head", piece("Glasses bridge", 0.57, -0.16 * hw, front(0.56, 0.36 * hw) + 8, 0.32 * hw, 4, 4, 0, 90, L.glassesColor, "cylinder"));
+    }
+    // your own gear, kept: on the bone of the same name (else the chest)
+    if (keep)
+        for (size_t i = 0; i < keep->bones.size(); i++) {
+            const NpcBone& g = keep->bones[i];
+            if (g.gen || npcCoreBone(g.name) || i == 0) continue;
+            NpcBone b = g;
+            const std::string pn = g.parent >= 0 && g.parent < (int)keep->bones.size() ? keep->bones[g.parent].name : "Chest";
+            int p = find(pn.c_str());
+            b.parent = p >= 0 ? p : find("Chest");
+            n.bones.push_back(b);
+        }
+    n.name = keep ? keep->name : "My character";
+    return n;
 }

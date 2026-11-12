@@ -13,6 +13,7 @@ struct NpcBone {
     int parent = -1;              // -1: the root (only bone 0)
     double at = 1;                // where it hangs off its parent: 0 the parent's start, 1 its end
     double side = 0;              // and how far across from there (mm, + to its right)
+    double fwd = 0;               // and how far in front of it (mm, + the parent's front: an eye on a face, a pouch on a vest)
     double len = 200;             // mm
     double r0 = 40, r1 = 35;      // thickness (radius) at its start and its end, mm
     double bend = 0, turn = 0, twist = 0;   // degrees from its parent's direction: bend forward (+) or back, turn
@@ -26,6 +27,23 @@ struct NpcBone {
     double texScale = 150;        // the colour; mm one copy of it covers
     bool vital = false;           // a weak spot: hits here do triple damage (a head, a glowing core)
     double armor = 0;             // 0 .. 1: how much of a hit it stops
+    bool gen = false;             // made by the character maker (rebuilt from its choices; your own gear isn't)
+};
+
+// The player character's choices (the character maker): the body is built from these, not shaped bone by bone
+struct CharLook {
+    bool on = false;              // false: an older character, shaped bone by bone
+    std::string body = "male";    // male, female (a female body: narrower shoulders, wider hips, a chest)
+    double height = 1, build = 1; // 0.85 .. 1.15 tall; 0.8 slim .. 1.3 heavy
+    std::string skin = "#c8a088", eyes = "#4a6a8a";
+    std::string hair = "short";   // none, buzz, short, long, ponytail, bun
+    std::string hairColor = "#3b2a1e";
+    std::string top = "tshirt";   // longsleeve, tshirt, tank
+    std::string topColor = "#4f5d52";
+    std::string pants = "long";   // long, shorts
+    std::string pantsColor = "#3a3f36", shoes = "#26231f";
+    bool belt = true, hat = false, headphones = true, glasses = false;
+    std::string beltColor = "#2a2420", hatColor = "#4a5240", headphonesColor = "#3a4038", glassesColor = "#1c1e22";
 };
 
 struct NpcDef {
@@ -44,7 +62,12 @@ struct NpcDef {
     double sight = 30;            // m: how far it notices you
     std::string behaviour = "chase";   // stand, wander, chase, guard
     int team = 1;                 // who it fights (you are 0)
+    CharLook look;                // the player character: built by the character maker
 };
+// The character maker: a person built from the choices (hands with fingers, a face, hair, clothes, extras). Gear of
+// your own on `keep` (bones not made by the maker) is kept, on the bone of the same name.
+NpcDef characterFromLook(const CharLook& look, const NpcDef* keep = nullptr);
+bool npcCoreBone(const std::string& name);   // a human's own bones (the character can't lose them; gear can be added)
 
 std::string npcToJson(const NpcDef& n);
 bool npcFromJson(const std::string& text, NpcDef& n, std::string* err = nullptr);

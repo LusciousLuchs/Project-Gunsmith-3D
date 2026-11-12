@@ -174,11 +174,6 @@ void leaveNpcEditor() {
     }
     std::ofstream(npcAutosave()) << npcToJson(NE.npc);
 }
-bool npcCoreBone(const std::string& name) {
-    static std::vector<std::string> core;
-    if (core.empty()) for (auto& b : npcPreset("human").bones) core.push_back(b.name);
-    return std::find(core.begin(), core.end(), name) != core.end();
-}
 void enterCharacterEditor() {
     enterNpcEditor();   // (loads the NPC editor's own work the first time, so it can be set aside)
     npcStash = NE; stashed = true;
@@ -186,7 +181,8 @@ void enterCharacterEditor() {
     NE.player = true;
     std::ifstream in(CHARACTER_FILE);
     std::stringstream ss; ss << in.rdbuf();
-    if (!in || !npcFromJson(ss.str(), NE.npc)) { NE.npc = npcPreset("human"); NE.npc.name = "My character"; }
+    if (!in || !npcFromJson(ss.str(), NE.npc)) { CharLook L; L.on = true; NE.npc = characterFromLook(L); NE.npc.name = "My character"; }
+    else if (NE.npc.look.on) { std::string nm = NE.npc.name; NE.npc = characterFromLook(NE.npc.look, &NE.npc); NE.npc.name = nm; }   // (built again: newer games build it better)
     // a human: any of a human's bones missing (an older or hand-edited file) and it starts again from the human
     for (auto& b : npcPreset("human").bones) {
         bool has = false;
@@ -266,14 +262,15 @@ void npcEditorUpdate(float dt, bool modal) {
 // its width and depth, swelled by its bulge, closed by rounded or flat ends. Built once per shape and size and kept.
 namespace {
 Mesh buildBoneMesh(const NpcBone& b) {
-    const int SEG = 28;
+    const bool small = std::max(b.r0, b.r1) * std::max(b.width, b.depth) < 15 && b.len < 80;   // (a finger, an eye: fewer sides will do)
+    const int SEG = small ? 16 : 40;
     const double PI_D = 3.14159265358979;
     std::string sh = b.shape;
     bool squarish = sh == "box" || sh == "wedge";
     double ex = squarish ? 6 : 2;   // the cross-section: an ellipse, or a rounded square
     struct Ring { double y, r, dk; };   // where along, its radius, its depth factor (a wedge thins out)
     std::vector<Ring> rings;
-    const int BODY = 14, CAP = 7;
+    const int BODY = small ? 6 : 20, CAP = small ? 4 : 10;
     double L = b.len;
     if (sh == "ball") {
         double R = (b.r0 + b.r1) / 2;

@@ -23,7 +23,6 @@ extern NpcEdit NE;
 
 void enterNpcEditor();
 void enterCharacterEditor();           // the same editor, on your player character
-bool npcCoreBone(const std::string& name);   // a human's own bones (the character can't lose them; gear can be added)
 // Your player character, as saved (nullptr: none yet, so the mannequin stands in). Read again when it changes.
 const NpcDef* playerCharacter();
 

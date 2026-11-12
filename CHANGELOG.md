@@ -10,6 +10,21 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 
 ## 0.4.20-alpha
 
+### New: your character
+- **The character maker:** your character (main menu, *Your character*) is now built from choices instead of bone by bone: male or female (a female body has narrower shoulders, wider hips and a chest), height, build, skin colour, eye colour.
+- **Faces:** eyes, a nose and a mouth. **Hair:** none, buzz cut, short, long, ponytail or a bun, in any colour.
+- **Clothes:** long sleeves, a T-shirt or a tank top; long pants or shorts; shoes. **Extras:** a belt, a cap, ear defenders, glasses, each in its own colour.
+- **Fingers:** five on each hand, three pieces each, coming from the palm. In Pose they're the poser's own fingers, so your animations move them.
+- **Smoother:** characters and NPCs are rounder (more sides on every piece).
+- **Your own gear** (a helmet, a vest, pouches) still goes on any part, and stays when you change the choices. No more weak spots or armour per piece on your character: armour is the armour bar.
+- An older character keeps its shape until you press *Use the character maker* (your gear comes along; Undo brings the old one back).
+
+### New (attachments, part 5)
+- **Lights** shine a beam and light up what they point at; **lasers** put a dot (red, green, any colour) where they meet something. Set the beam width, brightness and colour in the attachment designer. **T** switches them on and off.
+- **Hold Alt on the range** to free the mouse: a list of the gun's attachments comes up with on/off boxes (lights, lasers, a bipod's legs, an optic's lit reticle). The same boxes are on the fitting bench, and loadouts remember them.
+- **Bipods:** legs down and aiming with its feet on something (a bench, a wall top, the floor when you're prone), the gun is rested: hardly any sway, and less kick.
+- **Bayonets:** **V** stabs (about 1.1 m reach with a long blade; the damage grows with how far it sticks out past the muzzle, or set it yourself). Without a bayonet, V hits with the muzzle.
+
 ### New (attachments, part 4: on the range)
 - **Attachment crates:** place them in the Level editor (the practice range has one by the start). Walk up, press F, and the gun in your hands goes on the fitting bench; *Back to the range* when you're done. Attachments are fresh on each map: load a saved loadout from the crate.
 - **Attachments weigh what they weigh**, in the gun's physics: on a fixed rail they make the gun heavier (it kicks and sways less); on a moving part they slow it down (150 g on a pistol's slide cut its speed from 6.2 to 4.4 m/s).
@@ -18,7 +33,6 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - **Muzzle devices** (pick the kind in the attachment designer): a brake kicks less, a compensator climbs less, a suppressor is much quieter with no flash and NPCs only hear it close by, a flash hider hides most of the flash.
 - **Grips** steady your aim; a **stock or brace** puts a one-handed gun in the shoulder.
 - In the attachment designer: **Meets it with** chooses which side of an attachment goes against its mount (underside, top, back end, front end).
-- Still to come in 0.4.20: a better player character (fingers, male and female, hair, faces, clothes and extras, and a simpler editor).
 
 ## 0.4.19-alpha
 

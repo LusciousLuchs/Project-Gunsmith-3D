@@ -77,7 +77,7 @@ is up to them, and the game's own examples stay original.
 - [ ] **NPC editor additions:** textures on bones (the same pictures as parts), bones shaped like parts (draw an outline,
   like the gun designer), eyes and glows, sounds.
 
-## Alpha 0.4.20: a better player character (the owner's notes, after attachments stage 4)
+## Alpha 0.4.20: a better player character (the owner's notes, after attachments stage 4) — done in 0.4.20
 
 - **Fingers**: the character's hands get fingers, three cylinders each, coming from the hand, moved by the poser's finger
   skeleton (the animations already pose them; nothing draws them on the character yet).

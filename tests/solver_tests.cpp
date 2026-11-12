@@ -1862,6 +1862,35 @@ static void mapsCarryNpcs() {
     d.npcGun.on = true; d.npcGun.rpm = 600; d.npcGun.burst = 3; d.npcGun.spread = 4;
     Design db; designFromJson(designToJson(d), db);
     CHECK(db.npcGun.on && db.npcGun.rpm == 600 && db.npcGun.burst == 3 && db.npcGun.spread == 4, "an NPC gun keeps its rate, burst and spread");
+    // the character maker
+    CharLook L; L.on = true;
+    NpcDef ch = characterFromLook(L);
+    auto has = [&](const NpcDef& n, const std::string& nm) { for (auto& b : n.bones) if (b.name == nm) return true; return false; };
+    int fingers = 0; for (auto& b : ch.bones) if (b.name.rfind("Index", 0) == 0 || b.name.rfind("Middle", 0) == 0 || b.name.rfind("Ring", 0) == 0 || b.name.rfind("Little", 0) == 0 || b.name.rfind("Thumb", 0) == 0) fingers++;
+    CHECK(fingers == 30, "the maker's hands have five fingers of three pieces each");
+    bool core = true; for (auto& b : npcPreset("human").bones) core &= has(ch, b.name);
+    CHECK(core, "it keeps every bone a human has (the poser finds the arms and the head by name)");
+    CHECK(has(ch, "Eye (left)") && has(ch, "Nose") && has(ch, "Hair") && has(ch, "Belt") && has(ch, "Ear cup (right)") && !has(ch, "Cap"), "a face, hair and the chosen extras");
+    L.body = "female"; L.hair = "ponytail"; L.hat = true; L.glasses = true; L.top = "tank"; L.pants = "shorts";
+    NpcDef fem = characterFromLook(L);
+    CHECK(has(fem, "Bust (left)") && has(fem, "Ponytail") && has(fem, "Cap") && has(fem, "Lens (right)") && !has(ch, "Bust (left)"), "a female body, a ponytail, a cap and glasses");
+    double hip = 0, hipF = 0; for (auto& b : ch.bones) if (b.name == "Pelvis") hip = b.r1 * b.width; for (auto& b : fem.bones) if (b.name == "Pelvis") hipF = b.r1 * b.width;
+    CHECK(hipF > hip * 0.95, "a female body's hips aren't narrower");
+    // your own gear stays when the choices change; the look saves and loads
+    NpcBone vest; vest.name = "Vest"; vest.parent = 1; vest.color = "#333333";
+    for (int i = 0; i < (int)fem.bones.size(); i++) if (fem.bones[i].name == "Chest") vest.parent = i;
+    fem.bones.push_back(vest);
+    L.hair = "bun";
+    NpcDef again = characterFromLook(L, &fem);
+    CHECK(has(again, "Vest") && has(again, "Bun") && !has(again, "Ponytail"), "gear you added stays when the choices change");
+    NpcDef rt;
+    CHECK(npcFromJson(npcToJson(again), rt) && rt.look.on && rt.look.body == "female" && rt.look.hair == "bun" && rt.bones.size() == again.bones.size(), "the character's choices save and load");
+    NpcDef oldh; npcFromJson(npcToJson(npcPreset("human")), oldh);
+    CHECK(!oldh.look.on && npcToJson(npcPreset("human")).find("\"look\"") == std::string::npos, "NPCs and older characters save as before");
+    double eyeOut = 0; auto P = npcPose(ch);
+    for (size_t i = 0; i < ch.bones.size(); i++) if (ch.bones[i].name == "Iris (left)") eyeOut = P[i].b[2];
+    double headFront = 0; for (size_t i = 0; i < ch.bones.size(); i++) if (ch.bones[i].name == "Head") headFront = P[i].a[2] + ch.bones[i].r0 * ch.bones[i].depth * 0.9;
+    CHECK(eyeOut > headFront, "the eyes sit out on the face, not inside the head");
 }
 static void npcsAlive() {
     std::printf("npcsAlive\n");
