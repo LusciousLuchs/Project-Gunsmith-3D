@@ -17,6 +17,7 @@ enum class Act {
     FillMags, WorkAction, Inspect, Use, DropGun,
     PerfOverlay, Fullscreen,
     Gadgets, Melee,
+    SlideRelease,
     Count
 };
 

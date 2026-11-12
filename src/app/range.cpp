@@ -869,6 +869,11 @@ void rangeUpdate(float dt, bool modal) {
         bool held[5] = {actDown(Act::MagRelease), actDown(Act::Control1), actDown(Act::Control2), actDown(Act::Control3), actDown(Act::Control4)};
         if (sim::hasControl(S, "magrelease")) { sim::setKey(S, "magrelease", held[0]); S.magRelease = false; }
         else S.magRelease = held[0];
+        {   // the slide release, as on the bench
+            bool sr = actDown(Act::SlideRelease);
+            if (sim::hasControl(S, "sliderelease")) { sim::setKey(S, "sliderelease", sr); S.slideRelease = false; }
+            else S.slideRelease = sr;
+        }
         sim::setKey(S, "k1", held[1]); sim::setKey(S, "k2", held[2]); sim::setKey(S, "k3", held[3]); sim::setKey(S, "k4", held[4]);
         { perf::Scope t(perf::Physics); perf::substeps(sim::run(S, dt, 1200)); }
         countAmmo(S);   // what went into the gun came out of your ammunition

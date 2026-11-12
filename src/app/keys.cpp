@@ -57,6 +57,7 @@ static const ActInfo ACTS[(int)Act::Count] = {
     {"fullscreen", "Fullscreen / window", "View", KEY_F11, false},
     {"gadgets", "Lights and lasers on / off", "First person", KEY_T, false},
     {"melee", "Stab (a bayonet) or hit with the gun", "First person", KEY_V, false},
+    {"sliderelease", "Slide / bolt release (held open on empty)", "Test bench", KEY_K, false},
 };
 
 const ActInfo& actInfo(Act a) { return ACTS[(int)a]; }

@@ -225,9 +225,14 @@ std::vector<CornerDot> cornerDots() {
     depthRings(d, N, F);
     // the Select tool has its own corners on the face toward you: here only the other face's (the Faces tool: both)
     bool camFront = A.cam.position.z >= bodyZ(A.sel.idx);
+    // looking straight at the side (the flat view, or near it): the hidden face's corners sit exactly behind the
+    // visible ones, so they're left out, or a click on a corner could pick the one at the back
+    Vector3 fwd = Vector3Normalize(Vector3Subtract(A.cam.target, A.cam.position));
+    bool headOn = A.ortho || std::fabs(fwd.z) > 0.97f;
     for (size_t k = 0; k < N.size(); k++) {
-        if (!sel || !camFront) out.push_back({toScreen(ringW(A.sel.idx, N[k])), (int)k, false});
-        if (!sel || camFront) out.push_back({toScreen(ringW(A.sel.idx, F[k])), (int)k, true});
+        bool nearN = camFront, nearF = !camFront;   // which face is toward you
+        if ((!sel || !camFront) && !(headOn && !nearN)) out.push_back({toScreen(ringW(A.sel.idx, N[k])), (int)k, false});
+        if ((!sel || camFront) && !(headOn && !nearF)) out.push_back({toScreen(ringW(A.sel.idx, F[k])), (int)k, true});
     }
     return out;
 }

@@ -505,6 +505,7 @@ void testPanel() {
         line += std::string("   \xC2\xB7   ") + (S.searHeld ? "bolt held open on the sear" : S.boltFree ? "bolt running" : "bolt closed (rack it to cock)");
     else if (!S.strikerIgnition && br.cockAt > 0)  // the built-in hammer or striker
         line += std::string("   \xC2\xB7   ") + (br.hammer == "hammer" ? "hammer " : "striker ") + (S.cocked ? "cocked" : "down");
+    if (S.held) line += std::string("   \xC2\xB7   held open (") + keyName(keyOf(Act::SlideRelease)) + " releases)";
     ImGui::TextDisabled("%s", line.c_str());
 
     // ---- more numbers for those who want them (Settings > Interface > Statistics)

@@ -192,6 +192,11 @@ double searPoint(const BreechDef& br) {   // mm open where an open bolt's sear h
     return br.physicalFeed ? br.cart.oal + 6 : br.feed + 2;   // (simplified feeding takes a round once open `feed` mm)
 }
 
+double holdPoint(const BreechDef& br) {
+    if (br.holdAt > 0) return br.holdAt;
+    return br.physicalFeed ? br.cart.oal + 6 : br.feed + 2;
+}
+
 std::unique_ptr<Sim> build(const Design& design) {
     auto S = std::make_unique<Sim>();
     S->design = design;
@@ -464,6 +469,7 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         Pusher p; p.b = &b; p.l = anc(b, d.ctrlPt);
         p.dx = std::cos(d.ctrlDir * D2R); p.dy = std::sin(d.ctrlDir * D2R);
         p.force = d.ctrlForce; p.key = d.key;
+        if (p.key == "empty") s.hasEmptyKey = true;
         s.pushers.push_back(p);
     }
     cartridgeSetup(s);
@@ -1085,6 +1091,7 @@ static void gasForces(Sim& S) {
 // ---------- step ----------
 void substep(Sim& S) {
     const BreechDef& br = S.design.breech;
+    if (S.hasEmptyKey) { Body* M = seatedMag(S); setKey(S, "empty", M && M->rounds == 0); }   // a drawn hold-open catch, lifted by the follower
     for (auto& b : S.bodies) { b.fx = b.fy = b.tq = b.tr = 0; b.rfx = b.rfy = 0; }
     Joint* MW = magwell(S);
     V2 acc = S.frameAccel;
@@ -1191,16 +1198,30 @@ void substep(Sim& S) {
         for (Body* p : b.pieces) { p->px = b.px + c * p->off.x - s * p->off.y; p->py = b.py + s * p->off.x + c * p->off.y; p->pa = b.pa + p->aOff; }
         placePieces(b);
     }
-    // an open bolt held back by its sear: it can't come forward past it (it can be pulled further back)
-    if (S.searHeld && br.openBolt && S.BR && S.hasFace && S.CH) {
-        double gap = breechGap(S), at = searPoint(br);
-        if (gap < at) {
-            V2 a = wpt(*S.BR, S.faceB), c = wpt(*S.CH, S.faceC);
-            double ux = br.hasMuzzle ? br.muzzle.x - br.face.x : 1, uy = br.hasMuzzle ? br.muzzle.y - br.face.y : 0, ul = std::hypot(ux, uy);
-            if (ul < 1e-9) { ux = 1; uy = 0; ul = 1; }
-            double ca = std::cos(S.CH->a), sa = std::sin(S.CH->a), nx = -(ux * ca - uy * sa) / ul, ny = -(ux * sa + uy * ca) / ul;
-            solve(*S.BR, *S.CH, a, c, nx, ny, (at - gap) / 1000);
-        }
+    // an open bolt held back by its sear, or a breech held open on an empty magazine: it can't come forward past the
+    // catch (it can be pulled further back)
+    auto holdBack = [&](double at) {
+        double gap = breechGap(S);
+        if (gap >= at) return;
+        V2 a = wpt(*S.BR, S.faceB), c = wpt(*S.CH, S.faceC);
+        double ux = br.hasMuzzle ? br.muzzle.x - br.face.x : 1, uy = br.hasMuzzle ? br.muzzle.y - br.face.y : 0, ul = std::hypot(ux, uy);
+        if (ul < 1e-9) { ux = 1; uy = 0; ul = 1; }
+        double ca = std::cos(S.CH->a), sa = std::sin(S.CH->a), nx = -(ux * ca - uy * sa) / ul, ny = -(ux * sa + uy * ca) / ul;
+        solve(*S.BR, *S.CH, a, c, nx, ny, (at - gap) / 1000);
+    };
+    if (S.searHeld && br.openBolt && S.BR && S.hasFace && S.CH) holdBack(searPoint(br));
+    if (br.holdOpen && S.BR && S.hasFace && S.CH) {
+        Body* M = seatedMag(S);
+        double gap = breechGap(S), at = holdPoint(br);
+        bool empty = M && M->rounds == 0;   // (the follower is up)
+        const Body* root = S.BR->root ? S.BR->root : S.BR;
+        bool handBack = S.hand.on && S.hand.b && (S.hand.b == S.BR || S.hand.b->root == root || S.hand.b == root);
+        if (S.held) {
+            bool let = S.slideRelease || (br.holdReleaseMag && M && M->rounds > 0) || (handBack && gap > at + 0.5);   // (a hand pulling it back lifts it off the catch)
+            if (let) { S.held = false; S.holdArmed = false; }
+        } else if (S.holdArmed && empty && gap >= at) S.held = true;
+        if (!S.holdArmed && gap < at - 2) S.holdArmed = true;   // (past the catch on its way home: it can catch next time)
+        if (S.held) holdBack(at);
     }
     // geometric joints. An action lock holds before anything else is solved, so a shot can't shove what it holds (and
     // through it, whatever is linked to it) before the lock has caught it.

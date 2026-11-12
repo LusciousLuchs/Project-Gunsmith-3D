@@ -194,6 +194,11 @@ struct Sim {
     double igniteAt = -1;                // when the falling hammer reaches the primer (s); -1 = not falling
     bool deadPull = false;               // the last pull found it down (single action): the trigger did nothing
     // an open bolt (BreechDef::openBolt): the sear holds the breech part back; let go, it runs and fires as it closes
+    // bolt hold-open (BreechDef::holdOpen): caught open on an empty magazine
+    bool held = false;                   // held open
+    bool hasEmptyKey = false;            // a control part lifted when the magazine is empty (worked out at build)
+    bool holdArmed = true;               // it can catch (not while a released slide runs home past it)
+    bool slideRelease = false;           // the slide release is pressed (a key)
     bool searHeld = false;               // the sear has the bolt
     bool searUp = true;                  // the sear will catch the bolt as it comes back past it
     bool boltFree = false;               // let go by the trigger: it fires when it closes on a round
@@ -253,6 +258,7 @@ V2 designToWorld(const Sim& S, const std::string& bodyId, V2 pmm);  // design po
 
 // magazines
 Joint* magwell(Sim& S);
+double holdPoint(const BreechDef& br);                    // mm open where a bolt hold-open catches
 Body* seatedMag(Sim& S);                                   // attached and latched, or null
 Body* spawnMagazine(Sim& S, V2 centreMM, bool seat);      // full magazine; seat=true puts it straight in the well
 void dropMagazine(Sim& S);                                 // unlatch and pull the seated magazine out

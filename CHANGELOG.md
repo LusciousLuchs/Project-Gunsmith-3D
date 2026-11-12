@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.8-alpha
+
+### Bolt hold-open
+- **Holds open when empty** (Firing > Feeding): once the magazine runs dry, the bolt or slide is caught open on its way back. Let it go with the new **slide release key (K)**, by pulling the slide back a little and letting go, or (tick *A loaded magazine lets it go*) by seating a loaded magazine. *Catches at* sets how far open it's held.
+- **Or draw your own catch:** set a control part's *Pressed by* to **The empty magazine's follower**. It's pushed up whenever the seated magazine is empty, so a catch you draw (with a spring to bring it back down) blocks the bolt for real. *Slide release* is also a new choice there, for a release lever you draw.
+
+### Fixes
+- In the flat side view, clicking a corner no longer grabs the back corner (the blue circle) hidden behind the front one.
+
 ## 0.7.7-alpha
 
 ### See-through parts

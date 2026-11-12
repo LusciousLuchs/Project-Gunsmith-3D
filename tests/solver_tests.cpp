@@ -1992,6 +1992,50 @@ static void careerStages() {
     }
 }
 
+static void holdOpenTest() {
+    std::printf("holdOpen\n");
+    for (const char* key : {"blowback", "tilting"}) {
+        Design d = loadPreset(key);
+        d.breech.holdOpen = true;
+        auto S = sim::build(d);
+        sim::run(*S, 0.1);
+        int guard = 0;
+        while (guard++ < 40) {   // fire until the magazine runs dry and the last round has gone
+            S->trigger = true; S->pressed = true; sim::setKey(*S, "fire", true);
+            sim::run(*S, 0.06);
+            S->trigger = false; S->pressed = false; sim::setKey(*S, "fire", false);
+            sim::run(*S, 0.25);
+            sim::Body* M = sim::seatedMag(*S);
+            if (M && M->rounds == 0 && !S->chambered) break;
+        }
+        sim::run(*S, 0.3);
+        double at = sim::holdPoint(d.breech);
+        CHECK(S->held && sim::breechGap(*S) >= at - 0.5, (std::string(key) + ": the empty gun is held open").c_str());
+        S->slideRelease = true; sim::run(*S, 0.05); S->slideRelease = false; sim::run(*S, 0.3);
+        CHECK(!S->held && sim::inBattery(*S), (std::string(key) + ": the slide release sends it home").c_str());
+        // again, with a loaded magazine letting it go, and a round chambered on the way
+        Design d2 = d; d2.breech.holdReleaseMag = true;
+        auto S2 = sim::build(d2);
+        sim::run(*S2, 0.1);
+        guard = 0;
+        while (guard++ < 40) {
+            S2->trigger = true; S2->pressed = true; sim::setKey(*S2, "fire", true);
+            sim::run(*S2, 0.06);
+            S2->trigger = false; S2->pressed = false; sim::setKey(*S2, "fire", false);
+            sim::run(*S2, 0.25);
+            sim::Body* M = sim::seatedMag(*S2);
+            if (M && M->rounds == 0 && !S2->chambered) break;
+        }
+        sim::run(*S2, 0.3);
+        bool heldBefore = S2->held;
+        sim::quickReload(*S2); sim::run(*S2, 0.5);
+        CHECK(heldBefore && !S2->held && sim::inBattery(*S2) && S2->chambered, (std::string(key) + ": a loaded magazine sends it home on a round").c_str());
+    }
+    {   // without the setting, nothing changes: it closes on the empty chamber
+        auto S = sim::build(loadPreset("blowback"));
+        CHECK(!S->held, "off by default");
+    }
+}
 static void reliabilityTimeout() {
     std::printf("reliabilityTimeout\n");
     sim::ReliabilityOptions o;
@@ -2634,6 +2678,7 @@ int main() {
     npcRotate();
     shopChecks();
     reliabilityTimeout();
+    holdOpenTest();
     npcDesigns();
     careerRules();
     careerStages();

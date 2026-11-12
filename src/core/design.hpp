@@ -312,6 +312,13 @@ struct BreechDef {
     // trigger lets it go; it runs forward, strips and chambers a round, and fires it as it closes (a fixed firing pin).
     // In semi it's caught again on the way back; in auto it runs as long as the trigger is held.
     bool openBolt = false;
+    // Bolt hold-open (built in): once the magazine is empty (its follower up), the breech part is caught open as it
+    // comes back past holdAt mm (0: far enough to pick up a round). Let go by the slide release (a key), by a loaded
+    // magazine going in when holdReleaseMag is on, or by pulling it back a little further and letting go. A drawn catch
+    // can do the same job: a control part "Lifted when the magazine is empty" (key "empty").
+    bool holdOpen = false;
+    double holdAt = 0;
+    bool holdReleaseMag = false;
     std::vector<GasPortDef> gas;         // gas ports (none in older blueprints)
     bool fullAuto() const { return fireMode == "auto" || (autoFire && fireMode != "burst"); }
 };

@@ -1113,6 +1113,7 @@ std::string designToJson(const Design& d, bool pretty) {
             jb["fireOrder"] = r.fireOrder;
         }
         if (r.openBolt) jb["openBolt"] = true;
+        if (r.holdOpen) { jb["holdOpen"] = true; if (r.holdAt > 0) jb["holdAt"] = r.holdAt; if (r.holdReleaseMag) jb["holdReleaseMag"] = true; }
         if (!r.gas.empty()) {
             json g = json::array();
             for (auto& p : r.gas)
@@ -1456,6 +1457,9 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             }
         r.fireOrder = opt<std::string>(jb, "fireOrder", "turn") == "together" ? "together" : "turn";
         r.openBolt = opt<bool>(jb, "openBolt", false);
+        r.holdOpen = opt<bool>(jb, "holdOpen", false);
+        r.holdAt = opt<double>(jb, "holdAt", 0.0);
+        r.holdReleaseMag = opt<bool>(jb, "holdReleaseMag", false);
         if (jb.contains("gas") && jb["gas"].is_array())
             for (auto& jg : jb["gas"]) {
                 if (!jg.is_object()) continue;

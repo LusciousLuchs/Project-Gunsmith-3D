@@ -874,15 +874,17 @@ static void inspectPart(BodyDef& b) {
             ImGui::TextColored(colWarn(), "This part is Fixed, so it can't move when pressed. Untick Fixed and join it with a track or pin.");
         if (b.ctrl == "handle") muted("Drag it on the bench to work the action. The reliability test pulls it all the way back along its track and pushes it home.");
         if (b.ctrl != "none" && b.ctrl != "handle") {
-            const char* keys[] = {"none", "fire", "magrelease", "k1", "k2", "k3", "k4"};
-            Act acts[] = {Act::Count, Act::Fire, Act::MagRelease, Act::Control1, Act::Control2, Act::Control3, Act::Control4};
-            const char* names[] = {"Hand only", "Fire", "Magazine release", "Your control 1", "Your control 2", "Your control 3", "Your control 4"};
+            const char* keys[] = {"none", "fire", "magrelease", "sliderelease", "empty", "k1", "k2", "k3", "k4"};
+            Act acts[] = {Act::Count, Act::Fire, Act::MagRelease, Act::SlideRelease, Act::Count, Act::Control1, Act::Control2, Act::Control3, Act::Control4};
+            const char* names[] = {"Hand only", "Fire", "Magazine release", "Slide release", "The empty magazine's follower", "Your control 1", "Your control 2", "Your control 3", "Your control 4"};
+            const int NK = 9;
             int kk = 0;
-            for (int i = 0; i < 7; i++) if (b.key == keys[i]) kk = i;
-            prop("Pressed by");
-            std::string cur = std::string(names[kk]) + (kk ? std::string("  (") + keyName(keyOf(acts[kk])) + ")" : "");
+            for (int i = 0; i < NK; i++) if (b.key == keys[i]) kk = i;
+            prop("Pressed by", "What pushes it. The empty magazine's follower: it's pushed whenever the seated magazine is empty,\n"
+                               "as a follower lifts a bolt catch (hold-open) into the bolt's path. Draw the catch with a spring to push it back down.");
+            std::string cur = std::string(names[kk]) + (acts[kk] != Act::Count ? std::string("  (") + keyName(keyOf(acts[kk])) + ")" : "");
             if (ImGui::BeginCombo("##key", cur.c_str())) {
-                for (int i = 0; i < 7; i++) if (ImGui::Selectable(names[i], kk == i)) { b.key = keys[i]; editedAny = true; }
+                for (int i = 0; i < NK; i++) if (ImGui::Selectable(names[i], kk == i)) { b.key = keys[i]; editedAny = true; }
                 ImGui::EndCombo();
             }
             {
@@ -1721,6 +1723,15 @@ static void firingTab() {
             if (ImGui::Combo("##extr", &ex, "Automatic\0Top\0Bottom\0")) { br.extractor = ex == 1 ? "top" : ex == 2 ? "bottom" : "auto"; editedAny = true; }
         }
         pCheck("Starts loaded", br.loaded, "Begin each test with a round in the chamber.");
+        pCheck("Holds open when empty", br.holdOpen, "A built-in bolt catch: once the magazine is empty, the bolt or slide is caught open on its way back.\n"
+                                                    "Let it go with the slide release, by pulling it back a little and letting go, or (if ticked below) by a loaded magazine going in.\n"
+                                                    "Or draw your own catch: a part pressed by \"The empty magazine's follower\" (Controls).");
+        if (br.holdOpen) {
+            pNumU("Catches at", br.holdAt, 0.5, Q::Length, 1, "How far open it's held. 0: just far enough back to load the next round.");
+            br.holdAt = std::max(0.0, br.holdAt);
+            pCheck("A loaded magazine lets it go", br.holdReleaseMag, "Seating a magazine with rounds in it sends the bolt home (an auto-forward catch).");
+            muted(TextFormat("Slide release: %s on the bench and the range.", keyName(keyOf(Act::SlideRelease))));
+        }
     }
     if (section("Fire control", true)) {
         // Feeding, the bolt and extraction are always real parts. The hammer or striker can be built in or drawn.

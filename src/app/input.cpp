@@ -112,6 +112,11 @@ void handleKeys() {
         // with a real catch button in the design, the key presses the button rather than releasing by magic
         if (sim::hasControl(*A.S, "magrelease")) { sim::setKey(*A.S, "magrelease", held[0]); A.S->magRelease = false; }
         else A.S->magRelease = held[0];
+        {   // the slide release: a drawn lever bound to it is pressed, else the built-in hold-open lets go
+            bool sr = kb && actDown(Act::SlideRelease);
+            if (sim::hasControl(*A.S, "sliderelease")) { sim::setKey(*A.S, "sliderelease", sr); A.S->slideRelease = false; }
+            else A.S->slideRelease = sr;
+        }
         sim::setKey(*A.S, "k1", held[1]);
         sim::setKey(*A.S, "k2", held[2]);
         sim::setKey(*A.S, "k3", held[3]);
