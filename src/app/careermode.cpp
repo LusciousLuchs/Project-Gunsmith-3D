@@ -2,7 +2,15 @@
 #include "app/careermode.hpp"
 #include "app/app.hpp"
 #include "app/paths.hpp"
+#include "app/mapedit.hpp"
+#include "app/range.hpp"
+#include "app/mapgfx.hpp"
+#include "map.hpp"
 #include "reliability.hpp"
+#include "npc.hpp"
+#include "app/npcedit.hpp"
+#include "app/gfx.hpp"
+#include "rlgl.h"
 
 #include <algorithm>
 #include <atomic>
@@ -50,8 +58,52 @@ void careerStartNew() {
     CAREER = career::newCareer((unsigned)(GetTime() * 1000) ^ 0x5bd1e995u);
     careerSave();
 }
+std::string careerWorkshopFile() { return userFolder() + "/Career/workshop.gsmap"; }
+void careerCountStations() {
+    std::ifstream in(careerWorkshopFile());
+    if (!in) return;   // (not built yet: the career's own start, a bench and a counter)
+    std::stringstream ss; ss << in.rdbuf();
+    gmap::Map m;
+    if (gmap::mapFromJson(ss.str(), m)) CAREER.stations = gmap::workshopStations(m);
+}
+void careerOpenWorkshop(bool walk) {
+    enterCareerWorkshop(careerWorkshopFile(), walk);
+    gIn = true;
+}
+void careerWorkshopToOffice() {
+    leaveCareerWorkshop();
+    mapRestoreLook();
+    careerCountStations();
+    careerSave();
+    gIn = true;
+    A.screen = Screen::Career;
+    EnableCursor();
+}
+namespace { bool gBackToOffice = false; }
+void careerDemoStart(int id) {
+    for (auto& k : CAREER.contracts) {
+        if (k.id != id || k.state != 4) continue;
+        const CareerGun* g = careerGun(k.delivered);
+        if (!g) { toast("That gun's blueprint is gone."); return; }
+        std::string gun = k.delivered, client = k.client;
+        enterRange(g->d, gmap::builtinRange());
+        rangeDemoStart(client, career::DEMO_HITS, career::DEMO_SHOTS, [id, gun](int hits, int shots) {
+            career::demoResult(CAREER, id, gun, hits, shots);
+            for (auto& c : CAREER.contracts) if (c.id == id) toast(c.verdict);
+            careerSave();
+            gBackToOffice = true;
+        });
+        gIn = true;
+        return;
+    }
+}
+void careerTick() {
+    if (A.screen == Screen::Range && rangeDemoOver()) backToMenu();   // (the course is shot: the result goes in as you leave)
+    if (gBackToOffice && A.screen == Screen::Menu) { gBackToOffice = false; gIn = true; A.screen = Screen::Career; EnableCursor(); }
+}
 void enterCareer() {
     if (!careerLoad()) careerStartNew();
+    careerCountStations();
     gIn = true;
     A.screen = Screen::Career;
     A.showPause = A.showSettings = A.showBenchPicker = A.showRangePicker = false;
@@ -152,3 +204,52 @@ void careerShutdown() {
     T.cancel = true;
     if (T.worker.joinable()) T.worker.join();
 }
+
+// ---------------------------------------------------------------- customers' faces
+namespace {
+std::map<int, RenderTexture2D> gPortraits;
+CharLook lookFor(int id) {
+    unsigned r = (unsigned)id * 2654435761u + 12345u;
+    auto next = [&](int n) { r = r * 1664525u + 1013904223u; return (int)((r >> 8) % (unsigned)n); };
+    static const char* skins[] = {"#f1d3bd", "#e0b394", "#c8a088", "#a5785a", "#7a5238", "#4e3424"};
+    static const char* hairC[] = {"#2a1d14", "#3b2a1e", "#6b4a2b", "#a8834a", "#c9c2b5", "#121212", "#7a2f1a"};
+    static const char* hairs[] = {"none", "buzz", "short", "short", "long", "ponytail", "bun"};
+    static const char* cloth[] = {"#4f5d52", "#3d4a63", "#6b2f2f", "#8a7a5a", "#2f3033", "#5e6b75", "#a0563a", "#c9b994"};
+    static const char* tops[] = {"tshirt", "longsleeve", "tank"};
+    CharLook L; L.on = true;
+    L.body = next(2) ? "male" : "female";
+    L.height = 0.9 + next(25) / 100.0; L.build = 0.85 + next(40) / 100.0;
+    L.skin = skins[next(6)]; L.hair = hairs[next(7)]; L.hairColor = hairC[next(7)];
+    L.top = tops[next(3)]; L.topColor = cloth[next(8)]; L.pants = next(5) ? "long" : "shorts"; L.pantsColor = cloth[next(8)];
+    L.belt = next(2); L.hat = next(4) == 0; L.headphones = false; L.glasses = next(4) == 0;
+    L.hatColor = cloth[next(8)];
+    return L;
+}
+}  // namespace
+void careerRenderPortraits() {
+    for (auto& w : CAREER.walkins) {
+        if (gPortraits.count(w.id)) continue;
+        RenderTexture2D rt = LoadRenderTexture(256, 320);
+        NpcDef n = characterFromLook(lookFor(w.id));
+        double h = npcHeight(n) / 1000;
+        Camera3D cam{};
+        cam.position = {0, (float)(h * 0.86), 1.25f}; cam.target = {0, (float)(h * 0.8), 0}; cam.up = {0, 1, 0}; cam.fovy = 34; cam.projection = CAMERA_PERSPECTIVE;
+        mapRestoreLook();   // (the shop's own light, not a dark map's)
+        BeginTextureMode(rt);
+        ClearBackground(Color{58, 50, 44, 255});   // (the shop's back wall)
+        BeginMode3D(cam);
+        setLamps({});
+        { float vp[3] = {cam.position.x, cam.position.y, cam.position.z}; SetShaderValue(G.lit, G.locView, vp, SHADER_UNIFORM_VEC3); }   // (lit from where it's seen)
+        drawNpcAt(n, {0, 0, 0}, 90, 0.001f);
+        EndMode3D();
+        EndTextureMode();
+        gPortraits[w.id] = rt;
+    }
+    if (gPortraits.size() > 24)   // (forget faces nobody's showing)
+        for (auto it = gPortraits.begin(); it != gPortraits.end();) {
+            bool here = false; for (auto& w : CAREER.walkins) if (w.id == it->first) here = true;
+            if (!here) { UnloadRenderTexture(it->second); it = gPortraits.erase(it); } else ++it;
+        }
+}
+Texture2D careerPortrait(int id) { auto it = gPortraits.find(id); return it == gPortraits.end() ? Texture2D{} : it->second.texture; }
+

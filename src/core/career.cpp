@@ -157,7 +157,7 @@ std::string reviewText(Career& c, const GunSheet& s, int stars, double price) {
 Contract offer(Career& c) {
     Contract k;
     k.id = c.nextId++;
-    struct Tpl { const char* title; const char* brief; double minE, maxE, maxJam, maxKg; int minCap, hands; double maxMoa; int qMin, qMax; double rep; };
+    struct Tpl { const char* title; const char* brief; double minE, maxE, maxJam, maxKg; int minCap, hands; double maxMoa; int qMin, qMax; double rep; bool demo = false; };
     static const std::vector<Tpl> T = {
         {"A pocket pistol", "Something small and light I can carry every day. It has to work every time.", 150, 700, 3, 1.0, 6, 1, 0, 1, 1, 0},
         {"A deer rifle", "A rifle for whitetail out to 200 yards. Accuracy matters more than anything.", 1800, 0, 6, 0, 0, 2, 2.5, 1, 1, 0},
@@ -167,6 +167,11 @@ Contract offer(Career& c) {
         {"A big-bore revolver substitute", "I want a handgun that hits like a truck. Weight and kick don't scare me.", 1000, 0, 8, 0, 0, 1, 0, 1, 1, 0},
         {"Guns for a security firm", "Sidearms for our guards: reliable above all, enough rounds.", 300, 800, 2, 1.3, 10, 1, 0, 3, 5, 15},
         {"Rifles for a hunting lodge", "Loaner rifles for our guests. Accurate and dependable.", 1800, 0, 4, 9, 3, 2, 3, 3, 6, 25},
+        // big orders: once you're known. They test it on the bench, then want to see it shot on the range.
+        {"Sidearms for the county sheriff", "Duty pistols for our deputies. Dependable, enough rounds, not too heavy. We'll want to see it shot.", 300, 800, 1.5, 1.3, 12, 1, 0, 10, 20, 35, true},
+        {"Patrol rifles for the state police", "Rifles for our troopers' cars: accurate and reliable. A range demonstration first.", 1200, 3500, 2, 0, 20, 2, 3, 8, 15, 45, true},
+        {"Service pistols for the Army", "A sidearm for the troops. It has to run, every time. Bench test and a demonstration.", 300, 800, 1, 1.2, 15, 1, 0, 40, 80, 60, true},
+        {"Service rifles for the Marines", "A rifle for the infantry: accurate, tough, holds plenty. Bench test and a demonstration.", 1200, 3500, 1, 0, 20, 2, 2.5, 50, 120, 75, true},
     };
     std::vector<const Tpl*> open;
     for (auto& t : T) if (c.reputation >= t.rep) open.push_back(&t);
@@ -174,30 +179,141 @@ Contract offer(Career& c) {
     k.title = t.title; k.brief = t.brief;
     k.minEnergy = t.minE; k.maxEnergy = t.maxE; k.maxJam = t.maxJam; k.maxKg = t.maxKg; k.minCapacity = t.minCap; k.hands = t.hands; k.maxMoa = t.maxMoa;
     k.qty = rndInt(c, t.qMin, t.qMax);
+    k.demo = t.demo;
     k.client = t.qMax > 1 ? pick(c, std::vector<std::string>{"Ironwood Security", "Coldwater Lodge", "Redline Protection", "Big Sky Outfitters"}) : buyer(c);
     double e = t.maxE > 0 ? (t.minE + t.maxE) / 2 : std::max(t.minE, 600.0);
-    double each = baseValue(e, t.hands == 2, t.minCap) * (1.25 + 0.4 * rnd(c)) + 150;   // bespoke work pays better than the shelf
+    double each = k.qty >= 10 ? baseValue(e, t.hands == 2, t.minCap) * (1.05 + 0.25 * rnd(c))   // (volume: a little over the shelf price)
+                              : baseValue(e, t.hands == 2, t.minCap) * (1.25 + 0.4 * rnd(c)) + 150;   // bespoke work pays better than the shelf
     k.pay = std::round(each * k.qty / 10) * 10;
-    k.dueDay = c.day + rndInt(c, 6, 12) + 2 * k.qty;
+    k.dueDay = c.day + rndInt(c, 6, 12) + (k.qty >= 10 ? k.qty / 2 + 10 : 2 * k.qty);
     return k;
 }
 }  // namespace
 
+// ---------------------------------------------------------------- stage 2: your shop and your people
+int shopStations(int tier) { static const int n[] = {3, 6, 10, 16}; return n[std::max(0, std::min(3, tier))]; }
+double shopUpgradeCost(int tier) { static const double m[] = {12000, 35000, 90000, 0}; return m[std::max(0, std::min(3, tier))]; }
+const char* shopName(int tier) { static const char* n[] = {"A garage", "A small shop", "A workshop", "A factory floor"}; return n[std::max(0, std::min(3, tier))]; }
+const char* tierName(double r) {
+    return r >= 80 ? "Defense supplier" : r >= 60 ? "National brand" : r >= 35 ? "Regional maker" : r >= 15 ? "Local gunsmith" : "Garage gunsmith";
+}
+namespace {
+// who works where today: each employee at a station that suits them (or a bench, slower), as far as your building allows
+struct Crew { double hours = 0, flaw = 0, qc = 0; std::vector<int> idle; };
+Crew crewToday(const Career& c) {
+    Crew w;
+    auto get = [&](const char* k) { auto it = c.stations.find(k); return it == c.stations.end() ? 0 : it->second; };
+    int bench = get("bench"), lathe = get("lathe"), mill = get("mill"), qc = get("qc");
+    int room = shopStations(c.shopTier);   // (stations past what your building holds don't count)
+    auto cut = [&](int& n) { int k = std::min(n, room); room -= k; n = k; };
+    cut(bench); cut(lathe); cut(mill); cut(qc);
+    double flawHours = 0;
+    // you: your own day, at a bench if there is one
+    if (bench > 0) bench--;
+    w.hours = c.hoursPerDay; flawHours += c.hoursPerDay * 0.03;
+    int machines = lathe + mill;
+    for (size_t i = 0; i < c.staff.size(); i++) {
+        const Employee& e = c.staff[i];
+        double eff = 0;
+        if (e.specialty == "machinist") { if (machines > 0) { machines--; eff = 1.15; } else if (bench > 0) { bench--; eff = 0.8; } }
+        else if (e.specialty == "finisher") {
+            if (qc > 0) { qc--; eff = 0.6; w.qc = std::max(w.qc, 0.5 + 0.45 * e.skill); }   // (checking copies takes most of their day)
+            else if (bench > 0) { bench--; eff = 0.7; }
+        } else { if (bench > 0) { bench--; eff = 1.1; } else if (machines > 0) { machines--; eff = 0.8; } }
+        if (eff <= 0) { w.idle.push_back((int)i); continue; }
+        double h = 8 * (0.55 + 0.6 * e.skill) * eff;
+        w.hours += h; flawHours += h * (1 - e.skill) * 0.2;
+    }
+    w.flaw = w.hours > 0 ? flawHours / w.hours : 0;
+    return w;
+}
+}  // namespace
+double workHours(const Career& c) { return crewToday(c).hours; }
+void refreshCandidates(Career& c) {
+    static const std::vector<std::string> LAST = {"Hensley", "Okafor", "Brandt", "Castillo", "Mbeki", "Larsen", "Duval", "Petrov", "Nakamura", "Quinlan", "Ruiz", "Abernathy"};
+    static const std::vector<std::string> SPEC = {"machinist", "assembler", "finisher"};
+    c.candidates.clear();
+    int first = rndInt(c, 0, 2);
+    for (int k = 0; k < 3; k++) {   // (one of each kind, so there's always a choice)
+        Employee e;
+        e.name = pick(c, FIRST) + " " + pick(c, LAST);
+        e.specialty = SPEC[(first + k) % 3];
+        e.skill = std::min(0.95, 0.2 + 0.5 * rnd(c) + c.reputation / 400);
+        e.wage = std::round((90 + 260 * e.skill) / 5) * 5;
+        c.candidates.push_back(e);
+    }
+    c.candidatesDay = c.day;
+}
+bool hire(Career& c, int i, std::string* why) {
+    if (i < 0 || i >= (int)c.candidates.size()) return false;
+    int stations = 0;
+    for (auto& [k, n] : c.stations) if (k != "counter") stations += n;
+    stations = std::min(stations, shopStations(c.shopTier));
+    if ((int)c.staff.size() + 1 >= stations + 0) {   // (you take a bench too)
+        if (why) *why = "no free workstation: place another in your workshop (a bench, a lathe, a mill or a test bench)";
+        return false;
+    }
+    c.staff.push_back(c.candidates[i]);
+    c.candidates.erase(c.candidates.begin() + i);
+    return true;
+}
+void letGo(Career& c, int i) { if (i >= 0 && i < (int)c.staff.size()) c.staff.erase(c.staff.begin() + i); }
+
+namespace { Walkin walkin(Career& c); }
 Career newCareer(unsigned seed) {
     Career c;
     c.on = true;
     c.rng = seed ? seed : 12345;
     for (int k = 0; k < 2; k++) c.contracts.push_back(offer(c));   // (a couple of customers waiting on day 1)
+    c.stations = {{"bench", 1}, {"counter", 1}};   // (your workshop: a bench and a counter, until you build it up)
+    refreshCandidates(c);
+    for (int i = 0; i < 2; i++) c.walkins.push_back(walkin(c));
     c.news = {"Day 1. You've opened your shop. Design a gun, rate it on the bench, build some copies and list them in your online store.",
               "Customers' orders are under Contracts."};
     return c;
 }
 
+namespace {
+// someone at your counter: what they want, their form and their ID. One in a hundred can't buy: the check denies them,
+// or their ID doesn't match the form, or it's run out
+Walkin walkin(Career& c) {
+    static const std::vector<std::string> LAST = {"Hensley", "Okafor", "Brandt", "Castillo", "Larsen", "Duval", "Petrov", "Quinlan", "Ruiz", "Abernathy", "Whitlock", "Sato"};
+    struct Want { const char* text; int hands; double minE, maxE; };
+    static const std::vector<Want> W = {
+        {"My first handgun. Something easy to shoot.", 1, 150, 700}, {"Something for home defense.", 0, 400, 0}, {"A deer rifle for the season.", 2, 1800, 0},
+        {"Just something fun to plink with.", 0, 0, 500}, {"A carry gun. Small, if you've got it.", 1, 150, 700}, {"Anything with some real punch.", 0, 1500, 0},
+        {"A truck gun. Nothing fancy.", 2, 400, 2500}, {"Show me what you've got.", 0, 0, 0}};
+    Walkin w;
+    w.id = c.nextId++;
+    std::string first = pick(c, FIRST), last = pick(c, LAST);
+    w.name = first + " " + std::string(1, (char)('A' + rndInt(c, 0, 25))) + ". " + last;
+    w.idName = w.name;
+    const Want& want = pick(c, W);
+    w.request = want.text; w.hands = want.hands; w.minEnergy = want.minE; w.maxEnergy = want.maxE;
+    double e = want.maxE > 0 ? (want.minE + want.maxE) / 2 : std::max(want.minE, 500.0);
+    w.budget = std::round(baseValue(e, want.hands == 2, 10) * (1.0 + 0.6 * rnd(c)) / 10) * 10;
+    int y = 1950 + rndInt(c, 0, 55), m = rndInt(c, 1, 12), d = rndInt(c, 1, 28);
+    char b[32]; std::snprintf(b, sizeof b, "%02d/%02d/%d", m, d, y);
+    w.dob = w.idDob = b;
+    std::snprintf(b, sizeof b, "%02d/%d", rndInt(c, 1, 12), 2032 + rndInt(c, 0, 6));
+    w.idExpires = b;
+    if (rnd(c) < 0.01) {   // the one in a hundred
+        int kind = rndInt(c, 0, 3);
+        if (kind <= 1) w.trouble = "denied";
+        else if (kind == 2) { w.trouble = "mismatch"; w.idName = pick(c, FIRST) + " " + w.name.substr(w.name.find(' ') + 1); if (w.idName == w.name) w.idName = "J. " + last + "son"; }
+        else { w.trouble = "expired"; std::snprintf(b, sizeof b, "%02d/%d", rndInt(c, 1, 12), 2024 + rndInt(c, 0, 5)); w.idExpires = b; }
+    }
+    return w;
+}
+}  // namespace
+
 void endDay(Career& c) {
     c.news.clear();
     char b[256];
-    // the day's work: copies in order
-    double hours = c.hoursPerDay;
+    // the day's work: copies in order, by you and your staff; some come out flawed, and a finisher catches most
+    Crew crew = crewToday(c);
+    double hours = crew.hours;
+    int caught = 0, slipped = 0;
     for (auto& bd : c.builds) {
         auto it = c.sheets.find(bd.gun);
         double per = it != c.sheets.end() ? std::max(0.5, it->second.buildHours) : 4;
@@ -207,10 +323,22 @@ void endDay(Career& c) {
             if (bd.hoursDone >= per - 1e-9) {
                 bd.qty--; bd.hoursDone = 0; c.stock[bd.gun]++;
                 std::snprintf(b, sizeof b, "Finished a %s.", bd.gun.c_str()); c.news.push_back(b);
+                if (rnd(c) < crew.flaw) {
+                    if (rnd(c) < crew.qc) caught++;            // (put right before it left the bench)
+                    else { c.flawed[bd.gun]++; slipped++; }
+                }
             }
         }
     }
     c.builds.erase(std::remove_if(c.builds.begin(), c.builds.end(), [](const Build& x) { return x.qty <= 0; }), c.builds.end());
+    if (caught) { std::snprintf(b, sizeof b, "Your finisher caught %d flawed cop%s and put %s right.", caught, caught == 1 ? "y" : "ies", caught == 1 ? "it" : "them"); c.news.push_back(b); }
+    (void)slipped;   // (nobody knows yet: the buyers find out)
+    for (int i : crew.idle) { std::snprintf(b, sizeof b, "%s had no workstation to work at today.", c.staff[i].name.c_str()); c.news.push_back(b); }
+    // wages, and your people get better at it
+    double wages = 0;
+    for (auto& e : c.staff) { wages += e.wage; e.days++; e.skill = std::min(0.95, e.skill + 0.003); }
+    if (wages > 0) { c.money -= wages; std::snprintf(b, sizeof b, "Paid %s in wages.", money(wages).c_str()); c.news.push_back(b); }
+    if (c.candidates.empty() || c.day - c.candidatesDay >= 7) refreshCandidates(c);
     // the online store: buyers look at each listing; the better it is for its price, the likelier they buy
     double income = 0;
     for (auto& L : c.listings) {
@@ -223,14 +351,18 @@ void endDay(Career& c) {
         for (int k = 0; k < lookers; k++) {
             if (c.stock[L.gun] <= 0) break;
             if (rnd(c) >= p) continue;
+            bool bad = c.flawed[L.gun] > 0 && rnd(c) * c.stock[L.gun] < c.flawed[L.gun];   // (one of the flawed ones?)
+            if (bad) c.flawed[L.gun]--;
             c.stock[L.gun]--; L.sold++; c.money += L.price; income += L.price;
             std::string who = buyer(c);
             std::snprintf(b, sizeof b, "Sold a %s online for %s to %s.", L.gun.c_str(), money(L.price).c_str(), who.c_str()); c.news.push_back(b);
             if (rnd(c) < 0.5) {   // and maybe tells everyone what they think
                 double vfm = clamp01(s.value() / L.price * 0.8);
-                double score = 1 + 4 * (0.6 * (s.rated ? clamp01(1 - s.jamRate / 8) : 0.5) + 0.2 * (s.moa > 0 ? clamp01((8 - s.moa) / 7) : 0.7) + 0.2 * vfm) + (rnd(c) - 0.5) * 1.2;
+                GunSheet got = s;
+                if (bad) got.jamRate += 10;   // a flawed copy: it jams a lot more than the design should
+                double score = 1 + 4 * (0.6 * (got.rated ? clamp01(1 - got.jamRate / 8) : 0.5) + 0.2 * (s.moa > 0 ? clamp01((8 - s.moa) / 7) : 0.7) + 0.2 * vfm) + (rnd(c) - 0.5) * 1.2;
                 int stars = std::max(1, std::min(5, (int)std::lround(score)));
-                Review r{c.day, L.gun, who, reviewText(c, s, stars, L.price), stars};
+                Review r{c.day, L.gun, who, reviewText(c, got, stars, L.price) + (bad ? " Mine must be a lemon." : ""), stars};
                 c.reviews.push_back(r);
                 c.reputation = std::max(0.0, std::min(100.0, c.reputation + (stars - 3) * 0.8));
                 std::snprintf(b, sizeof b, "New %d-star review of the %s.", stars, L.gun.c_str()); c.news.push_back(b);
@@ -240,7 +372,7 @@ void endDay(Career& c) {
     if (c.reviews.size() > 200) c.reviews.erase(c.reviews.begin(), c.reviews.begin() + (c.reviews.size() - 200));
     // contracts: accepted ones past their day lapse; old offers go elsewhere; new ones come in
     for (auto& k : c.contracts) {
-        if (k.state == 1 && c.day >= k.dueDay) {
+        if ((k.state == 1 || k.state == 4) && c.day >= k.dueDay) {
             k.state = 3; k.verdict = "Not delivered in time.";
             c.reputation = std::max(0.0, c.reputation - 3);
             std::snprintf(b, sizeof b, "Missed the deadline: %s for %s. Your reputation took a knock.", k.title.c_str(), k.client.c_str()); c.news.push_back(b);
@@ -255,11 +387,35 @@ void endDay(Career& c) {
         c.contracts.push_back(k);
     }
     if (c.contracts.size() > 60) c.contracts.erase(c.contracts.begin(), c.contracts.begin() + (c.contracts.size() - 60));
+    // tomorrow's customers at your counter (if you have one): yesterday's who didn't buy have gone
+    c.walkins.clear();
+    if (c.stations.count("counter") && c.stations["counter"] > 0) {
+        int n = std::min(5, 1 + (int)(c.reputation / 25) + (rnd(c) < 0.5 ? 1 : 0));
+        for (int i = 0; i < n; i++) c.walkins.push_back(walkin(c));
+    }
     c.day++;
     std::snprintf(b, sizeof b, "Day %d.%s", c.day, income > 0 ? (" Online sales yesterday: " + money(income) + ".").c_str() : "");
     c.news.insert(c.news.begin(), b);
 }
 
+namespace {
+// the copies go, the money comes; flawed copies among them come back as complaints
+void handOver(Career& c, Contract& k, const std::string& gun) {
+    int bad = 0;
+    for (int i = 0; i < k.qty; i++) if (c.flawed[gun] > 0 && rnd(c) * c.stock[gun] < c.flawed[gun]) { c.flawed[gun]--; bad++; }
+    c.stock[gun] -= k.qty;
+    c.money += k.pay;
+    k.state = 2; k.delivered = gun; k.verdict = "Delivered and paid " + money(k.pay) + ".";
+    c.reputation = std::min(100.0, c.reputation + 3 + std::min(10.0, k.qty * 0.5));
+    if (bad) {
+        c.reputation = std::max(0.0, c.reputation - bad);
+        char b[200];
+        std::snprintf(b, sizeof b, "%s found %d flawed gun%s in the order: they're not pleased.", k.client.c_str(), bad, bad == 1 ? "" : "s");
+        c.news.push_back(b);
+        k.verdict += " " + std::string(b);
+    }
+}
+}  // namespace
 bool deliver(Career& c, int id, const std::string& gun, const GunSheet& tested) {
     for (auto& k : c.contracts) {
         if (k.id != id || k.state != 1) continue;
@@ -271,11 +427,15 @@ bool deliver(Career& c, int id, const std::string& gun, const GunSheet& tested) 
             k.verdict += ".";
             return false;
         }
-        c.stock[gun] -= k.qty;
-        c.money += k.pay;
-        k.state = 2; k.delivered = gun; k.verdict = "Delivered and paid " + money(k.pay) + ".";
-        c.reputation = std::min(100.0, c.reputation + 3 + k.qty * 0.5);
         c.sheets[gun] = tested;
+        if (k.demo) {   // a big order: now they want to see it shot
+            k.state = 4; k.delivered = gun;
+            char b[200];
+            std::snprintf(b, sizeof b, "Passed their bench test. Now the range demonstration: hit the paper %d times in %d rounds.", DEMO_HITS, DEMO_SHOTS);
+            k.verdict = b;
+            return false;
+        }
+        handOver(c, k, gun);
         return true;
     }
     return false;
@@ -315,8 +475,17 @@ std::string careerToJson(const Career& c) {
     for (auto& k : c.contracts)
         K.push_back({{"id", k.id}, {"client", k.client}, {"title", k.title}, {"brief", k.brief}, {"minEnergy", k.minEnergy}, {"maxEnergy", k.maxEnergy},
                      {"maxJam", k.maxJam}, {"maxKg", k.maxKg}, {"minCapacity", k.minCapacity}, {"hands", k.hands}, {"maxMoa", k.maxMoa}, {"qty", k.qty},
-                     {"pay", k.pay}, {"dueDay", k.dueDay}, {"state", k.state}, {"delivered", k.delivered}, {"verdict", k.verdict}});
+                     {"pay", k.pay}, {"dueDay", k.dueDay}, {"state", k.state}, {"delivered", k.delivered}, {"verdict", k.verdict}, {"demo", k.demo}});
     o["contracts"] = K;
+    auto staffJ = [](const std::vector<Employee>& v) { json a = json::array(); for (auto& e : v) a.push_back({{"name", e.name}, {"specialty", e.specialty}, {"skill", e.skill}, {"wage", e.wage}, {"days", e.days}}); return a; };
+    o["staff"] = staffJ(c.staff); o["candidates"] = staffJ(c.candidates); o["candidatesDay"] = c.candidatesDay; o["shopTier"] = c.shopTier;
+    json st2 = json::object(); for (auto& [k, n] : c.stations) st2[k] = n; o["stations"] = st2;
+    json fl = json::object(); for (auto& [k, n] : c.flawed) if (n > 0) fl[k] = n; o["flawed"] = fl;
+    json W = json::array();
+    for (auto& w : c.walkins)
+        W.push_back({{"id", w.id}, {"name", w.name}, {"idName", w.idName}, {"request", w.request}, {"hands", w.hands}, {"minEnergy", w.minEnergy}, {"maxEnergy", w.maxEnergy},
+                     {"budget", w.budget}, {"dob", w.dob}, {"idDob", w.idDob}, {"idExpires", w.idExpires}, {"trouble", w.trouble}, {"checked", w.checked}, {"result", w.result}, {"state", w.state}});
+    o["walkins"] = W;
     o["news"] = c.news;
     return o.dump(1);
 }
@@ -347,11 +516,96 @@ bool careerFromJson(const std::string& text, Career& out) {
         k.minEnergy = j.value("minEnergy", 0.0); k.maxEnergy = j.value("maxEnergy", 0.0); k.maxJam = j.value("maxJam", 0.0); k.maxKg = j.value("maxKg", 0.0);
         k.minCapacity = j.value("minCapacity", 0); k.hands = j.value("hands", 0); k.maxMoa = j.value("maxMoa", 0.0); k.qty = j.value("qty", 1);
         k.pay = j.value("pay", 0.0); k.dueDay = j.value("dueDay", 0); k.state = j.value("state", 0); k.delivered = j.value("delivered", ""); k.verdict = j.value("verdict", "");
+        k.demo = j.value("demo", false);
         c.contracts.push_back(k);
+    }
+    auto staffR = [](const json& a, std::vector<Employee>& v) {
+        if (!a.is_array()) return;
+        for (auto& j : a) { Employee e; e.name = j.value("name", ""); e.specialty = j.value("specialty", "assembler"); e.skill = j.value("skill", 0.5); e.wage = j.value("wage", 150.0); e.days = j.value("days", 0); v.push_back(e); }
+    };
+    if (o.contains("staff")) staffR(o["staff"], c.staff);
+    if (o.contains("candidates")) staffR(o["candidates"], c.candidates);
+    c.candidatesDay = o.value("candidatesDay", 0); c.shopTier = o.value("shopTier", 0);
+    if (o.contains("stations") && o["stations"].is_object()) for (auto& [k, n] : o["stations"].items()) c.stations[k] = n.get<int>();
+    if (o.contains("flawed") && o["flawed"].is_object()) for (auto& [k, n] : o["flawed"].items()) c.flawed[k] = n.get<int>();
+    for (auto& j : o.value("walkins", json::array())) {
+        Walkin w;
+        w.id = j.value("id", 0); w.name = j.value("name", ""); w.idName = j.value("idName", ""); w.request = j.value("request", ""); w.hands = j.value("hands", 0);
+        w.minEnergy = j.value("minEnergy", 0.0); w.maxEnergy = j.value("maxEnergy", 0.0); w.budget = j.value("budget", 0.0); w.dob = j.value("dob", ""); w.idDob = j.value("idDob", "");
+        w.idExpires = j.value("idExpires", ""); w.trouble = j.value("trouble", ""); w.checked = j.value("checked", false); w.result = j.value("result", ""); w.state = j.value("state", 0);
+        c.walkins.push_back(w);
     }
     if (o.contains("news") && o["news"].is_array()) for (auto& n : o["news"]) if (n.is_string()) c.news.push_back(n.get<std::string>());
     out = c;
     return true;
 }
 
+
+// ---------------------------------------------------------------- stage 3: the counter
+namespace {
+Walkin* findWalkin(Career& c, int id) { for (auto& w : c.walkins) if (w.id == id) return &w; return nullptr; }
+}
+void runCheck(Career& c, int id) {
+    Walkin* w = findWalkin(c, id);
+    if (!w || w->checked) return;
+    w->checked = true;
+    w->result = w->trouble == "denied" ? "DENIED" : "PROCEED";   // (an ID that doesn't match, or has run out: the check
+                                                                  // doesn't see that. You do, if you look.)
+}
+bool sellToWalkin(Career& c, int id, const std::string& gun, double price, std::string* why) {
+    Walkin* w = findWalkin(c, id);
+    auto no = [&](const std::string& t) { if (why) *why = t; return false; };
+    if (!w || w->state != 0) return no("they've gone");
+    if (!w->checked) return no("run the background check first");
+    if (c.stock[gun] <= 0) return no("none in stock");
+    auto it = c.sheets.find(gun);
+    if (it == c.sheets.end()) return no("rate it first");
+    const GunSheet& s = it->second;
+    if (w->hands == 1 && (!s.posed || s.twoHands)) return no("\"I'm after a handgun.\"");
+    if (w->hands == 2 && (!s.posed || !s.twoHands)) return no("\"I wanted a long gun.\"");
+    if (w->minEnergy > 0 && s.energy < w->minEnergy) return no("\"Bit light for what I need.\"");
+    if (w->maxEnergy > 0 && s.energy > w->maxEnergy) return no("\"That's more gun than I want.\"");
+    if (price > w->budget) return no("\"That's more than I can spend.\"");
+    bool bad = c.flawed[gun] > 0 && rnd(c) * c.stock[gun] < c.flawed[gun];
+    if (bad) c.flawed[gun]--;
+    c.stock[gun]--;
+    c.money += price;
+    w->state = 1;
+    c.reputation = std::min(100.0, c.reputation + 0.3);
+    char b[200];
+    std::snprintf(b, sizeof b, "Sold a %s over the counter to %s for %s.", gun.c_str(), w->name.c_str(), money(price).c_str());
+    c.news.push_back(b);
+    if (!w->trouble.empty()) soldToProhibited(c);   // (they shouldn't have had it)
+    return true;
+}
+void refuseWalkin(Career& c, int id, bool police) {
+    Walkin* w = findWalkin(c, id);
+    if (!w || w->state != 0) return;
+    w->state = police ? 3 : 2;
+    if (!w->trouble.empty() && police) { c.reputation = std::min(100.0, c.reputation + 2); c.news.push_back("The deputies came for " + w->name + ". The sheriff thanks you for the call."); }
+    else if (w->trouble.empty() && police) { c.reputation = std::max(0.0, c.reputation - 2); c.news.push_back("You called the police on " + w->name + ", who'd done nothing wrong. Awkward."); }
+    else if (w->trouble.empty()) c.reputation = std::max(0.0, c.reputation - 0.3);   // (a customer turned away for nothing)
+}
+
+// ---------------------------------------------------------------- stage 4: the range demonstration
+bool demoResult(Career& c, int id, const std::string& gun, int hits, int shots) {
+    for (auto& k : c.contracts) {
+        if (k.id != id || k.state != 4) continue;
+        char b[240];
+        if (c.stock[gun] < k.qty) { k.verdict = "You need " + std::to_string(k.qty) + " built and in stock."; return false; }
+        if (hits >= DEMO_HITS) {
+            handOver(c, k, gun);
+            std::snprintf(b, sizeof b, " The demonstration went well: %d hits in %d rounds.", hits, shots);
+            k.verdict += b;
+            c.reputation = std::min(100.0, c.reputation + 2);
+            return true;
+        }
+        k.state = 4;
+        std::snprintf(b, sizeof b, "The demonstration fell short: %d hits in %d rounds (they want %d). You can try again before the deadline.", hits, shots, DEMO_HITS);
+        k.verdict = b;
+        c.reputation = std::max(0.0, c.reputation - 1);
+        return false;
+    }
+    return false;
+}
 }  // namespace career

@@ -214,19 +214,166 @@ static void contractsTab() {
                 if (tipHover()) ImGui::SetTooltip("They test it on the bench against their brief before they pay. You need %d built.", k.qty);
             }
             if (!k.verdict.empty()) wrappedDim(k.verdict);
+            if (k.demo) ImGui::TextDisabled("A big order: after their bench test, you show it on the range.");
+        } else if (k.state == 4) {   // passed the bench test: the range demonstration
+            wrappedDim(k.verdict);
+            ImGui::BeginDisabled(C.stock[k.delivered] < k.qty);
+            if (accentButton(ICON_FA_BULLSEYE "  Range demonstration", true)) { careerDemoStart(k.id); ImGui::EndDisabled(); ImGui::EndChild(); ImGui::PopID(); return; }
+            ImGui::EndDisabled();
+            if (tipHover()) ImGui::SetTooltip("Shoot the course for them on the range with the %s: %d hits on the paper in %d rounds.\nNeeds the %d copies still in stock. Leaving early counts what you've shot.", k.delivered.c_str(), career::DEMO_HITS, career::DEMO_SHOTS, k.qty);
         } else wrappedDim(k.verdict);
         ImGui::EndChild();
         ImGui::PopID();
     };
     bool any = false;
     heading("Your contracts");
-    for (auto& k : C.contracts) if (k.state == 1) { card(k); any = true; }
+    for (auto& k : C.contracts) if (k.state == 1 || k.state == 4) { card(k); any = true; }
     if (!any) ImGui::TextDisabled("None taken on.");
     any = false;
     heading("Offers");
     for (auto& k : C.contracts) if (k.state == 0) { card(k); any = true; }
     if (!any) ImGui::TextDisabled("None today: new customers come as the days pass.");
-    if (ImGui::CollapsingHeader("Finished")) for (auto it = C.contracts.rbegin(); it != C.contracts.rend(); ++it) if (it->state >= 2) card(*it);
+    if (ImGui::CollapsingHeader("Finished")) for (auto it = C.contracts.rbegin(); it != C.contracts.rend(); ++it) if (it->state == 2 || it->state == 3) card(*it);
+}
+
+// ---------------------------------------------------------------- your workshop and your people
+static void workshopTab() {
+    auto& C = CAREER;
+    int used = 0;
+    for (auto& [k, n] : C.stations) if (k != "counter") used += n;
+    int room = career::shopStations(C.shopTier);
+    heading("Your building");
+    ImGui::Text("%s: room for %d workstations. You have %d placed.", career::shopName(C.shopTier), room, used);
+    if (used > room) ImGui::TextColored({1, 0.6f, 0.4f, 1}, "%d of them don't fit: only %d are used.", used - room, room);
+    double up = career::shopUpgradeCost(C.shopTier);
+    if (up > 0) {
+        if (ImGui::Button(TextFormat("Move to %s (%d workstations) for %s", career::shopName(C.shopTier + 1), career::shopStations(C.shopTier + 1), usd(up).c_str()))) {
+            if (C.money >= up) { C.money -= up; C.shopTier++; careerSave(); toast(std::string("You've moved to ") + career::shopName(C.shopTier) + ". Build it out in your workshop."); }
+            else toast("Not enough money for that yet.");
+        }
+    } else ImGui::TextDisabled("The biggest there is.");
+    auto st = [&](const char* k) { auto it = C.stations.find(k); return it == C.stations.end() ? 0 : it->second; };
+    ImGui::Text("Workbenches %d   Lathes %d   Milling machines %d   Test benches %d   Counter: %s", st("bench"), st("lathe"), st("mill"), st("qc"), st("counter") ? "yes" : "none");
+    if (ImGui::Button(ICON_FA_TOOLBOX "  Build your workshop")) { careerOpenWorkshop(false); return; }
+    if (tipHover()) ImGui::SetTooltip("Your workshop in the level editor: walls, lights, and the Workstation tool for benches, lathes, mills,\nthe test bench and your counter. Come back with Office (top left).");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_PERSON_WALKING "  Walk around it")) { careerOpenWorkshop(true); return; }
+    heading("Your people");
+    ImGui::Text("A working day: %.0f hours (yours %.0f).", career::workHours(C), C.hoursPerDay);
+    if (C.staff.empty()) ImGui::TextDisabled("Just you so far.");
+    for (size_t i = 0; i < C.staff.size(); i++) {
+        auto& e = C.staff[i];
+        ImGui::PushID((int)i);
+        ImGui::Text("%s", e.name.c_str()); ImGui::SameLine(200 * CFG.uiScale);
+        ImGui::TextDisabled("%s", e.specialty.c_str()); ImGui::SameLine(300 * CFG.uiScale);
+        ImGui::ProgressBar((float)e.skill, {110 * CFG.uiScale, 0}, TextFormat("skill %.0f", e.skill * 100)); ImGui::SameLine();
+        ImGui::Text("%s a day, %d days with you", usd(e.wage).c_str(), e.days); ImGui::SameLine();
+        if (ImGui::SmallButton("Let go")) { career::letGo(C, (int)i); careerSave(); ImGui::PopID(); return; }
+        ImGui::PopID();
+    }
+    heading("Looking for work");
+    wrappedDim("Machinists work fastest at a lathe or a mill; assemblers at a bench; finishers at a test bench, where they check copies and catch most flaws. "
+               "Skill makes them faster and their copies less often flawed (flawed copies jam more, and buyers say so). Everyone needs a workstation of their own; you take a bench.");
+    for (size_t i = 0; i < C.candidates.size(); i++) {
+        auto& e = C.candidates[i];
+        ImGui::PushID(1000 + (int)i);
+        ImGui::Text("%s", e.name.c_str()); ImGui::SameLine(200 * CFG.uiScale);
+        ImGui::TextDisabled("%s", e.specialty.c_str()); ImGui::SameLine(300 * CFG.uiScale);
+        ImGui::ProgressBar((float)e.skill, {110 * CFG.uiScale, 0}, TextFormat("skill %.0f", e.skill * 100)); ImGui::SameLine();
+        ImGui::Text("asks %s a day", usd(e.wage).c_str()); ImGui::SameLine();
+        if (accentButton("Hire", true)) {
+            std::string why;
+            if (career::hire(C, (int)i, &why)) { careerSave(); toast("Hired."); ImGui::PopID(); return; }
+            toast("Can't: " + why + ".");
+        }
+        ImGui::PopID();
+    }
+    ImGui::TextDisabled("New people come looking each week.");
+}
+
+// ---------------------------------------------------------------- the counter
+static void counterTab() {
+    auto& C = CAREER;
+    auto st = C.stations.find("counter");
+    if (st == C.stations.end() || st->second == 0) { wrappedDim("You have no counter: place one in your workshop (Workshop & staff > Build your workshop, the Workstation tool) and customers will come in."); return; }
+    static int sel = -1;
+    int waiting = 0;
+    for (auto& w : C.walkins) if (w.state == 0) waiting++;
+    ImGui::Text("Today, day %d, 2031. %d customer%s waiting.", C.day, waiting, waiting == 1 ? "" : "s");
+    if (C.walkins.empty()) { wrappedDim("Nobody's come in yet: they come each day."); return; }
+    ImGui::BeginChild("##queue", {230 * CFG.uiScale, 0}, ImGuiChildFlags_Borders);
+    for (auto& w : C.walkins) {
+        const char* tag = w.state == 0 ? "" : w.state == 1 ? "  (bought)" : w.state == 2 ? "  (left)" : "  (taken away)";
+        if (ImGui::Selectable((w.name + tag + "##w" + std::to_string(w.id)).c_str(), sel == w.id)) sel = w.id;
+    }
+    ImGui::EndChild();
+    ImGui::SameLine();
+    career::Walkin* W = nullptr;
+    for (auto& w : C.walkins) if (w.id == sel) W = &w;
+    if (!W) { for (auto& w : C.walkins) if (w.state == 0) { W = &w; sel = w.id; break; } }
+    if (!W) { ImGui::TextDisabled("Pick a customer."); return; }
+    auto& w = *W;
+    ImGui::BeginChild("##customer", {0, 0});
+    Texture2D face = careerPortrait(w.id);
+    if (face.id) {
+        float pw = 200 * CFG.uiScale, ph = 250 * CFG.uiScale;
+        ImGui::Image((ImTextureID)(intptr_t)face.id, {pw, ph}, {0, 1}, {1, 0});
+        ImGui::SameLine();
+    }
+    ImGui::BeginGroup();
+    ImGui::PushFont(gFontBold, 16.0f); ImGui::Text("%s", w.name.c_str()); ImGui::PopFont();
+    wrapped("\"" + w.request + "\"");
+    ImGui::TextDisabled("They mention about %s to spend.", usd(w.budget).c_str());
+    ImGui::Dummy({0, 6 * CFG.uiScale});
+    // their form and their ID, side by side: they should match, and the ID shouldn't have run out
+    ImGui::BeginChild("##form", {270 * CFG.uiScale, 120 * CFG.uiScale}, ImGuiChildFlags_Borders);
+    ImGui::TextDisabled("FORM TR-1: Firearm transfer record");
+    ImGui::Text("Name: %s", w.name.c_str());
+    ImGui::Text("Date of birth: %s", w.dob.c_str());
+    ImGui::Text("Barred from owning firearms? No");
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("##idcard", {270 * CFG.uiScale, 120 * CFG.uiScale}, ImGuiChildFlags_Borders);
+    ImGui::TextDisabled("DRIVER LICENSE");
+    ImGui::Text("Name: %s", w.idName.c_str());
+    ImGui::Text("Date of birth: %s", w.idDob.c_str());
+    ImGui::Text("Expires: %s", w.idExpires.c_str());
+    ImGui::EndChild();
+    ImGui::EndGroup();
+    if (w.state != 0) { ImGui::TextDisabled(w.state == 1 ? "They bought a gun." : w.state == 2 ? "You sent them away." : "The police took them away."); ImGui::EndChild(); return; }
+    heading("Background check");
+    if (!w.checked) { if (accentButton("Run the background check", true)) { career::runCheck(C, w.id); careerSave(); } }
+    else ImGui::TextColored(w.result == "PROCEED" ? ImVec4(0.5f, 0.9f, 0.55f, 1) : ImVec4(1, 0.4f, 0.35f, 1), "Result: %s", w.result.c_str());
+    if (w.checked) ImGui::TextDisabled("The check only knows the name it's given: compare the form with their ID, and look at when it expires.");
+    heading("Sell");
+    static std::map<int, std::string> pick; static std::map<int, double> price;
+    std::string& pg = pick[w.id];
+    ImGui::SetNextItemWidth(220 * CFG.uiScale);
+    if (ImGui::BeginCombo("##sellgun", pg.empty() ? "Show them..." : pg.c_str())) {
+        for (auto& [g, n] : C.stock) if (n > 0 && ImGui::Selectable((g + "  (" + std::to_string(n) + ")").c_str(), pg == g)) {
+            pg = g;
+            auto it = C.sheets.find(g); double v = it != C.sheets.end() ? it->second.value() : 500;
+            for (auto& L : C.listings) if (L.gun == g) v = L.price;
+            price[w.id] = std::round(v / 10) * 10;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(110 * CFG.uiScale);
+    ImGui::InputDouble("##sellprice", &price[w.id], 10, 100, "$%.0f");
+    ImGui::SameLine();
+    ImGui::BeginDisabled(pg.empty());
+    if (accentButton("Sell", true)) {
+        std::string why;
+        if (career::sellToWalkin(C, w.id, pg, price[w.id], &why)) { careerSave(); toast("Sold."); }
+        else toast(why);
+    }
+    ImGui::EndDisabled();
+    ImGui::Dummy({0, 4 * CFG.uiScale});
+    if (ImGui::Button("Send them away")) { career::refuseWalkin(C, w.id, false); careerSave(); }
+    ImGui::SameLine();
+    if (dangerButton("Refuse and call the police")) { career::refuseWalkin(C, w.id, true); careerSave(); toast(C.news.empty() ? "" : C.news.back()); }
+    ImGui::EndChild();
 }
 
 void careerScreen() {
@@ -246,7 +393,8 @@ void careerScreen() {
     ImGui::TextDisabled("Reputation");
     ImGui::SameLine();
     ImGui::ProgressBar((float)(C.reputation / 100), {120 * CFG.uiScale, 0}, TextFormat("%.0f", C.reputation));
-    if (tipHover()) ImGui::SetTooltip("Good reviews and contracts done well raise it: more buyers online, and bigger orders.");
+    if (tipHover()) ImGui::SetTooltip("Good reviews and contracts done well raise it: more buyers online, more at your counter, and bigger orders\n(police from 35, the military from 60).");
+    ImGui::SameLine(); ImGui::TextColored({0.95f, 0.8f, 0.45f, 1}, "%s", career::tierName(C.reputation));
     float right = GetScreenWidth() - 470 * CFG.uiScale;
     ImGui::SameLine(std::max(right, ImGui::GetCursorPosX() + 10));
     if (ImGui::Button(ICON_FA_PEN_RULER "  Designer")) enterWorkshop(false);
@@ -262,14 +410,14 @@ void careerScreen() {
     if (ImGui::Button("Main menu")) { careerSave(); backToMenu(); ImGui::End(); return; }
     ImGui::Separator();
     if (ImGui::BeginTabBar("##ctabs")) {
-        const char* names[] = {"Today", "Your guns", "Online store", "Contracts"};
-        for (int i = 0; i < 4; i++) {
+        const char* names[] = {"Today", "Your guns", "Online store", "Contracts", "Workshop & staff", "Counter"};
+        for (int i = 0; i < 6; i++) {
             ImGuiTabItemFlags f = tab == i ? ImGuiTabItemFlags_SetSelected : 0;
             bool open = ImGui::BeginTabItem(names[i], nullptr, f);
             if (ImGui::IsItemClicked()) tab = i;
             if (open) {
                 ImGui::BeginChild("##ctab");
-                if (i == 0) todayTab(); else if (i == 1) gunsTab(); else if (i == 2) storeTab(); else contractsTab();
+                if (i == 0) todayTab(); else if (i == 1) gunsTab(); else if (i == 2) storeTab(); else if (i == 3) contractsTab(); else if (i == 4) workshopTab(); else counterTab();
                 ImGui::EndChild();
                 ImGui::EndTabItem();
             }

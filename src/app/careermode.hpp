@@ -3,6 +3,7 @@
 // core/career; the screen is ui/panel_career.
 #pragma once
 #include "career.hpp"
+#include "raylib.h"
 
 #include <string>
 #include <vector>
@@ -15,6 +16,14 @@ void careerSave();
 void enterCareer();                  // the office (Screen::Career), loading or starting the career
 bool inCareer();                     // in career mode (the office, or the designer opened from it)
 void careerBackToOffice();           // from the designer
+void careerOpenWorkshop(bool walk);  // your workshop in the level editor (walk: straight in, on foot)
+void careerWorkshopToOffice();       // back from it: its workstations counted
+void careerCountStations();          // from your workshop's map file
+void careerDemoStart(int contractId); // a big order's range demonstration, with its gun
+void careerTick();
+// a customer's face at your counter: a person from the character maker, their look picked from their number
+void careerRenderPortraits();         // (before the panels each frame: draws any not drawn yet)
+Texture2D careerPortrait(int walkinId);                    // every frame: a finished demonstration takes you back to the office
 
 // your guns (the blueprints in the user folder), each read once and kept until its file changes
 struct CareerGun { std::string name; Design d; career::GunSheet fresh; };   // fresh: the sheet from the design as it is now

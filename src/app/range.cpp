@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <sstream>
 #include <filesystem>
+#include <functional>
 
 using gmap::V3;
 double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut);   // the closest two segments come (below)
@@ -78,6 +79,7 @@ struct Range {
     bool twoHands = false;
     float t = 0;
     Matrix G = MatrixIdentity();         // the gun's drawing frame -> the map, this frame
+    bool placed = false;                 // G has been worked out at least once (a shot before then has nowhere to come from)
     Vector3 eye{};
     double lastYaw = 0, lastPitch = 0;
     double sightY = 0, boreZ = 0;        // aiming: the eye's height over the gun (design mm, y down) and the bore's depth
@@ -102,6 +104,8 @@ struct Range {
     double zero = 0;                     // the bore tipped up so bullets meet the line of sight at the zero distance (rad)
 };
 Range R;
+// career mode: a range demonstration for a customer: rounds fired and paper hit, reported when it ends
+struct Demo { bool on = false; std::string client; int shots = 0, hits = 0, need = 12, limit = 20; float overT = -1; std::function<void(int, int)> done; } gDemo;
 
 Vector3 rv(V3 v) { return {(float)v.x, (float)v.y, (float)v.z}; }
 V3 vr(Vector3 v) { return {v.x, v.y, v.z}; }
@@ -134,7 +138,7 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
     eyeMM.x -= (1 - a) * (R.twoHands ? 0 : -60);   // a pistol comes in a little closer
     // the bore's way, in the gun's drawing frame (x right, y up)
     const auto& br = D.breech;
-    V2 face = curMM(br.chamber.empty() ? br.breech : br.chamber, br.face), muz = curMM(br.chamber, br.muzzle);
+    V2 face = br.face, muz = br.muzzle;   // (the bore as drawn, in battery: as the shot leaves it, fireBullets)
     double bx = muz.x - face.x, by = -(muz.y - face.y), bl = std::hypot(bx, by);
     if (!br.on || !br.hasMuzzle || bl < 1) { bx = 1; by = 0; bl = 1; }
     bx /= bl; by /= bl;
@@ -157,6 +161,7 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
     double lunge = R.stabT >= 0 ? std::sin(std::clamp(R.stabT / 0.4f, 0.f, 1.f) * PI) * 0.2 : 0;   // a stab: thrust out and back
     V3 at = eye - fw * R.kickBack + fw * lunge;
     R.G = MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixTranslate(-pe.x, -pe.y, -pe.z), MatrixScale(s, s, s)), Rm), MatrixTranslate((float)at.x, (float)at.y, (float)at.z));
+    R.placed = true;
     // an animation moving the gun (inspecting it, a reload that tips it): about the firing hand
     if (A.S && sim::animPlaying(*A.S)) {
         AnimHands h = sim::animHandsNow(*A.S);
@@ -177,7 +182,10 @@ void fireBullets(int chamber) {
     const Cartridge& cart = chamber == 0 || br.more[chamber - 1].ownCart == false ? br.cart : br.more[chamber - 1].cart;
     int ci = A.design.bodyIndex(chb);
     float zc = ci >= 0 ? bodyZ(ci) : 0;
-    V3 m = gunToMap(curMM(chb, mz), zc), back = gunToMap(curMM(chb, fc), zc);
+    // along the barrel as it was when it fired: in battery, as drawn. (By the end of the frame a tilting or hinged barrel
+    // has already moved to unlock, and its bore no longer points where the shot went.)
+    if (!R.placed) return;
+    V3 m = gunToMap(mz, zc), back = gunToMap(fc, zc);
     V3 dir = gmap::norm(m - back);
     int n = std::max(1, cart.projectiles);
     double mass = (cart.shot() ? cart.pelletMass() : cart.bulletMass) / 1000.0;
@@ -199,6 +207,7 @@ void fireBullets(int chamber) {
     for (int i = 0; i < n; i++) {
         V3 d = gmap::norm(dir + side * rnd(spread) + upv * rnd(spread));
         R.bullets.push_back({m, d * cart.velocity, k, 0, 0, mass, -1});
+        if (std::getenv("GUNSMITH_RANGEDBG")) std::printf("bullet from %.2f %.2f %.2f dir %.3f %.3f %.3f v %.0f\n", m.x, m.y, m.z, d.x, d.y, d.z, cart.velocity);
     }
     // recoil: the cartridge's push against the gun's weight, felt less in the shoulder than in one hand
     double v = cart.impulse() / std::max(0.3, R.mass);
@@ -207,6 +216,7 @@ void fireBullets(int chamber) {
     R.kickYaw += rnd((float)(v * feel * 0.006 * R.recoilK));
     R.kickBack = std::min(0.08, R.kickBack + v * 0.006 * R.recoilK);
     R.shots++;
+    if (gDemo.on) gDemo.shots++;
 }
 
 void stepBullets(double dt) {
@@ -272,6 +282,7 @@ void stepBullets(double dt) {
                     R.impacts.push_back({at, hit.n, steel, std::max(0.004, b.k > 0 ? 0.0 : 0.0) + 0.005});
                     if (R.impacts.size() > 600) R.impacts.erase(R.impacts.begin());
                     double dist = b.travelled + hit.t;
+                    if (std::getenv("GUNSMITH_RANGEDBG")) std::printf("impact %s at %.2f %.2f %.2f\n", mn.c_str(), at.x, at.y, at.z);
                     // what was hit: a paper target's ring, a steel plate, or just the range
                     std::string what;
                     for (auto& t : R.targets) {
@@ -282,6 +293,7 @@ void stepBullets(double dt) {
                         if (rr > t.size / 2) continue;
                         int ring = std::max(0, 10 - (int)(rr / (t.size / 2) * 10));
                         what = ring > 0 ? "Hit: " + std::to_string(ring) : "Hit the paper";
+                        if (gDemo.on && gDemo.shots <= gDemo.limit && b.npc < 0) gDemo.hits++;
                     }
                     if (what.empty() && steel) {
                         what = "Ding!";
@@ -445,6 +457,7 @@ static void armGun() {
         }
         double h = std::max(0.0, (br.face.y - R.sightY) / 1000.0), zd = R.twoHands ? 100.0 : 25.0, v = std::max(50.0, br.cart.velocity);
         R.zero = std::atan(h / zd) + 0.5 * 9.81 * (zd / v) * (zd / v) / zd;
+        if (std::getenv("GUNSMITH_RANGEDBG")) std::printf("arm: face.y %.1f sightY %.1f posedAim %d twoHands %d zero %.4f\n", br.face.y, R.sightY, (int)A.design.pose.hold[HOLD_AIM].set, (int)R.twoHands, R.zero);
     }
 }
 // hands: put the gun in your hands back in its slot, and take slot k (-1: nothing)
@@ -637,7 +650,17 @@ void rangeSpawnerWindow() {
     if (ImGui::Button("Close (Esc)", {-1, 0}) || IsKeyPressed(KEY_ESCAPE)) R.spawnerOpen = false;
     ImGui::End();
 }
+void rangeDemoStart(const std::string& client, int need, int limit, std::function<void(int, int)> done) {
+    gDemo = Demo(); gDemo.on = true; gDemo.client = client; gDemo.need = need; gDemo.limit = limit; gDemo.done = std::move(done);
+    R.shots = 0;
+}
+bool rangeDemoOver() {
+    if (!gDemo.on || gDemo.shots < gDemo.limit) { gDemo.overT = -1; return false; }
+    if (gDemo.overT < 0) gDemo.overT = (float)R.t;
+    return R.t - gDemo.overT > 3.0;   // (the last rounds land, and a moment to read the result)
+}
 void leaveRange() {
+    if (gDemo.on) { gDemo.on = false; if (gDemo.done) gDemo.done(std::min(gDemo.hits, 999), gDemo.shots); gDemo.done = nullptr; }
     EnableCursor();
     R.bullets.clear(); R.impacts.clear();
     R.inv.clear(); R.ground.clear(); R.actors.clear(); R.cur = -1; R.spawnerOpen = false;
@@ -824,6 +847,14 @@ void rangeUpdate(float dt, bool modal) {
         auto& S = *A.S;
         bool trig = IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !holdFire;
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !holdFire) S.pressed = true;   // (as on the bench: a fresh pull of the trigger)
+        if (std::getenv("GUNSMITH_RANGEAUTOFIRE")) {   // (tests) pull the trigger every 0.4 s by itself
+            static float at = 0, rl = 0; at += dt; rl += dt;
+            trig = std::fmod(at, 0.4f) < 0.1f;
+            R.aim = 1;
+            sim::Body* M = sim::seatedMag(S);
+            if (!S.chambered && (!M || M->rounds == 0) && rl > 1.5f) { reload(); rl = 0; }
+            if (trig && std::fmod(at, 0.4f) < dt * 1.5f) S.pressed = true;
+        }
         S.trigger = trig;
         sim::setKey(S, "fire", trig);
         if (actPressed(Act::Reload)) reload();
@@ -1230,6 +1261,17 @@ void rangeHud() {
             EndScissorMode();
             if (R.op.magMax > R.op.mag) viewText(TextFormat("%.1fx", R.zoom), c.x + r * 0.72f, c.y + r * 0.78f, 13, Color{230, 233, 238, (unsigned char)(200 * u)});
         } else drawReticle(c, pxRad / 1000, R.op, u);   // a reflex sight: the dot out where the sight looks, true size
+    }
+    if (gDemo.on) {   // a range demonstration under way
+        std::string t = TextFormat("Range demonstration for %s:  %d hit%s on paper,  round %d of %d  (they want %d hits)", gDemo.client.c_str(), gDemo.hits, gDemo.hits == 1 ? "" : "s", std::min(gDemo.shots, gDemo.limit), gDemo.limit, gDemo.need);
+        float tw = viewTextWidth(t.c_str(), 16);
+        DrawRectangleRounded({cx - tw / 2 - 14, 48, tw + 28, 32}, 0.4f, 6, Color{20, 23, 28, 210});
+        viewText(t.c_str(), cx - tw / 2, 55, 16, gDemo.hits >= gDemo.need ? Color{130, 230, 150, 255} : Color{255, 220, 140, 255});
+        if (gDemo.shots >= gDemo.limit) {
+            const char* e = gDemo.hits >= gDemo.need ? "That's the course. They're impressed." : "That's the course. They don't look convinced.";
+            float ew = viewTextWidth(e, 20);
+            viewText(e, cx - ew / 2, cy - 90, 20, Color{240, 242, 245, 255});
+        }
     }
     if (R.rested) viewText("Rested on its bipod", cx - viewTextWidth("Rested on its bipod", 13) / 2, cy + H * 0.3f, 13, Color{170, 230, 180, 220});
     if (!A.fitItems.empty() && R.cur >= 0 && !R.freeMouse && CFG.hints) viewText("Hold Alt: your attachments", W - viewTextWidth("Hold Alt: your attachments", 12) - 24, 110, 12, Color{210, 214, 220, 170});

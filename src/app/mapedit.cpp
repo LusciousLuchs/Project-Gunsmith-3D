@@ -1,3 +1,4 @@
+#include <cstdlib>
 // Gunsmith3D - The map editor (see mapedit.hpp).
 #include "app/paths.hpp"
 #include "app/mapedit.hpp"
@@ -131,6 +132,7 @@ void meSnapshot() {
     ME.redo.clear();
 }
 static void writeAutosave() {
+    if (!ME.careerFile.empty()) { std::ofstream(ME.careerFile) << gmap::mapToJson(ME.map); return; }   // (your workshop: kept as you go)
     std::error_code ec;
     fs::create_directories(MAP_DIR, ec);
     embedMapNpcs(ME.map);   // (the NPCs its spawn points use go with it)
@@ -165,6 +167,7 @@ static std::string fileName(const std::string& name) {
     return f.empty() ? "untitled" : f;
 }
 bool meSave() {
+    if (!ME.careerFile.empty()) { writeAutosave(); ME.dirty = false; toast("Workshop saved."); return true; }
     std::error_code ec;
     fs::create_directories(MAP_DIR, ec);
     std::string path = std::string(MAP_DIR) + "/" + fileName(ME.map.name) + ".gsmap";
@@ -375,6 +378,7 @@ void meWalk(bool fromCamera) {
         ME.pl.feet = h.brush >= 0 ? o + V3{0, -h.t + 0.02, 0} : V3{o.x, 0.02, o.z};
         if (!ME.top) ME.pl.yaw = ME.yaw;
     }
+    if (const char* e = std::getenv("GUNSMITH_WALKYAW")) ME.pl.yaw = std::atof(e);   // (screenshots) which way you face
     ME.walking = true;
     DisableCursor();
 }
@@ -398,7 +402,35 @@ void enterMapEditor() {
     ME.version++;
     ME.walking = false;
 }
+static std::string gSandboxStash;   // the sandbox map, set aside while you edit your career workshop
+void enterCareerWorkshop(const std::string& file, bool walk) {
+    mapGfxInit();
+    if (ME.careerFile.empty()) gSandboxStash = gmap::mapToJson(ME.map);
+    ME.careerFile = file;
+    std::ifstream in(file);
+    std::stringstream ss; ss << in.rdbuf();
+    gmap::Map m;
+    if (!in || !gmap::mapFromJson(ss.str(), m)) { m = gmap::defaultWorkshop(); std::error_code ec; fs::create_directories(fs::path(file).parent_path(), ec); std::ofstream(file) << gmap::mapToJson(m); }
+    ME.map = m; ME.sel.clear(); ME.face = -1; ME.ent = -1; ME.undo.clear(); ME.redo.clear(); ME.dirty = false;
+    A.screen = Screen::MapEditor;
+    A.showPause = A.showSettings = A.showBenchPicker = false;
+    ME.version++;
+    ME.walking = false;
+    ME.cam = {-10, 7, 9}; ME.yaw = -0.6; ME.pitch = -0.45;
+    if (walk) meWalk(false);
+}
+void leaveCareerWorkshop() {
+    if (ME.careerFile.empty()) return;
+    if (ME.walking) stopWalking();
+    writeAutosave();
+    ME.careerFile.clear();
+    gmap::Map m;
+    if (gmap::mapFromJson(gSandboxStash, m)) ME.map = m; else ME.map = gmap::Map();
+    ME.sel.clear(); ME.face = -1; ME.ent = -1; ME.undo.clear(); ME.redo.clear();
+    ME.version++;
+}
 void leaveMapEditor() {
+    leaveCareerWorkshop();
     if (ME.walking) stopWalking();
     if (CFG.autosave != AutosaveEvery::Off) writeAutosave();
     mapRestoreLook();
@@ -623,6 +655,19 @@ static void toolInput() {
             if (ME.clipPts.size() >= 2) ME.clipPts.clear();
             if (ME.clipPts.empty()) ME.clipFaceN = n;
             ME.clipPts.push_back(s);
+            break;
+        }
+        case MTool::Station: {   // a workstation (career mode): it stands on the floor, facing you
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            meSnapshot();
+            gmap::Entity e;
+            e.type = ME.stationKind == "counter" ? "shop_counter" : "station_" + ME.stationKind;
+            e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
+            ME.map.ents.push_back(e);
+            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meChanged();
             break;
         }
         case MTool::Npc: case MTool::Spawner: case MTool::Armor: case MTool::Crate: case MTool::Ammo: case MTool::Weapons: {   // an NPC standing here, a stand to take guns from, armour plates
@@ -946,6 +991,7 @@ static void drawEditor3D() {
         else if (e.type == "npc_spawn") drawNpcSpawn(e, (int)i == ME.ent);
         else if (e.type == "gun_spawner") drawSpawner(e, (int)i == ME.ent);
         else if (e.type == "light") drawLampMarker(e, (int)i == ME.ent);
+        else if (e.type.rfind("station_", 0) == 0 || e.type == "shop_counter") drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
@@ -1044,6 +1090,13 @@ void mapEditorRender() {
     mapDrawWorld();
     mapWorkLight(false);
     if (!ME.walking) drawEditor3D();
+    else for (auto& e : ME.map.ents) {   // on foot: the things you'd see (not the editor's markers)
+        if (e.type.rfind("station_", 0) == 0 || e.type == "shop_counter") drawStation(e.type, rv(e.pos), (float)e.yaw);
+        else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
+        else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw);
+        else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
+        else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
+    }
     EndMode3D();
     mapEndViewport();
     mapRestoreLook();

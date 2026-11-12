@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station };
 
 struct MapEd {
     gmap::Map map;
@@ -38,6 +38,8 @@ struct MapEd {
     bool clipFlip = false;
     // walking the map
     bool walking = false;
+    std::string careerFile;                // career mode: editing your workshop (saved here, not in Levels)
+    std::string stationKind = "bench";     // the Station tool: bench, lathe, mill, qc, counter
     gmap::Player pl;
     std::string status;                    // one-line message in the panel
     std::string npcPick;                   // the NPC the NPC spawn tool places (its name)
@@ -45,6 +47,9 @@ struct MapEd {
 extern MapEd ME;
 
 void enterMapEditor();
+// career mode: your workshop in the level editor (your sandbox map is set aside meanwhile); walk: straight in, on foot
+void enterCareerWorkshop(const std::string& file, bool walk);
+void leaveCareerWorkshop();                // saves it and puts your sandbox map back (also when leaving the editor)
 void leaveMapEditor();                     // autosaves, gives the mouse back
 void mapEditorUpdate(float dt, bool modal); // input, walking, rebuilding the meshes
 void mapEditorRender();                    // the 3D view and its overlay (between BeginDrawing and the panels)

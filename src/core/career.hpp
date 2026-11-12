@@ -54,11 +54,34 @@ struct Contract {
     int qty = 1;
     double pay = 0;                        // $ for all of them
     int dueDay = 0;
-    int state = 0;                         // 0 offered, 1 accepted, 2 delivered, 3 lapsed (missed or turned down)
+    int state = 0;                         // 0 offered, 1 accepted, 2 delivered, 3 lapsed (missed or turned down),
+                                           // 4 passed the bench test, waiting for its range demonstration
+    bool demo = false;                     // a big order: after the bench test, you show it on the range
     std::string delivered, verdict;
 };
 // What the gun misses of the brief (empty: it meets it all)
 std::vector<std::string> shortfalls(const Contract& c, const GunSheet& s);
+
+// Stage 2: the people who build your guns, and the workstations they work at (placed in your workshop map)
+struct Employee {
+    std::string name, specialty;           // machinist (turned and cut parts), assembler (many parts), finisher (checks copies)
+    double skill = 0.5;                    // 0 .. 1: how fast, and how rarely a copy comes out flawed; grows with the days
+    double wage = 150;                     // $ a day
+    int days = 0;
+};
+// Stage 3: someone at your counter
+struct Walkin {
+    int id = 0;
+    std::string name, idName, request;     // the name on the form, the name on their ID, what they're after
+    int hands = 0;                         // 1 a handgun, 2 a long gun, 0 anything
+    double minEnergy = 0, maxEnergy = 0, budget = 0;
+    std::string dob, idDob, idExpires;     // date of birth on the form and on the ID, and when the ID runs out
+    std::string trouble;                   // "" a clean sale; else why they can't buy (the check denies them, or their
+                                           // ID doesn't match the form, or it's expired): refuse, and call the police
+    bool checked = false;
+    std::string result;                    // the background check's answer: PROCEED or DENIED
+    int state = 0;                         // 0 waiting, 1 sold, 2 sent away, 3 reported to the police
+};
 
 struct Career {
     bool on = false;
@@ -76,7 +99,32 @@ struct Career {
     unsigned rng = 12345;
     int nextId = 1;
     double hoursToday = 0;                 // (hours already worked today by hand: none yet)
+    // stage 2
+    std::vector<Employee> staff, candidates;
+    int candidatesDay = 0;
+    int shopTier = 0;                      // your building: how many workstations fit (shopStations)
+    std::map<std::string, int> stations;   // workstations placed in your workshop: bench, lathe, mill, qc (and counter)
+    std::map<std::string, int> flawed;     // of the stock, copies with a flaw nobody caught (they jam more)
+    // stage 3
+    std::vector<Walkin> walkins;
 };
+int shopStations(int tier);                // workstations your building has room for
+double shopUpgradeCost(int tier);          // to move up from this tier ($; 0: the biggest)
+const char* shopName(int tier);
+const char* tierName(double reputation);   // how well known you are
+// Your working day plus your staff's, as today's workstations allow (per employee: their hours, and whether their
+// station suits them)
+double workHours(const Career& c);
+void refreshCandidates(Career& c);         // a new few people looking for work (each week, or when asked)
+bool hire(Career& c, int candidate, std::string* why = nullptr);
+void letGo(Career& c, int employee);
+// Stage 3: the counter. Run the check, then sell (true if they bought it), send them away, or call the police.
+void runCheck(Career& c, int walkinId);
+bool sellToWalkin(Career& c, int walkinId, const std::string& gun, double price, std::string* why = nullptr);
+void refuseWalkin(Career& c, int walkinId, bool police);
+// Stage 4: a big order's range demonstration: hits on paper out of the rounds fired. Paid if it passes.
+bool demoResult(Career& c, int contractId, const std::string& gun, int hits, int shots);
+constexpr int DEMO_SHOTS = 20, DEMO_HITS = 12;
 Career newCareer(unsigned seed);
 std::string careerToJson(const Career& c);
 bool careerFromJson(const std::string& text, Career& c);

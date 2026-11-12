@@ -1,6 +1,7 @@
 #include <string>
 // Gunsmith3D - the firing range (see range.cpp): first person on a map, with a gun you built.
 #pragma once
+#include <functional>
 #include "design.hpp"
 #include "map.hpp"
 
@@ -17,5 +18,8 @@ void rangeSpawnerWindow();                                  // its list (ImGui)
 
 void openRangeFitting();   // an attachment crate: the held gun on the fitting bench
 void backToRange();
-void rangeGadgetWindow();   // Alt held on the range: switch the attachments on and off
+void rangeGadgetWindow();
+// career mode: a range demonstration (hits on the paper targets over `limit` rounds), reported by `done` when it ends
+void rangeDemoStart(const std::string& client, int need, int limit, std::function<void(int, int)> done);
+bool rangeDemoOver();   // the course is shot (a moment after the last round)   // Alt held on the range: switch the attachments on and off
 void rangeShotExtras(const std::string& loadout, bool aim);   // (screenshots)

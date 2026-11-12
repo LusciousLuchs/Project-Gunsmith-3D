@@ -89,7 +89,7 @@ is up to them, and the game's own examples stay original.
 - **Extras**: belt, hat, headphones, glasses.
 - The owner may have proper player models made later: keep the character's parts easy to swap for a model.
 
-## Career mode (the owner's plan; stage 1 done in 0.5.0)
+## Career mode (the owner's plan; stage 1 done in 0.5.0, stages 2-4 in 0.6.0)
 
 - **Stage 2: employees.** Editing is never locked; making guns is what grows. Hire gunsmiths (wage, skill, specialty: machinist, assembler, finisher/QC); each adds working hours, gets better with experience, and sometimes makes a flawed copy (a higher jam rate, so worse reviews). QC test-fires copies and catches flaws. Each needs a workstation (bench, lathe, mill) placed in your workshop, a walkable map built with the level editor's tools; floor space limits how many, then a bigger shop.
 - **Stage 3: the storefront.** Walk-in customers at your counter; a background check on each: 99% clean, 1% something wrong: refuse and call the police. Selling anyway: a fine and some reputation (the owner: no harsher consequence, it's a cozy game).

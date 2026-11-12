@@ -490,6 +490,39 @@ bool mapFromJson(const std::string& s, Map& out) {
 
 // ---------------------------------------------------------------- the starter range
 // Downrange is +X. The firing line is at x = 0 under a shed; lanes run out to a backstop berm at 100 m.
+Map defaultWorkshop() {
+    // a plain room to start a gun business in: a concrete floor, plywood walls with a door at the front, a roof, three
+    // lamps, your first bench, and a counter by the door
+    Map m;
+    m.name = "My workshop";
+    m.look.daylight = 0.05;
+    int concrete = materialIndex("concrete"), ply = materialIndex("plywood"), corr = materialIndex("corrugated"), dark = materialIndex("concrete_dark");
+    auto box = [&](V3 a, V3 b, int mat) { m.brushes.push_back(makeBox(a, b, mat)); };
+    box({-8.2, -0.4, -6.2}, {8.2, 0, 6.2}, concrete);
+    box({-12, -0.45, -10}, {12, -0.4, 10}, dark);                  // (the yard round it)
+    box({-8.2, 0, -6.2}, {-8, 3, 6.2}, ply);                        // back wall
+    box({-8, 0, -6.2}, {8, 3, -6}, ply);                            // side walls
+    box({-8, 0, 6}, {8, 3, 6.2}, ply);
+    box({8, 0, -6.2}, {8.2, 3, -1}, ply);                           // the front, with a door
+    box({8, 0, 1}, {8.2, 3, 6.2}, ply);
+    box({8, 2.2, -1}, {8.2, 3, 1}, ply);
+    (void)corr;   // (no roof: so the level editor's camera sees in; the lamps hang from where it would be)
+    auto lamp = [&](V3 at) { Entity e; e.type = "light"; e.pos = at; e.power = 8; e.range = 10; m.ents.push_back(e); };
+    lamp({-4, 2.8, 0}); lamp({2, 2.8, -2.5}); lamp({2, 2.8, 2.5});
+    Entity start; start.pos = {-2, 0, 0}; start.yaw = 0; m.ents.push_back(start);
+    Entity bench; bench.type = "station_bench"; bench.pos = {-6.5, 0, -4.6}; bench.yaw = 90; m.ents.push_back(bench);
+    Entity counter; counter.type = "shop_counter"; counter.pos = {5.5, 0, 3.2}; counter.yaw = 180; m.ents.push_back(counter);
+    return m;
+}
+std::map<std::string, int> workshopStations(const Map& m) {
+    std::map<std::string, int> n;
+    for (auto& e : m.ents) {
+        if (e.type.rfind("station_", 0) == 0) n[e.type.substr(8)]++;
+        else if (e.type == "shop_counter") n["counter"]++;
+    }
+    return n;
+}
+
 Map builtinRange() {
     Map m;
     m.name = "Practice range";

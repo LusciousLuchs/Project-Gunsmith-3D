@@ -209,6 +209,8 @@ int main(int argc, char** argv) {
         if (const char* e = std::getenv("GUNSMITH_CAREERRATE")) careerTestStart(e);
         if (const char* e = std::getenv("GUNSMITH_CAREERDELIVER")) { int id = std::atoi(e); const char* g = strchr(e, ':'); if (g) careerTestStart(g + 1, id); }   // "id:gun"
         if (std::getenv("GUNSMITH_CAREERDESIGN")) enterWorkshop(false);   // (the designer, opened from the office)
+        if (const char* e = std::getenv("GUNSMITH_CAREERDEMO")) careerDemoStart(std::atoi(e));   // (a contract's range demonstration)
+        if (const char* e = std::getenv("GUNSMITH_CAREERSHOP")) careerOpenWorkshop(std::atoi(e) == 2);   // (your workshop: 1 to build, 2 on foot)
         if (const char* e = std::getenv("GUNSMITH_CAREERDAYS")) for (int k = std::atoi(e); k > 0; k--) career::endDay(CAREER);
     }
     if (const char* c = std::getenv("GUNSMITH_NPCCAM")) std::sscanf(c, "%f,%f,%f,%f", &NE.dist, &NE.yaw, &NE.pitch, &NE.targetY);   // (screenshots) the NPC editor's camera
@@ -282,6 +284,7 @@ int main(int argc, char** argv) {
         updateCamera();
         A.dist = keepDist;
 
+        careerTick();   // (career mode: back to the office after a range demonstration)
         if (A.screen == Screen::Range) {
             bool modal = A.showPause || A.showSettings || A.showTutorials;
             rangeUpdate(dt, modal);
@@ -342,6 +345,7 @@ int main(int argc, char** argv) {
             bool modal = A.showPause || A.showSettings || A.showTutorials;
             BeginDrawing();
             ClearBackground(Color{30, 34, 41, 255});
+            careerRenderPortraits();   // (customers' faces, drawn before the panels)
             rlImGuiBegin();
             careerScreen();
             if (A.showTutorials) tutorialsWindow();

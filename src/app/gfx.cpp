@@ -491,4 +491,43 @@ void drawWeaponCrate(Vector3 base, float yawDeg, Color tint) {
     drawBox(Vector3Add(base, {0, 0.41f, 0}), {1.32f, 0.03f, 0.5f}, slat, R);
     for (float x : {-0.67f, 0.67f}) drawBox(Vector3Add(base, Vector3Transform({x, 0.3f, 0}, R)), {0.03f, 0.04f, 0.2f}, rope, R);
 }
+void drawStation(const std::string& type, Vector3 base, float yawDeg, Color tint) {
+    // career mode's workstations and the shop counter (metres; it faces along +x turned by yaw)
+    Matrix R = MatrixRotateY(-yawDeg * DEG2RAD);
+    auto at = [&](float x, float y, float z) { return Vector3Add(base, Vector3Transform({x, y, z}, R)); };
+    auto box = [&](float x, float y, float z, float sx, float sy, float sz, Color c) { drawBox(at(x, y, z), {sx, sy, sz}, tint.a ? tint : c, R); };
+    const Color wood{140, 102, 64, 255}, top{170, 128, 82, 255}, grey{96, 102, 110, 255}, dark{52, 56, 62, 255}, green{64, 92, 78, 255}, steel{150, 156, 164, 255};
+    if (type == "station_bench") {        // a workbench: thick top, legs, a shelf, a vise and a pegboard of tools
+        box(0, 0.88f, 0, 0.75f, 0.06f, 1.8f, top);
+        for (float z : {-0.82f, 0.82f}) for (float x : {-0.3f, 0.3f}) box(x, 0.43f, z, 0.07f, 0.86f, 0.07f, wood);
+        box(0, 0.2f, 0, 0.7f, 0.03f, 1.7f, wood);
+        box(0.1f, 0.98f, 0.65f, 0.16f, 0.12f, 0.2f, dark);              // the vise
+        box(-0.36f, 1.35f, 0, 0.03f, 0.8f, 1.6f, Color{186, 160, 120, 255});   // pegboard
+        for (int k = 0; k < 5; k++) box(-0.33f, 1.2f + 0.12f * (k % 2), -0.6f + 0.3f * k, 0.03f, 0.22f, 0.04f, steel);
+    } else if (type == "station_lathe") { // a lathe: a stand, a long bed, the headstock with its chuck, a tailstock
+        box(0, 0.42f, 0, 0.5f, 0.84f, 1.6f, green);
+        box(0, 0.92f, 0, 0.32f, 0.16f, 1.7f, grey);
+        box(0, 1.15f, -0.62f, 0.42f, 0.42f, 0.42f, green);
+        drawCyl(at(0, 1.12f, -0.4f), at(0, 1.12f, -0.3f), 0.11f, tint.a ? tint : dark);
+        box(0, 1.1f, 0.6f, 0.26f, 0.22f, 0.22f, green);
+        box(0.05f, 1.06f, 0.05f, 0.3f, 0.12f, 0.18f, grey);              // the carriage
+    } else if (type == "station_mill") {  // a milling machine: a base, a column, the head and its table
+        box(0, 0.45f, 0, 0.7f, 0.9f, 0.7f, green);
+        box(-0.2f, 1.35f, 0, 0.3f, 0.9f, 0.4f, green);
+        box(0.12f, 1.65f, 0, 0.5f, 0.35f, 0.35f, green);
+        drawCyl(at(0.25f, 1.45f, 0), at(0.25f, 1.2f, 0), 0.04f, tint.a ? tint : steel);
+        box(0.25f, 0.98f, 0, 0.4f, 0.08f, 1.0f, grey);
+    } else if (type == "station_qc") {    // a test bench: a short bench, a bullet trap box with an orange face, a chronograph
+        box(0, 0.8f, 0, 0.7f, 0.06f, 1.4f, top);
+        for (float z : {-0.62f, 0.62f}) for (float x : {-0.28f, 0.28f}) box(x, 0.39f, z, 0.07f, 0.78f, 0.07f, wood);
+        box(0, 1.02f, 0.45f, 0.4f, 0.38f, 0.4f, dark);
+        box(0.21f, 1.02f, 0.45f, 0.02f, 0.3f, 0.3f, Color{236, 112, 34, 255});
+        box(0.05f, 0.88f, -0.2f, 0.12f, 0.1f, 0.3f, Color{40, 44, 48, 255});
+    } else if (type == "shop_counter") {  // a shop counter: a glass case on a wooden base, a till
+        box(0, 0.45f, 0, 0.6f, 0.9f, 2.4f, wood);
+        box(0, 0.95f, 0, 0.62f, 0.08f, 2.42f, top);
+        drawBox(at(0, 1.0f, 0), {0.55f, 0.02f, 2.3f}, Color{170, 210, 230, 255}, R, 0.45f);   // (glass)
+        box(0, 1.1f, -0.85f, 0.35f, 0.22f, 0.32f, dark);                // the till
+    }
+}
 

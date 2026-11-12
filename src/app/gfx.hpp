@@ -34,6 +34,7 @@ void drawBox(Vector3 center, Vector3 size, Color c, Matrix rot = MatrixIdentity(
 void drawAttachmentCrate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});   // a crate of attachments (metres)
 void drawAmmoBox(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});           // ammo cans: take ammunition (metres)
 void drawWeaponCrate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});       // a crate of guns (metres)
+void drawStation(const std::string& type, Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});   // career: a workstation or the counter
 void drawArmorPlate(Vector3 base, float yawDeg, Color tint = Color{0, 0, 0, 0});   // an armour plate lying flat (metres)
 void drawCyl(Vector3 a, Vector3 b, float r, Color c, float alpha = 1.f, const Mesh* mesh = nullptr);
 void drawSphereLit(Vector3 p, float r, Color c, float alpha = 1.f);

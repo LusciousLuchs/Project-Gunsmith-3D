@@ -1890,6 +1890,76 @@ static void careerRules() {
     CHECK(std::fabs(c.money - (m1 - 2500)) < 1e-6 && c.reputation < r1, "selling to someone who failed the check: a fine and some reputation, nothing worse");
 }
 
+// Career mode, stages 2-4: staff and workstations, flaws and checks, the counter, big orders with a range demonstration
+static void careerStages() {
+    std::printf("Career mode: staff, the counter, big orders\n");
+    using namespace career;
+    Career c = newCareer(11);
+    CHECK(c.stations["bench"] == 1 && c.stations["counter"] == 1 && c.candidates.size() == 3 && !c.walkins.empty(), "you start with a bench, a counter, people looking for work and customers");
+    std::string why;
+    CHECK(!hire(c, 0, &why) && why.find("workstation") != std::string::npos, "nobody can be hired with no free workstation (you're at the only bench)");
+    c.stations["bench"] = 2; c.stations["lathe"] = 1;
+    double alone = workHours(c);
+    Employee mach; mach.name = "M"; mach.specialty = "machinist"; mach.skill = 0.6; mach.wage = 200;
+    c.candidates = {mach, mach, mach};
+    CHECK(hire(c, 0) && hire(c, 0) && !hire(c, 0, &why), "three stations (all a garage holds): you and two staff, and no more");
+    double withM = workHours(c);
+    Career c2 = c; c2.stations["lathe"] = 0; c2.stations["bench"] = 3;
+    std::printf("        (hours a day: you alone %.1f, with a machinist at a lathe %.1f, at a bench %.1f)\n", alone, withM, workHours(c2));
+    CHECK(withM > alone + 6 && workHours(c2) < withM, "a machinist adds a day's work, more at a lathe than at a bench");
+    double m0 = c.money; endDay(c);
+    CHECK(c.money <= m0 - 400 + 1e-6, "wages are paid at the end of each day");
+    // flaws: an unskilled crew makes flawed copies; a finisher at a test bench catches most
+    auto flawRate = [&](double skill, bool finisher) {
+        Career t = newCareer(5); t.shopTier = 3; t.stations = {{"bench", 6}, {"qc", 1}};
+        for (int i = 0; i < 4; i++) { Employee e; e.name = "A"; e.specialty = "assembler"; e.skill = skill; e.wage = 0; t.staff.push_back(e); }
+        if (finisher) { Employee f; f.name = "F"; f.specialty = "finisher"; f.skill = 0.9; f.wage = 0; t.staff.push_back(f); }
+        GunSheet g = sheetOf(loadPreset("blowback")); g.rated = true; g.name = "G"; t.sheets["G"] = g; t.money = 1e9;
+        startBuild(t, "G", 400);
+        for (int d = 0; d < 400 && t.stock["G"] < 400; d++) endDay(t);
+        return (double)t.flawed["G"] / std::max(1, t.stock["G"]);
+    };
+    double raw = flawRate(0.1, false), checked = flawRate(0.1, true), good = flawRate(0.9, false);
+    std::printf("        (flawed copies: green crew %.1f%%, with a finisher checking %.1f%%, skilled crew %.1f%%)\n", raw * 100, checked * 100, good * 100);
+    CHECK(raw > good * 2 && checked < raw * 0.5, "green hands make more flawed copies; a finisher at a test bench catches most of them");
+    // the counter: one in a hundred can't buy
+    Career q = newCareer(17); int trouble = 0, n = 0;
+    q.stations["counter"] = 1;
+    for (int d = 0; d < 1500; d++) { endDay(q); for (auto& w : q.walkins) { n++; if (!w.trouble.empty()) trouble++; } }
+    std::printf("        (%d customers, %d couldn't buy: %.2f%%)\n", n, trouble, 100.0 * trouble / n);
+    CHECK(n > 2000 && trouble > 0 && 100.0 * trouble / n < 2.5 && 100.0 * trouble / n > 0.3, "about one customer in a hundred can't buy");
+    Career s = newCareer(23);
+    GunSheet pist = sheetOf(loadPreset("blowback")); pist.rated = true; pist.name = "P"; s.sheets["P"] = pist; s.stock["P"] = 5;
+    Walkin w; w.id = 900; w.name = "Clean"; w.idName = "Clean"; w.hands = 1; w.budget = 5000; s.walkins = {w};
+    CHECK(!sellToWalkin(s, 900, "P", 400, &why) && why.find("check") != std::string::npos, "no sale before the background check");
+    runCheck(s, 900);
+    double sm = s.money;
+    CHECK(s.walkins[0].result == "PROCEED" && sellToWalkin(s, 900, "P", 400) && std::fabs(s.money - (sm + 400)) < 1e-6 && s.stock["P"] == 4, "checked and clean: sold over the counter");
+    Walkin bad = w; bad.id = 901; bad.trouble = "denied"; s.walkins.push_back(bad);
+    runCheck(s, 901);
+    double r0 = s.reputation;
+    CHECK(s.walkins[1].result == "DENIED", "the check denies someone who can't buy");
+    refuseWalkin(s, 901, true);
+    CHECK(s.reputation > r0 && s.walkins[1].state == 3, "refusing them and calling the police: the sheriff thanks you");
+    Walkin bad2 = w; bad2.id = 902; bad2.trouble = "mismatch"; bad2.idName = "Someone Else"; s.walkins.push_back(bad2);
+    runCheck(s, 902);
+    double m2 = s.money, r2 = s.reputation;
+    CHECK(s.walkins[2].result == "PROCEED", "an ID that doesn't match the form gets past the check: you have to spot it");
+    sellToWalkin(s, 902, "P", 400);
+    CHECK(s.money < m2 && s.reputation < r2, "selling to them anyway: a fine and some reputation");
+    // big orders: the bench test, then the range demonstration
+    Career b = newCareer(31);
+    Contract k; k.id = 950; k.state = 1; k.hands = 1; k.qty = 10; k.pay = 9000; k.dueDay = b.day + 30; k.demo = true; b.contracts.push_back(k);
+    b.sheets["P"] = pist; b.stock["P"] = 10;
+    double bm = b.money;
+    CHECK(!deliver(b, 950, "P", pist) && b.contracts.back().state == 4 && std::fabs(b.money - bm) < 1e-6 && b.stock["P"] == 10, "a big order that passes the bench test waits for its demonstration, unpaid");
+    CHECK(!demoResult(b, 950, "P", 7, 20) && b.contracts.back().state == 4, "too few hits: not yet (you can try again)");
+    CHECK(demoResult(b, 950, "P", 15, 20) && b.contracts.back().state == 2 && std::fabs(b.money - (bm + 9000)) < 1e-6 && b.stock["P"] == 0, "a good demonstration: delivered and paid");
+    CHECK(std::string(tierName(0)) != tierName(70), "reputation brings a name");
+    Career back;
+    CHECK(careerFromJson(careerToJson(c), back) && back.staff.size() == c.staff.size() && back.stations["lathe"] == 1 && back.walkins.size() == c.walkins.size(), "staff, stations and customers save and load");
+}
+
 static void npcDesigns() {
     std::printf("npcDesigns\n");
     for (auto& [k, label] : npcPresets()) {
@@ -2474,6 +2544,7 @@ int main() {
     magazineShaping();
     npcDesigns();
     careerRules();
+    careerStages();
     mapsCarryNpcs();
     npcsAlive();
     npcPaths();

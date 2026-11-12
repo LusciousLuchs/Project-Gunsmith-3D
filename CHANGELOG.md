@@ -8,6 +8,25 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.6.0-alpha
+
+### New: the rest of career mode
+- **Your workshop:** Workshop & staff > Build your workshop opens it in the level editor: walls, lights, and the new Workstation tool for workbenches, lathes, milling machines, test benches and your shop counter. Walk around it on foot too. Office (top left) takes you back.
+- **Your building holds only so many workstations:** a garage 3, a small shop 6, a workshop 10, a factory floor 16. Move up when you can afford it.
+- **Hire gunsmiths.** Each has a wage, a skill level and a speciality:
+  - Machinists work fastest at a lathe or a mill.
+  - Assemblers work fastest at a bench.
+  - Finishers at a test bench check copies and catch most flaws.
+
+  Everyone needs a workstation; you take a bench. Staff get better with the days.
+- **Flawed copies:** green hands make more of them (in a test: 12.5% from an unskilled crew, 1.5% from a skilled one, 0.8% with a finisher checking). A flawed copy jams more, and its buyer says so in their review.
+- **The counter:** customers come in each day, each after something (a first handgun, a deer rifle...) with a budget. Read their form and ID, run the background check, then sell or send them away. About one in a hundred can't buy: the check denies them, or their ID doesn't match the form, or it's expired (the check won't catch those two: you have to). Refuse and call the police. Selling to them anyway costs a fine and some reputation.
+- **Reputation has names**, from garage gunsmith to defense supplier. Police orders come at 35, the military at 60: tens of guns at a time, which needs staff.
+- **Range demonstrations:** big orders pass the bench test, then you shoot a course for them on the range: 12 hits on paper in 20 rounds. Miss, and you can try again before the deadline.
+
+### Fixed
+- **Guns with a tilting or hinged barrel shot about 2° high on the range:** the shot left along the barrel as it was unlocking, not as it fired. Now the shot leaves along the barrel as drawn, in battery.
+
 ## 0.5.1-alpha
 
 ### New: materials

@@ -7,6 +7,7 @@
 // No graphics here: rendering and the editor live in app/.
 #pragma once
 #include <cmath>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -129,5 +130,8 @@ bool boxFree(const Map& m, V3 centre, V3 half);
 std::string mapToJson(const Map& m);
 bool mapFromJson(const std::string& s, Map& m);
 Map builtinRange();      // the starter practice range
+Map defaultWorkshop();   // career mode: the room you start your business in (a bench, a counter)
+// career mode: the workstations placed in a workshop map (entities station_bench/lathe/mill/qc, shop_counter -> counter)
+std::map<std::string, int> workshopStations(const Map& m);
 
 }  // namespace gmap

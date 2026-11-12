@@ -5,6 +5,7 @@
 #include "app/mapedit.hpp"
 #include "app/npcedit.hpp"
 #include "app/mapgfx.hpp"
+#include "app/careermode.hpp"
 #include "app/settings.hpp"
 #include "ui/ui.hpp"
 #include "npcai.hpp"
@@ -61,8 +62,13 @@ void mapToolbar() {
     gap();
     ImGui::AlignTextToFramePadding();
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
-    ImGui::TextDisabled("Map editor");
+    ImGui::TextDisabled(ME.careerFile.empty() ? "Map editor" : "Your workshop");
     gap(18);
+    if (!ME.careerFile.empty()) {   // career mode: back to the office (it counts your workstations)
+        if (accentButton(ICON_FA_STORE "  Office", true, {0, sz})) { careerWorkshopToOffice(); ImGui::End(); return; }
+        if (tipHover()) ImGui::SetTooltip("Back to your office. Your workshop is kept as you go.");
+        gap(12);
+    }
     struct TB { const char* icon; const char* tip; MTool t; } tools[] = {
         {ICON_FA_ARROW_POINTER, "Select, move and resize", MTool::Select}, {ICON_FA_SQUARE, "Box brush", MTool::Box},
         {ICON_FA_CARET_UP, "Ramp (wedge) brush", MTool::Wedge}, {ICON_FA_CIRCLE, "Cylinder brush", MTool::Cylinder},
@@ -73,7 +79,8 @@ void mapToolbar() {
         {ICON_FA_TOOLBOX, "Attachment crate: fit attachments to the gun in your hands", MTool::Crate},
         {ICON_FA_LIGHTBULB, "Light: a lamp or a spotlight. Click a ceiling, a wall or the floor", MTool::Light},
         {ICON_FA_BOXES_STACKED, "Ammo box: press F by it to fill up the ammunition for every gun you carry", MTool::Ammo},
-        {ICON_FA_BOX, "Weapon crate: press F by it to take any of your guns (like a gun spawner)", MTool::Weapons}};
+        {ICON_FA_BOX, "Weapon crate: press F by it to take any of your guns (like a gun spawner)", MTool::Weapons},
+        {ICON_FA_INDUSTRY, "Workstation (career mode): a bench, a lathe, a mill, a test bench, or your shop counter", MTool::Station}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -185,6 +192,16 @@ static void editTab() {
                 if (ImGui::SliderFloat("##lpitch", &pt, -90, 90, "%.0f deg")) { e.pitch = pt; tr(true); } else tr(false);
                 typeable();
             }
+        } else if (e.type.rfind("station_", 0) == 0 || e.type == "shop_counter") {
+            static const char* names[][2] = {{"station_bench", "Workbench"}, {"station_lathe", "Lathe"}, {"station_mill", "Milling machine"}, {"station_qc", "Test bench"}, {"shop_counter", "Shop counter"}};
+            const char* nm = "Workstation"; for (auto& p : names) if (e.type == p[0]) nm = p[1];
+            heading(nm);
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled(e.type == "shop_counter" ? "Career mode: customers come to your counter each day, if you have one."
+                                : e.type == "station_qc" ? "Career mode: a finisher here test-fires copies and catches most flaws."
+                                : e.type == "station_bench" ? "Career mode: where you and your assemblers work. Machinists can use one too, slower."
+                                : "Career mode: where a machinist works fastest (turned and cut parts).");
+            ImGui::PopTextWrapPos();
         } else if (e.type == "ammo_box") {
             heading("Ammo box");
             ImGui::PushTextWrapPos(0);
@@ -356,6 +373,15 @@ static void toolOptions() {
             ImGui::EndCombo();
         }
         ImGui::TextDisabled("A copy of each NPC you place is saved in the map file.");
+    }
+    if (ME.tool == MTool::Station) {
+        static const char* kinds[][2] = {{"bench", "Workbench"}, {"lathe", "Lathe"}, {"mill", "Milling machine"}, {"qc", "Test bench"}, {"counter", "Shop counter"}};
+        prop("Which", "Career mode: your staff work at these (a machinist fastest at a lathe or mill, a finisher at a test bench).\nThe counter is where customers come in. Your building holds only so many: see the office.");
+        const char* cur = "Workbench"; for (auto& k : kinds) if (ME.stationKind == k[0]) cur = k[1];
+        if (ImGui::BeginCombo("##station", cur)) {
+            for (auto& k : kinds) if (ImGui::Selectable(k[1], ME.stationKind == k[0])) ME.stationKind = k[0];
+            ImGui::EndCombo();
+        }
     }
     if (ME.tool == MTool::Cylinder) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); typeable(); }
     if (ME.tool == MTool::Stairs) { prop("Steps"); ImGui::SliderInt("##steps", &ME.stairSteps, 2, 32); typeable(); }
