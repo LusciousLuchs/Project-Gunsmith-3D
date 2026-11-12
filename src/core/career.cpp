@@ -28,7 +28,7 @@ double GunSheet::quality() const {
     double rel = rated ? clamp01(1 - jamRate / 8) : 0.5;                    // 8% jams and up: worthless as a working gun
     double acc = moa > 0 ? clamp01((8 - moa) / 7) : 0.7;                   // (a shotgun's pattern: fair)
     double kick = twoHands ? clamp01(1 - (recoil - 2.5) / 6) : clamp01(1 - (recoil - 3) / 8);
-    // (weights as the game draws them: solid steel unless a part's weight is set, so long guns come out heavy)
+    // (weights as drawn: each part's material, steel unless chosen, so older long guns come out heavy)
     double heft = twoHands ? clamp01(1 - (massKg - 7) / 5) : clamp01(1 - (massKg - 1.1) / 1.2);
     return 0.55 * rel + 0.2 * acc + 0.15 * kick + 0.1 * heft;
 }
@@ -42,11 +42,15 @@ GunSheet sheetOf(const Design& d) {
     s.caliber = cart.name;
     s.energy = cart.energy();
     s.velocity = cart.velocity;
-    double grams = 0, carves = 0, turned = 0, rifled = 0;
+    double grams = 0, carves = 0, turned = 0, rifled = 0, cost = 0, shaping = 0;
     for (auto& b : d.bodies) {
         if (b.magazine && !b.magFixed) { s.capacity = std::max(s.capacity, b.magCap); continue; }   // (magazines come with it, cheaply)
         if (b.magazine) s.capacity = std::max(s.capacity, b.magCap);
-        grams += b.mass > 0 ? b.mass : std::fabs(sim::polyArea(b.pts)) * b.thick * 0.00785;   // steel unless its weight is set
+        const MaterialInfo& mt = materialOf(b.material);
+        double g = b.mass > 0 ? b.mass : std::fabs(sim::polyArea(b.pts)) * b.thick * mt.density * 1e-3;   // (its material, unless its weight is set)
+        grams += g;
+        cost += g / 1000 * mt.costPerKg;
+        shaping += 0.2 * mt.hoursK;
         s.parts++;
         carves += b.carves.size();
         if (b.round) turned++;
@@ -72,8 +76,8 @@ GunSheet sheetOf(const Design& d) {
             }
     }
     // to make one: every part shaped and fitted, cuts and turned parts take longer, springs wound, a barrel rifled
-    s.buildHours = 0.5 + 0.2 * s.parts + 0.3 * carves + 0.3 * turned + 0.15 * springs + 0.5 * rifled;
-    s.materialCost = 25 * s.massKg + 2 * s.parts + 10;
+    s.buildHours = 0.5 + shaping + 0.3 * carves + 0.3 * turned + 0.15 * springs + 0.5 * rifled;   // (shaping: 0.2 h a steel part)
+    s.materialCost = 3 * cost + 2 * s.parts + 10;   // (stock bought in, with waste)
     return s;
 }
 

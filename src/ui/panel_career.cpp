@@ -90,7 +90,7 @@ static void gunsTab() {
             if (!s.posed && tipHover()) ImGui::SetTooltip("Place its firing hand in Pose (Test bench > Pose): that's what says whether it's one- or two-handed.");
             ImGui::TableNextColumn(); ImGui::TextUnformatted(s.caliber.c_str()); ImGui::TextDisabled("%.0f J", s.energy);
             ImGui::TableNextColumn(); ImGui::Text("%.2f kg", s.massKg);
-            if (tipHover()) ImGui::SetTooltip("As drawn: every part is solid steel unless you set its weight in the designer (the part's Mass),\nso a wooden stock drawn solid counts as steel. Set real weights for a fair rating.");
+            if (tipHover()) ImGui::SetTooltip("As drawn: each part's volume times its material (the part's Material in the designer; steel if not chosen),\nunless you set its Mass. A wooden stock left as steel weighs ten times too much.");
             ImGui::TableNextColumn();
             if (rated) ImGui::TextColored(s.jamRate < 1 ? ImVec4(0.5f, 0.9f, 0.55f, 1) : s.jamRate < 5 ? ImVec4(0.95f, 0.8f, 0.4f, 1) : ImVec4(1, 0.45f, 0.4f, 1), "%.1f%%", s.jamRate);
             else ImGui::TextDisabled("not rated");

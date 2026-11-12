@@ -15,4 +15,6 @@ void playShotMix(const ShotMix& m, float vol = 1);
 // The action: a part of mass kg (its whole welded assembly) slamming home or throwing a case; speed m/s, <0 unknown
 void playAction(double massKg, double speed = -1, float vol = 1);
 double barrelLength(const Design& d, int chamber = 0);   // face to muzzle, mm (-1 without a muzzle)
-double actionMass(const sim::Sim& S);                    // the breech's whole welded assembly, kg (-1 if none)
+double actionMass(const sim::Sim& S);
+void actionEventSound(const sim::Sim& S, sim::Ev kind);   // a case out, a round chambered: by the action's speed (hand: the bolt recordings)
+void actionRollSound(const sim::Sim& S);                  // every frame: a turning bolt's lift and lock clicks                    // the breech's whole welded assembly, kg (-1 if none)

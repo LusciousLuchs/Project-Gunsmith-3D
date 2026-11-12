@@ -8,7 +8,6 @@
 
 namespace sim {
 
-static constexpr double DENS = 7.85e-6;  // kg per mm^3, steel
 
 // ---------- geometry ----------
 double polyArea(const std::vector<V2>& p) {
@@ -227,8 +226,9 @@ std::unique_ptr<Sim> build(const Design& design) {
                 x.cav.push_back(lq);
             }
             double off2 = (cen.x - cx) * (cen.x - cx) + (cen.y - cy) * (cen.y - cy);
-            x.m = area * t * DENS;
-            x.I = std::max((J + area * off2) * t * DENS * 1e-6, x.m * 0.004 * 0.004);
+            const double dens = densityOf(d);   // (its material)
+            x.m = area * t * dens;
+            x.I = std::max((J + area * off2) * t * dens * 1e-6, x.m * 0.004 * 0.004);
             x.invM = x.fixed ? 0 : 1 / x.m;
             x.invI = x.fixed ? 0 : 1 / x.I;
             x.z = (c.z0 + c.z1) / 2000; x.zh = t / 2000;
@@ -238,8 +238,9 @@ std::unique_ptr<Sim> build(const Design& design) {
         }
         if (sl.empty()) continue;  // carved away completely
         if (d.mass > 0) for (auto& x : sl) {  // the player set the weight: share it out by volume
-            double f = (x.m / DENS) / vol;
-            x.m = d.mass / 1000 * f; x.I = std::max(x.I * (d.mass / 1000) / (vol * DENS), x.m * 0.004 * 0.004);
+            const double dens = densityOf(d);
+            double f = (x.m / dens) / vol;
+            x.m = d.mass / 1000 * f; x.I = std::max(x.I * (d.mass / 1000) / (vol * dens), x.m * 0.004 * 0.004);
             x.invM = x.fixed ? 0 : 1 / x.m; x.invI = x.fixed ? 0 : 1 / x.I;
         }
         size_t main = 0;
@@ -263,7 +264,7 @@ bool makeBody(const BodyDef& d, Body& b) {
         V2 c = polyCentroid(shape);
         b.d = &d; b.id = d.id; b.fixed = d.fixed; b.damp = d.damp;
         for (auto& p : shape) b.lp.push_back({(p.x - c.x) / 1000, (p.y - c.y) / 1000});
-        b.m = d.mass > 0 ? d.mass / 1000 : A * (d.thick > 0 ? d.thick : 10) * DENS;
+        b.m = d.mass > 0 ? d.mass / 1000 : A * (d.thick > 0 ? d.thick : 10) * densityOf(d);
         double sig = b.m / (A * 1e-6), num = 0;
         for (size_t i = 0; i < b.lp.size(); i++) {
             V2 p1 = b.lp[i], p2 = b.lp[(i + 1) % b.lp.size()];
@@ -1273,7 +1274,9 @@ void substep(Sim& S) {
             Body &a = *pr.first, &b = *pr.second;
             if (a.bb[0] > b.bb[2] || b.bb[0] > a.bb[2] || a.bb[1] > b.bb[3] || b.bb[1] > a.bb[3]) continue;
             if (std::fabs(a.z - b.z) >= a.zh + b.zh - 1e-5) continue;  // passing each other in depth
-            contacts(a, b, it == 0 ? S.design.friction : 0); contacts(b, a, it == 0 ? S.design.friction : 0);
+            // friction between their materials: steel on steel is the design's own; rubber grips, polymer and brass slip
+            double mu = it == 0 ? S.design.friction * std::sqrt((a.d ? materialOf(a.d->material).friction : 1.0) * (b.d ? materialOf(b.d->material).friction : 1.0)) : 0;
+            contacts(a, b, mu); contacts(b, a, mu);
         }
     }
     // loose parts rest on the baseplate

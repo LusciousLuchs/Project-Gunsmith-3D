@@ -8,6 +8,20 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.5.1-alpha
+
+### New: materials
+- **Every part has a material** (the part's panel, above Mass): steel, iron, brass, aluminum, aluminum alloy, wood, polymer or rubber. Parts you've already made stay steel.
+- **It changes how the gun works.** A part weighs what its material weighs, so the gun kicks differently and its moving parts move at different speeds. Measured on the blowback pistol with its whole slide changed: steel 9.1 m/s, brass 8.4, aluminum 24.8, polymer 44.1. Light slides slam back hard, which is why real blowback slides are steel.
+- **It changes how parts slide on each other:** rubber grips, polymer and brass slip easily, aluminum rubs harder.
+- **Career mode:** the material sets each part's cost, and how long it takes to make (wood is slow to shape, polymer is quick).
+- **Its usual colour**, with one click.
+- A weight you type in still wins over the material.
+
+### New: your recorded Mosin bolt
+- **Actions worked by hand now sound like your Mosin:** the lift click, the clack at the back, the clack as it goes home, and the click as it locks down.
+- **Chosen by how the action moves, not by the kind of gun:** anything worked at hand speed gets the bolt sounds; slides and carriers driven by the shot keep the pistol slide recordings.
+
 ## 0.5.0-alpha
 
 ### New: Career mode (a first, basic version)

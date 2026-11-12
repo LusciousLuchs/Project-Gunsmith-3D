@@ -861,11 +861,12 @@ void rangeUpdate(float dt, bool modal) {
                 }
                 if (!any && br.hasMuzzle) fireBullets(0);
             }
-            if (e.kind == sim::Ev::Eject || e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) playAction(actionMass(S));
+            if (e.kind == sim::Ev::Eject || e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) actionEventSound(S, e.kind);
             if (e.kind == sim::Ev::Click && SFX.ok && A.sound) PlaySound(SFX.click);
             if (e.kind == sim::Ev::Malfunction && S.malf != sim::Malf::None && SFX.ok && A.sound) PlaySound(SFX.click);
         }
         S.events.clear();
+        actionRollSound(S);
     }
     // the kick rises and settles like a spring
     R.kickPitch += R.kickVel * dt;

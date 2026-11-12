@@ -1024,6 +1024,7 @@ std::string designToJson(const Design& d, bool pretty) {
             jb["carves"] = cs;
         }
         if (b.mass > 0) jb["mass"] = b.mass;
+        if (!b.material.empty() && b.material != "steel") jb["material"] = b.material;
         if (b.magazine) {
             jb["magazine"] = {{"cap", b.magCap}};
             if (b.lipHeight != 0) jb["magazine"]["lipHeight"] = b.lipHeight;
@@ -1224,6 +1225,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.z = opt<double>(jb, "z", 0.0);
         b.thick = opt<double>(jb, "thick", 10);
         b.mass = opt<double>(jb, "mass", 0);
+        b.material = opt<std::string>(jb, "material", "");
         b.damp = opt<double>(jb, "damp", 0);
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
@@ -1685,3 +1687,25 @@ void autoAttach(Design& d) {
     }
     if (op.reticle.empty()) op.reticle = defaultReticle(op.kind);
 }
+
+// ---------------------------------------------------------------- materials
+const std::vector<MaterialInfo>& materials() {
+    // density g/cm^3; friction against steel on steel (1); colour; $ per kg of stock; hours to shape against steel
+    static const std::vector<MaterialInfo> m = {
+        {"steel", "Steel", 7.85, 1.0, "#5d636c", 8, 1.0, "Strong and heavy: barrels, bolts, slides, springs."},
+        {"iron", "Iron", 7.2, 1.1, "#4a4c50", 4, 0.9, "Cast iron: cheap and heavy, a little rougher than steel."},
+        {"brass", "Brass", 8.5, 0.8, "#b8953e", 14, 0.9, "Heavier than steel, and slides easily on it: bushings, guards, trim."},
+        {"aluminum", "Aluminum", 2.7, 1.25, "#b9bec6", 7, 0.8, "A third of steel's weight, but grabs when it rubs (galls)."},
+        {"alloy", "Aluminum alloy", 2.81, 1.1, "#3d4148", 16, 0.9, "Aircraft alloy, hard-anodised: light and strong, receivers and rails."},
+        {"wood", "Wood", 0.65, 1.3, "#7a5233", 12, 1.3, "Walnut: light, warm, slow to shape. Stocks and grips."},
+        {"polymer", "Polymer", 1.4, 0.75, "#232427", 9, 0.6, "Glass-filled nylon: light, slippery, quick to make once moulded."},
+        {"rubber", "Rubber", 1.15, 3.0, "#1b1b1c", 6, 0.5, "Grippy and light: recoil pads, grip panels, buffers."},
+    };
+    return m;
+}
+const MaterialInfo& materialOf(const std::string& id) {
+    for (auto& x : materials()) if (id == x.id) return x;
+    return materials()[0];
+}
+double densityOf(const BodyDef& b) { return materialOf(b.material).density * 1e-6; }
+

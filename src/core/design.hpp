@@ -133,13 +133,22 @@ struct MountDef {          // an attachment point on a part's surface: it takes 
     double nx = 0, ny = -1, nz = 0;   // out of the surface (y points down)
     double spin = 0;       // degrees: which way an attachment on it faces, about that
 };
+// What a part is made of: how heavy (density), how it slides on other parts (friction, against steel = 1), its usual
+// colour, and (career mode) what it costs and how long it takes to shape against steel
+struct MaterialInfo { const char* id; const char* name; double density; double friction; const char* color; double costPerKg; double hoursK; const char* tip; };
+const std::vector<MaterialInfo>& materials();
+const MaterialInfo& materialOf(const std::string& id);   // unknown or "": steel
+struct BodyDef;
+double densityOf(const BodyDef& b);                      // kg per mm^3
+
 struct BodyDef {
     std::string id, name;
     bool fixed = false;
     std::string layer = "none";          // "none", "A", "B", "C"
     double thick = 10;                   // depth in mm (also drives mass)
     double z = 0;                        // depth position of its centre, mm (+ = the near side in side view, 0 = the bore)
-    double mass = 0;                     // grams; 0 = from area x thickness x steel
+    double mass = 0;                     // grams; 0 = from its volume and material
+    std::string material;                // what it's made of (materials() ids); "" = steel (older blueprints)
     double damp = 0;                     // friction-like damping, 1/s
     std::string color = "#8e9ab4";
     std::string texture;                 // a picture from user/textures on its surface ("" = plain colour); the colour tints it

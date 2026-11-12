@@ -500,6 +500,20 @@ static void inspectPart(BodyDef& b) {
         }
         pNumU("Z (offset)", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, + is the gun's right side (toward you in the side view).\nParts only touch where they overlap across the gun too.\nWhile dragging a part, Z moves it this way.", SIGNED);
         tutAnchor("part:depth");
+        {   // what it's made of: its weight, how it slides on other parts, (career) its cost
+            const MaterialInfo& mt = materialOf(b.material);
+            prop("Material", "What the part is made of. It sets how heavy the part is (and so how the gun kicks and how fast its parts move),\nhow it slides against other parts, and what it costs to make in career mode.");
+            if (ImGui::BeginCombo("##material", mt.name)) {
+                for (auto& m : materials()) {
+                    if (ImGui::Selectable(m.name, &m == &mt)) { b.material = std::string(m.id) == "steel" ? "" : m.id; editedAny = true; }
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n%.2f g/cm3, %s against steel.", m.tip, m.density,
+                                                                m.friction > 1.5 ? "grips" : m.friction > 1.05 ? "rubs a little harder" : m.friction < 0.95 ? "slides easily" : "slides as steel does");
+                }
+                ImGui::EndCombo();
+            }
+            if (ImGui::SmallButton(TextFormat("Its usual colour##mc"))) { b.color = mt.color; b.texture.clear(); editedAny = true; }
+            if (tipHover()) ImGui::SetTooltip("Paint the part as %s usually looks (takes off a picture on it).", mt.name);
+        }
         if (!b.fixed) {
             double autoMass;
             {   // (carved volume takes a moment to work out: only when the shape changes)
@@ -510,9 +524,9 @@ static void inspectPart(BodyDef& b) {
                 for (double q : b.bulge) k += std::to_string(q) + "b";
                 for (auto& c : b.carves) k += c.shape + std::to_string(c.at.x) + std::to_string(c.at.y) + std::to_string(c.atZ) + std::to_string(c.dx) + std::to_string(c.dy) + std::to_string(c.dz) + std::to_string(c.spin) + std::to_string(c.w) + std::to_string(c.h) + std::to_string(c.depth);
                 if (k != key) { key = k; vol = carve::volume(b); }
-                autoMass = vol * 7.85e-3;
+                autoMass = vol * materialOf(b.material).density * 1e-3;
             }
-            pNumU("Mass", b.mass, 10, Q::PartMass, -1, "0 works it out from the shape, as steel.");
+            pNumU("Mass", b.mass, 10, Q::PartMass, -1, "0 works it out from the shape and its material.");
             tutAnchor("part:mass");
             if (b.mass <= 0) muted("Worked out from the shape: %s.", fmtQ(Q::PartMass, autoMass).c_str());
         }

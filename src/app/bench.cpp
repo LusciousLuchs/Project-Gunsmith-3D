@@ -119,7 +119,7 @@ void stepSim(float dt) {
                 for (int i = 0; i < 6; i++) A.puffs.push_back({Vector3Add(m, {1.5f + i * 0.9f, 0, 0}), {2.5f + GetRandomValue(0, 30) / 10.f, 0.8f + GetRandomValue(0, 10) / 10.f, GetRandomValue(-10, 10) / 10.f}, 0.35f + i * 0.08f, 1.3f, 1.3f});
             }
         }
-        if (e.kind == sim::Ev::Eject && S.physicalFeed) playAction(actionMass(S));  // the case is a real part
+        if (e.kind == sim::Ev::Eject && S.physicalFeed) actionEventSound(S, e.kind);  // the case is a real part
         if (e.kind == sim::Ev::ClipOut) { playAction(0.03); toast("Ping: the empty clip flew out."); }
         if (e.kind == sim::Ev::Eject && br.hasFace && !S.physicalFeed) {
             V2 f = curMM(br.breech, br.face);
@@ -129,17 +129,18 @@ void stepSim(float dt) {
             s.dir = {1, 0, 0}; s.spin = 0; s.life = 6; s.len = (float)br.roundLen * 0.62f * U; s.r = (float)br.roundDia / 2 * U;
             s.axisSpin = Vector3Normalize({(float)GetRandomValue(-10, 10), (float)GetRandomValue(-10, 10), 10});
             A.shells.push_back(s);
-            playAction(actionMass(S));
+            actionEventSound(S, e.kind);
         }
         if (e.kind == sim::Ev::Malfunction && S.malf != sim::Malf::None) {
             toast(std::string("Jam: ") + sim::malfName(S.malf) + ". Rack the action or pull the stuck round out by hand.");
             if (SFX.ok && A.sound) PlaySound(SFX.click);
         }
         if (e.kind == sim::Ev::Click) { A.clickT = 1.0f; if (SFX.ok && A.sound) PlaySound(SFX.click); }
-        if (e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) playAction(actionMass(S));
+        if (e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) actionEventSound(S, e.kind);
         if (e.kind == sim::Ev::MagLoaded && SFX.ok && A.sound) PlaySound(SFX.click);
     }
     S.events.clear();
+    actionRollSound(S);   // (a turning bolt lifting or locking)
     std::vector<float> row;
     for (auto& b : S.bodies) if (mainPart(b)) row.push_back((float)((b.x - b.x0) * 1000));
     A.trace.push_back({S.t, row});

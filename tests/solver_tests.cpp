@@ -15,6 +15,7 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <set>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -2351,6 +2352,39 @@ static void fittingAttachments() {
         double v0 = peak(p0), vS = peak(pS), vF = peak(pF);
         std::printf("    slide speed: plain %.2f m/s, 150 g on the slide %.2f, 150 g on the frame %.2f\n", v0, vS, vF);
         CHECK(vS < v0 * 0.93 && std::fabs(vF - v0) < v0 * 0.02, "150 g on the slide slows it; on the frame it changes nothing");
+    }
+    {   // materials: a slide's weight follows its material, and so does how fast the action runs; old designs are steel
+        auto peak = [](Design d) {
+            auto S = sim::build(d);
+            sim::run(*S, 0.003);
+            S->pressed = true; S->trigger = true; sim::setKey(*S, "fire", true);
+            double v = 0;
+            for (int i = 0; i < 300; i++) {
+                sim::run(*S, 0.0001);
+                v = std::max(v, -S->find("slide")->vx);
+                if (i == 150) { sim::setKey(*S, "fire", false); S->trigger = false; }
+            }
+            return v;
+        };
+        // the whole slide: every part welded to it, each weighed by its material (a typed-in weight would override it)
+        Design st = loadPreset("blowback");
+        std::set<std::string> ids;
+        {
+            auto S = sim::build(st);
+            sim::Body* sl = S->find("slide"); sim::Body* root = sl->root ? sl->root : sl;
+            for (auto& b : S->bodies) if (&b == root || b.root == root) ids.insert(b.d ? b.d->id : b.id);
+        }
+        for (auto& b : st.bodies) if (ids.count(b.id)) b.mass = 0;
+        Design al = st, br = st;
+        for (auto& b : al.bodies) if (ids.count(b.id)) b.material = "aluminum";
+        for (auto& b : br.bodies) if (ids.count(b.id)) b.material = "brass";
+        double vSt = peak(st), vAl = peak(al), vBr = peak(br);
+        std::printf("    slide speed: steel %.2f m/s, brass %.2f, aluminum %.2f\n", vSt, vBr, vAl);
+        CHECK(vAl > vSt * 1.3 && vBr < vSt, "an aluminum slide (a third the weight) flies back much faster; a brass one a little slower");
+        Design plain = loadPreset("blowback"); Design back;
+        CHECK(designToJson(plain).find("\"material\"") == std::string::npos && designFromJson(designToJson(al), back) &&
+              [&] { for (auto& b : back.bodies) if (b.id == "slide") return b.material == "aluminum"; return false; }(), "materials save and load; older designs save as before (steel)");
+        CHECK(std::fabs(densityOf(BodyDef()) - 7.85e-6) < 1e-12 && materialOf("wood").density < 1 && materialOf("rubber").friction > 2, "no material is steel; wood floats; rubber grips");
     }
     {   // a suppressor screwed on a muzzle thread (its back end against a point facing forward): it carries on forward
         Design sup; sup.name = "Suppressor";

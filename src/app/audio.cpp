@@ -51,6 +51,7 @@ struct Pool {
     }
 };
 Pool gPistol, gRifle, gCrack, gAction, gBoom, gTail;
+Pool gBoltLift, gBoltBack, gBoltFwd, gBoltLock;   // the owner's Mosin worked by hand: lifted, pulled back, pushed home, turned down
 Sound fromSamples(const std::vector<float>& y, int rate) {
     short* d = (short*)MemAlloc((unsigned)(y.size() * sizeof(short)));
     for (size_t i = 0; i < y.size(); i++) d[i] = (short)(std::clamp(y[i], -1.f, 1.f) * 32000);
@@ -73,10 +74,11 @@ static void loadRecordings() {
         Sound s = LoadSoundFromWave(w);
         UnloadWave(w);
         std::string n = b.name;
-        Pool* p = n.rfind("pistol_", 0) == 0 ? &gPistol : n.rfind("rifle_", 0) == 0 ? &gRifle : n.rfind("crack_", 0) == 0 ? &gCrack : n.rfind("action_", 0) == 0 ? &gAction : nullptr;
+        Pool* p = n.rfind("pistol_", 0) == 0 ? &gPistol : n.rfind("rifle_", 0) == 0 ? &gRifle : n.rfind("crack_", 0) == 0 ? &gCrack : n.rfind("action_", 0) == 0 ? &gAction
+                : n.rfind("bolt_lift_", 0) == 0 ? &gBoltLift : n.rfind("bolt_back_", 0) == 0 ? &gBoltBack : n.rfind("bolt_fwd_", 0) == 0 ? &gBoltFwd : n.rfind("bolt_lock_", 0) == 0 ? &gBoltLock : nullptr;
         if (!p) { UnloadSound(s); continue; }
         std::vector<Sound> v{s};
-        int extra = p == &gAction ? 1 : 3;   // shots ring on: more voices for quick fire
+        int extra = p == &gPistol || p == &gRifle || p == &gCrack ? 3 : 1;   // shots ring on: more voices for quick fire
         for (int k = 0; k < extra; k++) v.push_back(LoadSoundAlias(s));
         p->voices.push_back(v);
     }
@@ -124,6 +126,56 @@ void initSfx() {
     loadRecordings();
 }
 void uiTick() { if (SFX.ok && A.sound) PlaySound(SFX.tick); }
+// The action's sounds, chosen by how it moves, not by what kind of gun it is. Driven by the shot (a slide, a carrier:
+// fast), the recorded slide on its events; worked at hand speed, the recorded bolt from the breech's own motion: a
+// clack when it stops at the back, another as it arrives home, and clicks as a turning bolt lifts and locks.
+namespace {
+struct ActionWatch {
+    const void* sim = nullptr;
+    double homeX = 0, homeY = 0;     // the breech where it started (in battery), m
+    double peak = 0;                 // its fastest lately (m/s), fading over about 0.15 s
+    double lastT = 0, lastD = 0, lastV = 0, lastRoll = -1;
+    bool out = false;                // it has been opened since it was last home
+} gW;
+const sim::Body* breechRoot(const sim::Sim& S) { return S.BR ? (S.BR->root ? S.BR->root : S.BR) : nullptr; }
+bool byHand() { return gW.peak < 2.5 && !gBoltBack.empty() && !gBoltFwd.empty(); }
+float boltPitch(const sim::Sim& S) { return (float)std::clamp(std::pow(std::max(0.05, actionMass(S)) / 0.35, -0.12), 0.8, 1.25); }   // (the Mosin's bolt: about 0.35 kg)
+}  // namespace
+void actionEventSound(const sim::Sim& S, sim::Ev kind) {
+    (void)kind;
+    if (!SFX.ok || !A.sound) return;
+    if (gW.sim == &S && byHand()) return;   // (worked by hand: its motion makes the sounds, below)
+    playAction(actionMass(S));
+}
+void actionRollSound(const sim::Sim& S) {
+    const sim::Body* B = breechRoot(S);
+    if (!B) { gW.sim = nullptr; return; }
+    if (gW.sim != (const void*)&S) {   // a new gun: where its breech starts is home
+        gW = ActionWatch(); gW.sim = &S; gW.homeX = B->x; gW.homeY = B->y; gW.lastT = S.t;
+        return;
+    }
+    double dt = std::max(1e-6, S.t - gW.lastT);
+    double speed = std::hypot(B->vx, B->vy);
+    gW.peak = std::max(speed, gW.peak * std::exp(-dt / 0.15));
+    double d = std::hypot(B->x - gW.homeX, B->y - gW.homeY);
+    double v = (d - gW.lastD) / dt;   // + opening, - closing
+    bool sound = SFX.ok && A.sound && S.t > gW.lastT;
+    float g = 0.9f * CFG.volMechanical;
+    if (sound && byHand()) {
+        if (d > 0.012 && gW.lastV > 0.05 && v <= 0.02 && !gW.out) { gBoltBack.play(g, boltPitch(S)); gW.out = true; }   // stopped at the back
+        if (gW.out && d < 0.002 && gW.lastD >= 0.002) { gBoltFwd.play(g, boltPitch(S)); gW.out = false; }              // home
+        if (B->d && B->d->rollOn) {   // a bolt that turns to lock
+            double span = (B->d->rollMax - B->d->rollMin) * DEG2RAD;
+            if (std::fabs(span) > 1e-6) {
+                double f = (B->roll - B->d->rollMin * DEG2RAD) / span;
+                if (gW.lastRoll >= 0 && gW.lastRoll < 0.6 && f >= 0.6 && !gBoltLift.empty()) gBoltLift.play(g * 0.85f, 1);
+                if (gW.lastRoll > 0.3 && f <= 0.3 && !gBoltLock.empty()) gBoltLock.play(g * 0.85f, 1);
+                gW.lastRoll = f;
+            }
+        }
+    } else if (d < 0.002) gW.out = false;
+    if (S.t > gW.lastT) { gW.lastD = d; gW.lastV = v; gW.lastT = S.t; }
+}
 double actionMass(const sim::Sim& S) {
     if (!S.BR) return -1;
     return (S.BR->root ? S.BR->root : S.BR)->m;   // (a root carries its welded pieces' mass)
