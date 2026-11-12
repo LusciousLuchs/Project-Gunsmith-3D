@@ -56,7 +56,7 @@ Rings gPartR;
 Design gPartSnap;
 double gPartSign = 1;
 bool partRingsShown() {
-    return A.mode == Mode::Build && A.tool == Tool::Select && A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()
+    return A.mode == Mode::Build && A.tool == Tool::Select && A.rotateMode && A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()
         && A.dragKind == 0 && !A.faceDragging && !A.posing;
 }
 void partRingsSetup() {

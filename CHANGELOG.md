@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.7.9-alpha
+
+### Designer
+- **Move, Rotate and Scale switch** on the top bar (next to Undo). **Move**: drag parts, corners and faces as before, with no rings in the way. **Rotate**: the rings round the selected part appear (blue turns it in the side view, red and green lean it). **Scale**: the box round the part. The rings no longer show up on their own, and Scale has left the tool bar on the left.
+
 ## 0.7.8-alpha
 
 ### Bolt hold-open

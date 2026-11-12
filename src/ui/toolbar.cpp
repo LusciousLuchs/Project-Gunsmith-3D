@@ -24,7 +24,9 @@
 static bool iconButton(const char* icon, const char* tip, bool on = false) {
     float sz = TOOLBAR_H - 14 * CFG.uiScale;
     if (on) { ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.91f, 0.63f, 0.23f, 0.22f)); ImGui::PushStyleColor(ImGuiCol_Text, colAccent()); }
+    ImGui::PushID(tip);   // (two buttons can share an icon)
     bool r = ImGui::Button(icon, {sz, sz});
+    ImGui::PopID();
     if (on) ImGui::PopStyleColor(2);
     if (tipHover()) ImGui::SetTooltip("%s", tip);
     return r;
@@ -141,7 +143,6 @@ static const RailTool RAIL_DRAW[] = {
 static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_CUBE, "Faces", "Point at any face of a part (front, back, top, bottom, ends) and drag to push or pull it.\nE extrudes the face: move the mouse to draw it out, click to finish.", Tool::Faces, -1},
     {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
-    {ICON_FA_EXPAND, "Scale", "Make a part bigger or smaller: drag a corner of the box round it (Shift: stretch freely),\nor an edge to stretch it one way. Ctrl scales about its middle. Pins, slots and springs on it go with it.\nOr type exact sizes in its panel. With corners picked, only those corners are scaled.", Tool::Scale, -1},
     {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.\nIt stays a live mirror: change either one and the other follows.", Tool::Mirror, -1},
     {ICON_FA_RULER, "Measure", "Drag between two points to measure: the length, how far across and up, and the angle.\nSnaps to corners and joints. The line stays until you measure again;\ntick Keep it shown (right) to see it while you move parts.", Tool::Measure, -1},
     {ICON_FA_CIRCLE_MINUS, "Carve", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1},
@@ -299,6 +300,17 @@ void toolbar() {
         ImGui::BeginDisabled(A.future.empty());
         if (iconButton(ICON_FA_ROTATE_RIGHT, "Redo (Ctrl+Y)")) redo();
         ImGui::EndDisabled();
+        gap(16);
+        {   // what dragging the selected part does: move it, turn it (rings), or scale it (a box)
+            bool sel = A.tool == Tool::Select, mv = sel && !A.rotateMode, rt = sel && A.rotateMode, sc = A.tool == Tool::Scale;
+            if (iconButton(ICON_FA_UP_DOWN_LEFT_RIGHT, "Move: pick parts and drag them about.\nCorners, edges and faces of the selected part drag too.", mv)) { A.tool = Tool::Select; A.rotateMode = false; }
+            tutAnchor("tool:Select");
+            ImGui::SameLine(0, 2);
+            if (iconButton(ICON_FA_ROTATE, "Rotate: rings round the selected part. Drag a ring to turn it about that axis (Ctrl: 15 degree steps):\nthe blue one turns it in the side view, red and green lean it toward or away from you.", rt)) { A.tool = Tool::Select; A.rotateMode = true; }
+            ImGui::SameLine(0, 2);
+            if (iconButton(ICON_FA_MAXIMIZE, "Scale: a box round the selected part. Drag a corner to make it bigger or smaller (Shift: stretch freely),\nor an edge to stretch it one way. Ctrl scales about its middle. Pins, slots and springs on it go with it.\nOr type exact sizes in its panel. With corners picked, only those corners are scaled.", sc)) { A.tool = Tool::Scale; A.rotateMode = false; }
+            tutAnchor("tool:Scale");
+        }
         gap(16);
         snapControls(sz);
     } else {

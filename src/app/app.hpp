@@ -138,6 +138,7 @@ struct App {
     std::vector<Handle> handles;
     // camera
     bool ortho = false;
+    bool rotateMode = false;   // the Select tool turns the selected part with rings (the top bar's Rotate) instead of only moving it
     Vector3 target{10, -3, 0};
     float yaw = 0.42f, pitch = 0.30f, dist = 40, orthoH = 26;
     Camera3D cam{};
