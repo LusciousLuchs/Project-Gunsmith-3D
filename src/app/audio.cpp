@@ -51,7 +51,8 @@ struct Pool {
     }
 };
 Pool gPistol, gRifle, gCrack, gAction, gBoom, gTail;
-Pool gBoltLift, gBoltBack, gBoltFwd, gBoltLock;   // the owner's Mosin worked by hand: lifted, pulled back, pushed home, turned down
+Pool gBoltLift, gBoltBack, gBoltFwd, gBoltLock;
+Pool gSlideBack, gSlideFwd;   // the owner's slide racked by hand (slide-racking): drawn back to its stop, sent home   // the owner's Mosin worked by hand: lifted, pulled back, pushed home, turned down
 Sound fromSamples(const std::vector<float>& y, int rate) {
     short* d = (short*)MemAlloc((unsigned)(y.size() * sizeof(short)));
     for (size_t i = 0; i < y.size(); i++) d[i] = (short)(std::clamp(y[i], -1.f, 1.f) * 32000);
@@ -75,7 +76,8 @@ static void loadRecordings() {
         UnloadWave(w);
         std::string n = b.name;
         Pool* p = n.rfind("pistol_", 0) == 0 ? &gPistol : n.rfind("rifle_", 0) == 0 ? &gRifle : n.rfind("crack_", 0) == 0 ? &gCrack : n.rfind("action_", 0) == 0 ? &gAction
-                : n.rfind("bolt_lift_", 0) == 0 ? &gBoltLift : n.rfind("bolt_back_", 0) == 0 ? &gBoltBack : n.rfind("bolt_fwd_", 0) == 0 ? &gBoltFwd : n.rfind("bolt_lock_", 0) == 0 ? &gBoltLock : nullptr;
+                : n.rfind("bolt_lift_", 0) == 0 ? &gBoltLift : n.rfind("bolt_back_", 0) == 0 ? &gBoltBack : n.rfind("bolt_fwd_", 0) == 0 ? &gBoltFwd : n.rfind("bolt_lock_", 0) == 0 ? &gBoltLock
+                : n.rfind("slide_back_", 0) == 0 ? &gSlideBack : n.rfind("slide_fwd_", 0) == 0 ? &gSlideFwd : nullptr;
         if (!p) { UnloadSound(s); continue; }
         std::vector<Sound> v{s};
         int extra = p == &gPistol || p == &gRifle || p == &gCrack ? 3 : 1;   // shots ring on: more voices for quick fire
@@ -162,8 +164,12 @@ void actionRollSound(const sim::Sim& S) {
     bool sound = SFX.ok && A.sound && S.t > gW.lastT;
     float g = 0.9f * CFG.volMechanical;
     if (sound && byHand()) {
-        if (d > 0.012 && gW.lastV > 0.05 && v <= 0.02 && !gW.out) { gBoltBack.play(g, boltPitch(S)); gW.out = true; }   // stopped at the back
-        if (gW.out && d < 0.002 && gW.lastD >= 0.002) { gBoltFwd.play(g, boltPitch(S)); gW.out = false; }              // home
+        // a part that slides straight (a slide, a straight-pull bolt): the racked slide; one that turns to lock: the bolt
+        bool turns = B->d && B->d->rollOn;
+        Pool& back = !turns && !gSlideBack.empty() ? gSlideBack : gBoltBack;
+        Pool& home = !turns && !gSlideFwd.empty() ? gSlideFwd : gBoltFwd;
+        if (d > 0.012 && gW.lastV > 0.05 && v <= 0.02 && !gW.out) { back.play(g, boltPitch(S)); gW.out = true; }   // stopped at the back
+        if (gW.out && d < 0.002 && gW.lastD >= 0.002) { home.play(g, boltPitch(S)); gW.out = false; }              // home
         if (B->d && B->d->rollOn) {   // a bolt that turns to lock
             double span = (B->d->rollMax - B->d->rollMin) * DEG2RAD;
             if (std::fabs(span) > 1e-6) {
