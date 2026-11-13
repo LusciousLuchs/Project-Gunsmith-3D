@@ -324,6 +324,8 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
             } else if (S.malf == Malf::None) {
                 chamberNext();
             }
+        } else if (!R.manual && !cyl && S.malf == Malf::None && S.spent && inBattery(S) && !anyChambered(S)) {
+            record(Malf::FailureToEject);   // a self-loader that fired and never opened: the case is still in the chamber
         } else if (R.manual && !cyl && S.malf == Malf::None && !anyChambered(S)) {  // (another barrel still loaded: fire that first)
             run_.cycle();
         }

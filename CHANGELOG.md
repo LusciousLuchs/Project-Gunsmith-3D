@@ -18,6 +18,8 @@ The version is set in one place, at the top of `CMakeLists.txt`.
   - The other chambers hold their rounds out of the side view, so they don't collide. That's a simplified treatment.
 - **New example: double-action revolver** (.38 Special, six shots). The bench test fires 30 of 30.
 - New cartridge: **.38 Special**.
+- **New example: gas-operated pistol.** The blowback pistol with its slide locked shut. A gas port in the barrel drives an operating rod: its first push unlocks the slide, then it shoves the slide back. The rod is also the charging handle. It fires 30 of 30. Shrink the port to 3 mm and it stops cycling, so the gas settings matter.
+- **The reliability test** now counts it as a jam when a self-loading gun fires but never opens.
 
 ## 0.8.7-alpha
 

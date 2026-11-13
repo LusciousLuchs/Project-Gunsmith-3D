@@ -235,6 +235,28 @@ def belted():
     return d
 def tilting(): return pistol('tilting')
 
+# ------------------------------------------------------------------ gas-operated pistol
+# The blowback pistol made gas-operated: its slide is locked shut to the frame, so the shot alone can't open it.
+#  - A gas port drilled into the barrel feeds a piston: the operating rod in front of the slide. Gas pushes it back.
+#  - Its first 1.5 mm unlocks the slide (a lock joint, let go when the rod has moved); then, 2 mm on, the rod hits the
+#    slide's nose and drives it back. The slide's own spring brings it home, where the lock catches it again.
+#  - The rod is also the charging handle: pull it back to unlock and rack the slide by hand.
+#  - Too small a port (3 mm) and the slide doesn't get back far enough to eject: a gas setting with real consequences.
+def gaspistol():
+    d = pistol('blowback')
+    d['name'] = 'Gas-operated pistol'
+    nose = max(p[0] for b in d['bodies'] if b['id'] == 'nose' for p in b['pts'])
+    rx = nose + 2.0                    # the rod's rear face: 2 mm of free travel before it meets the slide
+    d['bodies'].append(part('oprod', 'Operating rod (gas piston)', rect(rx, 27, rx + 30, 33), thick=6, mass=25, color=BRIGHT,
+                            control={'kind': 'handle', 'key': 'none', 'at': [rx + 25, 30], 'dir': 180, 'force': 25}))
+    d['joints'] += [
+        track('oprod', 'grip_l', [rx + 15, 30], [[rx + 15 - 45, 30], [rx + 15, 30]]),
+        coil('oprod', 'barrel', [rx + 29, 30], [100, 30], 0.15, rx + 29 - 100 + 15, dia=4, wire=0.5, turns=10),   # brings the rod home
+        {'type': 'latch', 'a': 'slide', 'b': 'grip_l', 'catchAt': -0.05, 'rel': 'oprod', 'releaseAt': 1.5, 'holdShut': True},
+    ]
+    d['breech']['gas'] = [{'at': 45, 'portDia': 3.75, 'piston': 'oprod', 'pistonDia': 12, 'stroke': 8, 'dir': 0}]
+    return d
+
 
 # ------------------------------------------------------------------ bolt-action rifle
 # A turn-bolt: two lugs at the bolt head lock behind shoulders in the receiver ring when the handle is down (lugs
@@ -546,6 +568,7 @@ NEW = [
     ('derringer', 'Over-under derringer', derringer),
     ('belted', 'Belt-fed blowback', belted),
     ('revolver', 'Double-action revolver', revolver),
+    ('gaspistol', 'Gas-operated pistol', gaspistol),
 ]
 LEGACY_LIST = [  # older examples built with simplified joints; kept for study and for the tests of those joints
     ('legacy-tilting', 'PRESET_TILTING'), ('legacy-blowback', 'PRESET_BLOWBACK'), ('longrecoil', 'PRESET_LONG'),
@@ -561,6 +584,7 @@ MENU = [  # what the example menu shows, in order
     ('derringer', 'Over-under derringer (.41 rimfire, two barrels, tips up)'),
     ('belted', 'Belt-fed blowback (the pistol, fed from a belt by its slide)'),
     ('revolver', 'Double-action revolver (.38 Special, six-shot cylinder)'),
+    ('gaspistol', 'Gas-operated pistol (locked slide, gas piston rod)'),
     ('longrecoil', 'Long recoil, Chauchat style (simplified cam and catch)'),
     ('blank', 'Blank frame'),
 ]

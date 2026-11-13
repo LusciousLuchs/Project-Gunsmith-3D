@@ -2716,6 +2716,24 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void gasPistol() {
+    std::printf("gasPistol\n");
+    Design d = loadPreset("gaspistol");
+    CHECK(d.breech.gas.size() == 1 && d.breech.gas[0].piston == "oprod", "the gas pistol has a port driving its operating rod");
+    sim::ReliabilityOptions o; o.rounds = 30;
+    auto r = sim::runReliability(d, o);
+    std::printf("  (gas-operated: fired %d of 30, %d jams)\n", r.fired, r.jams);
+    CHECK(r.fired == 30 && r.jams == 0, "the gas-operated pistol fires 30 of 30");
+    Design nogas = d; nogas.breech.gas.clear();
+    auto n = sim::runReliability(nogas, o);
+    std::printf("  (no gas: %d jams, %d failures to eject)\n", n.jams, n.byType[(int)sim::Malf::FailureToEject]);
+    CHECK(n.byType[(int)sim::Malf::FailureToEject] >= 20, "without gas its locked slide never opens: the case stays in");
+    Design small = d; small.breech.gas[0].portDia = 3.0;
+    auto s3 = sim::runReliability(small, o);
+    std::printf("  (3 mm port: %d jams)\n", s3.jams);
+    CHECK(s3.jams > 0, "too small a port and it doesn't cycle properly");
+}
+
 static void revolverCylinder() {
     std::printf("revolverCylinder\n");
     Design d = loadPreset("revolver");
@@ -2908,6 +2926,7 @@ int main() {
         std::string o = only;
         if (o == "mesh") meshParts();
         else if (o == "revolver") revolverCylinder();
+        else if (o == "gas") gasPistol();
         else if (o == "wood") woodPenetration();
         else if (o == "doors") doorsBlock();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
@@ -2976,6 +2995,7 @@ int main() {
     woodPenetration();
     meshParts();
     revolverCylinder();
+    gasPistol();
     npcPaths();
     armFreedom();
     cartridgeSharing();
