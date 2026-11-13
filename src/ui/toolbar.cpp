@@ -141,6 +141,7 @@ static const RailTool RAIL_DRAW[] = {
     {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius.", Tool::Circle, -1},
     {ICON_FA_BARS, "Rail", "A Picatinny rail: drag along the top of a part, as long as you want it.\nSlotted to the standard (10 mm apart) and welded to the part; attachments clamp on anywhere.\nIt makes a handy ruler too.", Tool::Rail, -1}};
 static const RailTool RAIL_SHAPE[] = {
+    {ICON_FA_DICE_D6, "3D vertices", "Shape a part as a free 3D mesh: drag any corner anywhere in 3D, push faces out,\nadd rings of corners round it to cave its sides in or bulge them out.", Tool::Mesh, -1},
     {ICON_FA_CUBE, "Faces", "Point at any face of a part (front, back, top, bottom, ends) and drag to push or pull it.\nE extrudes the face: move the mouse to draw it out, click to finish.", Tool::Faces, -1},
     {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
     {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.\nIt stays a live mirror: change either one and the other follows.", Tool::Mirror, -1},

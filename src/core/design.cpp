@@ -713,6 +713,11 @@ void mirrorBody(BodyDef& b, V2 a, V2 c) {
     for (auto& p : pts) { p.x = std::round(p.x * 100) / 100; p.y = std::round(p.y * 100) / 100; }
     b.pts = pts; b.rad = rad; b.bulge = bulge;
     if (!b.depthRef.empty()) b.depthRef = b.pts;
+    if (meshShaped(b)) {   // a free 3D mesh: every corner reflected, every face turned round
+        for (auto& v : b.mesh.v) { V2 q = refl({v.x, v.y}); v.x = q.x; v.y = q.y; }
+        for (auto& f : b.mesh.f) std::reverse(f.begin(), f.end());
+        b.meshRef = b.pts; b.meshRefZ = b.z; b.meshRefThick = b.thick;
+    }
     if (b.ctrl != "none") {
         b.ctrlPt = refl(b.ctrlPt);
         V2 d0{std::cos(b.ctrlDir * PI_ / 180), std::sin(b.ctrlDir * PI_ / 180)}, o = refl({0, 0}), e = refl(d0);
@@ -985,6 +990,12 @@ std::string designToJson(const Design& d, bool pretty) {
             json a = json::array();
             for (size_t i = 0; i < b.pts.size(); i++) a.push_back({b.depthOff[i].x, b.depthOff[i].y, b.depthZn[i], b.depthZf[i]});
             jb["depth"] = a;
+        }
+        if (meshShaped(b)) {   // a free 3D mesh: its corners and faces
+            json vs = json::array(), fs = json::array();
+            for (auto& v : b.mesh.v) vs.push_back({std::round(v.x * 1e4) / 1e4, std::round(v.y * 1e4) / 1e4, std::round(v.z * 1e4) / 1e4});
+            for (auto& f : b.mesh.f) fs.push_back(f);
+            jb["mesh"] = {{"v", vs}, {"f", fs}};
         }
         if (!b.marks.empty()) {
             json ms = json::array();
@@ -1342,6 +1353,19 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 b.depthZn.push_back(q[2].get<double>()); b.depthZf.push_back(q[3].get<double>());
             }
             b.depthRef = b.pts;
+        }
+        if (jb.contains("mesh") && jb["mesh"].is_object()) {
+            const auto& jm = jb["mesh"];
+            bool ok = jm.contains("v") && jm["v"].is_array() && jm.contains("f") && jm["f"].is_array();
+            if (ok) for (auto& q : jm["v"]) { if (!q.is_array() || q.size() < 3) { ok = false; break; } b.mesh.v.push_back({q[0].get<double>(), q[1].get<double>(), q[2].get<double>()}); }
+            if (ok) for (auto& q : jm["f"]) {
+                if (!q.is_array()) { ok = false; break; }
+                std::vector<int> L;
+                for (auto& i : q) { int k = i.get<int>(); if (k < 0 || k >= (int)b.mesh.v.size()) { ok = false; break; } L.push_back(k); }
+                if (!ok) break;
+                if (L.size() >= 3) b.mesh.f.push_back(L);
+            }
+            if (!ok) b.mesh = {};
         }
         if (jb.contains("rad") && jb["rad"].is_array()) for (auto& r : jb["rad"]) b.rad.push_back(r.get<double>());
         if (jb.contains("bulge") && jb["bulge"].is_array()) for (auto& r : jb["bulge"]) b.bulge.push_back(r.get<double>());

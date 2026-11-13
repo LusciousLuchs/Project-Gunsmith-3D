@@ -17,7 +17,7 @@
 Ray mouseRay();   // (view.cpp)
 
 namespace {
-bool editable(const BodyDef& d) { return !d.round && !carve::tilted(d) && d.pts.size() >= 3; }
+bool editable(const BodyDef& d) { return !d.round && !carve::tilted(d) && !meshShaped(d) && d.pts.size() >= 3; }
 
 V2 outward(const BodyDef& d, int e) {   // the side wall's outward direction in the side view (design mm)
     const auto& P = d.pts;

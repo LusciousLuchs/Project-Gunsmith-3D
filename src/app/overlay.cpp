@@ -3,6 +3,7 @@
 #include "mounts.hpp"
 #include "app/scaletool.hpp"
 #include "app/faces.hpp"
+#include "app/meshtool.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -21,6 +22,7 @@
 
 void drawOverlay() {
     drawFaces();
+    drawMeshTool();
     if (A.mode == Mode::Build) partRingsDraw();
     auto& D = A.design;
     A.handles.clear();
@@ -153,7 +155,7 @@ void drawOverlay() {
         DrawCircleV(h.s, hot ? 6.f : 4.f, Color{20, 24, 32, 220});
         DrawCircleLinesV(h.s, hot ? 6.f : 4.f, c);
     }
-    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && A.tool != Tool::Faces) {   // (the Faces tool shows corners on both faces itself)
+    if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && A.tool != Tool::Faces && A.tool != Tool::Mesh && !meshShaped(D.bodies[A.sel.idx])) {   // (the Faces tool shows corners on both faces itself)
         auto& d = D.bodies[A.sel.idx];
         float z = bodyFront(A.sel.idx);
         for (size_t v = 0; v < d.pts.size(); v++) {

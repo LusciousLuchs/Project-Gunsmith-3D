@@ -2716,6 +2716,82 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void meshParts() {
+    std::printf("meshParts\n");
+    BodyDef b; b.id = "m"; b.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; b.thick = 10; b.z = 0;
+    fixShape(b);
+    // the same convention as parts shaped in depth: their triangles turn outward the same way
+    auto vol = [](const std::vector<P3d>& v, const std::vector<int>& t) {
+        double s = 0;
+        for (size_t k = 0; k + 2 < t.size(); k += 3) {
+            const P3d &a = v[t[k]], &c = v[t[k + 1]], &d = v[t[k + 2]];
+            s += a.x * (c.y * d.z - c.z * d.y) - a.y * (c.x * d.z - c.z * d.x) + a.z * (c.x * d.y - c.y * d.x);
+        }
+        return s / 6;
+    };
+    BodyDef ds = b; ds.depthOff.assign(4, V2{0, 0}); ds.depthZn = {1, 0, 0, 0}; ds.depthZf.assign(4, 0.0); ds.depthRef = ds.pts;
+    std::vector<P3d> dv; std::vector<int> dt; depthTriangles(ds, dv, dt);
+    meshFromPart(b);
+    CHECK(meshShaped(b) && b.mesh.v.size() == 8 && b.mesh.f.size() == 6, "a box becomes 8 corners and 6 faces");
+    std::vector<int> mt; meshTriangles(b.mesh, mt);
+    double vm = vol(b.mesh.v, mt), vd = vol(dv, dt);
+    std::printf("  (box volume %.0f mm3; shaped-in-depth volume %.0f)\n", vm, vd);
+    CHECK(std::fabs(std::fabs(vm) - 8000) < 1 && (vm > 0) == (vd > 0), "its faces turn outward, the same way as parts shaped in depth");
+    auto sec = meshSection(b.mesh, 0.3);
+    double a = 0; if (!sec.empty()) for (size_t i = 0; i < sec[0].size(); i++) { auto &p = sec[0][i], &q = sec[0][(i + 1) % sec[0].size()]; a += p.x * q.y - q.x * p.y; }
+    CHECK(sec.size() == 1 && sec[0].size() == 4 && std::fabs(std::fabs(a / 2) - 800) < 1e-6, "cut through its depth: the 40 x 20 outline");
+    // a ring through the middle of its thickness, made smaller: the sides cave in
+    auto ring = meshCut(b.mesh, 2, 0.0);
+    CHECK(ring.size() == 4, "a ring through the thickness adds a corner on each of the 4 side edges");
+    for (int v : ring) { auto& p = b.mesh.v[v]; p.x = 20 + (p.x - 20) * 0.5; p.y = 10 + (p.y - 10) * 0.5; }
+    meshOrient(b.mesh);
+    auto mid = meshSection(b.mesh, 0.0), face = meshSection(b.mesh, 4.9);
+    auto ar = [](const std::vector<V2>& s) { double a = 0; for (size_t i = 0; i < s.size(); i++) { auto &p = s[i], &q = s[(i + 1) % s.size()]; a += p.x * q.y - q.x * p.y; } return std::fabs(a / 2); };
+    double am = mid.empty() ? 0 : ar(mid[0]), af = face.empty() ? 0 : ar(face[0]);
+    std::printf("  (caved in: %.0f mm2 at the middle, %.0f near a face)\n", am, af);
+    CHECK(std::fabs(am - 200) < 1 && af > 700, "caved in at the middle, full size at the faces");
+    meshSync(b);
+    auto sl = carve::slices(b);
+    double mn = 1e9, mx = 0;
+    for (auto& s : sl) for (auto& o : s.outlines) { mn = std::min(mn, ar(o)); mx = std::max(mx, ar(o)); }
+    std::printf("  (%d slabs for the physics, %.0f to %.0f mm2)\n", (int)sl.size(), mn, mx);
+    CHECK(sl.size() >= 6 && mn < 400 && mx > 650, "the physics' slabs follow the waist");
+    CHECK(std::fabs(b.thick - 10) < 1e-9 && b.pts.size() == 4, "its outline is its biggest cross-section; its thickness the mesh's");
+    // moved as a whole (the Select tool moves the outline): the mesh goes along
+    for (auto& p : b.pts) p.x += 5;
+    meshSync(b);
+    double minx = 1e9; for (auto& p : b.mesh.v) minx = std::min(minx, p.x);
+    CHECK(std::fabs(minx - 5) < 1e-9, "moving the part moves the mesh");
+    // pushed out: a face extruded 6 mm
+    b.mesh = {}; b.pts = {{5, 0}, {45, 0}, {45, 20}, {5, 20}}; fixShape(b); meshFromPart(b);   // (a plain box again)
+    int top = -1;
+    for (int f = 0; f < (int)b.mesh.f.size(); f++) { P3d n = meshFaceNormal(b.mesh, f); if (n.x > 0.9) top = f; }
+    CHECK(top >= 0, "the front end face points forward");
+    size_t nf = b.mesh.f.size();
+    auto moved = meshExtrude(b.mesh, top, 6);
+    double maxx = -1e9; for (auto& p : b.mesh.v) maxx = std::max(maxx, p.x);
+    CHECK(!moved.empty() && b.mesh.f.size() > nf && std::fabs(maxx - 51) < 1e-9, "pushing the front face out 6 mm makes it longer, with new side faces");
+    // saved and read back
+    Design D; D.bodies.push_back(b);
+    Design R;
+    CHECK(designFromJson(designToJson(D), R) && R.bodies.size() == 1 && R.bodies[0].mesh.v.size() == b.mesh.v.size() && R.bodies[0].mesh.f == b.mesh.f, "a mesh part saves and loads");
+    // corners removed: the faces close up
+    MeshDef box = b.mesh;
+    size_t nv = box.v.size();
+    CHECK(meshRemoveVerts(box, {0}) && box.v.size() == nv - 1, "a corner can be taken away");
+    std::vector<int> bt; meshTriangles(box, bt);
+    CHECK(vol(box.v, bt) > 0, "and the part stays closed");
+    // a real gun with its slide made a mesh still runs
+    for (int meshed = 0; meshed < 2; meshed++) {
+        Design g = loadPreset("blowback");
+        if (meshed) for (auto& p : g.bodies) if (p.id == "slide" || p.id == "slide_f") { fixShape(p); meshFromPart(p); }
+        sim::ReliabilityOptions o; o.rounds = 10;
+        auto r = sim::runReliability(g, o);
+        std::printf("  (blowback, slide %s: fired %d of 10)\n", meshed ? "a 3D mesh" : "as drawn", r.fired);
+        if (meshed) CHECK(r.fired >= 9, "the blowback pistol still cycles with its slide made a 3D mesh");
+    }
+}
+
 static void woodPenetration() {
     std::printf("woodPenetration\n");
     struct R { const char* name; double g, mm, v; } rs[] = {{".22 LR", 2.6, 5.7, 370}, {".380", 6.2, 9.0, 290}, {"9 mm", 7.45, 9.01, 360},
@@ -2791,6 +2867,14 @@ static void shotSounds() {
 }
 
 int main() {
+    if (const char* only = std::getenv("GUNSMITH_TESTONLY")) {   // (one quick group while working on it)
+        std::string o = only;
+        if (o == "mesh") meshParts();
+        else if (o == "wood") woodPenetration();
+        else if (o == "doors") doorsBlock();
+        std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
+        return failures ? 1 : 0;
+    }
     shotSounds();
     fittingAttachments();
     attachmentsData();
@@ -2852,6 +2936,7 @@ int main() {
     npcsAlive();
     doorsBlock();
     woodPenetration();
+    meshParts();
     npcPaths();
     armFreedom();
     cartridgeSharing();

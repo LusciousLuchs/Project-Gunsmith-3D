@@ -232,9 +232,10 @@ std::vector<std::vector<V2>> tiltSection(const BodyDef& b, double z) {
 }
 
 std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
-    const bool shaped = depthShaped(b) && !b.round && !tilted(b);
+    const bool meshed = meshShaped(b);   // a free 3D mesh: neither round nor tilted, whatever it says
+    const bool shaped = (depthShaped(b) && !b.round && !tilted(b)) || meshed;
     if (b.carves.empty() && !b.round && !tilted(b) && !shaped) return {};
-    if (tilted(b) && !b.round) {  // even slabs through the depth the tilted part spans (its carves show, but don't collide yet)
+    if (tilted(b) && !b.round && !meshed) {  // even slabs through the depth the tilted part spans (its carves show, but don't collide yet)
         double z0, z1;
         tiltDepth(b, z0, z1);
         int n = std::clamp((int)std::ceil((z1 - z0) / 1.5), 3, std::max(3, maxSlices));
@@ -251,6 +252,7 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
     double t = std::max(0.5, b.thick), zA = b.z - t / 2, zB = b.z + t / 2;
     double ox0 = 1e9, oy0 = 1e9, ox1 = -1e9, oy1 = -1e9;
     for (auto& p : b.pts) { ox0 = std::min(ox0, p.x); oy0 = std::min(oy0, p.y); ox1 = std::max(ox1, p.x); oy1 = std::max(oy1, p.y); }
+    if (meshed) for (auto& p : b.mesh.v) { ox0 = std::min(ox0, p.x); oy0 = std::min(oy0, p.y); ox1 = std::max(ox1, p.x); oy1 = std::max(oy1, p.y); }
     ox0 -= 20; oy0 -= 20; ox1 += 20; oy1 += 20;  // (bowed edges reach a little outside the control points)
     auto cutsAt = [&](double z) {
         std::vector<std::vector<V2>> cav;
@@ -265,13 +267,13 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
     };
     if (shaped) {   // shaped in depth: even slabs through all it spans, each its outline at that depth (less any cuts there)
         double z0, z1;
-        depthSpan(b, z0, z1);
+        if (meshed) meshSpan(b.mesh, z0, z1); else depthSpan(b, z0, z1);
         int n = std::clamp((int)std::ceil((z1 - z0) / 1.0), 3, std::max(3, maxSlices));
         std::vector<Slice> out;
         for (int k = 0; k < n; k++) {
             Slice sl; sl.z0 = z0 + (z1 - z0) * k / n; sl.z1 = z0 + (z1 - z0) * (k + 1) / n;
             double zm = (sl.z0 + sl.z1) / 2;
-            sl.outlines = depthSection(b, zm);
+            sl.outlines = meshed ? meshSection(b.mesh, zm) : depthSection(b, zm);
             sl.cav = cutsAt(zm);
             if (!sl.outlines.empty()) out.push_back(sl);
         }

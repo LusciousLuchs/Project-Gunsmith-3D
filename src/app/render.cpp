@@ -68,13 +68,14 @@ Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
     V2 c = centroidOf(d);
     std::vector<V2> local;
     for (auto& p : outlineOf(d)) local.push_back({p.x - c.x, p.y - c.y});
-    if (d.round) {  // turned on a lathe about its long middle line
+    if (d.round && !meshShaped(d)) {  // turned on a lathe about its long middle line
         carve::syncRound(d);
         carve::RoundAxis ax = carve::roundAxis(d);
         std::vector<char> sm;
         std::vector<V2> S = carve::roundShape(d, 48, &sm);
         mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
-    } else if (depthShaped(d)) mesh = depthMesh(d, c);   // shaped in depth: corners on both faces
+    } else if (meshShaped(d)) mesh = freeMesh(d, c);     // a free 3D mesh
+    else if (depthShaped(d)) mesh = depthMesh(d, c);   // shaped in depth: corners on both faces
     else mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
     std::vector<CarveDef> cuts = rough ? std::vector<CarveDef>{} : d.carves;
     V2 rear, muz;
@@ -139,12 +140,13 @@ static void ensureMeshes() {
     A.meshes.resize(D.bodies.size());
     for (size_t i = 0; i < D.bodies.size(); i++) {
         auto& d = D.bodies[i];
-        if (!A.S) followMarks(d);   // engravings go with a part being moved, turned or flipped as a whole
+        if (!A.S) { followMarks(d); meshSync(d); }   // (a free 3D mesh goes with its part)   // engravings go with a part being moved, turned or flipped as a whole
         std::ostringstream k;
         k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis << 'T' << d.texture << ' ' << d.texScale << 'X' << d.tiltX << 'Y' << d.tiltY;
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
+        if (meshShaped(d)) { for (auto& v : d.mesh.v) k << 'M' << v.x << ' ' << v.y << ' ' << v.z; for (auto& f : d.mesh.f) { k << 'f'; for (int q : f) k << q << ' '; } }
         if (depthShaped(d)) for (size_t q = 0; q < d.pts.size(); q++) k << 'D' << d.depthOff[q].x << ' ' << d.depthOff[q].y << ' ' << d.depthZn[q] << ' ' << d.depthZf[q];
         if (d.barrel.on) k << 'B' << d.barrel.cart.caseLen << ' ' << d.barrel.cart.headDia() << ' ' << d.barrel.cart.bulletDia << ' ' << d.barrel.rifled << d.barrel.grooves << d.barrel.muzzleEnd;
         for (auto& c : d.carves) k << 'c' << c.shape << c.at.x << ' ' << c.at.y << ' ' << c.atZ << ' ' << c.dx << ' ' << c.dy << ' ' << c.dz << ' ' << c.spin << ' ' << c.w << ' ' << c.h << ' ' << c.depth;

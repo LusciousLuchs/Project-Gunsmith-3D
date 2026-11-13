@@ -45,6 +45,11 @@ void scaleParts(Design& D, const std::vector<int>& parts, V2 c, double sx, doubl
         if (!d.depthRef.empty()) d.depthRef = d.pts;
         for (auto& p : d.roundPath) sc(p);
         if (!d.round) d.thick = std::max(0.2, d.thick * sz);
+        if (meshShaped(d)) {   // a free 3D mesh: every corner scaled the same way
+            for (auto& v : d.mesh.v) { V2 q{v.x, v.y}; sc(q); v.x = q.x; v.y = q.y; v.z = zc + (v.z - zc) * sz; }
+            if (sx * sy * sz < 0) for (auto& f : d.mesh.f) std::reverse(f.begin(), f.end());
+            d.meshRef = d.pts; d.meshRefZ = d.z; d.meshRefThick = d.thick;
+        }
         for (auto& mt : d.mounts) { sc(mt.at); mt.atZ *= sz; }
         if (d.rail.on) { sc(d.rail.a); sc(d.rail.b); }
         for (auto& cv : d.carves) {

@@ -450,6 +450,31 @@ Mesh depthMesh(const BodyDef& d, V2 c) {
     return m;
 }
 
+Mesh freeMesh(const BodyDef& d, V2 c) {
+    std::vector<int> tri;
+    meshTriangles(d.mesh, tri);
+    const auto& v = d.mesh.v;
+    int nt = (int)tri.size() / 3;
+    Mesh m{};
+    m.vertexCount = nt * 3; m.triangleCount = nt;
+    m.vertices = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.normals = (float*)MemAlloc(m.vertexCount * 3 * sizeof(float));
+    m.texcoords = (float*)MemAlloc(m.vertexCount * 2 * sizeof(float));
+    auto at = [&](int i) { return Vector3{(float)((v[i].x - c.x) * U), (float)(-(v[i].y - c.y) * U), (float)((v[i].z - d.z) * U)}; };
+    int k = 0;
+    for (int t = 0; t < nt; t++) {
+        Vector3 a = at(tri[t * 3]), b = at(tri[t * 3 + 2]), cc = at(tri[t * 3 + 1]);   // (y up mirrors it: the order turns round)
+        Vector3 n = Vector3Normalize(Vector3CrossProduct(Vector3Subtract(b, a), Vector3Subtract(cc, a)));
+        for (Vector3 p : {a, b, cc}) {
+            m.vertices[k * 3] = p.x; m.vertices[k * 3 + 1] = p.y; m.vertices[k * 3 + 2] = p.z;
+            m.normals[k * 3] = n.x; m.normals[k * 3 + 1] = n.y; m.normals[k * 3 + 2] = n.z;
+            m.texcoords[k * 2] = (float)(p.x / U / 40); m.texcoords[k * 2 + 1] = (float)(p.y / U / 40); k++;
+        }
+    }
+    UploadMesh(&m, false);
+    return m;
+}
+
 void drawArmorPlate(Vector3 base, float yawDeg, Color tint) {
     // a ballistic plate in an olive cover, gently curved: a thick middle and thinner shoulders, lying flat
     Matrix R = MatrixRotateY(-yawDeg * DEG2RAD);

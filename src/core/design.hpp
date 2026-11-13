@@ -108,6 +108,14 @@ struct BarrelDef {
     int muzzleEnd = 1;            // which end is the muzzle, along the part's axis: +1 or -1
 };
 struct P3d { double x, y, z; };
+// A part made as a free 3D mesh (the 3D vertices tool): its corners anywhere in 3D (design mm: x forward, y down, z depth
+// as BodyDef::z) and its faces as loops of corner numbers, each turning counter-clockwise seen from outside. When set,
+// it is the part's shape: the display draws it, the physics cuts it into slabs through its depth, and the outline
+// (pts, z, thick) is kept up to date from it (meshSync).
+struct MeshDef {
+    std::vector<P3d> v;
+    std::vector<std::vector<int>> f;
+};
 // An engraving on a part's surface (the Engrave tool): a line drawn freehand, or a line of text. Looks only: it never
 // changes how the part moves or collides. Points are in design mm like the outline (x, y down, z depth), lying on the
 // surface; n is the surface's outward direction at each point. Text: pts[0] is its middle, `right` the way it reads.
@@ -213,6 +221,9 @@ struct BodyDef {
     std::vector<V2> depthOff;
     std::vector<double> depthZn, depthZf;
     std::vector<V2> depthRef;
+    MeshDef mesh;                        // a free 3D mesh (empty: shaped from the outline as above)
+    std::vector<V2> meshRef;             // (not saved) the outline, depth and thickness last set from the mesh: when they're
+    double meshRefZ = 0, meshRefThick = 0;   // changed as a whole (moved, turned, flipped, thicker), the mesh goes along
     std::vector<MarkDef> marks;          // engravings (looks only)
     std::vector<V2> markRef;             // (not saved) the outline, depth and thickness the marks were last placed for:
     double markRefZ = 0, markRefThick = 0;   // when the whole part moves, turns or flips, they go with it (followMarks)
@@ -521,6 +532,26 @@ std::vector<std::vector<V2>> depthSection(const BodyDef& b, double z);
 std::vector<int> triangulateOutline(const std::vector<V2>& p);   // ear clipping, any winding: index triples
 // the solid as triangles (outward, x y z mm): near face, far face, then two per side wall (tag: -1 near, -2 far, else the edge)
 void depthTriangles(const BodyDef& b, std::vector<P3d>& v, std::vector<int>& tri, std::vector<int>* tag = nullptr);
+// Free 3D meshes (BodyDef::mesh): whether a part is one; turning a part into one (its solid as it is now, shaped in
+// depth or not); its triangles (with which face each came from); its span in depth; its outline(s) where the plane at
+// depth z cuts it; and keeping the outline in step with it (call after edits: whole-part moves of the outline, depth
+// or thickness carry the mesh along, then the outline is set from the mesh).
+bool meshShaped(const BodyDef& b);
+void meshFromPart(BodyDef& b);
+void meshTriangles(const MeshDef& m, std::vector<int>& tri, std::vector<int>* faceOf = nullptr);
+void meshSpan(const MeshDef& m, double& z0, double& z1);
+std::vector<std::vector<V2>> meshSection(const MeshDef& m, double z);
+void meshSync(BodyDef& b);
+P3d meshFaceNormal(const MeshDef& m, int f);    // outward, unit
+P3d meshFaceCentre(const MeshDef& m, int f);
+void meshOrient(MeshDef& m);                     // turn every face to wind outward
+// Editing: cut every face the plane (axis 0 x, 1 y, 2 z = at) crosses, adding corners where it crosses edges (a ring
+// of new corners round the part: drag them to cave it in or bulge it out); returns the new corners. Extrude a face
+// `dist` mm along its outward direction (new side faces); returns the moved face's corners. Split a face across from
+// one corner to another. Remove corners (their faces close up; refused if it would leave fewer than 4).
+std::vector<int> meshCut(MeshDef& m, int axis, double at);
+std::vector<int> meshExtrude(MeshDef& m, int face, double dist);
+bool meshRemoveVerts(MeshDef& m, std::vector<int> verts);
 bool combineOutlines(const BodyDef& a, const BodyDef& b, int op, std::vector<V2>& out, std::string* why = nullptr,
                      std::vector<double>* rad = nullptr);   // given: rounded corners that survive keep their rounding
 // Cuts corners off flat (a chamfer, or bevel in side view), each `size` mm back along both edges; `which` empty = all

@@ -54,6 +54,7 @@ void autosaveTick() {
 }
 void commit() {
     for (auto& b : A.design.bodies) normalizeDepth(b);
+    for (auto& b : A.design.bodies) meshSync(b);   // free 3D meshes: the outline follows the mesh
     for (auto& b : A.design.bodies) followMarks(b);   // engravings go with a part that moved as a whole   // shaped in depth: follow added or removed corners
     bool mirrored = false;
     for (auto& b : A.design.bodies) if (!b.mirror.empty()) { mirrored = true; break; }
@@ -250,7 +251,8 @@ const char* TOOL_HINT[] = {
     "Engrave: click a part to pick it, then draw on its surface with the mouse, or switch to Text and click where the words go. Any face, from any side. Erase removes a line or a word.",
     "Scale: click a part, click a handle of its box, then drag it. Corners keep the proportions (Shift: free), edges stretch one way, Ctrl scales about the middle. Or type sizes in the panel.",
     "Rail: drag along the top (or bottom) of a part to lay a Picatinny rail on it, slotted to the standard. Put it on a side from its panel. Attachments clamp on anywhere along it.",
-    "Attachment point: click a part's surface to put a mount there (a bayonet lug, a side rail, a muzzle thread, your own kind). Attachments fit points of the same kind. Its kind is set in the panel."};
+    "Attachment point: click a part's surface to put a mount there (a bayonet lug, a side rail, a muzzle thread, your own kind). Attachments fit points of the same kind. Its kind is set in the panel.",
+    "3D vertices: click a part, then Make a 3D mesh (panel). Click a corner to pick it (Shift adds), or a face to pick all its corners; drag to move them in the plane you look at (Z: in depth). E pushes the picked face out, Delete removes corners, Ctrl+A picks all. Add rings in the panel to cave the sides in or bulge them out."};
 static_assert(sizeof(TOOL_HINT) / sizeof(TOOL_HINT[0]) == (size_t)Tool::Count, "a hint for every tool");
 void setTool(Tool t) {
     if (A.mode == Mode::Test) setMode(Mode::Build);

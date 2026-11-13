@@ -43,6 +43,7 @@ Mesh extrude(const std::vector<V2>& localMM, float depth, float roundMM = 0);
 // depth, y up)
 struct BodyDef;
 Mesh depthMesh(const BodyDef& d, V2 c);
+Mesh freeMesh(const BodyDef& d, V2 c);   // a free 3D mesh part's solid (BodyDef::mesh), centred on c, y up
 Mesh latheMesh(const std::vector<V2>& st, V2 o, V2 dir, const std::vector<V2>& S, const std::vector<char>& smooth);  // a round (turned) part
 Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutters);  // base minus the cutters (mm, mesh frame)
 void initGfx();

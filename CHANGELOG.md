@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.7-alpha
+
+- **3D vertices: a new tool for free 3D shaping.** Pick a part and press *Make a 3D mesh*. Every corner can then go anywhere in 3D:
+  - Click a corner (Shift picks more), or click a face to pick all its corners.
+  - Drag what's picked in the plane you're looking at. Hold Z to move it in depth.
+  - **Add a ring** of corners round the part (through its thickness, front to back, or top to bottom). Make the ring smaller to cave the sides in, like a grip's waist, or bigger to bulge them out.
+  - **E** pushes a picked face out, **Delete** removes corners, and **Ctrl+A** picks every corner.
+- Mesh parts collide by their real 3D shape on the bench, just like carved parts. Cuts, welds, mirrors, moving, rotating and scaling all work on them.
+- *Back to a flat part* turns a mesh part back into an ordinary outline.
+
 ## 0.8.6-alpha
 
 - **Shoot through wood.** Thin wood no longer stops a bullet: plywood, planks, parquet floors and wooden doors let a shot through if it has the power, and it comes out slower and slightly off its line. Each round has its own limit:

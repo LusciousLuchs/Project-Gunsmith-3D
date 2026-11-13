@@ -1,6 +1,7 @@
 // Gunsmith3D - live mirrors: two parts kept as mirror images of each other (see BodyDef::mirror).
 #include "carve.hpp"
 #include "design.hpp"
+#include <algorithm>
 #include <cmath>
 #include <map>
 
@@ -15,6 +16,7 @@ bool sameCarve(const CarveDef& a, const CarveDef& b) {
 void copyLook(const BodyDef& from, BodyDef& to) {
     to.pts = from.pts; to.rad = from.rad; to.bulge = from.bulge; to.carves = from.carves;
     to.depthOff = from.depthOff; to.depthZn = from.depthZn; to.depthZf = from.depthZf; to.depthRef = from.depthRef;
+    to.mesh = from.mesh; to.meshRef = from.meshRef; to.meshRefZ = from.meshRefZ; to.meshRefThick = from.meshRefThick;
     to.z = from.z; to.thick = from.thick; to.tiltX = from.tiltX; to.tiltY = from.tiltY;
     to.color = from.color; to.texture = from.texture; to.texScale = from.texScale; to.smooth = from.smooth;
     to.round = from.round; to.roundSides = from.roundSides; to.roundTurn = from.roundTurn; to.roundSweep = from.roundSweep;
@@ -28,6 +30,9 @@ bool sameLook(const BodyDef& a, const BodyDef& b) {
         if (!near(i < a.bulge.size() ? a.bulge[i] : 0, i < b.bulge.size() ? b.bulge[i] : 0)) return false;
     }
     for (size_t i = 0; i < a.carves.size(); i++) if (!sameCarve(a.carves[i], b.carves[i])) return false;
+    if (a.mesh.v.size() != b.mesh.v.size() || a.mesh.f != b.mesh.f) return false;
+    for (size_t i = 0; i < a.mesh.v.size(); i++)
+        if (!near(a.mesh.v[i].x, b.mesh.v[i].x) || !near(a.mesh.v[i].y, b.mesh.v[i].y) || !near(a.mesh.v[i].z, b.mesh.v[i].z)) return false;
     if (a.depthOff.size() != b.depthOff.size()) return false;
     for (size_t i = 0; i < a.depthOff.size(); i++)
         if (!sameV(a.depthOff[i], b.depthOff[i]) || !near(a.depthZn[i], b.depthZn[i]) || !near(a.depthZf[i], b.depthZf[i])) return false;
@@ -48,6 +53,11 @@ BodyDef mirrorImage(const BodyDef& src) {
         c.marks.clear();   // engravings are each side's own (text copied across would read backwards)
         carve::flipCarvesZ(c);
         c.tiltX = -c.tiltX; c.tiltY = -c.tiltY;
+        if (meshShaped(c)) {   // a free 3D mesh: every corner across, every face turned round
+            for (auto& v : c.mesh.v) v.z = -v.z;
+            for (auto& f : c.mesh.f) std::reverse(f.begin(), f.end());
+            c.meshRef = c.pts; c.meshRefZ = c.z; c.meshRefThick = c.thick;
+        }
         if (depthShaped(c)) {   // shaped in depth: its near and far faces change places
             size_t n = c.pts.size();
             for (size_t i = 0; i < n; i++) {

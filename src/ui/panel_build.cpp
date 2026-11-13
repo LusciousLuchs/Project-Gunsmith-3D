@@ -7,6 +7,7 @@
 #include "app/pieces.hpp"
 #include "app/app.hpp"
 #include "app/scaletool.hpp"
+#include "app/meshtool.hpp"
 #include "app/gfx.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -110,6 +111,81 @@ static void measureToolPanel() {
     if (tipHover()) ImGui::SetTooltip("Keep the measuring line on screen when you switch tools,\nso you can move a part and see it line up. (It stays where you drew it.)");
     ImGui::SameLine();
     if (ImGui::SmallButton("Clear##measure")) { A.measured = false; A.measureKeep = false; }
+    ImGui::Spacing();
+}
+// The 3D vertices tool: make the selected part a free 3D mesh, add rings of corners round it, and change the picked
+// corners (scale, move, push a face out, remove)
+static void meshToolPanel() {
+    auto& D = A.design;
+    ImGui::SeparatorText("3D vertices");
+    if (!(A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size())) { muted("Click a part to shape it as a free 3D mesh."); return; }
+    BodyDef& b = D.bodies[A.sel.idx];
+    if (!meshShaped(b)) {
+        muted("This part is an outline pushed through its thickness. Make it a 3D mesh and every corner can go anywhere in 3D: cave its sides in, bulge them out, taper it, or pull faces out in any direction. Its shape stays as it is now.");
+        if (b.round || carve::tilted(b)) { muted("Turned and leaned parts can't be made meshes yet."); return; }
+        if (ImGui::Button(ICON_FA_DICE_D6 "  Make a 3D mesh")) meshMakeFromSelected();
+        return;
+    }
+    auto& sel = meshSel();
+    const MeshDef& m = b.mesh;
+    ImGui::Text("%d corners, %d faces", (int)m.v.size(), (int)m.f.size());
+    if (sel.empty()) muted("Click a corner to pick it (Shift: more), or a face to pick its corners. Drag to move them. Ctrl+A picks them all.");
+    else ImGui::Text("%d picked", (int)sel.size());
+
+    ImGui::SeparatorText("Add a ring of corners");
+    muted("Cuts round the whole part, adding a corner wherever the cut crosses an edge, and picks the new ring. Then make it smaller to cave the sides in, or bigger to bulge them out.");
+    static int axis = 2;
+    static float where = 0.5f;
+    ImGui::RadioButton("Through its thickness", &axis, 2); ImGui::SameLine();
+    ImGui::RadioButton("Front to back", &axis, 0);
+    ImGui::RadioButton("Top to bottom", &axis, 1);
+    double lo = 1e18, hi = -1e18;
+    for (auto& p : m.v) { double c = axis == 0 ? p.x : axis == 1 ? p.y : p.z; lo = std::min(lo, c); hi = std::max(hi, c); }
+    ImGui::SetNextItemWidth(160 * S());
+    ImGui::SliderFloat("Where##ring", &where, 0.02f, 0.98f, "%.2f");
+    if (tipHover()) ImGui::SetTooltip("How far along: 0.5 is the middle.");
+    ImGui::SameLine();
+    if (ImGui::Button("Add the ring")) meshAddRing(axis, lo + (hi - lo) * where);
+
+    ImGui::SeparatorText("Picked corners");
+    ImGui::BeginDisabled(sel.empty());
+    {   // smaller or bigger across the picked corners' own flat (a ring round the part shrinks toward its middle)
+        double e[3] = {0, 0, 0}, mn[3] = {1e18, 1e18, 1e18}, mx[3] = {-1e18, -1e18, -1e18};
+        for (int v : sel) { const P3d& p = m.v[v]; double c[3] = {p.x, p.y, p.z}; for (int k = 0; k < 3; k++) { mn[k] = std::min(mn[k], c[k]); mx[k] = std::max(mx[k], c[k]); } }
+        for (int k = 0; k < 3; k++) e[k] = sel.empty() ? 0 : mx[k] - mn[k];
+        int flat = e[0] <= e[1] && e[0] <= e[2] ? 0 : e[1] <= e[2] ? 1 : 2;
+        auto across = [&](double f) { meshScalePicked(flat == 0 ? 1 : f, flat == 1 ? 1 : f, flat == 2 ? 1 : f); };
+        if (ImGui::Button("Smaller")) across(0.9);
+        ImGui::SameLine();
+        if (ImGui::Button("Bigger")) across(1 / 0.9);
+        if (tipHover()) ImGui::SetTooltip("10%% at a time, toward or away from their middle, keeping to their own flat\n(a ring through the thickness shrinks round the part: the sides cave in).");
+        static float sc[3] = {100, 100, 100};
+        ImGui::SetNextItemWidth(200 * S());
+        ImGui::DragFloat3("Scale %##mesh", sc, 0.5f, 1, 1000, "%.0f");
+        ImGui::SameLine();
+        if (ImGui::Button("Apply##meshscale")) { meshScalePicked(sc[0] / 100, sc[1] / 100, sc[2] / 100); sc[0] = sc[1] = sc[2] = 100; }
+        if (tipHover()) ImGui::SetTooltip("Front to back, top to bottom, and in depth, about their middle.");
+        static float mv[3] = {0, 0, 0};
+        ImGui::SetNextItemWidth(200 * S());
+        ImGui::DragFloat3("Move mm##mesh", mv, 0.1f, -500, 500, "%.1f");
+        ImGui::SameLine();
+        if (ImGui::Button("Apply##meshmove")) { meshMovePicked(mv[0], -mv[1], mv[2]); mv[0] = mv[1] = mv[2] = 0; }
+        if (tipHover()) ImGui::SetTooltip("Forward, up, and toward you.");
+        if (ImGui::Button("Remove them (Delete)")) meshRemovePicked();
+        if (tipHover()) ImGui::SetTooltip("The faces round them close up.");
+    }
+    ImGui::EndDisabled();
+    ImGui::BeginDisabled(meshFace() < 0);
+    float ex = (float)meshExtrudeBy();
+    ImGui::SetNextItemWidth(90 * S());
+    if (ImGui::DragFloat("##extrudeby", &ex, 0.1f, -200, 200, "%.1f mm")) meshExtrudeBy() = ex;
+    ImGui::SameLine();
+    if (ImGui::Button("Push the face out (E)")) meshExtrudePicked();
+    if (tipHover()) ImGui::SetTooltip("Pick a face (click it), then push it out this far: new faces join it to where it was.\nDrag it on from there.");
+    ImGui::EndDisabled();
+    ImGui::Spacing();
+    if (ImGui::SmallButton("Back to a flat part")) meshFlatten();
+    if (tipHover()) ImGui::SetTooltip("Drop the mesh: the part becomes an outline again, its biggest cross-section,\npushed straight through its thickness.");
     ImGui::Spacing();
 }
 // The Scale tool: the box's size, typed; a percentage; and what a corner drag does
@@ -2110,6 +2186,7 @@ void buildPanel() {
             if (A.tool == Tool::Carve) carveToolPanel();
             if (A.tool == Tool::Engrave) engraveToolPanel();
             if (A.tool == Tool::Scale) scaleToolPanel();
+            if (A.tool == Tool::Mesh) meshToolPanel();
             if (A.tool == Tool::Measure || (A.measureKeep && A.measured)) measureToolPanel();
             if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size()) inspectPart(D.bodies[A.sel.idx]);
             else if (A.sel.kind == 2 && A.sel.idx < (int)D.joints.size()) inspectJoint(D.joints[A.sel.idx]);

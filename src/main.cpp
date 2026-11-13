@@ -11,6 +11,7 @@
 #include "app/audio.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
+#include "app/meshtool.hpp"
 #include "app/render.hpp"
 #include "app/overlay.hpp"
 #include "app/bench.hpp"
@@ -43,6 +44,7 @@ int main(int argc, char** argv) {
     installCrashHandler();
     // command-line options for automated screenshots
     std::string presetArg, shotPath, selectArg, demo;
+    bool meshDemo = false;
     bool perfArg = false, charArg = false;
     int frames = 0;
     bool trackDraft = false, carveTool = false;
@@ -92,6 +94,7 @@ int main(int argc, char** argv) {
             A.measureA = {v[0], v[1]}; A.measureB = {v[2], v[3]}; A.measured = A.measureKeep = true;
         }
         else if (a == "--carvetool") carveTool = true;
+        else if (a == "--meshdemo") meshDemo = true;   // (screenshots) the selected part made a 3D mesh, its sides caved in
         else if (a == "--rotate") A.rotateMode = true;   // (screenshots) the top bar's Rotate
         else if (a == "--cam") { camYaw = std::atof(next().c_str()); camPitch = std::atof(next().c_str()); }  // (screenshots) camera angles, radians        // (screenshots) pick the Carve tool
         else if (a == "--selcarve") selCarveArg = std::atoi(next().c_str());  // (screenshots) select carve N of the selected part   // (screenshots) start a track on the selected part
@@ -186,6 +189,20 @@ int main(int argc, char** argv) {
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
     if (const char* c = std::getenv("GUNSMITH_PARTRING")) { int ax = 0; double dg = 0; A.rotateMode = true; if (std::sscanf(c, "%d,%lf", &ax, &dg) == 2) partRingTest(ax, dg); }   // (tests) the selected part's rings
     if (carveTool) A.tool = Tool::Carve;
+    if (meshDemo && A.sel.kind != 1) {   // a plain block beside the gun, to show the tool on
+        BodyDef blk; blk.id = "block"; blk.name = "Grip block"; blk.pts = {{200, 0}, {236, 0}, {236, 90}, {200, 90}}; blk.thick = 30; blk.z = 0; blk.color = "#8a6a4a";
+        fixShape(blk);
+        A.design.bodies.push_back(blk);
+        A.sel = {1, (int)A.design.bodies.size() - 1, -1};
+    }
+    if (meshDemo && A.sel.kind == 1) {
+        A.tool = Tool::Mesh;
+        meshMakeFromSelected();
+        const BodyDef& b = A.design.bodies[A.sel.idx];
+        meshAddRing(2, b.z);
+        meshScalePicked(0.75, 0.75, 1);
+        if (std::getenv("GUNSMITH_MESHFACE")) { meshFace() = 0; meshExtrudeBy() = 8; }
+    }
     if (solidArg) A.xray = false;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
     if (camDist > 0) A.dist = camDist;
