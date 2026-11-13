@@ -127,13 +127,29 @@ Design fitKitTo(const Design& kitIn, const Cartridge& c, double springK) {
     std::vector<V2> tops(d.bodies.size());
     for (size_t i = 0; i < d.bodies.size(); i++) tops[i] = {at.x + (d.bodies[i].gen.top.x - at.x) * s, at.y + (d.bodies[i].gen.top.y - at.y) * s};
     scaleParts(d, all, at, s, s, s);
+    // which springs take the recoil: between the breech's assembly (it and the parts welded to it) and the frame or the
+    // barrel. The rest (strikers, sears, triggers, catches) only move their own small parts: they're kept moving them as
+    // fast as before (k x s: the part weighs s^3 more, the spring is compressed s times further)
+    std::map<std::string, std::string> weldOf;
+    for (auto& b : d.bodies) weldOf[b.id] = b.weld.empty() ? b.id : b.weld;
+    for (auto& j : d.joints) if (j.type == "weld") { std::string ta = weldOf[j.a], tb = weldOf[j.b]; for (auto& [id, t] : weldOf) if (t == tb) t = ta; }
+    auto group = [&](const std::string& id) { auto it = weldOf.find(id); return it == weldOf.end() ? id : it->second; };
+    auto fixedPart = [&](const std::string& id) { if (id == "world") return true; int i = d.bodyIndex(id); return i >= 0 && d.bodies[i].fixed; };
+    std::string bg = group(d.breech.breech), cg = group(d.breech.chamber);
     for (auto& j : d.joints) {
-        if (j.type == "spring") { j.rest *= s; j.coilDia *= s; j.wire *= s; j.preload *= s; j.k *= ks; }
+        if (j.type == "spring") {
+            std::string ga = group(j.a), gb = group(j.b);
+            bool recoil = (ga == bg && (fixedPart(j.b) || gb == cg) && gb != bg) || (gb == bg && (fixedPart(j.a) || ga == cg) && ga != bg)
+                       || (cg != bg && ((ga == cg && fixedPart(j.b)) || (gb == cg && fixedPart(j.a))));   // (a recoiling barrel's own spring)
+            j.rest *= s; j.coilDia *= s; j.wire *= s; j.preload *= s;
+            j.k *= recoil ? ks : s;
+        }
         if (j.type == "latch") { j.catchAt *= s; j.releaseAt *= s; }
         if (j.type == "magwell") j.releaseAt *= s;
         if (j.type == "cam") for (auto& t : j.table) t.x *= s;
         j.pinDia *= s;
     }
+    for (auto& b : d.bodies) if (b.ctrl != "none") b.ctrlForce *= s * s;   // (a finger on parts whose springs are s^2 as strong)
     auto& br = d.breech;
     br.feed *= s; br.cockAt *= s; br.holdAt *= s;
     for (auto& g : br.gas) { g.at *= s; g.stroke *= s; g.pistonDia *= s; g.portDia *= s; }
