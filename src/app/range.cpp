@@ -1404,11 +1404,14 @@ void rangeHud() {
     sim::Body* M = sim::seatedMag(S);
     int inMag = M ? M->rounds : 0;
     for (auto& x : S.bodies) if (x.builtInMag && !x.gone) inMag = x.rounds;
-    std::snprintf(b, sizeof b, "%d%s", inMag, S.chambered ? " + 1" : "");
+    bool cyl = sim::hasCylinder(S);   // a revolver: what's in the cylinder
+    if (cyl) std::snprintf(b, sizeof b, "%d / %d", sim::cylinderLive(S), (int)S.cyl.size());
+    else std::snprintf(b, sizeof b, "%d%s", inMag, S.chambered ? " + 1" : "");
     float fs = 30;
     float w = viewTextWidth(b, fs);
     viewText(b, W - w - 36, H - 70, fs, Color{240, 242, 245, 240});
-    const char* mag = M || S.chambered ? (M ? "in the magazine, + in the chamber" : "in the chamber") : "empty: R to reload";
+    const char* mag = cyl ? (sim::cylinderLive(S) > 0 ? "in the cylinder" : "empty: R to reload")
+                    : M || S.chambered ? (M ? "in the magazine, + in the chamber" : "in the chamber") : "empty: R to reload";
     {   // what you carry besides
         std::string rs = TextFormat("%d spare", R.reserve);
         Color rc = R.reserve == 0 ? Color{255, 120, 100, 240} : R.reserve < R.reserveMax / 5 ? Color{255, 200, 90, 230} : Color{200, 204, 212, 200};
