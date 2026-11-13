@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.6-alpha
+
+- **Shoot through wood.** Thin wood no longer stops a bullet: plywood, planks, parquet floors and wooden doors let a shot through if it has the power, and it comes out slower and slightly off its line. Each round has its own limit:
+  - about 9 cm of wood for a buckshot pellet;
+  - 11 to 15 cm for pistol rounds;
+  - about 31 cm for a 5.56 rifle round.
+- Bullets that come through still hurt whoever is behind the wood, just less. Thick wooden beams and walls still stop them. Steel doors, concrete, brick and stone stop everything.
+
 ## 0.8.5-alpha
 
 - **Doors stop bullets.** A shut wood or steel door takes the shot (steel ones ding). Glass doors don't stop anything.

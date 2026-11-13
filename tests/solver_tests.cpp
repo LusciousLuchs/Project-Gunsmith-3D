@@ -6,6 +6,7 @@
 #include "places.hpp"
 #include "npcai.hpp"
 #include "doors.hpp"
+#include "penetrate.hpp"
 #include "map.hpp"
 #include "reliability.hpp"
 #include "version.hpp"
@@ -2715,6 +2716,25 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void woodPenetration() {
+    std::printf("woodPenetration\n");
+    struct R { const char* name; double g, mm, v; } rs[] = {{".22 LR", 2.6, 5.7, 370}, {".380", 6.2, 9.0, 290}, {"9 mm", 7.45, 9.01, 360},
+                                                          {"00 buck pellet", 3.5, 8.4, 400}, {"5.56", 4.0, 5.7, 940}, {".308", 9.5, 7.82, 850}};
+    for (auto& r : rs) std::printf("  (%s: through %.0f cm of wood; out of a 19 mm board at %.0f m/s)\n", r.name,
+                                   100 * pen::reach(r.g / 1000, r.mm / 1000, r.v), pen::exitSpeed(r.g / 1000, r.mm / 1000, r.v, 0.019));
+    double p9 = pen::reach(0.00745, 0.00901, 360), r556 = pen::reach(0.004, 0.0057, 940), p22 = pen::reach(0.0026, 0.0057, 370);
+    CHECK(p9 > 0.1 && p9 < 0.3, "a 9 mm goes through 10-30 cm of wood");
+    CHECK(r556 > p9 && r556 < 0.6, "a rifle round goes further, but not through half a metre");
+    CHECK(p22 < p9, "a .22 doesn't get as far as a 9 mm");
+    CHECK(pen::exitSpeed(0.00745, 0.00901, 360, 0.045) > 200, "a 9 mm goes through a wooden door and keeps most of its speed");
+    CHECK(pen::exitSpeed(0.00745, 0.00901, 360, 0.5) == 0, "but not through a thick beam");
+    CHECK(pen::woodLike("plywood") && pen::woodLike("door_wood") && !pen::woodLike("concrete") && !pen::woodLike("steel"), "only wood");
+    gmap::Brush b = gmap::makeBox({0, 0, 0}, {0.02, 2, 2}, 0);   // a 2 cm board
+    CHECK(std::fabs(pen::brushExit(b, {0, 1, 1}, {1, 0, 0}) - 0.02) < 1e-9, "straight through a board: its thickness");
+    double sl = pen::brushExit(b, {0, 1, 1}, gmap::norm(gmap::V3{1, 0, 1}));
+    CHECK(std::fabs(sl - 0.02 * std::sqrt(2.0)) < 1e-9, "at an angle: a longer way through");
+}
+
 static void doorsBlock() {
     std::printf("doorsBlock\n");
     // a wall across the way with a 1 m doorway, a wooden door in it
@@ -2831,6 +2851,7 @@ int main() {
     mapsCarryNpcs();
     npcsAlive();
     doorsBlock();
+    woodPenetration();
     npcPaths();
     armFreedom();
     cartridgeSharing();

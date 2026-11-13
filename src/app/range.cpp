@@ -6,6 +6,7 @@
 // swings more slowly, and one held in one hand kicks more than one in the shoulder.
 #include "app/range.hpp"
 #include "app/doors.hpp"
+#include "core/penetrate.hpp"
 #include "app/fitbench.hpp"
 #include "app/view.hpp"
 #include "app/perf.hpp"
@@ -42,7 +43,7 @@ using gmap::V3;
 double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut);   // the closest two segments come (below)
 
 namespace {
-struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; double mass = 0.008; int npc = -1; double dmg = 0; };   // dmg: an NPC gun's set damage to you (0: by energy)   // npc: fired by that NPC (-1: by you)
+struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; double mass = 0.008; int npc = -1; double dmg = 0; double dia = 0.009; };   // dia: the bullet's, m (how far it gets through wood)   // dmg: an NPC gun's set damage to you (0: by energy)   // npc: fired by that NPC (-1: by you)
 struct Impact { V3 p, n; bool steel = false; double r = 0.005; };
 struct Target { V3 c, n; double size = 0.6; };
 struct Carried { Design d; std::unique_ptr<sim::Sim> S; std::vector<fit::Item> fit; int reserve = -1; };   // (fit: its attachments)   // a gun you carry (the one in your hands lives in A.design / A.S)
@@ -207,7 +208,7 @@ void fireBullets(int chamber) {
     V3 side = gmap::norm(gmap::cross(dir, {0, 1, 0})), upv = gmap::cross(side, dir);
     for (int i = 0; i < n; i++) {
         V3 d = gmap::norm(dir + side * rnd(spread) + upv * rnd(spread));
-        R.bullets.push_back({m, d * cart.velocity, k, 0, 0, mass, -1});
+        R.bullets.push_back({m, d * cart.velocity, k, 0, 0, mass, -1, 0, dia});
         if (std::getenv("GUNSMITH_RANGEDBG")) std::printf("bullet from %.2f %.2f %.2f dir %.3f %.3f %.3f v %.0f\n", m.x, m.y, m.z, d.x, d.y, d.z, cart.velocity);
     }
     // recoil: the cartridge's push against the gun's weight, felt less in the shoulder than in one hand
@@ -218,6 +219,19 @@ void fireBullets(int chamber) {
     R.kickBack = std::min(0.08, R.kickBack + v * 0.006 * R.recoilK);
     R.shots++;
     if (gDemo.on) gDemo.shots++;
+}
+
+// A bullet at `at` going along `dir` through `thick` m of wood: if it gets through, it's put just past the far side,
+// slower and turned a little (more the more it lost), and true; false if it stops inside.
+static bool throughWood(Bullet& b, V3 at, V3 dir, double thick) {
+    double v0 = gmap::len(b.v), v1 = pen::exitSpeed(b.mass, b.dia, v0, thick);
+    if (v1 <= 0) return false;
+    float wob = (float)(0.04 * (1 - v1 / std::max(1.0, v0)));   // (about 2 degrees when it barely gets through)
+    V3 side = gmap::norm(gmap::cross(dir, {0, 1, 0})), upv = gmap::cross(side, dir);
+    V3 d = gmap::norm(dir + side * rnd(wob) + upv * rnd(wob));
+    b.p = at + dir * (thick + 0.002);
+    b.v = d * v1;
+    return true;
 }
 
 void stepBullets(double dt) {
@@ -279,9 +293,15 @@ void stepBullets(double dt) {
                 gmap::Hit hit = gmap::rayMap(R.map, b.p, step * (1 / L), L);
                 int doorHit = -1;
                 double doorT = doors::ray(R.map, b.p, step * (1 / L), L, &doorHit);
-                if (doorT >= 0 && (hit.brush < 0 || doorT < hit.t)) {   // a shut door (wood or steel) stops it
+                if (doorT >= 0 && (hit.brush < 0 || doorT < hit.t)) {   // a shut door: steel stops it, wood if it's too slow to get through
                     // (no bullet hole: it would hang in the air once the door swings)
-                    if (R.map.ents[doorHit].ref == "metal") { R.lastHit = "Ding! (a steel door)"; R.lastHitT = 1.2; }
+                    V3 dir = step * (1 / L);
+                    if (R.map.ents[doorHit].ref != "metal") {
+                        V3 dh, de; doors::slab(R.map, doorHit, dh, de);
+                        V3 n = gmap::norm(V3{-(de.z - dh.z), 0, de.x - dh.x});
+                        double thick = pen::DOOR_THICK / std::max(0.05, std::fabs(gmap::dot(n, dir)));
+                        if (throughWood(b, b.p + dir * doorT, dir, thick)) continue;
+                    } else { R.lastHit = "Ding! (a steel door)"; R.lastHitT = 1.2; }
                     b.life = -1;
                     break;
                 }
@@ -315,6 +335,15 @@ void stepBullets(double dt) {
                         if (CFG.units == Units::Imperial) std::snprintf(d, sizeof d, "%.0f yd", dist * 1.09361); else std::snprintf(d, sizeof d, "%.0f m", dist);
                         R.lastHit = what + "  at " + d;
                         R.lastHitT = 3;
+                    }
+                    if (pen::woodLike(mn)) {   // wood: through it if it's thin enough, out the other side slower
+                        V3 dir = step * (1 / L);
+                        double thick = pen::brushExit(R.map.brushes[hit.brush], at, dir);
+                        if (throughWood(b, at, dir, thick)) {
+                            R.impacts.push_back({at + dir * thick, dir, false, 0.005});   // (the hole it leaves coming out)
+                            b.travelled += hit.t;
+                            continue;
+                        }
                     }
                     b.life = -1;
                     break;
@@ -935,7 +964,7 @@ void rangeUpdate(float dt, bool modal) {
                 const Cartridge& c = a.cart;
                 double mass = c.bulletMass / 1000, dia = c.bulletDia / 1000;
                 double k = 0.5 * 1.2 * 0.3 * 3.14159 * dia * dia / 4 / std::max(1e-4, mass);
-                R.bullets.push_back({e.from, e.dir * std::max(50.0, c.velocity), k, 0, 0, mass, e.actor, a.gun.damage});
+                R.bullets.push_back({e.from, e.dir * std::max(50.0, c.velocity), k, 0, 0, mass, e.actor, a.gun.damage, dia});
                 { float d = (float)gmap::len(e.from - eye); playShotMix(shotMix(c, -1), std::clamp(6.f / (d + 4), 0.08f, 0.8f)); }   // farther: quieter
             } else if (e.kind == npcai::Event::Melee && !R.dead) {
                 R.health -= armor::absorb(R.armor, e.damage); R.hurtT = 0.4;
