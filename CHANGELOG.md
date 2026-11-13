@@ -40,7 +40,7 @@ The version is set in one place, at the top of `CMakeLists.txt`.
 - New cartridge: **.38 Special**.
 - **New example: gas-operated pistol.** The blowback pistol with its slide locked shut. A gas port in the barrel drives an operating rod: its first push unlocks the slide, then it shoves the slide back. The rod is also the charging handle. It fires 30 of 30. Shrink the port to 3 mm and it stops cycling, so the gas settings matter.
 - **The reliability test** now counts it as a jam when a self-loading gun fires but never opens.
-- **New slide sounds.** Racking a slide by hand now uses your slide-racking recordings: a clack when it hits the back, and another when you ease it home. A released slide that slams home still uses the slide recordings from before. Turning bolts keep the Mosin sounds.
+- **New slide sounds.** Racking a slide by hand now uses your own slide recordings: a clack when it hits the back, and another when you ease it home. A released slide that slams home still uses the slide recordings from before. Turning bolts keep the Mosin sounds.
 - **No more freezes when cutting parts.** A part with lots of cuts used to stall the editor after every change while its holes were re-cut (a 30-cut part took about a seventh of a second). The cutting now happens in the background: the part shows without its holes for a moment, then they appear.
 
 ## 0.8.7-alpha

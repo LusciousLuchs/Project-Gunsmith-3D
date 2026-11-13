@@ -52,7 +52,7 @@ struct Pool {
 };
 Pool gPistol, gRifle, gCrack, gAction, gBoom, gTail;
 Pool gBoltLift, gBoltBack, gBoltFwd, gBoltLock;
-Pool gSlideBack, gSlideFwd;   // the owner's slide racked by hand (slide-racking): drawn back to its stop, sent home   // the owner's Mosin worked by hand: lifted, pulled back, pushed home, turned down
+Pool gSlideBack, gSlideFwd;   // the owner's slide racked by hand: drawn back to its stop, sent home   // the owner's Mosin worked by hand: lifted, pulled back, pushed home, turned down
 Sound fromSamples(const std::vector<float>& y, int rate) {
     short* d = (short*)MemAlloc((unsigned)(y.size() * sizeof(short)));
     for (size_t i = 0; i < y.size(); i++) d[i] = (short)(std::clamp(y[i], -1.f, 1.f) * 32000);
