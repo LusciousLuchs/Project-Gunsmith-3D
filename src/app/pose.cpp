@@ -657,12 +657,30 @@ static Vector3 muzzleWorld() {
 
 // ---------------------------------------------------------------- handles
 namespace {
+BodyHold gEyeStart;           // the body's hold when its drag began
 Vector3 dragN, dragP0;          // a free drag: the plane it moves in (facing the camera at the press), and where it began
+// the body's drag: the eye follows the cursor in the plane facing the camera (set at the press), so seen from the
+// front or above it moves across the gun as well, putting the gun off to the shooter's side
+static void bodyDragTo(Ray r) {
+    BodyHold& h = editable();
+    float den = Vector3DotProduct(r.direction, dragN);
+    if (std::fabs(den) < 1e-6f) return;
+    float t = Vector3DotProduct(Vector3Subtract(dragP0, r.position), dragN) / den;
+    if (t < 0) return;
+    Vector3 p = Vector3Add(r.position, Vector3Scale(r.direction, t)), d = Vector3Subtract(p, dragP0);
+    Vector3 g = Vector3Transform(d, MatrixRotateZ((float)(gEyeStart.tilt * DEG2RAD)));  // back into the gun's frame
+    h.eye.x = std::round(gEyeStart.eye.x + g.x / U); h.eye.y = std::round(gEyeStart.eye.y - g.y / U);
+    h.eyeZ = std::round(gEyeStart.eyeZ + g.z / U);
+}
 double dragStart[6];            // ...and the gun's move at the press
 struct PH { Vector2 s; int id; };  // 0/1 firing middle/end, 2/3 support, 4/5 butt, 6 the head
 std::vector<PH> handles;
 }
+void poseBodyDragTest(float px);
+extern float gBodyDragPending;
 void drawPoseOverlay() {
+    static int frames = 0;
+    if (gBodyDragPending != 0 && ++frames > 10) poseBodyDragTest(gBodyDragPending);
     handles.clear();
     if (A.S && sim::animPlaying(*A.S)) return;   // playing on the gun: nothing to grab
     const Pose P = viewPose();
@@ -912,6 +930,7 @@ void poseInput(bool overUI) {
             dragN = Vector3Negate(r.direction);
             if (id == 10 || id == 11) { ViewHands VH = viewHands(); dragP0 = sideLimb(bodyFrame(), VH, id - 10).g.wrist; }
             if (id == 12) dragP0 = gunMidWorld();
+            if (id == 6) { gEyeStart = editable(); dragP0 = eyeWorld(gEyeStart); }   // the body: any way the view allows, across the gun too
             if (id == 12 || id == 13) { double g[6]; viewGun(g); for (int q = 0; q < 6; q++) dragStart[q] = g[q]; }
         }
         return;
@@ -1034,15 +1053,7 @@ void poseInput(bool overUI) {
         h.pocket[1] = Vector3DotProduct(d, F.u) / U;
         return;
     }
-    if (A.poseDrag == 6) {  // the body: the eye follows the cursor across the gun's side
-        BodyHold& h = editable();
-        Vector3 p;
-        if (!onPlane((float)h.eyeZ * U, p)) return;
-        Vector3 e = eyeWorld(h), d = Vector3Subtract(p, e);
-        Vector3 g = Vector3Transform(d, MatrixRotateZ((float)(h.tilt * DEG2RAD)));  // back into the gun's frame
-        h.eye.x += g.x / U; h.eye.y -= g.y / U;
-        return;
-    }
+    if (A.poseDrag == 6) { bodyDragTo(r); return; }
     HandHold& h = *editHand(A.poseDrag < 2 ? 0 : A.poseDrag < 4 ? 1 : 2);
     Vector3 p;
     if (!onPlane((float)partZ(h.part) * U, p)) return;
@@ -1056,4 +1067,19 @@ void poseInput(bool overUI) {
         double a = std::atan2(mm.y - h.at.y, mm.x - h.at.x) * RAD2DEG;
         h.angle = std::round(a < 0 ? a + 360 : a);
     }
+}
+
+// (test) drag the body dot sideways on screen by px pixels, the way a mouse would
+float gBodyDragPending = 0;
+void poseBodyDragTest(float px) {
+    static bool started = false;
+    if (!started) { started = true; gBodyDragPending = px; return; }   // (later, once the view is set up)
+    gBodyDragPending = 0;
+    gEyeStart = editable();
+    dragP0 = eyeWorld(gEyeStart);
+    Vector2 sc = GetWorldToScreenEx(dragP0, A.cam, A.vw, A.vh);
+    dragN = Vector3Negate(GetScreenToWorldRayEx(sc, A.cam, A.vw, A.vh).direction);
+    bodyDragTo(GetScreenToWorldRayEx({sc.x + px, sc.y}, A.cam, A.vw, A.vh));
+    BodyHold& h = editable(); h.set = true;
+    std::printf("BODYDRAG: eye %.0f,%.0f,%.0f -> %.0f,%.0f,%.0f\n", gEyeStart.eye.x, gEyeStart.eye.y, gEyeStart.eyeZ, h.eye.x, h.eye.y, h.eyeZ);
 }

@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.17-alpha
+
+- **Poser: move the gun to the side.** The orange dot over the head now follows the mouse whichever way you're looking. From the side it moves along and up the gun as before; turn the view to look from the front or from above and it moves across too, so the gun can sit off to one side of the shooter (a hip hold at the side, a pistol held out to the right). The arm turns red if a hand can no longer reach.
+
 ## 0.8.16-alpha
 
 - **Counter paperwork looks like real paper.** The transfer form is now a printed Form 7140 from the AFRaC (Agency of Firearm Regulation and Control), filled in by hand in blue ink: boxed fields, black section bars, Yes and No tick boxes, and a signature. The ID is a proper plastic licence with a coloured band, the customer's photo and printed labels.

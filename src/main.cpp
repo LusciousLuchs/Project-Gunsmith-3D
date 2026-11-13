@@ -225,6 +225,7 @@ int main(int argc, char** argv) {
     }
     if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); if (std::getenv("GUNSMITH_POSEHAND")) poseFocusHand(std::atoi(std::getenv("GUNSMITH_POSEHAND")));
         if (const char* c = std::getenv("GUNSMITH_POSECAM")) std::sscanf(c, "%f %f %f", &A.yaw, &A.pitch, &A.dist);
+        if (const char* c = std::getenv("GUNSMITH_BODYDRAG")) { void poseBodyDragTest(float); poseBodyDragTest((float)std::atof(c)); }   // (test) the body dragged sideways, px
         if (const char* c = std::getenv("GUNSMITH_RINGTEST")) { int id = 0, ax = 0; double dg = 0; if (std::sscanf(c, "%d,%d,%lf", &id, &ax, &dg) == 3) poseRingTest(id, ax, dg); } }   // (screenshots) "yaw pitch dist" round the hand
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);

@@ -364,7 +364,7 @@ static void posePanel() {
         BodyHold& b = P.hold[A.poseHold];
         if (!b.set) b = holdOf(A.design, A.poseHold);
         BodyHold was = b;
-        muted("Drag the orange dot over the head to move the body. These are where the aiming eye sits against the gun.");
+        muted("Drag the orange dot over the head to move the body. Seen from the side it moves along and up the gun; turn the view to look from the front or above and it moves across, putting the gun off to the side. These numbers are where the aiming eye sits against the gun.");
         pNumU("Eye X", b.eye.x, 2, Q::Length, -1, "Along the gun: + toward the muzzle.", SIGNED);
         double up = -b.eye.y;
         if (pNumU("Eye Y", up, 2, Q::Length, -1, "Up and down: + is up.", SIGNED)) b.eye.y = -up;
