@@ -1808,6 +1808,34 @@ static void firingTab() {
             pCheck("A loaded magazine lets it go", br.holdReleaseMag, "Seating a magazine with rounds in it sends the bolt home (an auto-forward catch).");
             muted(TextFormat("Slide release: %s on the bench and the range.", keyName(keyOf(Act::SlideRelease))));
         }
+        pCheck("Revolving cylinder", br.cylinder.on, "The chamber part is a cylinder holding several rounds round its long middle line (draw it as a Round part).\n"
+                                                     "It turns one chamber at a time, bringing the next round in line with the barrel.\n"
+                                                     "Only the chamber in line fires; the others wait out of the side view (they don't collide).\n"
+                                                     "Reloading (R) swings it out: the fired cases are dumped and every chamber filled.");
+        if (br.cylinder.on) {
+            prop("Chambers");
+            if (ImGui::DragInt("##cylN", &br.cylinder.chambers, 0.05f, 2, 12)) { br.cylinder.chambers = std::clamp(br.cylinder.chambers, 2, 12); editedAny = true; }
+            prop("Turned by", "What turns it one chamber.\nEvery trigger pull: double action, the pull turns it and then fires.\n"
+                              "A part: a hammer or trigger you drew turns it each time it has moved far enough, and is ready again once it comes back.");
+            if (ImGui::BeginCombo("##cylBy", br.cylinder.indexBy.empty() ? "Every trigger pull" : bname(br.cylinder.indexBy).c_str())) {
+                if (ImGui::Selectable("Every trigger pull", br.cylinder.indexBy.empty())) { br.cylinder.indexBy.clear(); editedAny = true; }
+                for (auto& o : D.bodies) if (!o.fixed && !o.magazine && ImGui::Selectable((o.name + "##cy" + o.id).c_str(), br.cylinder.indexBy == o.id)) { br.cylinder.indexBy = o.id; editedAny = true; }
+                ImGui::EndCombo();
+            }
+            if (!br.cylinder.indexBy.empty()) {
+                pNum("Its stroke", br.cylinder.stroke, 0.5, "%.1f", "How far it moves to turn the cylinder one chamber: degrees if it swings on a pin, mm if it slides.\n0: 20 degrees, or 5 mm.");
+                br.cylinder.stroke = std::max(0.0, br.cylinder.stroke);
+            } else if (br.ignition == "button" && !br.doubleAction) warn("Turned by the trigger pull: tick Double action (Fire control) so the pull fires it too.");
+            int ci = D.bodyIndex(br.chamber);
+            if (ci < 0 || ci >= (int)D.bodies.size()) warn("The chamber part is the cylinder: choose it as the chamber's part.");
+            else {
+                carve::RoundAxis ax = carve::roundAxis(D.bodies[ci]);
+                double t = (br.face.x - ax.o.x) * ax.dir.x + (br.face.y - ax.o.y) * ax.dir.y;
+                double r = std::hypot(br.face.x - ax.o.x - ax.dir.x * t, br.face.y - ax.o.y - ax.dir.y * t);
+                if (r < 1) warn("The breech face sits on the cylinder's middle line: the chambers go round it, so put the face where the top chamber is.");
+                else muted(TextFormat("Chambers %.1f mm from its middle line.", r));
+            }
+        }
     }
     if (section("Fire control", true)) {
         // Feeding, the bolt and extraction are always real parts. The hammer or striker can be built in or drawn.

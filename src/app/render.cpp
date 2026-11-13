@@ -24,6 +24,46 @@ static Matrix poseMatrix(int tmpl, double xmm, double ymm, double a, double roll
     return MatrixMultiply(MatrixMultiply(MatrixRotateX(-(float)roll), MatrixRotateZ(-(float)a)),
                           MatrixTranslate((float)xmm * U, -(float)ymm * U, bodyZ(tmpl)));
 }
+// A revolving cylinder (BreechDef::cylinder): the breech's chamber part turns about its long middle line; the chamber
+// in line with the bore is at `face`, the others round the axis at the same distance (design mm)
+struct CylGeo { bool ok = false; int part = -1, n = 6; V2 foot, u, face; double r = 0, len = 0; };
+static CylGeo cylGeo() {
+    CylGeo g;
+    const BreechDef& br = A.design.breech;
+    if (!br.on || !br.cylinder.on || !br.hasFace) return g;
+    g.part = A.design.bodyIndex(br.chamber);
+    if (g.part < 0) return g;
+    BodyDef d = A.design.bodies[g.part];
+    carve::RoundAxis ax = carve::roundAxis(d);
+    g.u = ax.dir;
+    double t = (br.face.x - ax.o.x) * g.u.x + (br.face.y - ax.o.y) * g.u.y;
+    g.foot = {ax.o.x + g.u.x * t, ax.o.y + g.u.y * t};
+    g.r = std::hypot(br.face.x - g.foot.x, br.face.y - g.foot.y);
+    double lo = 1e9, hi = -1e9;
+    for (auto& p : d.pts) { double s = (p.x - g.foot.x) * g.u.x + (p.y - g.foot.y) * g.u.y; lo = std::min(lo, s); hi = std::max(hi, s); }
+    g.len = std::max(1.0, hi - std::max(0.0, lo));
+    g.face = br.face;
+    g.n = std::clamp(br.cylinder.chambers, 2, 12);
+    g.ok = g.r > 1;
+    return g;
+}
+// how far round it's turned, in chambers, eased so it turns rather than jumps (the bench's own clock)
+static double gCylShown = 0;
+static double cylShown(int n) {
+    if (!A.S || !sim::hasCylinder(*A.S)) { gCylShown = 0; return 0; }
+    double tgt = A.S->cylAt + A.S->cylFrac;
+    double d = std::remainder(tgt - gCylShown, (double)n);
+    gCylShown += d * std::min(1.0, (double)GetFrameTime() * 20);
+    if (std::fabs(d) < 1e-3) gCylShown = tgt;
+    return gCylShown;
+}
+// a point at chamber j's place: the chamber in line turned round the axis by (j - shown) chambers (world)
+static Vector3 cylPoint(const CylGeo& g, V2 designPt, float zc, double turns) {
+    Vector3 p = W3(designPt, zc), o = W3(g.foot, zc);
+    Vector3 ax = Vector3Normalize(Vector3{(float)g.u.x, -(float)g.u.y, 0});
+    return Vector3Add(o, Vector3RotateByAxisAngle(Vector3Subtract(p, o), ax, (float)(turns * 2 * PI / g.n)));
+}
+
 std::vector<RB> renderList() {
     std::vector<RB> out;
     if (!A.S) {
@@ -33,6 +73,8 @@ std::vector<RB> renderList() {
         }
         return out;
     }
+    CylGeo cg = cylGeo();
+    double shown = cg.ok ? cylShown(cg.n) : 0;
     for (auto& b : A.S->bodies) {
         if (b.gone) continue;   // tidied away, or a round that went into the chamber
         int t = A.design.bodyIndex(b.tmpl.empty() ? b.id : b.tmpl);
@@ -41,6 +83,12 @@ std::vector<RB> renderList() {
         if (b.isMag) {   // a side magazine sliding in or out across the gun
             float dz = (float)(b.z * 1000 - A.design.bodies[t].z) * U;
             if (std::fabs(dz) > 1e-5f) M = MatrixMultiply(M, MatrixTranslate(0, 0, dz));
+        }
+        if (cg.ok && t == cg.part) {   // a revolving cylinder, turned about its axis
+            V2 c = centroidOf(A.design.bodies[t]);
+            Vector3 pl{(float)((cg.foot.x - c.x) * U), -(float)((cg.foot.y - c.y) * U), 0}, ax{(float)cg.u.x, -(float)cg.u.y, 0};
+            Matrix R = MatrixMultiply(MatrixMultiply(MatrixTranslate(-pl.x, -pl.y, -pl.z), MatrixRotate(Vector3Normalize(ax), -(float)(shown * 2 * PI / cg.n))), MatrixTranslate(pl.x, pl.y, pl.z));
+            M = MatrixMultiply(R, M);
         }
         if (b.rollParent) {  // a piece of a rotating bolt turns about the bolt's axis, not its own centre
             float ay = (float)(b.axisDy * 1000) * U, az = -(float)(b.axisDz * 1000) * U;
@@ -90,6 +138,23 @@ Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
         CarveDef bo = ch; bo.at = muz; bo.dx = -u.x; bo.dy = -u.y; bo.w = bo.h = ct.bulletDia; bo.depth = std::max(1.0, L - ct.caseLen + 0.5);
         cuts.push_back(bo);
         // (the rifling is drawn as a spiral along the bore: see drawRifling)
+    }
+    {   // a revolving cylinder: its chambers bored right through it, round the axis
+        const BreechDef& br = A.design.breech;
+        CylGeo g = cylGeo();
+        if (!rough && g.ok && d.id == br.chamber) {
+            const Cartridge& ct = br.cart;
+            V2 n0{g.face.x - g.foot.x, g.face.y - g.foot.y};
+            for (int k = 0; k < g.n; k++) {
+                double th = k * 2 * 3.14159265358979 / g.n;
+                CarveDef ch; ch.shape = "circle";
+                ch.at = {g.foot.x + n0.x * std::cos(th) - g.u.x * 0.5, g.foot.y + n0.y * std::cos(th) - g.u.y * 0.5};
+                ch.atZ = g.r * std::sin(th);
+                ch.dx = g.u.x; ch.dy = g.u.y; ch.dz = 0;
+                ch.w = ch.h = std::max(ct.baseDia, ct.shoulderDia) + 0.4; ch.depth = g.len + 1;
+                cuts.push_back(ch);
+            }
+        }
     }
     if (!cuts.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
         std::vector<std::vector<csg::Poly>> cut;
@@ -942,7 +1007,20 @@ static void drawSceneImpl(bool gunOnly) {
     if (building && D.breech.on && D.breech.ignition == "striker" && !D.breech.striker.empty()) drawSphereLit(W3(D.breech.strikerTip, frontZ(D.breech.striker) + 0.2f), 0.3f, Color{255, 122, 89, 255});
     // chamber and feeding
     auto& br = D.breech;
-    if (br.on && br.hasFace) {
+    CylGeo cyg = cylGeo();
+    if (cyg.ok) {   // a revolving cylinder: a round (or a fired case) in each chamber that holds one, turning with it
+        double shown = A.S && sim::hasCylinder(*A.S) ? gCylShown : 0;
+        V2 to{cyg.face.x + cyg.u.x, cyg.face.y + cyg.u.y};
+        int cur = A.S && sim::hasCylinder(*A.S) ? A.S->cylAt : 0;
+        for (int j = 0; j < cyg.n; j++) {
+            int st = !A.S || !sim::hasCylinder(*A.S) ? (br.loaded ? 1 : 0) : j == cur ? (A.S->chambered ? 1 : A.S->spent ? 2 : 0) : A.S->cyl[j];
+            if (st == 0) continue;
+            double turns = j - shown;
+            Vector3 o = cylPoint(cyg, cyg.face, 0, turns), o2 = cylPoint(cyg, to, 0, turns);
+            drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)), st == 2);
+        }
+    }
+    if (br.on && br.hasFace && !cyg.ok) {
         if (A.S) {
             const V2* mz = br.hasMuzzle ? &br.muzzle : nullptr;
             if (A.S->chambered) drawCartridge(br.chamber, br.face, 0, false, nullptr, mz);

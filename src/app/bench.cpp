@@ -136,6 +136,7 @@ void stepSim(float dt) {
             if (SFX.ok && A.sound) PlaySound(SFX.click);
         }
         if (e.kind == sim::Ev::Click) { A.clickT = 1.0f; if (SFX.ok && A.sound) PlaySound(SFX.click); }
+        if (e.kind == sim::Ev::Index && SFX.ok && A.sound) { SetSoundPitch(SFX.click, 1.7f); PlaySound(SFX.click); SetSoundPitch(SFX.click, 1.f); }   // (a cylinder turning)
         if (e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) actionEventSound(S, e.kind);
         if (e.kind == sim::Ev::MagLoaded && SFX.ok && A.sound) PlaySound(SFX.click);
     }

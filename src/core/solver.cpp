@@ -173,7 +173,58 @@ int chamberedCount(Sim& S) {
     int was = S.cur, n = 0;
     for (int k = 0; k < chamberCount(S); k++) { useChamber(S, k); if (S.chambered) n++; }
     useChamber(S, was);
+    if (hasCylinder(S)) for (int j = 0; j < (int)S.cyl.size(); j++) if (j != S.cylAt && S.cyl[j] == 1) n++;   // (waiting their turn)
     return n;
+}
+// ---------- a revolving cylinder: chamber 0's state is the chamber in line; the rest wait in S.cyl
+bool hasCylinder(const Sim& S) { return S.design.breech.cylinder.on && S.cyl.size() >= 2; }
+void cylinderIndex(Sim& S) {
+    if (!hasCylinder(S)) return;
+    int was = S.cur;
+    useChamber(S, 0);
+    if (!S.inTransit) {
+        S.cyl[S.cylAt] = S.chambered ? 1 : S.spent ? 2 : 0;
+        S.cylAt = (S.cylAt + 1) % (int)S.cyl.size();
+        int st = S.cyl[S.cylAt];
+        S.chambered = st == 1; S.spent = st == 2; S.gripped = false;
+        S.events.push_back({Ev::Index, S.t});
+    }
+    useChamber(S, was);
+}
+int cylinderLive(const Sim& S) {
+    if (!hasCylinder(S)) return 0;
+    int n = 0;
+    for (int j = 0; j < (int)S.cyl.size(); j++) if (j != S.cylAt && S.cyl[j] == 1) n++;
+    bool liveInLine = S.cur == 0 ? S.chambered : (!S.chambers.empty() && S.chambers[0].chambered);
+    return n + (liveInLine ? 1 : 0);
+}
+int cylinderReload(Sim& S) {
+    if (!hasCylinder(S)) return 0;
+    int added = (int)S.cyl.size() - cylinderLive(S);
+    int was = S.cur;
+    useChamber(S, 0);
+    for (auto& c : S.cyl) c = 1;
+    S.chambered = true; S.spent = false; S.gripped = false; S.inTransit = false;
+    useChamber(S, was);
+    return added;
+}
+double cylinderAngle(const Sim& S) {
+    if (!hasCylinder(S)) return 0;
+    return (S.cylAt + S.cylFrac) * 360.0 / (double)S.cyl.size();
+}
+// the part that turns it: one chamber each time it has moved its stroke (it turns as the hammer comes back), ready
+// again once it has come most of the way home
+static void cylinderStep(Sim& S) {
+    if (!hasCylinder(S)) return;
+    const CylinderDef& cd = S.design.breech.cylinder;
+    if (cd.indexBy.empty() || !S.cylBy) { S.cylFrac = 0; return; }
+    const Body& P = *S.cylBy;
+    double d = S.cylPivot ? std::fabs(P.a) * 180 / 3.14159265358979 : std::hypot(P.x - P.x0, P.y - P.y0) * 1000;
+    double stroke = cd.stroke > 0 ? cd.stroke : (S.cylPivot ? 20 : 5);
+    if (S.cylArmed) {
+        S.cylFrac = std::clamp(d / stroke, 0.0, 1.0);
+        if (d >= stroke) { cylinderIndex(S); S.cylArmed = false; S.cylFrac = 0; }
+    } else if (d < stroke * 0.3) S.cylArmed = true;
 }
 bool anyChambered(Sim& S) { return chamberedCount(S) > 0; }
 static bool leavesCase(const Sim& S) { return S.design.breech.cart.kind != "caseless"; }  // caseless rounds burn away
@@ -452,6 +503,15 @@ std::unique_ptr<Sim> finishBuild(std::unique_ptr<Sim>& S) {
         }
         s.rounds = br.rounds;
         s.feedMode = br.feedMode;
+        if (br.cylinder.on) {   // a revolving cylinder: every chamber loaded (or none), the first in line
+            s.cyl.assign(std::clamp(br.cylinder.chambers, 2, 12), br.loaded ? 1 : 0);
+            s.cylAt = 0;
+            if (!br.cylinder.indexBy.empty()) {
+                Body* p = s.find(br.cylinder.indexBy);
+                s.cylBy = p == &s.world ? nullptr : p;
+                for (auto& j : s.design.joints) if (j.type == "pin" && (j.a == br.cylinder.indexBy || j.b == br.cylinder.indexBy)) s.cylPivot = true;
+            }
+        }
         if (br.ignition == "striker" && !br.striker.empty()) {
             s.STR = s.find(br.striker);
             if (s.STR == &s.world) s.STR = nullptr;
@@ -909,7 +969,7 @@ void retireBody(Sim& S, Body& b) {
     b.vx = b.vy = b.w = 0; b.idle = 0;
 }
 int fillMagazines(Sim& S) {
-    int added = 0;
+    int added = cylinderReload(S);   // (a revolving cylinder is topped up too)
     for (auto& b : S.bodies) {
         if (!(b.isMag || b.builtInMag) || b.gone || !b.d) continue;
         int cap = b.d->magCap, add = cap - b.rounds;
@@ -992,6 +1052,7 @@ void dropMagazine(Sim& S) {
     if (dl > 0) { M.vx = dx / dl * 0.9; M.vy = dy / dl * 0.9; }
 }
 void quickReload(Sim& S) {
+    if (hasCylinder(S)) { cylinderReload(S); return; }   // swing it out, dump the cases, fill every chamber
     Joint* J = magwell(S);
     if (!J) return;
     if (J->A) {
@@ -1007,6 +1068,18 @@ void quickReload(Sim& S) {
 }
 
 bool handLoad(Sim& S) {
+    if (hasCylinder(S)) {   // a round into the next chamber that has none (the one in line first)
+        int was = S.cur;
+        useChamber(S, 0);
+        bool done = false;
+        if (!S.chambered) { S.chambered = true; S.spent = false; S.gripped = false; done = true; }
+        else for (int k = 1; k < (int)S.cyl.size() && !done; k++) {
+            int j = (S.cylAt + k) % (int)S.cyl.size();
+            if (S.cyl[j] != 1) { S.cyl[j] = 1; done = true; }
+        }
+        useChamber(S, was);
+        return done;
+    }
     if (!S.BR || !S.hasFace || S.chambered || S.inTransit) return false;
     double need = std::min(S.design.breech.feed, S.design.breech.roundLen * 0.6);
     if (breechGap(S) < need) return false;
@@ -1091,6 +1164,7 @@ static void gasForces(Sim& S) {
 // ---------- step ----------
 void substep(Sim& S) {
     const BreechDef& br = S.design.breech;
+    cylinderStep(S);
     if (S.hasEmptyKey) { Body* M = seatedMag(S); setKey(S, "empty", M && M->rounds == 0); }   // a drawn hold-open catch, lifted by the follower
     for (auto& b : S.bodies) { b.fx = b.fy = b.tq = b.tr = 0; b.rfx = b.rfy = 0; }
     Joint* MW = magwell(S);
@@ -1550,6 +1624,7 @@ void substep(Sim& S) {
                     S.pressed = false;
                     if (fresh && burst) S.burstLeft = std::max(1, br.burst);
                     if (S.cocked || br.doubleAction) {
+                        if (fresh && hasCylinder(S) && br.cylinder.indexBy.empty()) cylinderIndex(S);   // double action: the pull turns the cylinder first
                         S.cocked = br.cockAt <= 0;  // it falls; older designs are cocked again at once
                         S.deadPull = false;
                         if (burst) S.burstLeft--;

@@ -8,6 +8,17 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.8-alpha
+
+- **Revolver cylinders.** Tick *Revolving cylinder* under Firing > Feeding, set how many chambers it has (2 to 12), and draw the cylinder as a Round part. It turns one chamber at a time, about its own middle line, bringing the next round in line with the barrel.
+  - **Turned by:** every trigger pull (double action), or a hammer or trigger you drew, once it has moved far enough.
+  - The fired cases stay in their chambers until you reload.
+  - **R** swings it out: the cases are dumped and every chamber is filled.
+  - On the range, reloads come out of your ammo reserve.
+  - The other chambers hold their rounds out of the side view, so they don't collide. That's a simplified treatment.
+- **New example: double-action revolver** (.38 Special, six shots). The bench test fires 30 of 30.
+- New cartridge: **.38 Special**.
+
 ## 0.8.7-alpha
 
 - **3D vertices: a new tool for free 3D shaping.** Pick a part and press *Make a 3D mesh*. Every corner can then go anywhere in 3D:

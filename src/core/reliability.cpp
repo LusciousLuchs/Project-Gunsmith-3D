@@ -258,10 +258,12 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
     run_.findHinge();
     run_.stall = o.stallSeconds;
     R.manual = run_.rolling || !S.breechSprung;
-    R.singleLoad = !S.magTmpl && S.feedMode == "single";
+    const bool cyl = hasCylinder(S);   // a revolving cylinder: the pull turns it; reloading swings it out and fills it
+    R.singleLoad = !S.magTmpl && S.feedMode == "single" && !cyl;
     run(S, 0.1);
 
     auto chamberNext = [&]() {  // get a round into the chamber the way this gun is loaded
+        if (cyl) { if (cylinderLive(S) == 0) { cylinderReload(S); R.reloads++; } return; }
         if (R.singleLoad) { run_.open(); run_.loadAll(); run_.close(); return; }
         if (S.magTmpl) {
             Body* M = seatedMag(S);
@@ -318,11 +320,11 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         if (S.shots == before) {
             if (wasChambered) {  // the trigger fell on a chambered round and nothing happened
                 record(S.deadPull || (S.design.breech.openBolt && !S.strikerIgnition && !S.searHeld) ? Malf::FailureToCock : Malf::LightStrike);
-                run_.cycle();     // work the action to get rid of the dud
+                if (!cyl) run_.cycle();     // work the action to get rid of the dud (a cylinder just turns past it on the next pull)
             } else if (S.malf == Malf::None) {
                 chamberNext();
             }
-        } else if (R.manual && S.malf == Malf::None && !anyChambered(S)) {  // (another barrel still loaded: fire that first)
+        } else if (R.manual && !cyl && S.malf == Malf::None && !anyChambered(S)) {  // (another barrel still loaded: fire that first)
             run_.cycle();
         }
         if (S.malf != Malf::None) {

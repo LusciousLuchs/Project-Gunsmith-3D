@@ -359,17 +359,19 @@ void stepBullets(double dt) {
 static int magCapacity(const Design& d) {
     int cap = 0;
     for (auto& b : d.bodies) if (b.magazine) cap = std::max(cap, b.magCap);
+    if (d.breech.cylinder.on) cap = std::max(cap, d.breech.cylinder.chambers);   // (a revolver: a cylinder's worth)
     return std::max(1, cap);
 }
 // What's been loaded, so new rounds can be counted: which magazine is in the gun (its index; -1 none) and its rounds
 // when last seen, and the rounds in built-in magazines (a tube, a fixed box)
-static int gMagIdx = -1, gMagRounds = 0, gBuiltIn = 0;
+static int gMagIdx = -1, gMagRounds = 0, gBuiltIn = 0, gCyl = 0;
 static void seeAmmo(sim::Sim& S) {
     sim::Body* M = sim::seatedMag(S);
     gMagIdx = M ? (int)(M - &S.bodies[0]) : -1;
     gMagRounds = M ? M->rounds : 0;
     gBuiltIn = 0;
     for (auto& b : S.bodies) if (b.builtInMag && !b.gone) gBuiltIn += b.rounds;
+    gCyl = sim::cylinderLive(S);
 }
 static void armAmmo(int reserve) {   // the gun in your hands: its reserve (-1: a fresh gun, full)
     R.reserveMax = std::max(10, 10 * magCapacity(A.design));
@@ -396,6 +398,12 @@ static void countAmmo(sim::Sim& S) {
     if (built > gBuiltIn) {
         int over = built - gBuiltIn;
         for (auto& b : S.bodies) if (over > 0 && b.builtInMag && !b.gone) { int k = std::min(over, b.rounds); int before = b.rounds; take(k, b.rounds); over -= k; (void)before; }
+    }
+    if (sim::hasCylinder(S) && sim::cylinderLive(S) > gCyl) {   // a revolving cylinder filled: paid for, and short of rounds some chambers stay empty
+        int want = sim::cylinderLive(S) - gCyl, k = std::min(want, R.reserve), cut = want - k;
+        R.reserve -= k;
+        for (int j = 0; j < (int)S.cyl.size() && cut > 0; j++) if (j != S.cylAt && S.cyl[j] == 1) { S.cyl[j] = 0; cut--; }
+        if (cut > 0 && S.chambered) S.chambered = false;
     }
     seeAmmo(S);
 }
@@ -943,6 +951,7 @@ void rangeUpdate(float dt, bool modal) {
             }
             if (e.kind == sim::Ev::Eject || e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) actionEventSound(S, e.kind);
             if (e.kind == sim::Ev::Click && SFX.ok && A.sound) PlaySound(SFX.click);
+            if (e.kind == sim::Ev::Index && SFX.ok && A.sound) { SetSoundPitch(SFX.click, 1.7f); PlaySound(SFX.click); SetSoundPitch(SFX.click, 1.f); }   // (a cylinder turning)
             if (e.kind == sim::Ev::Malfunction && S.malf != sim::Malf::None && SFX.ok && A.sound) PlaySound(SFX.click);
         }
         S.events.clear();

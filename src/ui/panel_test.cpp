@@ -489,6 +489,11 @@ void testPanel() {
     ImGui::PushFont(gFontBold, 18.0f);
     if (S.malf != sim::Malf::None) ImGui::TextColored(colBad(), "Jammed: %s", sim::malfName(S.malf));
     else if (!A.running) ImGui::TextDisabled("Paused");
+    else if (sim::hasCylinder(S)) {   // a revolver: what's left in the cylinder
+        int live = sim::cylinderLive(S);
+        if (live > 0) ImGui::TextColored(colGood(), "Ready");
+        else ImGui::TextColored(colWarn(), "Cylinder empty: reload (R)");
+    }
     else if (batt && S.chambered) ImGui::TextColored(colGood(), "Ready");
     else if (batt && S.spent) ImGui::TextColored(colWarn(), "Empty case in the chamber");
     else if (batt) ImGui::TextColored(colWarn(), "Chamber empty");
@@ -498,8 +503,9 @@ void testPanel() {
     std::string line = std::to_string(S.shots) + (S.shots == 1 ? " shot" : " shots");
     if (S.magTmpl) line += mag ? "   \xC2\xB7   magazine " + std::to_string(mag->rounds) + "/" + std::to_string(S.magTmpl->magCap) : "   \xC2\xB7   no magazine";
     else if (mag && mag->d) line += "   \xC2\xB7   magazine " + std::to_string(mag->rounds) + "/" + std::to_string(mag->d->magCap) + " (built in)";
+    else if (sim::hasCylinder(S)) line += "   \xC2\xB7   cylinder " + std::to_string(sim::cylinderLive(S)) + "/" + std::to_string((int)S.cyl.size());
     else if (S.feedMode == "internal") line += "   \xC2\xB7   " + std::to_string(S.rounds) + " left";
-    if (S.hasFace && !S.magTmpl) line += "   \xC2\xB7   " + std::to_string(sim::looseRounds(S)) + " on the bench";
+    if (S.hasFace && !S.magTmpl && !sim::hasCylinder(S)) line += "   \xC2\xB7   " + std::to_string(sim::looseRounds(S)) + " on the bench";
     const auto& br = S.design.breech;
     if (!S.strikerIgnition && br.openBolt)    // an open bolt: held back on the sear, or running
         line += std::string("   \xC2\xB7   ") + (S.searHeld ? "bolt held open on the sear" : S.boltFree ? "bolt running" : "bolt closed (rack it to cock)");

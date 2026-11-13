@@ -134,7 +134,7 @@ struct Pusher {
     bool stuckTold = false;        // (the app has said this press isn't moving it)
 };
 
-enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction, MagLoaded, ClipOut };  // MagLoaded: a round pushed into a magazine  // EjectLive: an unfired round thrown out
+enum class Ev { Bang, Eject, EjectLive, Click, Chambered, Malfunction, MagLoaded, ClipOut, Index };   // Index: a cylinder turned one chamber  // MagLoaded: a round pushed into a magazine  // EjectLive: an unfired round thrown out
 
 // What can go wrong when a gun cycles. Physical feeding lets these happen for real.
 enum class Malf { None, FailureToFeed, DoubleFeed, Stovepipe, FailureToEject, FailureToReturn, LightStrike, FailureToCock, Count };
@@ -236,12 +236,25 @@ struct Sim {
         double impulse = 0;
     };
     std::vector<Chamber> chambers;       // [cur] is stale while it's swapped in
+    // a revolving cylinder (BreechDef::cylinder): what each of its chambers holds (0 empty, 1 a live round, 2 a fired
+    // case), which one is in line with the bore (its state lives in chamber 0's fields above: cyl[cylAt] is stale), and
+    // the part that turns it, with how far through its stroke it is
+    std::vector<int> cyl;
+    int cylAt = 0;
+    Body* cylBy = nullptr;
+    bool cylPivot = false, cylArmed = true;
+    double cylFrac = 0;                  // 0..1 of the way to the next chamber (for the eye)
     int cur = 0;                         // which chamber is in the fields above
     int nextChamber = 0;                 // fired in turn: the one to try first on the next pull
 
     Body* find(const std::string& id);
 };
 void useChamber(Sim& S, int k);          // swap chamber k's state into the working fields (no-op with one chamber)
+bool hasCylinder(const Sim& S);
+void cylinderIndex(Sim& S);              // turn it one chamber (the next comes in line with the bore)
+int cylinderLive(const Sim& S);          // live rounds in it, the one in line included
+int cylinderReload(Sim& S);              // swing it out: empty every chamber, fill them all; rounds put in
+double cylinderAngle(const Sim& S);      // degrees it has turned from where it was drawn (for the eye)
 int chamberCount(const Sim& S);
 bool anyChambered(Sim& S);               // a live round in any chamber
 int chamberedCount(Sim& S);

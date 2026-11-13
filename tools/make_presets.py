@@ -53,6 +53,7 @@ CART = {
     '.45 ACP': dict(oal=32.4, case=22.8, head=12.19),
     '12 gauge 00 buck': dict(oal=63.5, case=63.5, head=22.8, bore=18.5),
     '.41 Short': dict(oal=23.4, case=11.7, head=11.2, bore=10.4),
+    '.38 Special': dict(oal=39.4, case=29.3, head=11.2, bore=9.07),
 }
 
 STEEL = '#3f4654'; BLUE = '#3a6fc4'; BRIGHT = '#c9ccd2'; BRASS = '#e0b54a'; GRIP = '#2b2f36'; WOOD = '#7a5236'
@@ -493,6 +494,47 @@ def derringer():
               'fireOrder': 'turn'}
     return {'grips': [{'kind': 'firing', 'part': 'frame', 'at': [face - 25, bot + 28], 'angle': 108}], 'name': 'Over-under derringer', 'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': joints, 'breech': breech}
 
+# ------------------------------------------------------------------ revolver
+# Six chambers in a cylinder that turns one chamber each time the trigger is pulled (double action, the fire control
+# built in), bringing the next round in line with the barrel.
+#  - The cylinder is a turned part: its long middle line is the axis it turns about. The chamber in line with the bore
+#    sits against the frame's recoil shield (the breech face), so nothing moves to close it.
+#  - The other five chambers are out of the side view: they hold their rounds and wait their turn (a simplified
+#    treatment, they don't collide).
+#  - Loading (R) swings the cylinder out: the fired cases are dumped and all six chambers filled. The cases stay in
+#    their chambers until then: a revolver throws nothing out as it fires.
+def revolver():
+    cart = '.38 Special'; C = CART[cart]
+    bore = 20.0; face = 60.0
+    boltR = 12.25; cylR = 18.5; axis = bore + boltR
+    cylEnd = face + 41.0; muzzle = cylEnd + 0.3 + 102.0
+    parts = []
+    parts.append(part('shield', 'Recoil shield', rect(face - 10, bore - 13, face, axis + cylR + 1), thick=34, fixed=True, color=STEEL, rad=[2, 0.5, 0.5, 2]))
+    parts.append(part('strap', 'Top strap', rect(face - 4, bore - 13, cylEnd + 4, axis - cylR - 0.6), thick=14, fixed=True, color=STEEL, rad=[1, 1, 0, 0]))
+    parts.append(part('lowerframe', 'Frame under the cylinder', rect(face - 4, axis + cylR + 0.6, cylEnd + 4, axis + cylR + 8), thick=20, fixed=True, color=STEEL, rad=[0, 0, 2, 2]))
+    parts.append(part('forestrap', 'Frame front', rect(cylEnd + 0.3, bore - 13, cylEnd + 6, axis + cylR + 8), thick=18, fixed=True, color=STEEL, rad=[0.5, 1, 1, 0.5]))
+    parts.append(part('cylinder', 'Cylinder (6 chambers)', rect(face, axis - cylR, cylEnd, axis + cylR), thick=2 * cylR, fixed=True, color=BLUE, round=True, rad=[1.5, 1.5, 1.5, 1.5]))
+    parts.append(part('barrel', 'Barrel', rect(cylEnd + 0.3, bore - 7, muzzle, bore + 7), thick=14, fixed=True, color=STEEL, round=True))
+    parts.append(part('lug', 'Ejector rod housing', rect(cylEnd + 6, bore + 7, cylEnd + 70, bore + 15), thick=10, fixed=True, color=STEEL, rad=[0, 0, 3, 3]))
+    parts.append(part('sight', 'Front sight', [[muzzle - 14, bore - 7], [muzzle - 4, bore - 7], [muzzle - 6, bore - 13], [muzzle - 12, bore - 13]], thick=3, fixed=True, color=STEEL))
+    grip = [[face - 10, axis + cylR + 1], [face - 2, axis + cylR + 8], [face - 6, axis + cylR + 30], [face - 20, axis + cylR + 76], [face - 46, axis + cylR + 76],
+            [face - 44, axis + cylR + 56], [face - 30, axis + cylR + 12], [face - 22, bore - 4]]
+    parts.append(part('gripframe', 'Grip frame', grip, thick=14, fixed=True, color=STEEL, rad=[1, 2, 4, 6, 6, 6, 6, 3]))
+    parts.append(part('grips', 'Grips', [[face - 9, axis + cylR + 10], [face - 22, axis + cylR + 74], [face - 44, axis + cylR + 74], [face - 41, axis + cylR + 50],
+                                         [face - 27, axis + cylR + 12]], thick=26, solid=False, fixed=True, color=WOOD, rad=[3, 6, 6, 6, 3]))
+    gy = axis + cylR + 8
+    parts.append(part('guard', 'Trigger guard', [[face - 2, gy], [face + 3, gy], [face + 3, gy + 20], [face - 14, gy + 26], [face - 18, gy + 22], [face - 6, gy + 18], [face - 2, gy + 6]],
+                      thick=8, solid=False, fixed=True, color=STEEL, rad=[0, 0, 4, 4, 2, 2, 0]))
+    parts.append(part('trigger', 'Trigger', [[face - 8, gy], [face - 3, gy], [face - 5, gy + 16], [face - 9, gy + 17]], thick=6, solid=False, fixed=True, color=BRASS, rad=[0, 0, 2, 1]))
+    parts.append(part('hammer', 'Hammer', [[face - 10, bore - 6], [face - 4, bore - 10], [face - 14, bore - 22], [face - 24, bore - 22], [face - 20, bore - 14], [face - 16, bore + 4]],
+                      thick=7, solid=False, fixed=True, color=STEEL, rad=[0.5, 0.5, 2, 3, 2, 1]))
+    breech = {'breech': 'shield', 'chamber': 'cylinder', 'face': [face, bore], 'muzzle': [muzzle, bore], 'cartridge': cart, 'dur': 0.8,
+              'feed': 40, 'rounds': 6, 'auto': False, 'loaded': True, 'feedMode': 'single', 'physicalFeed': True,
+              'ignition': 'button', 'hammer': 'hammer', 'cockAt': 0, 'doubleAction': True, 'fireMode': 'semi',
+              'cylinder': {'chambers': 6}}
+    return {'grips': [{'kind': 'firing', 'part': 'gripframe', 'at': [face - 24, axis + cylR + 40], 'angle': 112}], 'name': 'Double-action revolver',
+            'speed': 0.05, 'friction': 0.12, 'bodies': parts, 'joints': [], 'breech': breech}
+
 # ------------------------------------------------------------------ output
 NEW = [
     ('blowback', 'Blowback pistol', blowback),
@@ -503,6 +545,7 @@ NEW = [
     ('pumpshotgun', 'Pump-action shotgun', lambda: pump('12 gauge 00 buck')),
     ('derringer', 'Over-under derringer', derringer),
     ('belted', 'Belt-fed blowback', belted),
+    ('revolver', 'Double-action revolver', revolver),
 ]
 LEGACY_LIST = [  # older examples built with simplified joints; kept for study and for the tests of those joints
     ('legacy-tilting', 'PRESET_TILTING'), ('legacy-blowback', 'PRESET_BLOWBACK'), ('longrecoil', 'PRESET_LONG'),
@@ -517,6 +560,7 @@ MENU = [  # what the example menu shows, in order
     ('pumpshotgun', 'Pump-action shotgun (12 gauge buckshot, same action)'),
     ('derringer', 'Over-under derringer (.41 rimfire, two barrels, tips up)'),
     ('belted', 'Belt-fed blowback (the pistol, fed from a belt by its slide)'),
+    ('revolver', 'Double-action revolver (.38 Special, six-shot cylinder)'),
     ('longrecoil', 'Long recoil, Chauchat style (simplified cam and catch)'),
     ('blank', 'Blank frame'),
 ]

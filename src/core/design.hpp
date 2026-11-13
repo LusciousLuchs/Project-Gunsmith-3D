@@ -289,6 +289,18 @@ struct GasPortDef {
     double stroke = 8;            // mm the piston moves before the gas gets past it and vents
     double dir = 0;               // degrees the push is turned from straight back along the bore
 };
+// A revolving cylinder (the breech's chamber part is the cylinder): it holds `chambers` rounds round its long axis (the
+// middle line of its outline, the same as a turned part's), and turns one chamber at a time to bring the next in line
+// with the bore. Only the chamber in line fires; the others sit out of the side view (a simplified treatment: they
+// don't collide). It turns when the `indexBy` part (a hammer, a trigger) has moved `stroke` (degrees if it pivots on a
+// pin, else mm; 0 = 20 degrees or 5 mm) and comes back; with none, every trigger pull turns it before it fires (double
+// action). Loading swings it out: all chambers are emptied and filled at once (a reload), or one at a time by hand.
+struct CylinderDef {
+    bool on = false;
+    int chambers = 6;
+    std::string indexBy;
+    double stroke = 0;
+};
 struct BreechDef {
     bool on = false;
     std::string breech, chamber = "world";
@@ -331,6 +343,7 @@ struct BreechDef {
     double holdAt = 0;
     bool holdReleaseMag = false;
     std::vector<GasPortDef> gas;         // gas ports (none in older blueprints)
+    CylinderDef cylinder;                // a revolving cylinder (off in older blueprints)
     bool fullAuto() const { return fireMode == "auto" || (autoFire && fireMode != "burst"); }
 };
 void applyCartridge(BreechDef& b);      // copy round size and impulse from the cartridge

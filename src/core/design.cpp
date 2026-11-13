@@ -326,6 +326,7 @@ const std::vector<Cartridge>& cartridgePresets() {
             shell("12 gauge 00 buck", 0xB0302AFF, 8.38, 9, 400),
             shell("12 gauge slug", 0x2F7A3AFF, 0, 1, 480, 28.35),
             shell("12 gauge birdshot", 0xC9A227FF, 2.41, 380, 370),
+            shaped(mk(".38 Special", 29.30, 11.20, 1.40, 9.60, 9.60, 29.30, 9.60, 9.07, 39.40, 7.0, 10.20, 270, true), "round"),
             kinded(shaped(mk("6mm caseless", 26.0, 9.50, 0.0, 9.50, 9.50, 26.0, 9.50, 6.00, 36.0, 10.0, 5.0, 880, false), "spitzer"), "caseless"),
         };
     }();
@@ -1124,6 +1125,11 @@ std::string designToJson(const Design& d, bool pretty) {
             jb["fireOrder"] = r.fireOrder;
         }
         if (r.openBolt) jb["openBolt"] = true;
+        if (r.cylinder.on) {
+            jb["cylinder"] = {{"chambers", r.cylinder.chambers}};
+            if (!r.cylinder.indexBy.empty()) jb["cylinder"]["indexBy"] = r.cylinder.indexBy;
+            if (r.cylinder.stroke > 0) jb["cylinder"]["stroke"] = r.cylinder.stroke;
+        }
         if (r.holdOpen) { jb["holdOpen"] = true; if (r.holdAt > 0) jb["holdAt"] = r.holdAt; if (r.holdReleaseMag) jb["holdReleaseMag"] = true; }
         if (!r.gas.empty()) {
             json g = json::array();
@@ -1482,6 +1488,13 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         r.fireOrder = opt<std::string>(jb, "fireOrder", "turn") == "together" ? "together" : "turn";
         r.openBolt = opt<bool>(jb, "openBolt", false);
         r.holdOpen = opt<bool>(jb, "holdOpen", false);
+        if (jb.contains("cylinder") && jb["cylinder"].is_object()) {
+            const auto& jc = jb["cylinder"];
+            r.cylinder.on = true;
+            r.cylinder.chambers = std::clamp(opt<int>(jc, "chambers", 6), 2, 12);
+            r.cylinder.indexBy = opt<std::string>(jc, "indexBy", "");
+            r.cylinder.stroke = std::clamp(opt<double>(jc, "stroke", 0.0), 0.0, 180.0);
+        }
         r.holdAt = opt<double>(jb, "holdAt", 0.0);
         r.holdReleaseMag = opt<bool>(jb, "holdReleaseMag", false);
         if (jb.contains("gas") && jb["gas"].is_array())

@@ -2716,6 +2716,43 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void revolverCylinder() {
+    std::printf("revolverCylinder\n");
+    Design d = loadPreset("revolver");
+    CHECK(d.breech.cylinder.on && d.breech.cylinder.chambers == 6, "the revolver has a six-chamber cylinder");
+    Design back; CHECK(designFromJson(designToJson(d), back) && back.breech.cylinder.on && back.breech.cylinder.chambers == 6, "the cylinder saves and loads");
+    auto Sp = sim::build(d);
+    sim::Sim& S = *Sp;
+    CHECK(sim::hasCylinder(S) && sim::cylinderLive(S) == 6, "loaded: six live rounds");
+    sim::run(S, 0.05);
+    int clicks = 0, indexes = 0;
+    auto pull = [&]() {
+        S.events.clear();
+        S.pressed = true; S.trigger = true; sim::run(S, 0.05);
+        S.pressed = false; S.trigger = false; sim::run(S, 0.15);
+        for (auto& e : S.events) { if (e.kind == sim::Ev::Click) clicks++; if (e.kind == sim::Ev::Index) indexes++; }
+    };
+    for (int k = 0; k < 6; k++) pull();
+    std::printf("  (six pulls: %d shots, %d turns, %d left)\n", S.shots, indexes, sim::cylinderLive(S));
+    CHECK(S.shots == 6 && indexes == 6 && sim::cylinderLive(S) == 0, "six pulls: the cylinder turns each time and all six fire");
+    CHECK(S.spent && sim::chamberedCount(S) == 0, "the fired cases stay in their chambers");
+    pull();
+    CHECK(S.shots == 6 && clicks >= 1, "a seventh pull just clicks");
+    int added = sim::cylinderReload(S);
+    CHECK(added == 6 && sim::cylinderLive(S) == 6 && !S.spent, "reloading dumps the cases and fills all six");
+    pull();
+    CHECK(S.shots == 7, "and it fires again");
+    // hand loading: one round at a time into the empty chambers
+    auto Hp = sim::build(d); sim::Sim& H = *Hp;
+    for (auto& c : H.cyl) c = 0;
+    H.chambered = false;
+    CHECK(sim::handLoad(H) && sim::handLoad(H) && sim::cylinderLive(H) == 2, "rounds can be put in one at a time");
+    sim::ReliabilityOptions o; o.rounds = 30;
+    auto r = sim::runReliability(d, o);
+    std::printf("  (reliability: fired %d of 30, %d reloads, %d jams)\n", r.fired, r.reloads, r.jams);
+    CHECK(r.fired == 30 && r.jams == 0, "the bench test fires 30 of 30, reloading the cylinder");
+}
+
 static void meshParts() {
     std::printf("meshParts\n");
     BodyDef b; b.id = "m"; b.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; b.thick = 10; b.z = 0;
@@ -2870,6 +2907,7 @@ int main() {
     if (const char* only = std::getenv("GUNSMITH_TESTONLY")) {   // (one quick group while working on it)
         std::string o = only;
         if (o == "mesh") meshParts();
+        else if (o == "revolver") revolverCylinder();
         else if (o == "wood") woodPenetration();
         else if (o == "doors") doorsBlock();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
@@ -2937,6 +2975,7 @@ int main() {
     doorsBlock();
     woodPenetration();
     meshParts();
+    revolverCylinder();
     npcPaths();
     armFreedom();
     cartridgeSharing();
