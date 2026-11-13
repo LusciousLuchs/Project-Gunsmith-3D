@@ -167,7 +167,7 @@ struct Sim {
     double animWait = 0;                 // how long it has waited for a gripped part to catch up (follows the gun)
     bool animTurning = false;            // it's turning a part (the bolt-turning grip is the animation's)
     struct { bool on = false; Body* b = nullptr; double t = 0, arm = 0; } rollHand;  // arm: lever (m) limiting the torque; 0 = no limit
-    double handStrength = 150;           // N, the most force your hand applies
+    double handStrength = 250;           // N, the most force your hand applies (a firm pull: a stiff action like the long-recoil gun needs it)
     bool magRelease = false;             // magazine release button held
     double groundY = 0.3;                // m, baseplate height for loose parts
     // The gun simulates in its own frame. frameAccel is gravity (and, in a game, the shooter's motion) as felt

@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.9-alpha
+
+- **Fix: the long-recoil example couldn't be reloaded.** After its first magazine you couldn't rack it again, on the bench or in the reliability test. Its bolt stays locked to the barrel until it's 55 mm back, so racking means pulling the barrel against its stiff spring, and the hand was capped at 150 N. A firm pull is now 250 N (the bench's hand-strength slider starts there). It now fires 30 of 30.
+
 ## 0.8.8-alpha
 
 - **Revolver cylinders.** Tick *Revolving cylinder* under Firing > Feeding, set how many chambers it has (2 to 12), and draw the cylinder as a Round part. It turns one chamber at a time, about its own middle line, bringing the next round in line with the barrel.

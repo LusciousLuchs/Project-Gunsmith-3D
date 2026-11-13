@@ -75,7 +75,7 @@ struct App {
     int poseHand = 0, poseDigit = DIGIT_INDEX;  // the hand whose fingers are shown (0 firing, 1 support, -1 none) and the digit picked                // the Face and Muzzle tools place this further chamber's points (-1: the first chamber)
     Sel sel;
     bool snapOn = true, xray = true, sound = true, cutaway = false;  // cutaway: near-side parts drawn see-through
-    float handN = 150;                   // hand strength on the bench (a test condition, so it lives here)
+    float handN = 250;                   // hand strength on the bench (a test condition, so it lives here)
     sim::Body* hover = nullptr;
     int grabTmpl = -1;
     float grabZ = 0;                     // depth of the grabbed thing's front face (world units)
