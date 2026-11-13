@@ -1339,11 +1339,17 @@ static void grips() {
     Design back; designFromJson(designToJson(r), back);
     CHECK(back.pose.firing.on && back.pose.support.on && back.pose.butt.on && std::fabs(back.pose.firing.angle - 105) < 1e-9 && back.pose.firing.part == "stock",
           "grip markers from earlier versions become the pose's hands and butt, and save as a pose");
-    r.pose.hold[HOLD_HIP].set = true; r.pose.hold[HOLD_HIP].eye = {12, -340}; r.pose.hold[HOLD_HIP].yaw = 20;
+    r.pose.hold[HOLD_HIGH].set = true; r.pose.hold[HOLD_HIGH].eye = {12, -340}; r.pose.hold[HOLD_HIGH].yaw = 20;
     designFromJson(designToJson(r), back);
-    CHECK(back.pose.hold[HOLD_HIP].set && std::fabs(back.pose.hold[HOLD_HIP].yaw - 20) < 1e-9 && !back.pose.hold[HOLD_AIM].set, "a posed hold saves; the others stay worked out from the gun");
-    BodyHold aim = holdOf(r, HOLD_AIM), low = holdOf(r, HOLD_LOWERED);
+    CHECK(back.pose.hold[HOLD_HIGH].set && std::fabs(back.pose.hold[HOLD_HIGH].yaw - 20) < 1e-9 && !back.pose.hold[HOLD_AIM].set, "a posed hold saves; the others stay worked out from the gun");
+    BodyHold aim = holdOf(r, HOLD_AIM), low = holdOf(r, HOLD_LOW);
     CHECK(std::fabs(aim.eye.x - (r.pose.butt.at.x + 90)) < 1e-6 && low.tilt > 20, "unposed: the eye sits over the stock when aiming, and the muzzle drops when lowered");
+    {
+        BodyHold high = holdOf(p, HOLD_HIGH);
+        double t = -high.tilt * 3.14159265358979 / 180, fx = p.pose.firing.at.x - high.eye.x, fy = p.pose.firing.at.y - high.eye.y;
+        double fwd = fx * std::cos(t) + fy * std::sin(t), down = fy * std::cos(t) - fx * std::sin(t);   // (the hand from the eye, once tipped)
+        CHECK(high.tilt < -20 && std::fabs(fwd - 230) < 1 && std::fabs(down - 330) < 1, "unposed high ready: the muzzle up, the firing hand in front of the chest");
+    }
     {   // the hand skeleton: named bones, and finger poses that save
         DigitPose dg[DIGIT_COUNT];
         digitsOf(r.pose.firing, "firing", dg);
@@ -2942,6 +2948,7 @@ int main() {
         else if (o == "handload") handLoadedReliability();
         else if (o == "wood") woodPenetration();
         else if (o == "doors") doorsBlock();
+        else if (o == "pose") grips();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }

@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.18-alpha
+
+- **High ready and low ready.** The poser's three holds are now Aim, High ready (muzzle up, the gun in front of your chest) and Low ready (muzzle down; the old Lowered). The old Hip hold becomes the high ready, with a new starting pose.
+- **Carry the gun at the ready on the range.** X goes to high ready, then low ready, then back. The gun takes the muzzle angle you posed. Aiming or pulling the trigger brings it back up first: you can't fire until it's level. Sprinting and crawling lower the gun to low ready by themselves.
+- **Crouching and prone shooting.** Crouched (C) the gun sways about 30% less and kicks 15% less; prone (Z), 60% less sway and 30% less kick. The gun dips and swings back as you get down or up, and the corner of the screen says how you're standing and carrying.
+
 ## 0.8.17-alpha
 
 - **Poser: move the gun to the side.** The orange dot over the head now follows the mouse whichever way you're looking. From the side it moves along and up the gun as before; turn the view to look from the front or from above and it moves across too, so the gun can sit off to one side of the shooter (a hip hold at the side, a pistol held out to the right). The arm turns red if a hand can no longer reach.

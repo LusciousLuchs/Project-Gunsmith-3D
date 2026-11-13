@@ -381,7 +381,7 @@ struct BodyHold {
     // the shoulder pocket, where a stock's butt beds in: forward, up and right of the aiming eye, mm (body frame)
     double pocket[3] = {-90, -120, 25};
 };
-enum { HOLD_AIM, HOLD_HIP, HOLD_LOWERED, HOLD_COUNT };
+enum { HOLD_AIM, HOLD_HIGH, HOLD_LOW, HOLD_COUNT };   // aiming, high ready (muzzle up), low ready (muzzle down)
 struct Pose { HandHold firing, support, butt; BodyHold hold[HOLD_COUNT]; };
 // A recorded hand animation (inspecting, reloading, working a control): keys on a timeline, each where both hands
 // are then. The hands start and end in the aiming hold and move smoothly through the keys. From a key that grips,

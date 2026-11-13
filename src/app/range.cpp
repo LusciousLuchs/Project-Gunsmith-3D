@@ -70,6 +70,12 @@ struct Range {
     gmap::Player pl;
     gmap::Stance want = gmap::Stance::Stand;
     float aim = 0;                       // 0 from the hip .. 1 aiming down the gun
+    int ready = 0;                       // carried at the ready (X): 0 no, 1 high ready (muzzle up), 2 low ready (down)
+    int readyShown = 1;                  // which ready the gun is moving to or from
+    float readyU = 0;                    // 0 level .. 1 fully at that ready
+    bool readyForced = false;            // sprinting or crawling: the gun goes to low ready by itself
+    double stanceDip = 0;                // the gun dipping as you get down or up (the eye's speed, eased)
+    double lastEyeH = -1;
     double lagYaw = 0, lagPitch = 0;     // the gun trailing the view: a heavy gun swings late
     double kickPitch = 0, kickYaw = 0, kickBack = 0, kickVel = 0;
     std::vector<Bullet> bullets;
@@ -165,6 +171,28 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
     V3 at = eye - fw * R.kickBack + fw * lunge;
     R.G = MatrixMultiply(MatrixMultiply(MatrixMultiply(MatrixTranslate(-pe.x, -pe.y, -pe.z), MatrixScale(s, s, s)), Rm), MatrixTranslate((float)at.x, (float)at.y, (float)at.z));
     R.placed = true;
+    {   // at the ready: the gun turned about the firing hand to the posed high or low ready (its muzzle angle), and
+        // dipping a little as you crouch or go prone (the eye's speed)
+        float u = R.readyU;
+        double tilt = holdOf(D, R.readyShown == 1 ? HOLD_HIGH : HOLD_LOW).tilt;
+        if (R.readyShown == 1 && tilt > -10) tilt = -40;   // (a high ready posed level: still up)
+        if (R.readyShown == 2 && tilt < 10) tilt = 35;
+        tilt = std::clamp(tilt, -80.0, 80.0);
+        const auto& P = D.pose;
+        bool high = R.readyShown == 1, stock = P.butt.on;
+        // high ready: up about the firing hand, out to the right; low ready: muzzle down, a stocked gun about its butt
+        // (it stays in the shoulder), a pistol about the hand
+        // (a stocked gun's low ready seen from the eye right over it: shown at 60% of the posed angle, or it leaves the view)
+        double shown = !high && stock ? tilt * 0.6 : tilt;
+        double g[6] = {u * (high ? -30.0 : stock ? 0.0 : 30.0), u * (high ? -10.0 : stock ? 45.0 : -50.0), u * (high ? (stock ? 90.0 : 40.0) : stock ? 40.0 : -20.0),
+                       -shown * u + R.stanceDip * 25, u * (high ? 0.0 : -12.0), u * (high ? 10.0 : -12.0) + R.stanceDip * 10};
+        if (gunMoved(g)) {
+            int fi = P.firing.on ? D.bodyIndex(P.firing.part) : -1, bi = stock ? D.bodyIndex(P.butt.part) : -1;
+            Vector3 pv = P.firing.on ? W3(P.firing.at, fi >= 0 ? (float)(D.bodies[fi].z * U) : 0.f) : pe;
+            if (!high && stock) pv = W3(P.butt.at, bi >= 0 ? (float)(D.bodies[bi].z * U) : 0.f);
+            R.G = MatrixMultiply(gunMoveMatrix(g, pv), R.G);
+        }
+    }
     // an animation moving the gun (inspecting it, a reload that tips it): about the firing hand
     if (A.S && sim::animPlaying(*A.S)) {
         AnimHands h = sim::animHandsNow(*A.S);
@@ -214,7 +242,8 @@ void fireBullets(int chamber) {
     }
     // recoil: the cartridge's push against the gun's weight, felt less in the shoulder than in one hand
     double v = cart.impulse() / std::max(0.3, R.mass);
-    double feel = (R.twoHands ? 0.9 : 1.7) * (R.rested ? 0.6 : 1.0);   // (rested on a bipod: the ground takes some)
+    double feel = (R.twoHands ? 0.9 : 1.7) * (R.rested ? 0.6 : 1.0)   // (rested on a bipod: the ground takes some)
+                * (R.pl.stance == gmap::Stance::Prone ? 0.7 : R.pl.stance == gmap::Stance::Crouch ? 0.85 : 1.0);   // (down low: steadier)
     R.kickVel += v * feel * 0.045 * R.recoilK * R.riseK;   // (a brake: less kick; a compensator: less climb)
     R.kickYaw += rnd((float)(v * feel * 0.006 * R.recoilK));
     R.kickBack = std::min(0.08, R.kickBack + v * 0.006 * R.recoilK);
@@ -654,6 +683,8 @@ void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) 
     gForceAim = aim;
     gForceFree = std::getenv("GUNSMITH_RANGEALT") != nullptr;   // (the attachments' buttons shown)
     if (std::getenv("GUNSMITH_RANGEPRONE")) R.want = gmap::Stance::Prone;   // (lying down)
+    if (const char* e = std::getenv("GUNSMITH_RANGEREADY")) { R.ready = std::atoi(e); R.readyShown = std::max(1, R.ready); }   // (1 high ready, 2 low ready)
+    if (std::getenv("GUNSMITH_RANGECROUCH")) R.want = gmap::Stance::Crouch;
     if (std::getenv("GUNSMITH_RANGESTAB")) { R.stabT = 0; R.stabHit = false; }
 }
 void openRangeFitting() {
@@ -904,6 +935,25 @@ void rangeUpdate(float dt, bool modal) {
     doors::step(R.map, R.pl, dt);
     // aiming: right mouse; a heavy gun comes up more slowly
     bool aimWant = IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && !R.freeMouse;
+    // carrying it at the ready (X: high ready, low ready, back); sprinting or crawling takes it to low ready by itself.
+    // Aiming or pulling the trigger brings it back up first.
+    if (actPressed(Act::Ready) && !R.dead) R.ready = (R.ready + 1) % 3;
+    bool crawling = R.pl.stance == gmap::Stance::Prone && std::hypot(R.pl.vel.x, R.pl.vel.z) > 0.25;
+    bool sprinting = in.sprint && in.forward > 0 && std::hypot(R.pl.vel.x, R.pl.vel.z) > 4.0;
+    R.readyForced = crawling || sprinting;
+    bool firePress = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !R.freeMouse;
+    if ((aimWant || firePress) && !R.readyForced) R.ready = 0;
+    int readyWant = R.readyForced ? 2 : R.ready;
+    if (readyWant) { if (R.readyU < 0.05f) R.readyShown = readyWant; else if (readyWant != R.readyShown) readyWant = 0; }   // (through level to the other one)
+    float rrate = 1.f / (0.22f + (float)R.mass * 0.04f);
+    R.readyU = std::clamp(R.readyU + (readyWant ? rrate : -rrate) * dt, 0.f, 1.f);
+    if (readyWant) aimWant = false;
+    {   // getting down or up: the gun dips and swings back
+        double eh = R.pl.eye;
+        double v = R.lastEyeH < 0 || dt <= 0 ? 0 : (eh - R.lastEyeH) / dt;
+        R.lastEyeH = eh;
+        R.stanceDip += (std::clamp(v, -3.0, 3.0) * 0.12 - R.stanceDip) * std::min(1.0, (double)dt * 10);
+    }
     float rate = 1.f / (0.12f + (float)R.mass * 0.05f);
     R.aim = std::clamp(R.aim + (aimWant ? rate : -rate) * dt, 0.f, 1.f);
     if (gForceAim) R.aim = 1;
@@ -911,8 +961,12 @@ void rangeUpdate(float dt, bool modal) {
     if (A.S && R.dead) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); { perf::Scope t(perf::Physics); perf::substeps(sim::run(*A.S, dt, 1200)); } A.S->events.clear(); }
     if (A.S && !R.dead) {
         auto& S = *A.S;
-        bool trig = IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !holdFire;
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !holdFire) S.pressed = true;   // (as on the bench: a fresh pull of the trigger)
+        bool atReady = R.readyU > 0.15f;   // (the muzzle off the target: the finger stays off the trigger until it's back)
+        static bool waitRelease = false;
+        if (atReady && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) waitRelease = true;
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) waitRelease = false;
+        bool trig = IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !holdFire && !atReady && !waitRelease;
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !holdFire && !atReady) S.pressed = true;   // (as on the bench: a fresh pull of the trigger)
         if (std::getenv("GUNSMITH_RANGEAUTOFIRE")) {   // (tests) pull the trigger every 0.4 s by itself
             static float at = 0, rl = 0; at += dt; rl += dt;
             trig = std::fmod(at, 0.4f) < 0.1f && !sim::animPlaying(S);   // (hands off the trigger while working the action)
@@ -1275,7 +1329,8 @@ void rangeRender() {
     V3 f = gmap::playerForward(R.pl), r = gmap::norm(gmap::cross(f, {0, 1, 0})), u = gmap::cross(r, f);
     V3 up = u * std::cos(roll) + r * std::sin(roll);
     // a little breathing sway when aiming, more for a heavy gun held out in one hand
-    double sway = R.aim * (R.twoHands ? 0.0012 : 0.0025) * (0.6 + R.mass * 0.25) * R.swayK * (R.rested ? 0.15 : 1.0);   // (a grip, a stock: steadier; rested on a bipod, hardly at all)
+    double sway = R.aim * (R.twoHands ? 0.0012 : 0.0025) * (0.6 + R.mass * 0.25) * R.swayK * (R.rested ? 0.15 : 1.0)
+                 * (R.pl.stance == gmap::Stance::Prone ? 0.4 : R.pl.stance == gmap::Stance::Crouch ? 0.7 : 1.0);   // (kneeling, lying down: steadier)   // (a grip, a stock: steadier; rested on a bipod, hardly at all)
     R.lagYaw += std::sin(R.t * 1.1) * sway * 0.02;
     R.lagPitch += std::sin(R.t * 1.7 + 1) * sway * 0.015;
     Camera3D cam{};
@@ -1354,6 +1409,12 @@ void rangeHud() {
             float ew = viewTextWidth(e, 20);
             viewText(e, cx - ew / 2, cy - 90, 20, Color{240, 242, 245, 255});
         }
+    }
+    {   // how you're standing and carrying it
+        std::string st = R.pl.stance == gmap::Stance::Prone ? "Prone" : R.pl.stance == gmap::Stance::Crouch ? "Crouching" : "";
+        const char* rd = R.readyU > 0.5f ? (R.readyShown == 1 ? "High ready" : "Low ready") : nullptr;
+        if (rd) st += (st.empty() ? "" : "   ") + std::string(rd);
+        if (!st.empty() && R.cur >= 0) viewText(st.c_str(), 24, H - 70, 14, Color{220, 224, 230, 200});
     }
     if (R.rested) viewText("Rested on its bipod", cx - viewTextWidth("Rested on its bipod", 13) / 2, cy + H * 0.3f, 13, Color{170, 230, 180, 220});
     if (!A.fitItems.empty() && R.cur >= 0 && !R.freeMouse && CFG.hints) viewText("Hold Alt: your attachments", W - viewTextWidth("Hold Alt: your attachments", 12) - 24, 110, 12, Color{210, 214, 220, 170});

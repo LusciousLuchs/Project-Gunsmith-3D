@@ -316,7 +316,7 @@ void toolbar() {
         snapControls(sz);
     } else {
         if (accentButton(ICON_FA_PERSON "  Pose", A.posing, {0, sz})) { if (A.fitting) leaveFitting(); if (A.posing) { leavePose(); A.running = true; } else { restartTest(); enterPose(); } }
-        if (tipHover()) ImGui::SetTooltip("How a person holds this gun: place the hands and the stock's butt on it,\nand stand the body against it for aiming, from the hip and lowered.");
+        if (tipHover()) ImGui::SetTooltip("How a person holds this gun: place the hands and the stock's butt on it,\nand stand the body against it for aiming, high ready and low ready.");
         tutAnchor("mode:pose");
         gap(12);
         gap(4);

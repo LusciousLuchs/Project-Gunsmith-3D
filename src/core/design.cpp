@@ -245,8 +245,9 @@ std::vector<V2> cartridgeOutline(const Cartridge& c, bool caseOnly) {
     return clean;
 }
 // ---------------------------------------------------------------- how it's held
-const char* holdName(int h) { return h == HOLD_HIP ? "Hip" : h == HOLD_LOWERED ? "Lowered" : "Aim"; }
-const char* holdKey(int h) { return h == HOLD_HIP ? "hip" : h == HOLD_LOWERED ? "lowered" : "aim"; }
+const char* holdName(int h) { return h == HOLD_HIGH ? "High ready" : h == HOLD_LOW ? "Low ready" : "Aim"; }
+// (the high ready is saved as "hip" and the low ready as "lowered": their names before 0.8.18)
+const char* holdKey(int h) { return h == HOLD_HIGH ? "hip" : h == HOLD_LOW ? "lowered" : "aim"; }
 double defaultHandAngle(const std::string& which, const std::string& style) {
     if (which == "support") return style == "vertical" ? 95 : 0;    // fore-end: along the barrel, the hand under it
     if (which == "butt") return 90;                                 // the butt pad, upright
@@ -267,15 +268,19 @@ BodyHold holdOf(const Design& d, int h) {
     const Pose& P = d.pose;
     BodyHold o;
     double sight = top - 15;   // the eye just over the top line
-    if (h == HOLD_HIP) {
-        double gx = P.firing.on ? P.firing.at.x : P.butt.on ? P.butt.at.x + 200 : x0 + 100;
-        // the gun at chest height on the right, the eye above and to its left; a stocked gun tucked in close
-        o.eye = {gx - (P.butt.on ? 110 : 330), sight - 330}; o.eyeZ = -110;
-        if (P.butt.on) o.yaw = 35;
+    if (h == HOLD_HIGH) {
+        // high ready: the muzzle tipped up 40 degrees, the firing hand in front of the chest, about 230 mm forward of
+        // the eye and 330 mm below it once tipped (the eye placed in the gun's frame so the turn lands it there)
+        V2 hand = P.firing.on ? P.firing.at : V2{P.butt.on ? P.butt.at.x + 200 : x0 + 100, top + 60};
+        const double t = 40 * 3.14159265358979 / 180, fwd = 230, down = 330;
+        double f = fwd * std::cos(t) - down * std::sin(t), dn = fwd * std::sin(t) + down * std::cos(t);   // (before the turn)
+        o.eye = {hand.x - f, hand.y - dn}; o.eyeZ = -60;
+        o.tilt = -40;
+        if (P.butt.on) o.yaw = 25;
     } else {
         o.eye = {P.butt.on ? P.butt.at.x + 90 : P.firing.on ? P.firing.at.x - 440 : x0 - 450, sight};
         if (P.butt.on) o.yaw = 20;   // a shouldered gun: the body stands bladed, the support shoulder forward
-        if (h == HOLD_LOWERED) o.tilt = 35;
+        if (h == HOLD_LOW) o.tilt = 35;
     }
     return o;
 }
