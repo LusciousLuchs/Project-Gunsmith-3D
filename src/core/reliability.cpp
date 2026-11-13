@@ -259,11 +259,17 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
     run_.stall = o.stallSeconds;
     R.manual = run_.rolling || !S.breechSprung;
     const bool cyl = hasCylinder(S);   // a revolving cylinder: the pull turns it; reloading swings it out and fills it
-    R.singleLoad = !S.magTmpl && S.feedMode == "single" && !cyl;
+    // loaded by hand: no magazine to feed it (whatever "Feeds from" says: a new gun starts on Magazine), and no
+    // built-in counter of rounds
+    bool anyMag = S.magTmpl != nullptr;
+    for (auto& b : S.bodies) if (b.builtInMag && !b.gone) anyMag = true;
+    R.singleLoad = !anyMag && S.feedMode != "internal" && !cyl;
+    const int counterRounds = S.design.breech.rounds;
     run(S, 0.1);
 
     auto chamberNext = [&]() {  // get a round into the chamber the way this gun is loaded
         if (cyl) { if (cylinderLive(S) == 0) { cylinderReload(S); R.reloads++; } return; }
+        if (!S.magTmpl && S.feedMode == "internal" && S.rounds == 0) { S.rounds = std::max(1, counterRounds); R.reloads++; }   // (a built-in counter: refill it)
         if (R.singleLoad) { run_.open(); run_.loadAll(); run_.close(); return; }
         if (S.magTmpl) {
             Body* M = seatedMag(S);

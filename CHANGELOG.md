@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.15-alpha
+
+- **Fix: single-shot guns failed the reliability test.** A new gun starts on "Feeds from: Magazine", so a gun with no magazine was never loaded and the test gave up. The test now loads by hand any gun without a magazine, whatever that setting says, and refills a built-in counter when it runs dry.
+- **Test it by hand:** a new button by *Run reliability test*. Shoot the gun on the bench yourself (load, fire, work the action, clear jams) and every shot, dry click and jam is counted. After the chosen number of rounds, or when you press *Done*, your shots stand as the test's result. Useful for actions the automatic test can't work, like a lever or a falling block.
+
 ## 0.8.14-alpha
 
 - Tidied the notes.

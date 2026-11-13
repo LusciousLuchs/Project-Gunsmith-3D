@@ -86,6 +86,18 @@ static void reliabilitySection() {
         ImGui::SetTooltip("Fires the design over and over with the differences real shooting has: ammunition a little hot\n"
                           "or weak, a clean or dirty action, a firm or loose grip. Every jam is cleared the way you would\n"
                           "(rack it, pick out the stuck case) and counted. Runs in the background; your test bench stays live.");
+    // or by hand: for actions the automatic test can't work (a lever, a falling block, anything unusual)
+    if (HANDREC.on) {
+        ImGui::ProgressBar((float)HANDREC.fired / std::max(1, HANDREC.target), ImVec2(-1, 0), TextFormat("Recording by hand: %d of %d shots, %d jam%s", HANDREC.fired, HANDREC.target, HANDREC.jams, HANDREC.jams == 1 ? "" : "s"));
+        if (ImGui::Button("Done: use these shots")) handRecordStop(true);
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel##handrec")) handRecordStop(false);
+    } else {
+        if (ImGui::Button("Test it by hand")) handRecordStart();
+        if (tipHover()) ImGui::SetTooltip("For a gun the automatic test can't work, or to test it your own way: shoot it on the bench yourself.\n"
+                                          "Load, fire, work the action and clear jams by hand; every shot, dry click and jam is counted.\n"
+                                          "After the number of rounds chosen above (or when you press Done), your shots stand as the test's result.");
+    }
     if (!REL.have) {
         ImGui::TextWrapped("Shoots this design many times and tells you how often it jams, and why.");
         return;

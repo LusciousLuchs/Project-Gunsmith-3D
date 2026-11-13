@@ -2717,6 +2717,17 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void handLoadedReliability() {
+    std::printf("handLoadedReliability\n");
+    for (const char* fm : {"single", "magazine", "internal"}) {
+        Design d = loadPreset("single"); d.breech.feedMode = fm;   // (a new gun starts on "Magazine", even with none drawn)
+        sim::ReliabilityOptions o; o.rounds = 15; o.stallSeconds = 20;
+        auto r = sim::runReliability(d, o);
+        std::printf("  (feeds from %s: fired %d of 15)\n", fm, r.fired);
+        CHECK(r.fired == 15 && r.jams == 0, "a single shot with no magazine is loaded by hand by the test, whatever Feeds from says");
+    }
+}
+
 static void gasPistol() {
     std::printf("gasPistol\n");
     Design d = loadPreset("gaspistol");
@@ -2928,6 +2939,7 @@ int main() {
         if (o == "mesh") meshParts();
         else if (o == "revolver") revolverCylinder();
         else if (o == "gas") gasPistol();
+        else if (o == "handload") handLoadedReliability();
         else if (o == "wood") woodPenetration();
         else if (o == "doors") doorsBlock();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
@@ -2997,6 +3009,7 @@ int main() {
     meshParts();
     revolverCylinder();
     gasPistol();
+    handLoadedReliability();
     npcPaths();
     armFreedom();
     cartridgeSharing();

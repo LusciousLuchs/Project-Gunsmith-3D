@@ -1,5 +1,6 @@
 // Gunsmith3D - Test mode: running the simulation, grabbing parts, shot effects.
 #include "app/app.hpp"
+#include "app/reltest.hpp"
 #include "app/perf.hpp"
 #include "reliability.hpp"
 #include "app/settings.hpp"
@@ -131,6 +132,7 @@ void stepSim(float dt) {
             A.shells.push_back(s);
             actionEventSound(S, e.kind);
         }
+        handRecordEvent(S, e.kind);   // (the reliability test, recorded by hand)
         if (e.kind == sim::Ev::Malfunction && S.malf != sim::Malf::None) {
             toast(std::string("Jam: ") + sim::malfName(S.malf) + ". Rack the action or pull the stuck round out by hand.");
             if (SFX.ok && A.sound) PlaySound(SFX.click);
