@@ -8,7 +8,7 @@
 
 // Scale parts about c (design mm): sx across, sy up and down, sz in thickness (1 = unchanged). With corners picked
 // (one part), only those corners move.
-void scaleParts(Design& D, const std::vector<int>& parts, V2 c, double sx, double sy, double sz, const std::vector<int>& corners = {});
+#include "scale.hpp"   // scaleParts
 bool scaleBox(const Design& D, const std::vector<int>& parts, const std::vector<int>& corners, V2& lo, V2& hi);  // side-view box (mm)
 void scaleInput(bool overUI);
 void drawScaleOverlay();

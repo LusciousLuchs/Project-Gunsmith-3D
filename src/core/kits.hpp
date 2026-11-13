@@ -20,3 +20,11 @@ int insertKit(Design& D, const Design& kit, V2 at);
 // A new gun still as it started (just the blank frame's bar, nothing else): a kit takes the bar's place, since the bar
 // sits right where an action's trigger and magazine go (measured: 9 of the 11 kits stopped working on it).
 bool untouchedBlank(const Design& D);
+
+// A kit made for another cartridge: every part scaled by the ratio of the cartridges' overall lengths (about the breech
+// face), the distances in its settings with it (springs' lengths and coils, latches, cams, feed, cocking, hold-open,
+// gas, cylinder stroke), fitted magazines refitted to the new round, and the springs made stiffer or softer so they
+// soak up the new round's push on the scaled parts (`springK` multiplies that on top: 1 = as worked out).
+Design fitKitTo(const Design& kit, const Cartridge& c, double springK = 1);
+double kitScale(const Design& kit, const Cartridge& c);     // that ratio
+double kitSpringScale(const Design& kit, const Cartridge& c);   // the springs' factor (before springK)
