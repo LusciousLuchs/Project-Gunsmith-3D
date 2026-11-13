@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.23-alpha
+
+- **Spent cases land in the world.** On the range, a fired case now leaves the gun with the speed and spin it was thrown at (plus your own movement), tumbles through the air, bounces off floors and walls and lies where it stops. They used to fly along with the gun and vanish. Up to 150 lie around at once, each for two minutes. Shotgun hulls keep their colour.
+
 ## 0.8.22-alpha
 
 - **Guns no longer go through walls.** Walk up to a wall or a shut door and the gun slides back toward you, then tips its muzzle up out of the way, instead of poking through. You can't fire while it's tipped up. A long rifle feels it sooner than a pistol.

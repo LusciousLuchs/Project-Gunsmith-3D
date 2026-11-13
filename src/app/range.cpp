@@ -72,6 +72,8 @@ struct Range {
     float aim = 0;                       // 0 from the hip .. 1 aiming down the gun
     float point = 0;                     // point shooting (middle mouse held): the gun brought up under the eye without the
                                          // sights, quicker than aiming and steadier than the hip; 0 .. 1
+    struct Case { V3 p, v, axis, spinAx; double spin = 0, life = 0, len = 0.02, dia = 0.01; Color col; bool rest = false; int bounces = 0; };
+    std::vector<Case> cases;             // spent cases out in the world: flying, bouncing, then lying on the floor
     float wallU = 0;                     // up against a wall: the gun pulled back and its muzzle tipped up (0 .. 1)
     double wallBack = 0;                 // how far it's pulled back (mm)
     double gunReach = 0.6;               // how far the gun reaches in front of the eye (m), from its frontmost point
@@ -508,6 +510,8 @@ void reload() {
     workAction();
 }
 }  // namespace
+static void handOffCases(sim::Sim& S);   // (below)
+static void stepCases(float dt);
 
 bool inRange() { return A.screen == Screen::Range; }
 
@@ -729,6 +733,7 @@ void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) 
     if (const char* e = std::getenv("GUNSMITH_RANGEREADY")) { R.ready = std::atoi(e); R.readyShown = std::max(1, R.ready); }   // (1 high ready, 2 low ready)
     if (std::getenv("GUNSMITH_RANGECROUCH")) R.want = gmap::Stance::Crouch;
     if (const char* e = std::getenv("GUNSMITH_RANGETURN")) { R.pl.yaw += std::atof(e) * DEG2RAD; R.lastYaw = R.pl.yaw; }   // (screenshots) turned from the start, degrees
+    if (const char* e = std::getenv("GUNSMITH_RANGEPITCH")) { R.pl.pitch = std::atof(e) * DEG2RAD; R.lastPitch = R.pl.pitch; }   // (looking up or down, degrees)
     if (const char* e = std::getenv("GUNSMITH_RANGEWALK")) { double fw = std::atof(e); R.pl.feet.x += std::cos(R.pl.yaw) * fw; R.pl.feet.z += std::sin(R.pl.yaw) * fw; }   // (and walked forward, m)
     if (const char* e = std::getenv("GUNSMITH_RANGEHOLSTER")) { R.holstered = true; R.holsterU = (float)std::atof(e); }   // (put away; how far along)
     if (std::getenv("GUNSMITH_RANGESTAB")) { R.stabT = 0; R.stabHit = false; }
@@ -801,7 +806,7 @@ bool rangeDemoOver() {
 void leaveRange() {
     if (gDemo.on) { gDemo.on = false; if (gDemo.done) gDemo.done(std::min(gDemo.hits, 999), gDemo.shots); gDemo.done = nullptr; }
     EnableCursor();
-    R.bullets.clear(); R.impacts.clear();
+    R.bullets.clear(); R.impacts.clear(); R.cases.clear();
     R.inv.clear(); R.ground.clear(); R.actors.clear(); R.cur = -1; R.spawnerOpen = false;
     A.fitItems = gBenchFit; gBenchFit.clear();   // (the bench gun's attachments back with it)
     mapRestoreLook();
@@ -1066,7 +1071,8 @@ void rangeUpdate(float dt, bool modal) {
         if (std::getenv("GUNSMITH_RANGECHDBG")) for (auto& p : S.pushers) if (p.key == "fire") { V2 w = sim::wpt(*p.b, p.l); std::printf("  trigger part moved %.2f mm (on %d)\n", ((w.x - (p.b->x0 + p.l.x)) * p.dx + (w.y - (p.b->y0 + p.l.y)) * p.dy) * 1000, p.on); }
         if (std::getenv("GUNSMITH_RANGECHDBG")) { static int fr = 0; if (fr++ < 300 && fr % 6 == 0) std::printf("frame %d lwo %d gap %.1f t %.3f fireT %.3f cc %d chambered %d spent %d gap %.2f shots %d acc %.2f %.2f hand %d anim %d trig %d pressed %d cocked %d dead %d inB %d igAt %.2f\n", fr, R.loadWhenOpen, sim::breechGap(S), S.t, S.fireT, sim::chamberedCount(S), S.chambered, S.spent, sim::breechGap(S), S.shots, S.frameAccel.x, S.frameAccel.y, S.hand.on, sim::animPlaying(S), S.trigger, S.pressed, S.cocked, S.deadPull, sim::inBattery(S), S.igniteAt); }
         countAmmo(S);   // what went into the gun came out of your ammunition
-        // a dropped magazine and the spent cases fly with the gun's frame here, so they're cleared once they've fallen away
+        handOffCases(S);   // a fired case clear of the gun goes out into the world
+        // a dropped magazine (and anything else loose) flies with the gun's frame here, so it's cleared once it's fallen away
         sim::tidy(S, dt, 1.2, 0.8, 2);
         const auto& br = A.design.breech;
         for (auto& e : S.events) {
@@ -1151,15 +1157,94 @@ void rangeUpdate(float dt, bool modal) {
         }
     }
     stepBullets(dt);
+    stepCases((float)dt);
     R.lastHitT = std::max(0.f, R.lastHitT - dt);
     A.flash = std::max(0.f, A.flash - dt);
     stepEffects(dt);
 }
 
+// Spent cases in the world. Once a fired case is out of the gun (clear of every part), it leaves the gun's physics and
+// carries on in the map: its speed and spin as it left, plus yours; gravity, bounces off floors and walls (losing most of
+// its speed), then lies where it stops. At most 150 at once; each stays two minutes.
+static void handOffCases(sim::Sim& S) {
+    if (!R.placed) return;
+    const Design& D = A.design;
+    double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (auto& b : D.bodies) if (!b.magazine) for (auto& q : b.pts) { x0 = std::min(x0, q.x); x1 = std::max(x1, q.x); y0 = std::min(y0, q.y); y1 = std::max(y1, q.y); }
+    const Cartridge& c = D.breech.cart;
+    for (auto& b : S.bodies) {
+        if (b.gone || !b.isCase || b.rs != sim::RS::Loose || b.idle > 50) continue;
+        double mx = b.x * 1000, my = b.y * 1000, mz = b.z * 1000;
+        bool clear = mx < x0 - 8 || mx > x1 + 8 || my < y0 - 8 || my > y1 + 8 || std::fabs(mz) > 40;
+        if (!clear) continue;
+        float zd = (float)(mz * U);
+        V3 p = gunToMap({mx, my}, zd);
+        double h = 0.01;
+        V3 q = gunToMap({mx + b.vx * 1000 * h, my + b.vy * 1000 * h}, (float)((mz + b.vz * 1000 * h) * U));
+        V3 ax = gunToMap({mx + std::cos(b.a) * 10, my + std::sin(b.a) * 10}, zd) - p;
+        Range::Case k;
+        k.p = p; k.v = (q - p) * (1 / h) + R.pl.vel;
+        k.v = k.v * (1 + rnd(0.18f)) + V3{rnd(0.35f), rnd(0.25f), rnd(0.35f)};   // (no two leave quite alike)
+        k.axis = gmap::norm(ax);
+        k.spinAx = gmap::norm(gmap::cross(k.axis, {0, 1, 0}));
+        k.spin = b.w * 0.6 + 25 + rnd(15.f);
+        k.len = c.caseLen / 1000; k.dia = c.headDia() / 1000;
+        k.col = c.kind == "shotshell" ? GetColor(c.hullColor) : Color{214, 170, 76, 255};
+        R.cases.push_back(k);
+        b.idle = 100;   // (the gun's copy goes: tidy retires it)
+    }
+    while (R.cases.size() > 150) R.cases.erase(R.cases.begin());
+}
+static void stepCases(float dt) {
+    if (std::getenv("GUNSMITH_CASEDBG")) { static int fr = 0; if (++fr % 60 == 0) { std::printf("cases %zu:", R.cases.size()); for (auto& k : R.cases) std::printf(" (%.2f %.2f %.2f %s b%d)", k.p.x, k.p.y, k.p.z, k.rest ? "rest" : "fly", k.bounces); std::printf("  me %.2f %.2f %.2f\n", R.pl.feet.x, R.pl.feet.y, R.pl.feet.z); } }
+    for (auto& k : R.cases) {
+        k.life += dt;
+        if (k.rest) continue;
+        k.v.y -= 9.81 * dt;
+        V3 step = k.v * dt;
+        double L = gmap::len(step);
+        if (L > 1e-6) {
+            gmap::Hit h = gmap::rayMap(R.map, k.p, step * (1 / L), L + k.dia / 2);
+            if (h.brush >= 0) {   // a bounce: most of the speed into the surface is lost, some along it
+                k.p = k.p + step * (std::max(0.0, h.t - k.dia / 2) / L);
+                double vn = gmap::dot(k.v, h.n);
+                V3 vt = k.v - h.n * vn;
+                k.v = vt * 0.55 - h.n * (vn * 0.3);
+                k.spin *= 0.6;
+                k.bounces++;
+                if (h.n.y > 0.7 && gmap::len(k.v) < 0.35) {   // settled on a floor: lies on its side
+                    k.rest = true;
+                    k.axis = gmap::norm(V3{k.axis.x, 0, k.axis.z});
+                    if (gmap::len(k.axis) < 0.5) k.axis = {1, 0, 0};
+                    k.p.y += k.dia / 2 - 0.001;
+                }
+                continue;
+            }
+            k.p = k.p + step;
+        }
+        // tumbling through the air
+        double a = k.spin * dt;
+        Matrix M = MatrixRotate(rv(k.spinAx), (float)a);
+        Vector3 nx = Vector3Transform(rv(k.axis), M);
+        k.axis = gmap::norm(V3{nx.x, nx.y, nx.z});
+        if (k.p.y < -200) k.life = 1e9;
+    }
+    R.cases.erase(std::remove_if(R.cases.begin(), R.cases.end(), [](const Range::Case& k) { return k.life > 120; }), R.cases.end());
+}
+static void drawCases() {
+    for (auto& k : R.cases) {
+        V3 a = k.p - k.axis * (k.len / 2), b = k.p + k.axis * (k.len / 2);
+        drawCyl(rv(a), rv(b), (float)(k.dia / 2), k.col);
+        drawCyl(rv(b), rv(b + k.axis * 0.0006), (float)(k.dia / 2 * 0.8), Color{40, 34, 26, 255});   // (the open mouth)
+    }
+}
+
+
 // everything on the map besides its brushes: targets, bullet holes, NPCs, spawners, plates, crates, guns on the ground
 static std::vector<Lamp> gunLamps();
 static void drawRangeThings() {
     doors::draw(R.map);
+    drawCases();
     // paper targets: rings on a white sheet
     for (auto& t : R.targets) {
         V3 side = gmap::norm(gmap::cross(t.n, {0, 1, 0})), tu = gmap::cross(side, t.n);
