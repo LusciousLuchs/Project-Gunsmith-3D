@@ -44,8 +44,9 @@ double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut);   // the closest two se
 
 namespace {
 struct Bullet { V3 p, v; double k = 0, travelled = 0, life = 0; double mass = 0.008; int npc = -1; double dmg = 0; double dia = 0.009; };   // dia: the bullet's, m (how far it gets through wood)   // dmg: an NPC gun's set damage to you (0: by energy)   // npc: fired by that NPC (-1: by you)
-struct Impact { V3 p, n; bool steel = false; double r = 0.005; };
-struct Target { V3 c, n; double size = 0.6; };
+struct Impact { V3 p, n; bool steel = false; double r = 0.005; int tgt = -1; };   // tgt: a hole in a moving target (p is then from its middle)
+struct Target { V3 c, n; double size = 0.6; V3 base; double travel = 0, speed = 0, phase = 0; };   // travel > 0: it slides side to side
+
 struct Carried { Design d; std::unique_ptr<sim::Sim> S; std::vector<fit::Item> fit; int reserve = -1; };   // (fit: its attachments)   // a gun you carry (the one in your hands lives in A.design / A.S)
 struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; std::vector<fit::Item> fit; int reserve = -1; };   // one lying on the ground
 
@@ -135,7 +136,10 @@ void findTargets() {
     for (auto& e : R.map.ents)
         if (e.type == "target_paper") {
             double y = e.yaw * DEG2RAD;
-            R.targets.push_back({e.pos, V3{std::cos(y), 0, std::sin(y)}, 0.6});
+            Target t{e.pos, V3{std::cos(y), 0, std::sin(y)}, 0.6};
+            t.base = e.pos;
+            if (e.ref == "moving") { t.travel = e.width > 0.05 ? e.width : 3.0; t.speed = e.range > 0.05 ? e.range : 1.2; }
+            R.targets.push_back(t);
         }
 }
 
@@ -307,9 +311,44 @@ static bool throughWood(Bullet& b, V3 at, V3 dir, double thick) {
     return true;
 }
 
+// moving targets slide side to side along their face (gently slowing at each end)
+static void stepTargets(double dt) {
+    for (auto& t : R.targets) {
+        if (t.travel <= 0) continue;
+        double half = t.travel / 2;
+        t.phase += t.speed / half * dt;
+        V3 side = gmap::norm(gmap::cross(t.n, {0, 1, 0}));
+        t.c = t.base + side * (half * std::sin(t.phase));
+    }
+}
+// a bullet passing a moving target's paper (it goes on through): the hole rides with it, and it scores
+static void bulletThroughMovers(const Bullet& b, V3 step) {
+    for (size_t ti = 0; ti < R.targets.size(); ti++) {
+        auto& t = R.targets[ti];
+        if (t.travel <= 0) continue;
+        double den = gmap::dot(step, t.n);
+        if (std::fabs(den) < 1e-9) continue;
+        double s = gmap::dot(t.c - b.p, t.n) / den;
+        if (s < 0 || s >= 1) continue;
+        V3 q = b.p + step * s, o = q - t.c;
+        V3 side = gmap::norm(gmap::cross(t.n, {0, 1, 0}));
+        double h = t.size / 2, ox = gmap::dot(o, side), oy = o.y;
+        if (std::fabs(ox) > h || std::fabs(oy) > h) continue;
+        R.impacts.push_back({o, t.n, false, 0.005, (int)ti});
+        if (std::getenv("GUNSMITH_RANGEDBG")) std::printf("moving target %zu hit at %.2f %.2f\n", ti, ox, oy);
+        double rr = std::hypot(ox, oy);
+        int ring = rr > h ? 0 : std::max(0, 10 - (int)(rr / h * 10));
+        if (b.npc < 0) {
+            R.lastHit = (ring > 0 ? "Hit: " + std::to_string(ring) : std::string("Hit the paper")) + "  (moving)";
+            R.lastHitT = 3;
+            if (gDemo.on && gDemo.shots <= gDemo.limit) gDemo.hits++;
+        }
+    }
+}
 void stepBullets(double dt) {
     const int sub = 4;
     double h = dt / sub;
+    stepTargets(dt);
     for (auto& b : R.bullets) {
         for (int s = 0; s < sub && b.life >= 0; s++) {
             double sp = gmap::len(b.v);
@@ -317,6 +356,7 @@ void stepBullets(double dt) {
             V3 nv = b.v + acc * h;
             V3 step = (b.v + nv) * (0.5 * h);
             double L = gmap::len(step);
+            bulletThroughMovers(b, step);
             if (L > 1e-9 && b.npc < 0 && !R.actors.empty()) {   // your bullet: an NPC's bone in the way?
                 int ha = -1, hb = -1; double bestS = 2;
                 for (size_t ai = 0; ai < R.actors.size(); ai++) {
@@ -390,6 +430,7 @@ void stepBullets(double dt) {
                     // what was hit: a paper target's ring, a steel plate, or just the range
                     std::string what;
                     for (auto& t : R.targets) {
+                        if (t.travel > 0) continue;   // (moving ones are hit in the air: bulletThroughMovers)
                         V3 o = at - t.c;
                         if (std::fabs(gmap::dot(o, t.n)) > 0.06) continue;
                         V3 inPlane = o - t.n * gmap::dot(o, t.n);
@@ -1281,7 +1322,7 @@ static void drawRangeThings() {
     // where bullets landed
     for (auto& im : R.impacts) {
         V3 n = im.n, s = gmap::norm(gmap::cross(n, std::fabs(n.y) > 0.9 ? V3{1, 0, 0} : V3{0, 1, 0})), t = gmap::cross(n, s);
-        V3 o = im.p + n * 0.008;
+        V3 o = (im.tgt >= 0 && im.tgt < (int)R.targets.size() ? R.targets[im.tgt].c + im.p : im.p) + n * 0.008;
         Color c = im.steel ? Color{205, 205, 200, 255} : Color{22, 18, 16, 255};
         const int N = 8;
         for (int i = 0; i < N; i++) {

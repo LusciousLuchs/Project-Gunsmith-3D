@@ -743,6 +743,24 @@ static void toolInput() {
             meChanged();
             break;
         }
+        case MTool::Target: {   // a paper target: standing over the floor clicked, or flat on a wall, facing you
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            meSnapshot();
+            gmap::Entity e; e.type = "target_paper";
+            if (n.y > 0.7) {
+                e.pos = {snapG(p.x), p.y + 1.45, snapG(p.z)};
+                e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
+            } else {
+                e.pos = p + n * 0.01;
+                e.yaw = std::atan2(n.z, n.x) * RAD2DEG;
+            }
+            e.width = 3; e.range = 1.2;
+            ME.map.ents.push_back(e);
+            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meChanged();
+            break;
+        }
         case MTool::Light: {   // a lamp: a little out from the surface clicked (under a ceiling, on a wall, over a floor)
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
@@ -944,6 +962,20 @@ static void drawLampMarker(const gmap::Entity& e, bool sel) {   // a glowing bul
         }
     }
 }
+static void drawPaperTargetMarker(const gmap::Entity& e, bool sel) {   // a paper target: the sheet, and a moving one's track
+    Matrix R = MatrixRotateY(-(float)e.yaw * DEG2RAD);
+    Vector3 c = rv(e.pos);
+    drawBox(c, {0.01f, 0.6f, 0.6f}, sel ? Color{255, 205, 60, 255} : Color{238, 234, 222, 255}, R);
+    drawBox(Vector3Add(c, Vector3Transform({-0.008f, 0, 0}, R)), {0.004f, 0.36f, 0.36f}, Color{30, 30, 32, 255}, R);
+    drawBox(Vector3Add(c, Vector3Transform({-0.012f, 0, 0}, R)), {0.004f, 0.08f, 0.08f}, Color{200, 60, 40, 255}, R);
+    if (e.ref == "moving") {
+        Vector3 side = Vector3Transform({0, 0, 1}, R);
+        float h = (float)e.width / 2;
+        Vector3 a = Vector3Add(c, Vector3Scale(side, -h)), b = Vector3Add(c, Vector3Scale(side, h));
+        DrawLine3D(a, b, Color{255, 205, 60, 255});
+        drawSphereLit(a, 0.04f, Color{255, 205, 60, 255}); drawSphereLit(b, 0.04f, Color{255, 205, 60, 255});
+    }
+}
 static void drawSpawner(const gmap::Entity& e, bool sel) {   // a crate on legs with a screen: the gun spawner
     Color c = sel ? Color{255, 205, 60, 255} : Color{70, 120, 170, 255};
     V3 p = e.pos;
@@ -1053,6 +1085,7 @@ static void drawEditor3D() {
         else if (e.type == "light") drawLampMarker(e, (int)i == ME.ent);
         else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0 || gmap::isDisplay(e.type) || gmap::isDecor(e.type)) drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type == "target_paper") drawPaperTargetMarker(e, (int)i == ME.ent);
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++)

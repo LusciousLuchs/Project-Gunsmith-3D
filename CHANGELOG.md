@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.24-alpha
+
+- **Moving targets.** The practice range has two paper targets sliding across on rails (at 11 m and 20 m, one faster than the other). Your holes ride along with the paper and score rings like the others.
+- **Paper targets in the Level editor.** A new Paper target tool (the bullseye): click a floor to stand one at chest height, or a wall to put it flat on the wall. Pick it to make it move side to side, and set how far and how fast.
+
 ## 0.8.23-alpha
 
 - **Spent cases land in the world.** On the range, a fired case now leaves the gun with the speed and spin it was thrown at (plus your own movement), tumbles through the air, bounces off floors and walls and lies where it stops. They used to fly along with the gun and vanish. Up to 150 lie around at once, each for two minutes. Shotgun hulls keep their colour.

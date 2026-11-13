@@ -423,6 +423,7 @@ std::string mapToJson(const Map& m) {
         if (e.count != 1) je["count"] = e.count;
         if (e.respawn > 0) je["respawn"] = e.respawn;
         if (e.type == "door") je["width"] = e.width;
+        if (e.type == "target_paper" && e.ref == "moving") { je["travel"] = e.width; je["speed"] = e.range; }
         if (e.type == "light") je["light"] = {{"color", c3j(e.color)}, {"power", e.power}, {"range", e.range}, {"cone", e.cone}, {"pitch", e.pitch}};
         es.push_back(je);
     }
@@ -485,6 +486,8 @@ bool mapFromJson(const std::string& s, Map& out) {
             e.count = std::max(1, je.value("count", 1));
             e.respawn = std::max(0.0, je.value("respawn", 0.0));
             e.width = std::clamp(je.value("width", 0.9), 0.4, 4.0);
+            if (je.contains("travel")) e.width = std::clamp(je.value("travel", 3.0), 0.2, 100.0);   // a moving target: how far it slides
+            if (je.contains("speed")) e.range = std::clamp(je.value("speed", 1.2), 0.05, 30.0);     // ...and how fast (m/s)
             if (je.contains("light") && je["light"].is_object()) {
                 auto& jl = je["light"];
                 if (jl.contains("color")) jc3(jl["color"], e.color);
@@ -775,6 +778,13 @@ Map builtinRange() {
         box({x, 0, z + 0.33}, {x + 0.08, 1.1, z + 0.4}, planks);
         box({x - 0.01, 1.0, z - 0.45}, {x + 0.02, 1.9, z + 0.45}, ply);
         Entity t; t.type = "target_paper"; t.pos = {x - 0.01, 1.45, z}; t.yaw = 180;   // a paper target on the board, facing the firing line
+        m.ents.push_back(t);
+    }
+    // two moving targets on rails, sliding across the range (closer and slower, further and faster)
+    for (int k = 0; k < 2; k++) {
+        double x = k ? 20 : 11, travel = k ? 8 : 5, sp = k ? 2.0 : 1.2;
+        box({x - 0.05, 0, -travel / 2 - 0.4}, {x + 0.05, 0.12, travel / 2 + 0.4}, dark);   // the rail
+        Entity t; t.type = "target_paper"; t.ref = "moving"; t.pos = {x, 1.45, 0}; t.yaw = 180; t.width = travel; t.range = sp;
         m.ents.push_back(t);
     }
     for (int k = -4; k <= 4; k++) {

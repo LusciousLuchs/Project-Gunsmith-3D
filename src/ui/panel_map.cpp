@@ -86,7 +86,8 @@ void mapToolbar() {
         {ICON_FA_BOXES_STACKED, "Ammo box: press F by it to fill up the ammunition for every gun you carry", MTool::Ammo},
         {ICON_FA_BOX, "Weapon crate: press F by it to take any of your guns (like a gun spawner)", MTool::Weapons},
         {ICON_FA_INDUSTRY, "Workstation (career mode): a bench, a lathe, a mill, a test bench, or your shop counter", MTool::Station},
-        {ICON_FA_DOOR_OPEN, "Door: click a floor in a doorway. F opens and shuts it on foot (it swings away from you)", MTool::Door}};
+        {ICON_FA_DOOR_OPEN, "Door: click a floor in a doorway. F opens and shuts it on foot (it swings away from you)", MTool::Door},
+        {ICON_FA_BULLSEYE, "Paper target: click the floor (it stands at chest height) or a wall. Pick it to make it move side to side", MTool::Target}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -245,6 +246,19 @@ static void editTab() {
                                 : e.type == "station_bench" ? "Career mode: where you and your assemblers work. Machinists can use one too, slower."
                                 : "Career mode: where a machinist works fastest (turned and cut parts).");
             ImGui::PopTextWrapPos();
+        } else if (e.type == "target_paper") {
+            heading("Paper target");
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled("Scores rings 1 to 10 on the range. Shots go through the paper.");
+            ImGui::PopTextWrapPos();
+            bool moving = e.ref == "moving";
+            if (ImGui::Checkbox("Moves side to side", &moving)) { meSnapshot(); e.ref = moving ? "moving" : ""; if (e.width < 0.2) e.width = 3; if (e.range < 0.05) e.range = 1.2; meChanged(); }
+            if (moving) {
+                float tr = (float)e.width, sp = (float)e.range;
+                if (ImGui::SliderFloat("How far (m)", &tr, 0.5f, 20.f, "%.1f")) { e.width = tr; meChanged(); }
+                if (ImGui::SliderFloat("How fast (m/s)", &sp, 0.2f, 8.f, "%.1f")) { e.range = sp; meChanged(); }
+                ImGui::TextDisabled("It slides along its face, slowing at each end. A walk is about 1.4 m/s, a run 4.");
+            }
         } else if (e.type == "ammo_box") {
             heading("Ammo box");
             ImGui::PushTextWrapPos(0);
