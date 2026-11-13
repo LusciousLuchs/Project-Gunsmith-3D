@@ -14,6 +14,7 @@
 #include "mounts.hpp"
 #include "fitting.hpp"
 #include "hand.hpp"
+#include "kits.hpp"
 #include "json.hpp"
 #include <algorithm>
 #include <array>
@@ -2724,6 +2725,33 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void actionKitsTest() {
+    std::printf("actionKits\n");
+    for (auto& k : ::actionKits()) {
+        Design kit = kitDesign(k.key);
+        sim::ReliabilityOptions o; o.rounds = 15; o.stallSeconds = 20;
+        auto r0 = sim::runReliability(kit, o);
+        Design g; g.name = "My gun";   // an empty gun, the kit dropped in somewhere else entirely
+        int first = insertKit(g, kit, {300, -120});
+        bool moved = first == 0 && std::fabs(g.breech.face.x - 300) < 1e-6 && std::fabs(g.breech.face.y + 120) < 1e-6;
+        auto r1 = sim::runReliability(g, o);
+        // twice into one gun: the second set of parts gets its own names, and the breech is the second kit's
+        Design two = g; insertKit(two, kit, {300, -120});
+        std::set<std::string> ids; bool unique = true;
+        for (auto& b : two.bodies) unique &= ids.insert(b.id).second;
+        bool second = two.bodies.size() == 2 * kit.bodies.size() && two.breech.breech != g.breech.breech;
+        Design fresh = loadPreset("blank");   // a new gun from the menu: the kit takes the starting bar's place
+        bool wasBlank = untouchedBlank(fresh);
+        if (wasBlank) fresh.bodies.clear();
+        insertKit(fresh, kit, kit.breech.face);
+        auto r2 = sim::runReliability(fresh, o);
+        std::printf("  (%s: example fired %d of 15, %d jams; dropped into an empty gun %d, %d jams; into a new gun %d, %d jams)\n", k.key, r0.fired, r0.jams, r1.fired, r1.jams, r2.fired, r2.jams);
+        CHECK(wasBlank && !untouchedBlank(fresh) && r2.fired == r0.fired && r2.jams == r0.jams, (std::string(k.label) + ": into a new gun, it takes the starting bar's place and works").c_str());
+        CHECK(moved && unique && second && r1.fired == r0.fired && r1.jams == r0.jams,
+              (std::string(k.label) + ": dropped into another gun, moved and renamed, it works exactly as the example does").c_str());
+    }
+}
+
 static void handLoadedReliability() {
     std::printf("handLoadedReliability\n");
     for (const char* fm : {"single", "magazine", "internal"}) {
@@ -2950,6 +2978,7 @@ int main() {
         else if (o == "wood") woodPenetration();
         else if (o == "doors") doorsBlock();
         else if (o == "pose") grips();
+        else if (o == "kits") actionKitsTest();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -3018,6 +3047,7 @@ int main() {
     revolverCylinder();
     gasPistol();
     handLoadedReliability();
+    actionKitsTest();
     npcPaths();
     armFreedom();
     cartridgeSharing();

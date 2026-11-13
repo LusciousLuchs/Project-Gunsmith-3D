@@ -1,6 +1,7 @@
 // Gunsmith3D - Gunsmith3D entry point: command line, window, main loop.
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/pieces.hpp"
 #include "app/fitbench.hpp"
 #include "app/npcedit.hpp"
 #include "app/careermode.hpp"
@@ -216,6 +217,7 @@ int main(int argc, char** argv) {
         A.tool = Tool::Track; A.draftHasF = true; A.drafting = true; A.draftA = b.id;
         A.draftF = sim::polyCentroid(b.pts); A.draft = {A.draftF};
     }
+    if (const char* k = std::getenv("GUNSMITH_KIT")) insertActionKit(k);   // (screenshots, tests) an action kit dropped into the loaded gun
     if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
     if (testArg || !demo.empty() || !fittingArg.empty()) setMode(Mode::Test);
     if (!fittingArg.empty()) { enterFitting(); if (fittingArg != "-") loadLoadout(fittingArg); }

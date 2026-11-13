@@ -5,6 +5,7 @@
 #include "mounts.hpp"
 #include "app/usertex.hpp"
 #include "app/pieces.hpp"
+#include "kits.hpp"
 #include "app/app.hpp"
 #include "app/scaletool.hpp"
 #include "app/meshtool.hpp"
@@ -2163,13 +2164,19 @@ void fileButtons() {
     tutAnchor("file:open");
     ImGui::SameLine(0, 2);
     if (ImGui::Button(ICON_FA_PUZZLE_PIECE "  Parts", {0, sz})) ImGui::OpenPopup("##parts");
-    if (tipHover()) ImGui::SetTooltip("Your parts library: parts and assemblies you saved (Save to my parts, in a part's panel).");
+    if (tipHover()) ImGui::SetTooltip("Your parts library (parts and assemblies you saved with Save to my parts),\nand the action kits: a working action dropped into your gun.");
     tutAnchor("file:parts");
     if (ImGui::BeginPopup("##parts")) {
         auto names = libraryParts();
         ImGui::TextDisabled("Your parts");
         if (names.empty()) muted("None yet. Select a part and press Save to my parts in its panel.");
         for (auto& n : names) if (ImGui::Selectable(n.c_str())) { if (insertLibraryPart(n)) toast("Added " + n + ". It's selected: drag it into place."); else toast("Couldn't read " + n + "."); }
+        ImGui::Separator();
+        ImGui::TextDisabled("Action kits: a working action, dropped into your gun");
+        for (auto& k : actionKits()) {
+            if (ImGui::Selectable((std::string(k.label) + "##kit").c_str())) insertActionKit(k.key);
+            if (tipHover()) ImGui::SetTooltip("%s\n\nIts breech, barrel, feeding, extraction, fire control and frame, as in the example.\nIt goes where your gun's breech face is, and becomes your gun's breech. Undo takes it out.", k.blurb);
+        }
         ImGui::Separator();
         if (ImGui::Selectable("Paste (Ctrl+V)")) pasteClipboard();
         if (ImGui::Selectable("Open the parts folder")) { std::string p = std::filesystem::absolute(PARTS_DIR).string(); openFolder(p); }

@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.26-alpha
+
+- **Action kits.** Parts (top bar) now lists eleven ready-made working actions: straight blowback, tilting barrel, gas-operated, long recoil, turn bolt (magazine or single shot), pump (rifle or shotgun), double-action revolver, break-open and belt-fed. Pick one and its whole mechanism (breech, barrel, feeding, extraction, fire control and the frame they run in) drops into your gun at your breech face, and becomes your gun's action. Build your own shape round it. Every kit fires exactly as its example does (tested: 15 of 15 each, moved and renamed). On a brand-new gun the kit takes the starting bar's place, which would otherwise sit in its way. Undo takes it out.
+
 ## 0.8.25-alpha
 
 - **Fix: some guns' cases stayed stuck to the gun.** Guns using simplified feeding (like the long-recoil example) threw their cases along with the gun instead of into the world. Now every gun's cases land on the floor.

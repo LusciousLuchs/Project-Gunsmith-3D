@@ -12,3 +12,4 @@ void pasteClipboard();
 bool savePieceToLibrary(int bodyIndex, const std::string& name);
 std::vector<std::string> libraryParts();              // names in user/parts
 bool insertLibraryPart(const std::string& name);
+bool insertActionKit(const std::string& key);         // a working action (core/kits.hpp) into the gun, at its breech face
