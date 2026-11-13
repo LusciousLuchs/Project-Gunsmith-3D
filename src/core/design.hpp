@@ -214,6 +214,11 @@ struct BodyDef {
     std::vector<double> rad;             // corner radius at each vertex (mm)
     std::vector<double> bulge;           // edge i (pts[i] -> pts[i+1]) bows outward by this much (mm, negative = inward)
     std::vector<CarveDef> carves;        // cut out of the shape in 3D, in order
+    // Hollow (0.8.27): the part is a shell. Its inside is its outline brought in by the wall at each edge (`edges[i]`:
+    // the edge from corner i to i+1, < 0 = `wall`, 0 = no wall there: that side is open), and it runs through the
+    // depth between the near and far walls (`sides` mm thick; < 0 = `wall`, 0 = open right through). The physics treats
+    // the inside as empty space, like a cut; not for round or leaned parts. JSON `hollow` only when on.
+    struct Hollow { bool on = false; double wall = 2; double sides = -1; std::vector<double> edges; } hollow;
     // Shaped in depth (empty: straight through, as drawn). Each corner has a point on the near face and one on the far
     // face: the near one is pts[i] at depth z + thick/2 + depthZn[i]; the far one is pts[i] + depthOff[i] at depth
     // z - thick/2 + depthZf[i]. The faces between are flat pieces between those points. depthRef: the outline these

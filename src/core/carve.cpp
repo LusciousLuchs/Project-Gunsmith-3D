@@ -1,5 +1,7 @@
 // Gunsmith3D - carves (see carve.hpp).
 #include "carve.hpp"
+#include <array>
+#include <algorithm>
 #include <algorithm>
 #include <cmath>
 
@@ -231,10 +233,124 @@ std::vector<std::vector<V2>> tiltSection(const BodyDef& b, double z) {
     return {poly};
 }
 
+// ---------------------------------------------------------------- hollow parts
+bool hollowOn(const BodyDef& b) { return b.hollow.on && !b.round && !tilted(b) && b.pts.size() >= 3; }
+static double edgeWall(const BodyDef& b, size_t i) {
+    double e = i < b.hollow.edges.size() ? b.hollow.edges[i] : -1;
+    return e < 0 ? b.hollow.wall : e;
+}
+std::vector<V2> hollowInside(const BodyDef& b) {
+    const auto& P = b.pts;
+    size_t n = P.size();
+    double a2 = 0;
+    for (size_t i = 0; i < n; i++) a2 += P[i].x * P[(i + 1) % n].y - P[(i + 1) % n].x * P[i].y;
+    double s = a2 > 0 ? 1 : -1;   // which side is inside
+    // each edge moved in by its wall (an open edge: pushed 3 mm out, so the inside breaks through it)
+    struct L { V2 p, d; };
+    std::vector<L> ls;
+    for (size_t i = 0; i < n; i++) {
+        V2 a = P[i], c = P[(i + 1) % n];
+        double dx = c.x - a.x, dy = c.y - a.y, l = std::hypot(dx, dy);
+        if (l < 1e-9) { ls.push_back({a, {1, 0}}); continue; }
+        dx /= l; dy /= l;
+        V2 in{-dy * s, dx * s};   // the inward normal
+        double w = edgeWall(b, i);
+        double off = w > 0 ? w : -3;
+        ls.push_back({{a.x + in.x * off, a.y + in.y * off}, {dx, dy}});
+    }
+    std::vector<V2> out;
+    for (size_t i = 0; i < n; i++) {   // the corner between edge i-1 and edge i
+        const L& A = ls[(i + n - 1) % n]; const L& B = ls[i];
+        double den = A.d.x * B.d.y - A.d.y * B.d.x;
+        if (std::fabs(den) < 1e-9) { out.push_back(B.p); continue; }
+        double t = ((B.p.x - A.p.x) * B.d.y - (B.p.y - A.p.y) * B.d.x) / den;
+        out.push_back({A.p.x + A.d.x * t, A.p.y + A.d.y * t});
+    }
+    double b2 = 0;
+    for (size_t i = 0; i < n; i++) b2 += out[i].x * out[(i + 1) % n].y - out[(i + 1) % n].x * out[i].y;
+    if (b2 * a2 <= 0 || std::fabs(b2) < 1e-6) return {};   // walls thicker than the part: nothing inside
+    return out;
+}
+static double cross3(V2 a, V2 b, V2 c) { return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x); }
+static bool convexLoop(const std::vector<V2>& p) {
+    double sg = 0;
+    for (size_t i = 0; i < p.size(); i++) {
+        double c = cross3(p[i], p[(i + 1) % p.size()], p[(i + 2) % p.size()]);
+        if (std::fabs(c) < 1e-9) continue;
+        if (sg == 0) sg = c; else if ((c > 0) != (sg > 0)) return false;
+    }
+    return true;
+}
+std::vector<std::vector<V2>> hollowPieces(const BodyDef& b) {
+    if (!hollowOn(b)) return {};
+    std::vector<V2> in = hollowInside(b);
+    if (in.size() < 3) return {};
+    if (convexLoop(in)) return {in};
+    // ear clipping into triangles, then neighbours merged while they stay convex (Hertel-Mehlhorn)
+    double a2 = 0;
+    for (size_t i = 0; i < in.size(); i++) a2 += in[i].x * in[(i + 1) % in.size()].y - in[(i + 1) % in.size()].x * in[i].y;
+    std::vector<int> idx(in.size());
+    for (size_t i = 0; i < in.size(); i++) idx[i] = (int)i;
+    if (a2 < 0) std::reverse(idx.begin(), idx.end());
+    std::vector<std::array<int, 3>> tris;
+    int guard = 0;
+    while (idx.size() > 3 && guard++ < 10000) {
+        bool cut = false;
+        for (size_t k = 0; k < idx.size(); k++) {
+            int ia = idx[(k + idx.size() - 1) % idx.size()], ib = idx[k], ic = idx[(k + 1) % idx.size()];
+            if (cross3(in[ia], in[ib], in[ic]) <= 1e-9) continue;
+            bool inside = false;
+            for (int q : idx) {
+                if (q == ia || q == ib || q == ic) continue;
+                if (cross3(in[ia], in[ib], in[q]) >= 0 && cross3(in[ib], in[ic], in[q]) >= 0 && cross3(in[ic], in[ia], in[q]) >= 0) { inside = true; break; }
+            }
+            if (inside) continue;
+            tris.push_back({ia, ib, ic});
+            idx.erase(idx.begin() + k);
+            cut = true;
+            break;
+        }
+        if (!cut) break;
+    }
+    if (idx.size() == 3) tris.push_back({idx[0], idx[1], idx[2]});
+    std::vector<std::vector<int>> polys;
+    for (auto& t : tris) polys.push_back({t[0], t[1], t[2]});
+    bool merged = true;
+    while (merged) {
+        merged = false;
+        for (size_t i = 0; i < polys.size() && !merged; i++)
+            for (size_t j = i + 1; j < polys.size() && !merged; j++) {
+                auto& A = polys[i]; auto& B = polys[j];
+                for (size_t a = 0; a < A.size() && !merged; a++) {
+                    int u = A[a], v = A[(a + 1) % A.size()];
+                    for (size_t bb = 0; bb < B.size(); bb++) {
+                        if (B[bb] != v || B[(bb + 1) % B.size()] != u) continue;   // the shared edge, the other way round
+                        std::vector<int> m;
+                        for (size_t q = 0; q < A.size(); q++) { m.push_back(A[(a + 1 + q) % A.size()]); if (q == A.size() - 1) break; }
+                        // A from v round to u, then B's other corners from after u back to before v
+                        for (size_t q = 2; q < B.size(); q++) m.push_back(B[(bb + q) % B.size()]);
+                        std::vector<V2> pp; for (int q : m) pp.push_back(in[q]);
+                        if (convexLoop(pp)) { A = m; polys.erase(polys.begin() + j); merged = true; }
+                        break;
+                    }
+                }
+            }
+    }
+    std::vector<std::vector<V2>> out;
+    for (auto& p : polys) { std::vector<V2> pp; for (int q : p) pp.push_back(in[q]); out.push_back(pp); }
+    return out;
+}
+void hollowDepth(const BodyDef& b, double& z0, double& z1) {
+    double t = std::max(0.5, b.thick), sd = b.hollow.sides < 0 ? b.hollow.wall : b.hollow.sides;
+    z0 = b.z - t / 2 + sd; z1 = b.z + t / 2 - sd;
+    if (sd <= 0) { z0 -= 1; z1 += 1; }   // (open right through)
+}
+
 std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
     const bool meshed = meshShaped(b);   // a free 3D mesh: neither round nor tilted, whatever it says
     const bool shaped = (depthShaped(b) && !b.round && !tilted(b)) || meshed;
-    if (b.carves.empty() && !b.round && !tilted(b) && !shaped) return {};
+    const bool hol = hollowOn(b);
+    if (b.carves.empty() && !b.round && !tilted(b) && !shaped && !hol) return {};
     if (tilted(b) && !b.round && !meshed) {  // even slabs through the depth the tilted part spans (its carves show, but don't collide yet)
         double z0, z1;
         tiltDepth(b, z0, z1);
@@ -254,8 +370,12 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
     for (auto& p : b.pts) { ox0 = std::min(ox0, p.x); oy0 = std::min(oy0, p.y); ox1 = std::max(ox1, p.x); oy1 = std::max(oy1, p.y); }
     if (meshed) for (auto& p : b.mesh.v) { ox0 = std::min(ox0, p.x); oy0 = std::min(oy0, p.y); ox1 = std::max(ox1, p.x); oy1 = std::max(oy1, p.y); }
     ox0 -= 20; oy0 -= 20; ox1 += 20; oy1 += 20;  // (bowed edges reach a little outside the control points)
+    std::vector<std::vector<V2>> hp = hol ? hollowPieces(b) : std::vector<std::vector<V2>>{};
+    double hz0 = 0, hz1 = 0;
+    if (hol) hollowDepth(b, hz0, hz1);
     auto cutsAt = [&](double z) {
         std::vector<std::vector<V2>> cav;
+        if (z > hz0 && z < hz1) for (auto& q : hp) cav.push_back(q);   // the hollow inside
         for (auto& p : P) {
             auto s = section(p, z);
             if (s.empty()) continue;
@@ -280,6 +400,7 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
         return out;
     }
     std::vector<double> br = {zA, zB};
+    if (hol) { if (hz0 > zA && hz0 < zB) br.push_back(hz0); if (hz1 > zA && hz1 < zB) br.push_back(hz1); }
     if (b.round) {  // a round part changes all the way through: even slabs
         int n = std::clamp((int)std::ceil(t / 1.5), 4, 10);
         for (int k = 1; k < n; k++) br.push_back(zA + t * k / n);

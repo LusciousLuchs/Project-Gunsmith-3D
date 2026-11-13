@@ -2725,6 +2725,66 @@ static void fittingAttachments() {
 }
 
 // Shot sounds come from the cartridge and barrel: the recordings play as recorded for their own rounds, bigger is lower
+static void hollowParts() {
+    std::printf("hollowParts\n");
+    // a fixed tube (100 x 20 mm side, 20 thick), open at both ends, and a slider pushed along a track through it
+    auto rig = [](bool hollow, double wall, double topBottom) {
+        Design d;
+        BodyDef t; t.id = "tube"; t.fixed = true; t.layer = "A"; t.thick = 20; t.pts = {{0, 0}, {100, 0}, {100, 20}, {0, 20}};
+        t.rad = {0, 0, 0, 0}; t.bulge = {0, 0, 0, 0};
+        if (hollow) { t.hollow.on = true; t.hollow.wall = wall; t.hollow.sides = wall; t.hollow.edges = {topBottom, 0, topBottom, 0}; }
+        BodyDef s; s.id = "slider"; s.layer = "A"; s.thick = 8; s.pts = {{-60, 7}, {-30, 7}, {-30, 13}, {-60, 13}};
+        s.rad = {0, 0, 0, 0}; s.bulge = {0, 0, 0, 0};
+        d.bodies = {t, s};
+        JointDef j; j.type = "track"; j.a = "slider"; j.b = "world"; j.p = {-45, 10}; j.path = {{-45, 10}, {135, 10}};
+        d.joints = {j};
+        return d;
+    };
+    auto travel = [](const Design& d) {
+        auto S = sim::build(d);
+        sim::Body* b = S->find("slider");
+        S->hand = {true, b, {0, 0}, {0.14, 0.010}};
+        sim::run(*S, 0.8);
+        return (b->x - b->x0) * 1000;
+    };
+    double solid = travel(rig(false, 0, 0)), hollow = travel(rig(true, 3, -1)), thick = travel(rig(true, 3, 8));
+    std::printf("  (slider travel: into a solid block %.0f mm, through the hollow tube %.0f mm, through one with 8 mm top and bottom walls %.0f mm)\n", solid, hollow, thick);
+    CHECK(solid < 60, "a slider is stopped by a solid block");
+    CHECK(hollow > 160, "made hollow (3 mm walls, open ends), the block is a tube and the slider runs right through it");
+    CHECK(thick < 40, "with 8 mm top and bottom walls the opening is only 4 mm high: the 6 mm slider can't get in");
+    {   // the walls carry the weight: 100 x 20 x 20 solid, less the inside 100 x 14 x 14 (open ends: it runs the full length)
+        auto weigh = [](const Design& d) {
+            auto S = sim::build(d);
+            const sim::Body* t = S->find("tube");
+            double m = 0;
+            for (auto& b : S->bodies) if (&b == t || b.root == t) m += b.m;
+            return m * 1000;
+        };
+        double m = weigh(rig(true, 3, -1)), solidM = weigh(rig(false, 0, 0));
+        double want = (100 * 20 * 20 - 100 * 14 * 14) * 7.85e-3;
+        std::printf("  (tube %.1f g, solid block %.1f g; the walls alone should weigh %.1f g)\n", m, solidM, want);
+        CHECK(std::fabs(m - want) < want * 0.03 && std::fabs(solidM - 314) < 3, "a hollow part weighs only its walls");
+    }
+    {   // an L-shaped outline (concave): its inside comes in convex pieces that cover it
+        BodyDef L; L.id = "l"; L.thick = 10; L.pts = {{0, 0}, {60, 0}, {60, 20}, {20, 20}, {20, 60}, {0, 60}};
+        L.hollow.on = true; L.hollow.wall = 2;
+        auto in = carve::hollowInside(L);
+        auto pc = carve::hollowPieces(L);
+        double ai = 0, ap = 0;
+        auto area = [](const std::vector<V2>& q) { double a = 0; for (size_t i = 0; i < q.size(); i++) a += q[i].x * q[(i + 1) % q.size()].y - q[(i + 1) % q.size()].x * q[i].y; return std::fabs(a) / 2; };
+        ai = area(in); for (auto& q : pc) ap += area(q);
+        std::printf("  (L shape: inside %.1f mm2 in %zu convex pieces covering %.1f)\n", ai, pc.size(), ap);
+        CHECK(in.size() == 6 && std::fabs(ai - (56 * 16 + 16 * 40)) < 0.5 && pc.size() >= 2 && std::fabs(ap - ai) < 0.5, "a concave part's inside: its outline brought in by the wall, split into convex pieces that cover it exactly");
+    }
+    {   // saved and read back
+        Design d = rig(true, 2.5, 6), back; designFromJson(designToJson(d), back);
+        const auto& h = back.bodies[0].hollow;
+        CHECK(h.on && std::fabs(h.wall - 2.5) < 1e-9 && h.edges.size() == 4 && h.edges[1] == 0 && h.edges[0] == 6, "a hollow part's walls are saved in the blueprint");
+        Design plain = rig(false, 0, 0); designFromJson(designToJson(plain), back);
+        CHECK(!back.bodies[0].hollow.on, "a plain part stays solid");
+    }
+}
+
 static void actionKitsTest() {
     std::printf("actionKits\n");
     for (auto& k : ::actionKits()) {
@@ -2979,6 +3039,7 @@ int main() {
         else if (o == "doors") doorsBlock();
         else if (o == "pose") grips();
         else if (o == "kits") actionKitsTest();
+        else if (o == "hollow") hollowParts();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -3048,6 +3109,7 @@ int main() {
     gasPistol();
     handLoadedReliability();
     actionKitsTest();
+    hollowParts();
     npcPaths();
     armFreedom();
     cartridgeSharing();

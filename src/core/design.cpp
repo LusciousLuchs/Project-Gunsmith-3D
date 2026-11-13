@@ -1040,6 +1040,13 @@ std::string designToJson(const Design& d, bool pretty) {
             }
             jb["carves"] = cs;
         }
+        if (b.hollow.on) {
+            json h = {{"wall", b.hollow.wall}};
+            if (b.hollow.sides >= 0) h["sides"] = b.hollow.sides;
+            bool any = false; for (double e : b.hollow.edges) any |= e >= 0;
+            if (any) h["edges"] = b.hollow.edges;
+            jb["hollow"] = h;
+        }
         if (b.mass > 0) jb["mass"] = b.mass;
         if (!b.material.empty() && b.material != "steel") jb["material"] = b.material;
         if (b.opacity < 0.999) jb["opacity"] = b.opacity;
@@ -1286,6 +1293,13 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
                 c.name = opt<std::string>(jc, "name", "");
                 b.carves.push_back(c);
             }
+        if (jb.contains("hollow") && jb["hollow"].is_object()) {
+            auto& h = jb["hollow"];
+            b.hollow.on = true;
+            b.hollow.wall = std::max(0.2, opt<double>(h, "wall", 2.0));
+            b.hollow.sides = opt<double>(h, "sides", -1.0);
+            if (h.contains("edges") && h["edges"].is_array()) for (auto& e : h["edges"]) b.hollow.edges.push_back(e.is_number() ? e.get<double>() : -1.0);
+        }
         if (jb.contains("roll") && jb["roll"].is_object()) {
             auto& r = jb["roll"];
             b.rollOn = opt<bool>(r, "on", false);

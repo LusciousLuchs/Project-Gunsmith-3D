@@ -716,6 +716,36 @@ static void inspectPart(BodyDef& b) {
     }
 
     fixShape(b);
+    if (!b.round && !b.magazine && section("Hollow", b.hollow.on)) {   // a shell with walls (0.8.27)
+        if (pCheck("Hollow", b.hollow.on, "Makes the part a shell: walls round an empty inside that other parts can sit and move in.\nLighter, and much quicker for the physics than carving the inside out with many cuts.")) commit();
+        if (b.hollow.on) {
+            if (carve::tilted(b)) muted("Leaned parts can't be hollow yet: set Tilt X and Y back to 0.");
+            if (pNumU("Wall", b.hollow.wall, 0.5, Q::Length, -1, "How thick the walls are, all round (unless an edge has its own).")) b.hollow.wall = std::max(0.2, b.hollow.wall);
+            if (ImGui::IsItemDeactivatedAfterEdit()) commit();
+            double sides = b.hollow.sides < 0 ? b.hollow.wall : b.hollow.sides;
+            if (pNumU("Side walls", sides, 0.5, Q::Length, -1, "The walls on the gun's left and right (the part's front and back faces).\n0: open right through, like a frame you look into.")) b.hollow.sides = std::max(0.0, sides);
+            if (ImGui::IsItemDeactivatedAfterEdit()) commit();
+            // the picked corners' edges: their own wall, or open
+            b.hollow.edges.resize(b.pts.size(), -1.0);
+            std::vector<int> picked;
+            size_t n = b.pts.size();
+            for (size_t i = 0; i < n; i++) {
+                bool a = std::find(A.selVs.begin(), A.selVs.end(), (int)i) != A.selVs.end(), c = std::find(A.selVs.begin(), A.selVs.end(), (int)((i + 1) % n)) != A.selVs.end();
+                if (a && c) picked.push_back((int)i);
+            }
+            if (picked.empty()) muted("Pick two neighbouring corners (Shift-click) to give the edge between them its own wall, or leave that side open (a slide's underside).");
+            else {
+                double w = b.hollow.edges[picked[0]] < 0 ? b.hollow.wall : b.hollow.edges[picked[0]];
+                std::string lab = picked.size() == 1 ? "Wall on this edge" : "Wall on these " + std::to_string(picked.size()) + " edges";
+                if (pNumU(lab.c_str(), w, 0.5, Q::Length, -1, "Their own wall thickness. 0 leaves that side open.")) for (int e : picked) b.hollow.edges[e] = std::max(0.0, w);
+                if (ImGui::IsItemDeactivatedAfterEdit()) commit();
+                if (ImGui::Button("Open (no wall)", {ImGui::GetContentRegionAvail().x * 0.5f - 2, 0})) { for (int e : picked) b.hollow.edges[e] = 0; commit(); }
+                ImGui::SameLine(0, 4);
+                if (ImGui::Button("Usual wall", {-1, 0})) { for (int e : picked) b.hollow.edges[e] = -1; commit(); }
+            }
+            if (!carve::tilted(b) && carve::hollowInside(b).empty()) ImGui::TextColored({1, 0.7f, 0.35f, 1}, "The walls are thicker than the part: nothing's hollow.");
+        }
+    }
     if (section("Shape", !b.gen.on)) {
         if (A.sel.v >= 0 && A.sel.v < (int)b.pts.size()) {
             int v = A.sel.v;

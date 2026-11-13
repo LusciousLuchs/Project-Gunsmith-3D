@@ -217,7 +217,24 @@ int main(int argc, char** argv) {
         A.tool = Tool::Track; A.draftHasF = true; A.drafting = true; A.draftA = b.id;
         A.draftF = sim::polyCentroid(b.pts); A.draft = {A.draftF};
     }
-    if (const char* k = std::getenv("GUNSMITH_KIT")) insertActionKit(k);   // (screenshots, tests) an action kit dropped into the loaded gun
+    if (const char* k = std::getenv("GUNSMITH_KIT")) insertActionKit(k);
+    if (const char* h = std::getenv("GUNSMITH_HOLLOW")) {   // (screenshots, tests) "part,wall,sides,open edge,open edge..." made hollow
+        char id[64] = {0}; double w = 2, sd = -1;
+        std::string spec = h;
+        std::vector<std::string> f; size_t a = 0;
+        while (true) { size_t c = spec.find(',', a); f.push_back(spec.substr(a, c == std::string::npos ? std::string::npos : c - a)); if (c == std::string::npos) break; a = c + 1; }
+        int bi = f.empty() ? -1 : A.design.bodyIndex(f[0]);
+        if (bi >= 0) {
+            auto& b = A.design.bodies[bi];
+            b.hollow.on = true;
+            if (f.size() > 1) b.hollow.wall = std::atof(f[1].c_str());
+            if (f.size() > 2) b.hollow.sides = std::atof(f[2].c_str());
+            b.hollow.edges.assign(b.pts.size(), -1.0);
+            for (size_t k = 3; k < f.size(); k++) { int e = std::atoi(f[k].c_str()); if (e >= 0 && e < (int)b.pts.size()) b.hollow.edges[e] = 0; }
+            commit();
+        }
+        (void)id; (void)w; (void)sd;
+    }   // (screenshots, tests) an action kit dropped into the loaded gun
     if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
     if (testArg || !demo.empty() || !fittingArg.empty()) setMode(Mode::Test);
     if (!fittingArg.empty()) { enterFitting(); if (fittingArg != "-") loadLoadout(fittingArg); }

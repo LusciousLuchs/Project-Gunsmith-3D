@@ -161,6 +161,36 @@ static std::vector<std::vector<csg::Poly>> partCutters(const BodyDef& d, V2 c) {
         }
     }
     std::vector<std::vector<csg::Poly>> cut;
+    if (carve::hollowOn(d)) {   // a hollow part: its inside, a prism per convex piece through the depth between its walls
+        double z0, z1;
+        carve::hollowDepth(d, z0, z1);
+        for (auto& pc : carve::hollowPieces(d)) {
+            size_t n = pc.size();
+            std::vector<csg::P3> lo, hi;
+            for (auto& p : pc) { lo.push_back({p.x - c.x, -(p.y - c.y), z0 - d.z}); hi.push_back({p.x - c.x, -(p.y - c.y), z1 - d.z}); }
+            csg::P3 mid{0, 0, 0};
+            for (auto& v : lo) { mid.x += v.x / n; mid.y += v.y / n; }
+            mid.z = (z0 + z1) / 2 - d.z;
+            std::vector<csg::Poly> ps;
+            auto face = [&](std::vector<csg::P3> vs) {   // wound so its normal points away from the prism's middle
+                csg::P3 nn{0, 0, 0}, cen{0, 0, 0};
+                for (size_t i = 0; i < vs.size(); i++) {
+                    const csg::P3 &a = vs[i], &b = vs[(i + 1) % vs.size()];
+                    nn.x += (a.y - b.y) * (a.z + b.z); nn.y += (a.z - b.z) * (a.x + b.x); nn.z += (a.x - b.x) * (a.y + b.y);
+                    cen.x += a.x / vs.size(); cen.y += a.y / vs.size(); cen.z += a.z / vs.size();
+                }
+                if (nn.x * (cen.x - mid.x) + nn.y * (cen.y - mid.y) + nn.z * (cen.z - mid.z) < 0) { std::reverse(vs.begin(), vs.end()); nn = {-nn.x, -nn.y, -nn.z}; }
+                double l = std::sqrt(nn.x * nn.x + nn.y * nn.y + nn.z * nn.z);
+                if (l < 1e-12) return;
+                std::vector<csg::Vert> vv;
+                for (auto& v : vs) vv.push_back({v, {nn.x / l, nn.y / l, nn.z / l}});
+                ps.push_back(csg::makePoly(vv));
+            };
+            face(lo); face(hi);
+            for (size_t i = 0; i < n; i++) face({lo[i], lo[(i + 1) % n], hi[(i + 1) % n], hi[i]});
+            cut.push_back(ps);
+        }
+    }
     for (auto& cv : cuts) {
         std::vector<csg::Poly> ps;
         for (auto& q : carve::prismPolys(carve::prism(cv, d), cv)) {
@@ -266,13 +296,14 @@ static void ensureMeshes() {
         if (meshShaped(d)) { for (auto& v : d.mesh.v) k << 'M' << v.x << ' ' << v.y << ' ' << v.z; for (auto& f : d.mesh.f) { k << 'f'; for (int q : f) k << q << ' '; } }
         if (depthShaped(d)) for (size_t q = 0; q < d.pts.size(); q++) k << 'D' << d.depthOff[q].x << ' ' << d.depthOff[q].y << ' ' << d.depthZn[q] << ' ' << d.depthZf[q];
         if (d.barrel.on) k << 'B' << d.barrel.cart.caseLen << ' ' << d.barrel.cart.headDia() << ' ' << d.barrel.cart.bulletDia << ' ' << d.barrel.rifled << d.barrel.grooves << d.barrel.muzzleEnd;
+        if (d.hollow.on) { k << 'H' << d.hollow.wall << ' ' << d.hollow.sides; for (double e : d.hollow.edges) k << 'e' << e; }
         for (auto& c : d.carves) k << 'c' << c.shape << c.at.x << ' ' << c.at.y << ' ' << c.atZ << ' ' << c.dx << ' ' << c.dy << ' ' << c.dz << ' ' << c.spin << ' ' << c.w << ' ' << c.h << ' ' << c.depth;
         std::string key = k.str();
         // while a part is being changed (dragged, typed) its cuts (carves, a barrel's bore and chamber) are left out, and
         // made once it has been still for a moment: cutting the solid every frame is what makes dragging slow
         const double SETTLE = 0.6;
         double now = GetTime();
-        bool hasCuts = !d.carves.empty() || d.barrel.on || (D.breech.cylinder.on && d.id == D.breech.chamber);
+        bool hasCuts = !d.carves.empty() || carve::hollowOn(d) || d.barrel.on || (D.breech.cylinder.on && d.id == D.breech.chamber);
         if (A.meshes[i].ok && A.meshes[i].key == key) {
             if (!(A.meshes[i].rough && now - A.meshes[i].changedAt >= SETTLE)) continue;   // (rough and settled: cut it now)
             if (A.mode == Mode::Build && !gSyncCuts) { cutJob((int)i, d, key); continue; }   // (on a worker thread: the editor doesn't stall)

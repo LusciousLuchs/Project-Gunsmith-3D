@@ -46,6 +46,13 @@ void tiltMatrix(const BodyDef& b, double R[3][3]);
 std::vector<std::vector<V2>> tiltSection(const BodyDef& b, double z);
 void tiltDepth(const BodyDef& b, double& z0, double& z1);   // the depth the tilted part spans
 
+// A hollow part (BodyDef::hollow): its inside, as convex pieces (design mm), and the depth it spans (absolute mm).
+// Empty when not hollow (or round, or leaned).
+bool hollowOn(const BodyDef& b);
+std::vector<V2> hollowInside(const BodyDef& b);                // the inner outline (one loop)
+std::vector<std::vector<V2>> hollowPieces(const BodyDef& b);    // ...cut into convex pieces
+void hollowDepth(const BodyDef& b, double& z0, double& z1);
+
 struct Slice {
     double z0 = 0, z1 = 0;                       // depth range (absolute mm)
     std::vector<std::vector<V2>> outlines;       // the side outline(s) at this depth; empty = the part's own outline
