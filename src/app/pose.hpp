@@ -17,6 +17,7 @@ void leavePose();
 void poseView();                 // aim the camera at the mannequin and the gun
 Matrix poseGunMatrix();          // gun (bench world) -> pose world: the current hold's muzzle tilt about the eye
 void drawPoseBody();             // the mannequin, its arms and hands (call outside the gun's matrix)
+void drawFirstPersonArms(Vector3 eye, Vector3 fwd, Vector3 up);   // the range: your arms on the gun (in the gun's frame)
 void drawPoseOverlay();          // handles and labels
 void poseInput(bool overUI);
 PoseReport poseReport();

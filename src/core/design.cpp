@@ -1153,6 +1153,7 @@ std::string designToJson(const Design& d, bool pretty) {
             if (h.elbow != 0) o["elbow"] = h.elbow;
             if (h.twist != 0) o["twist"] = h.twist;
             if (h.dz != 0 && h.on) o["dz"] = h.dz;
+            if (h.under && h.on) o["under"] = true;
             if (h.digitsSet) {
                 json a = json::array();
                 for (auto& d : h.digits) a.push_back({d.bend[0], d.bend[1], d.bend[2], d.spread, d.oppose});
@@ -1516,6 +1517,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
     auto readHand = [&](const json& jh, HandHold& h, const char* which) {
         if (!jh.is_object()) return;
         h.elbow = opt<double>(jh, "elbow", 0.0); h.twist = opt<double>(jh, "twist", 0.0); h.dz = opt<double>(jh, "dz", 0.0);
+        h.under = opt<bool>(jh, "under", false);
         if (jh.contains("free") && jh["free"].is_array() && jh["free"].size() == 3) {   // placed off the gun
             h.on = false; h.free = true;
             for (int q = 0; q < 3; q++) h.pos[q] = jh["free"][q].get<double>();
@@ -1624,7 +1626,11 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             if (!jg.is_object()) continue;
             std::string k = opt<std::string>(jg, "kind", "firing");
             HandHold& h = k == "support" ? d.pose.support : k == "shoulder" ? d.pose.butt : d.pose.firing;
-            if (!h.on) readHand(jg, h, k == "shoulder" ? "butt" : k.c_str());
+            if (!h.on) {
+                readHand(jg, h, k == "shoulder" ? "butt" : k.c_str());
+                double a = std::fmod(std::fabs(h.angle), 180.0);
+                if (k == "support" && (a < 45 || a > 135)) h.under = true;   // (0.8.20: knuckles at the top, clear of the sights)
+            }
         }
     }
     for (auto& b : d.bodies) if (b.gen.on) b.gen.pts0 = b.pts;   // as fitted (or as reshaped): a later change is the player's

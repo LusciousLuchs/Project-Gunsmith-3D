@@ -369,6 +369,8 @@ struct HandHold {
     double elbow = 0;      // degrees: the elbow swung round the line from shoulder to wrist (+ up and out)
     double twist = 0;      // degrees: the hand rolled about the grip line (on the gun) or about the forearm (off it)
     double dz = 0;         // mm: on the gun, lifted off its side (away from the gun)
+    bool under = false;    // a support hand along a fore-end: slid down the side so its knuckles are at the part's top
+                           // edge (the fingers wrap over it, clear of the sights); off: centred on its point
     bool free = false;     // off the gun (on = false) and placed somewhere: the wrist at `pos` (else it hangs at the side)
     double pos[3] = {0, -500, 0};   // free: the wrist, body frame mm (forward, up, right of the aiming eye)
 };

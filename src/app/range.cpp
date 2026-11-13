@@ -1381,6 +1381,11 @@ void rangeRender() {
     setOpticSeeThrough(R.optic ? 1.f - 0.85f * std::clamp((R.aim - 0.3f) / 0.7f, 0.f, 1.f) : 1.f);
     if (R.cur >= 0) drawGunOnly();
     setOpticSeeThrough(1);
+    if (R.cur >= 0 && CFG.fpArms && A.design.pose.firing.on) {   // your arms and hands on it
+        Matrix inv = MatrixInvert(R.G);
+        Vector3 e = Vector3Transform(rv(eye), inv), ef = Vector3Transform(rv(eye + f), inv), eu = Vector3Transform(rv(eye + up), inv);
+        drawFirstPersonArms(e, Vector3Subtract(ef, e), Vector3Subtract(eu, e));
+    }
     rlDrawRenderBatchActive();
     rlPopMatrix();
     EndMode3D();

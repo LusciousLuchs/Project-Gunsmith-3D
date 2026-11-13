@@ -106,8 +106,11 @@ BodyHold& editable() {
     return h;
 }
 Vector3 eyeWorld(const BodyHold& h) { return W3(h.eye, (float)h.eyeZ * U); }
+bool gFP = false;     // drawing the arms in first person (the range): the body frame is the player's own, the gun unmoved
+Frame gFPFrame;
 Frame bodyFrame() {
     poseApplyRig();
+    if (gFP) return gFPFrame;
     BodyHold h = cur();
     double y = h.yaw * DEG2RAD;
     return {eyeWorld(h), {(float)std::cos(y), 0, (float)std::sin(y)}, {0, 1, 0}, {-(float)std::sin(y), 0, (float)std::cos(y)}};
@@ -181,6 +184,19 @@ HandFrame handFrame(const HandHold& h, int side) {
     f.on = true;
     f.o = {h.at.x + n.x * 12, h.at.y + n.y * 12, zc + side * (half + 12 + h.dz)};   // (dz: lifted off the gun's side)
     f.X = {-n.x, -n.y, 0}; f.Y = {0, 0, (double)-side}; f.Z = {toPinky.x, toPinky.y, 0};
+    if (h.under) {   // snug: the hand slid down the part's side until its knuckles are at the top edge, so the fingers
+                     // wrap over the top instead of standing up past it (into the line of sight, over a slim fore-end)
+        double yt = h.at.y;   // the part's top above the hand (design y runs down)
+        for (int k = 0; k < 200; k++) {
+            bool in = false;
+            for (auto& b : A.design.bodies) if (!b.magazine && sim::inPoly(h.at.x, yt - 1, b.pts)) { in = true; break; }
+            if (!in) break;
+            yt -= 1;
+        }
+        // the knuckles are about 42 mm along the fingers' way (X) from the hand's middle
+        double along = (yt - f.o.y) / (-n.y != 0 ? -n.y : 1) - 40;   // (how far the middle moves along X to get there)
+        if (-n.y < -0.5 && along < 0) { f.o.x += -n.x * along; f.o.y += -n.y * along; }
+    }
     if (h.twist != 0) {   // rolled about the grip line (Z)
         double c = std::cos(h.twist * DEG2RAD), s = std::sin(h.twist * DEG2RAD);
         HV X = f.X, Y = f.Y;
@@ -295,6 +311,7 @@ void limb(const Mesh& m, Vector3 a, Vector3 b, Color c) {
 }  // namespace
 
 Matrix poseGunMatrix() {  // the muzzle drops about the butt (in the shoulder), or the firing hand, or the eye
+    if (gFP) return MatrixIdentity();   // (first person: the range has already placed the gun, animation and all)
     BodyHold h = cur();
     const Pose& P = A.design.pose;
     Vector3 e = P.butt.on ? W3(P.butt.at, (float)partZ(P.butt.part) * U) : P.firing.on ? W3(P.firing.at, (float)partZ(P.firing.part) * U) : eyeWorld(h);
@@ -637,6 +654,59 @@ void drawPoseBody() {
         } else drawSphereLit(a.w, 45 * U, SKIN);
     }
     if (CF.ok && CF.n->look.on) { Color red = STRAIN; drawCharacterBody(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // the one-piece body, arms reaching
+}
+
+// First person (the range): your arms and hands on the gun, as posed (and as an animation moves them). Drawn in the
+// gun's drawing frame; eye, forward and up are the player's, in that frame. Only the arms: the rest of you is behind
+// the camera. Your character's skin and sleeve colours, or the mannequin's.
+void drawFirstPersonArms(Vector3 eye, Vector3 fwd, Vector3 up) {
+    int keepHold = A.poseHold;
+    A.poseHold = HOLD_AIM;
+    gFP = true;
+    BodyHold h = cur();
+    Vector3 u = Vector3Normalize(up), f0 = Vector3Normalize(Vector3Subtract(fwd, Vector3Scale(u, Vector3DotProduct(fwd, u))));
+    Vector3 r0 = Vector3CrossProduct(f0, u);
+    double y = h.yaw * DEG2RAD;   // (the body turned against the gun, as posed)
+    Vector3 f = Vector3Add(Vector3Scale(f0, (float)std::cos(y)), Vector3Scale(r0, (float)std::sin(y)));
+    gFPFrame = {eye, f, u, Vector3CrossProduct(f, u)};
+    Frame F = bodyFrame();
+    Shapes& SH = shapes();
+    Color skin = SKIN, shirt = SHIRT;
+    CharFit CF = charFit();
+    if (CF.ok) {
+        const NpcDef& n = *CF.n;
+        if (CF.hand[0] >= 0) skin = hexColor(n.bones[CF.hand[0]].color);
+        if (CF.upper[0] >= 0) shirt = hexColor(n.bones[CF.upper[0]].color);
+    }
+    ViewHands VH = viewHands();
+    for (int side = 0; side < 2; side++) {
+        Limb LB = sideLimb(F, VH, side);
+        HandGeo& g = LB.g;
+        Arm& a = LB.arm;
+        limb(SH.upper, a.s, a.e, skin);
+        limb(SH.sleeve, a.s, a.e, shirt);
+        limb(SH.fore, a.e, a.w, skin);
+        if (!g.on) { drawSphereLit(a.w, 45 * U, skin); continue; }
+        const HandBone *thumb = nullptr, *palmIndex = nullptr;
+        for (auto& b : g.bones) {
+            if (b.digit == DIGIT_THUMB && b.seg == 0) {
+                thumb = &b;
+                HV m{(b.a.x + b.b.x) / 2, (b.a.y + b.b.y) / 2, (b.a.z + b.b.z) / 2};
+                capsule(handPt(g.f, b.a), handPt(g.f, m), (float)b.radius * U, skin);
+                capsule(handPt(g.f, m), handPt(g.f, b.b), (float)(b.radius * 0.8) * U, skin);
+                continue;
+            }
+            if (b.name == "palm_index") palmIndex = &b;
+            capsule(handPt(g.f, b.a), handPt(g.f, b.b), (float)b.radius * U, skin);
+        }
+        if (thumb && palmIndex) {
+            auto lerp = [](HV p, HV q, double t) { return HV{p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t, p.z + (q.z - p.z) * t}; };
+            for (double t : {0.35, 0.7})
+                capsule(handPt(g.f, lerp(thumb->a, thumb->b, t)), handPt(g.f, lerp(palmIndex->a, palmIndex->b, 0.25 + 0.5 * t)), 9 * U, skin);
+        }
+    }
+    gFP = false;
+    A.poseHold = keepHold;
 }
 
 static void poseRingsDraw();   // (below)

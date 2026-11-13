@@ -159,12 +159,16 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
             const auto& br = A.design.breech;
             V2 c = br.on && br.hasFace ? V2{br.face.x + (std::string(which) == "support" ? 120 : std::string(which) == "butt" ? -250 : -40), br.face.y + 25} : V2{0, 0};
             h.at = c; h.angle = defaultHandAngle(which);
+            h.under = std::string(which) == "support";   // (a fore-end: knuckles at its top edge)
             for (int i = (int)A.design.bodies.size() - 1; i >= 0; i--) if (sim::inPoly(c.x, c.y, A.design.bodies[i].pts)) { h.part = A.design.bodies[i].id; break; }
             if (h.part.empty() && !A.design.bodies.empty()) h.part = A.design.bodies[0].id;
         }
         commit();
     }
     if (tip && tipHover()) ImGui::SetTooltip("%s", tip);
+    if (std::string(which) == "support" && h.on) {
+        if (pCheck("Knuckles at the top edge", h.under, "The hand slid down the fore-end's side until its knuckles are level with the top,\nso the fingers wrap over it instead of standing up past it into your sight picture.")) commit();
+    }
     if (std::string(which) != "butt" && ImGui::TreeNode(h.on ? "Arm and wrist" : "Where the hand is")) {
         if (armFreedom(h, which)) commit();
         ImGui::TreePop();

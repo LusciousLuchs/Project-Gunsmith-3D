@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.20-alpha
+
+- **Your arms on the range.** You now see your own arms and hands holding the gun, exactly as you posed them on the test bench, and they follow your animations (reloads, working the action, inspecting). They use your character's skin and shirt colours if you've made one. Turn them off in Settings > Controls (Show your arms).
+- **The support hand no longer blocks your sights.** On a slim fore-end the hand used to sit high, with its fingers standing up into your sight picture. It now slides down until its knuckles are level with the top edge, and the fingers wrap over it. The example rifles use this; in the poser it's *Knuckles at the top edge* under the support hand.
+
 ## 0.8.19-alpha
 
 - **Point shooting.** Hold the middle mouse button on the range to bring the gun up under your eye without using the sights: it comes up about twice as fast as aiming, held a little low and canted in, with no crosshair. In between for accuracy, measured on the blowback pistol: from the hip shots now wander about 1.4 degrees, point shooting about 0.4, through the sights under 0.1. A keyboard key can be set for it in Settings > Controls.

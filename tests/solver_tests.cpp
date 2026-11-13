@@ -1339,6 +1339,7 @@ static void grips() {
     Design back; designFromJson(designToJson(r), back);
     CHECK(back.pose.firing.on && back.pose.support.on && back.pose.butt.on && std::fabs(back.pose.firing.angle - 105) < 1e-9 && back.pose.firing.part == "stock",
           "grip markers from earlier versions become the pose's hands and butt, and save as a pose");
+    CHECK(r.pose.support.under && back.pose.support.under && !r.pose.firing.under, "an older rifle's support hand sits with its knuckles at the fore-end's top (clear of the sights), and keeps it when saved");
     r.pose.hold[HOLD_HIGH].set = true; r.pose.hold[HOLD_HIGH].eye = {12, -340}; r.pose.hold[HOLD_HIGH].yaw = 20;
     designFromJson(designToJson(r), back);
     CHECK(back.pose.hold[HOLD_HIGH].set && std::fabs(back.pose.hold[HOLD_HIGH].yaw - 20) < 1e-9 && !back.pose.hold[HOLD_AIM].set, "a posed hold saves; the others stay worked out from the gun");

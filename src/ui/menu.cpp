@@ -681,6 +681,8 @@ void controlsPage() {
     row("Invert vertical"); dirty |= ImGui::Checkbox("##inv", &CFG.invertMouse);
     row("Field of view", "Vertical field of view in first person.");
     dirty |= ImGui::SliderFloat("##fov", &CFG.fov, 55.f, 105.f, "%.0f deg"); typeable();
+    row("Show your arms", "On the range: your arms and hands holding the gun, as the gun's pose has them.");
+    dirty |= ImGui::Checkbox("##fparms", &CFG.fpArms);
     const char* group = nullptr;
     for (int i = 0; i < (int)Act::Count; i++) {
         const ActInfo& a = actInfo((Act)i);
