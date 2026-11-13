@@ -72,6 +72,8 @@ struct Range {
     float aim = 0;                       // 0 from the hip .. 1 aiming down the gun
     float point = 0;                     // point shooting (middle mouse held): the gun brought up under the eye without the
                                          // sights, quicker than aiming and steadier than the hip; 0 .. 1
+    bool holstered = false;              // put away (H): empty hands, nothing to fire
+    float holsterU = 0;                  // 0 in your hands .. 1 put away
     int ready = 0;                       // carried at the ready (X): 0 no, 1 high ready (muzzle up), 2 low ready (down)
     int readyShown = 1;                  // which ready the gun is moving to or from
     float readyU = 0;                    // 0 level .. 1 fully at that ready
@@ -199,6 +201,14 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
             if (!high && stock) pv = W3(P.butt.at, bi >= 0 ? (float)(D.bodies[bi].z * U) : 0.f);
             R.G = MatrixMultiply(gunMoveMatrix(g, pv), R.G);
         }
+    }
+    if (R.holsterU > 0) {   // put away: down and out of sight to the right, muzzle dropping, the way it goes to the holster or sling
+        float h = R.holsterU * R.holsterU * (3 - 2 * R.holsterU);
+        const auto& P = D.pose;
+        int fi = P.firing.on ? D.bodyIndex(P.firing.part) : -1;
+        Vector3 pv = P.firing.on ? W3(P.firing.at, fi >= 0 ? (float)(D.bodies[fi].z * U) : 0.f) : pe;
+        double g[6] = {-120.0 * h, -420.0 * h, 160.0 * h, -70.0 * h, 0, 25.0 * h};
+        R.G = MatrixMultiply(gunMoveMatrix(g, pv), R.G);
     }
     // an animation moving the gun (inspecting it, a reload that tips it): about the firing hand
     if (A.S && sim::animPlaying(*A.S)) {
@@ -572,6 +582,7 @@ static void holdSlot(int k) {
     if (R.cur >= 0 && R.cur < (int)R.inv.size()) R.inv[R.cur].reserve = R.reserve;
     if (R.cur >= 0 && R.cur < (int)R.inv.size()) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); std::swap(A.fitItems, R.inv[R.cur].fit); }
     else { A.design = Design(); A.S.reset(); A.fitItems.clear(); }
+    if (k != R.cur) { R.holstered = false; R.holsterU = 1; }   // (the new one comes up out of the holster)
     R.cur = k >= 0 && k < (int)R.inv.size() ? k : -1;
     if (R.cur >= 0) { std::swap(A.design, R.inv[R.cur].d); std::swap(A.S, R.inv[R.cur].S); std::swap(A.fitItems, R.inv[R.cur].fit); }
     else { A.design = Design(); A.S.reset(); A.fitItems.clear(); }
@@ -702,6 +713,7 @@ void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) 
     gForcePoint = std::getenv("GUNSMITH_RANGEPOINT") != nullptr;   // (point shooting held)
     if (const char* e = std::getenv("GUNSMITH_RANGEREADY")) { R.ready = std::atoi(e); R.readyShown = std::max(1, R.ready); }   // (1 high ready, 2 low ready)
     if (std::getenv("GUNSMITH_RANGECROUCH")) R.want = gmap::Stance::Crouch;
+    if (const char* e = std::getenv("GUNSMITH_RANGEHOLSTER")) { R.holstered = true; R.holsterU = (float)std::atof(e); }   // (put away; how far along)
     if (std::getenv("GUNSMITH_RANGESTAB")) { R.stabT = 0; R.stabHit = false; }
 }
 void openRangeFitting() {
@@ -955,12 +967,19 @@ void rangeUpdate(float dt, bool modal) {
     // carrying it at the ready (X: high ready, low ready, back); sprinting or crawling takes it to low ready by itself.
     // Aiming or pulling the trigger brings it back up first.
     if (actPressed(Act::Ready) && !R.dead) R.ready = (R.ready + 1) % 3;
+    if (actPressed(Act::Holster) && !R.dead && R.cur >= 0) R.holstered = !R.holstered;
+    if (R.holstered && (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) && !R.freeMouse) R.holstered = false;   // (a click draws it)
+    {   // putting it away or drawing it: about half a second, slower for a heavy gun
+        float hrate = 1.f / (0.35f + (float)R.mass * 0.08f);
+        R.holsterU = std::clamp(R.holsterU + (R.holstered ? hrate : -hrate) * dt, 0.f, 1.f);
+    }
     bool crawling = R.pl.stance == gmap::Stance::Prone && std::hypot(R.pl.vel.x, R.pl.vel.z) > 0.25;
     bool sprinting = in.sprint && in.forward > 0 && std::hypot(R.pl.vel.x, R.pl.vel.z) > 4.0;
     R.readyForced = crawling || sprinting;
     bool firePress = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !R.freeMouse;
     bool pointWant = (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) || actDown(Act::PointShoot)) && !R.freeMouse && !aimWant;
     if (gForcePoint) pointWant = true;
+    if (R.holsterU > 0.05f) aimWant = pointWant = false;   // (put away, or still coming out)
     if ((aimWant || firePress || pointWant) && !R.readyForced) R.ready = 0;
     int readyWant = R.readyForced ? 2 : R.ready;
     if (readyWant) { if (R.readyU < 0.05f) R.readyShown = readyWant; else if (readyWant != R.readyShown) readyWant = 0; }   // (through level to the other one)
@@ -984,7 +1003,7 @@ void rangeUpdate(float dt, bool modal) {
     if (A.S && R.dead) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); { perf::Scope t(perf::Physics); perf::substeps(sim::run(*A.S, dt, 1200)); } A.S->events.clear(); }
     if (A.S && !R.dead) {
         auto& S = *A.S;
-        bool atReady = R.readyU > 0.15f;   // (the muzzle off the target: the finger stays off the trigger until it's back)
+        bool atReady = R.readyU > 0.15f || R.holsterU > 0.05f;   // (the muzzle off the target: the finger stays off the trigger until it's back)
         static bool waitRelease = false;
         if (atReady && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) waitRelease = true;
         if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) waitRelease = false;
@@ -1007,11 +1026,12 @@ void rangeUpdate(float dt, bool modal) {
             loadOpenChambers(S);
             if (!sim::animPlaying(S)) R.loadWhenOpen = false;
         }
-        if (actPressed(Act::Reload)) reload();
-        if (actPressed(Act::WorkAction)) workAction();
+        bool away = R.holsterU > 0.05f;   // (put away: hands off it)
+        if (actPressed(Act::Reload) && !away) reload();
+        if (actPressed(Act::WorkAction) && !away) workAction();
         if (actPressed(Act::Gadgets)) toggleGadgets();
-        if (actPressed(Act::Melee) && R.stabT < 0) { R.stabT = 0; R.stabHit = false; }
-        if (actPressed(Act::Inspect) && !sim::animPlaying(S)) {   // the player's own inspect animation, or a plain look over it
+        if (actPressed(Act::Melee) && R.stabT < 0 && !away) { R.stabT = 0; R.stabHit = false; }
+        if (actPressed(Act::Inspect) && !sim::animPlaying(S) && !away) {   // the player's own inspect animation, or a plain look over it
             S.design.anims = A.design.anims;
             if (!sim::playAnim(S, "inspect")) { S.design.anims["auto:inspect"] = defaultInspect(A.design); sim::playAnim(S, "auto:inspect"); }
         }
@@ -1379,9 +1399,10 @@ void rangeRender() {
     rlPushMatrix();
     rlMultMatrixf(MatrixToFloat(R.G));
     setOpticSeeThrough(R.optic ? 1.f - 0.85f * std::clamp((R.aim - 0.3f) / 0.7f, 0.f, 1.f) : 1.f);
-    if (R.cur >= 0) drawGunOnly();
+    bool shown = R.cur >= 0 && R.holsterU < 0.98f;   // (put away: out of sight)
+    if (shown) drawGunOnly();
     setOpticSeeThrough(1);
-    if (R.cur >= 0 && CFG.fpArms && A.design.pose.firing.on) {   // your arms and hands on it
+    if (shown && CFG.fpArms && A.design.pose.firing.on) {   // your arms and hands on it
         Matrix inv = MatrixInvert(R.G);
         Vector3 e = Vector3Transform(rv(eye), inv), ef = Vector3Transform(rv(eye + f), inv), eu = Vector3Transform(rv(eye + up), inv);
         drawFirstPersonArms(e, Vector3Subtract(ef, e), Vector3Subtract(eu, e));
@@ -1441,6 +1462,7 @@ void rangeHud() {
     {   // how you're standing and carrying it
         std::string st = R.pl.stance == gmap::Stance::Prone ? "Prone" : R.pl.stance == gmap::Stance::Crouch ? "Crouching" : "";
         const char* rd = R.readyU > 0.5f ? (R.readyShown == 1 ? "High ready" : "Low ready") : nullptr;
+        if (R.holsterU > 0.5f) rd = R.holstered ? "Holstered (H or click to draw)" : nullptr;
         if (rd) st += (st.empty() ? "" : "   ") + std::string(rd);
         else if (R.point > 0.5f && R.aim < 0.5f) st += (st.empty() ? "" : "   ") + std::string("Point shooting");
         if (!st.empty() && R.cur >= 0) viewText(st.c_str(), 24, H - 70, 14, Color{220, 224, 230, 200});

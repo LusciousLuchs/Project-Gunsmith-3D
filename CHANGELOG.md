@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.21-alpha
+
+- **Holstering.** H puts the gun away (down and out of sight) and draws it again; clicking either mouse button draws it too. While it's away you can't fire, reload, work the action or inspect it. Switching guns now draws the new one up into your hands.
+
 ## 0.8.20-alpha
 
 - **Your arms on the range.** You now see your own arms and hands holding the gun, exactly as you posed them on the test bench, and they follow your animations (reloads, working the action, inspecting). They use your character's skin and shirt colours if you've made one. Turn them off in Settings > Controls (Show your arms).

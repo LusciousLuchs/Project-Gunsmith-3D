@@ -18,7 +18,7 @@ enum class Act {
     PerfOverlay, Fullscreen,
     Gadgets, Melee,
     SlideRelease,
-    Ready, PointShoot,
+    Ready, PointShoot, Holster,
     Count
 };
 
