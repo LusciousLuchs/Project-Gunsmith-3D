@@ -72,6 +72,9 @@ struct Range {
     float aim = 0;                       // 0 from the hip .. 1 aiming down the gun
     float point = 0;                     // point shooting (middle mouse held): the gun brought up under the eye without the
                                          // sights, quicker than aiming and steadier than the hip; 0 .. 1
+    float wallU = 0;                     // up against a wall: the gun pulled back and its muzzle tipped up (0 .. 1)
+    double wallBack = 0;                 // how far it's pulled back (mm)
+    double gunReach = 0.6;               // how far the gun reaches in front of the eye (m), from its frontmost point
     bool holstered = false;              // put away (H): empty hands, nothing to fire
     float holsterU = 0;                  // 0 in your hands .. 1 put away
     int ready = 0;                       // carried at the ready (X): 0 no, 1 high ready (muzzle up), 2 low ready (down)
@@ -201,6 +204,18 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
             if (!high && stock) pv = W3(P.butt.at, bi >= 0 ? (float)(D.bodies[bi].z * U) : 0.f);
             R.G = MatrixMultiply(gunMoveMatrix(g, pv), R.G);
         }
+    }
+    {   // its frontmost point (a muzzle device, a bayonet: whatever is furthest forward), from the eye: how far it reaches
+        double x1 = -1e9;
+        for (auto& b : D.bodies) for (auto& q : b.pts) x1 = std::max(x1, q.x);
+        R.gunReach = std::max(0.15, (x1 - eyeMM.x) / 1000.0);
+    }
+    if (R.wallU > 0.001f) {   // a wall in front: pulled back toward you, the muzzle tipped up past it
+        const auto& P = D.pose;
+        int fi = P.firing.on ? D.bodyIndex(P.firing.part) : -1;
+        Vector3 pv = P.firing.on ? W3(P.firing.at, fi >= 0 ? (float)(D.bodies[fi].z * U) : 0.f) : pe;
+        double g[6] = {-R.wallBack, -20.0 * R.wallU, 0, 60.0 * R.wallU, 0, 0};
+        R.G = MatrixMultiply(gunMoveMatrix(g, pv), R.G);
     }
     if (R.holsterU > 0) {   // put away: down and out of sight to the right, muzzle dropping, the way it goes to the holster or sling
         float h = R.holsterU * R.holsterU * (3 - 2 * R.holsterU);
@@ -713,6 +728,8 @@ void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) 
     gForcePoint = std::getenv("GUNSMITH_RANGEPOINT") != nullptr;   // (point shooting held)
     if (const char* e = std::getenv("GUNSMITH_RANGEREADY")) { R.ready = std::atoi(e); R.readyShown = std::max(1, R.ready); }   // (1 high ready, 2 low ready)
     if (std::getenv("GUNSMITH_RANGECROUCH")) R.want = gmap::Stance::Crouch;
+    if (const char* e = std::getenv("GUNSMITH_RANGETURN")) { R.pl.yaw += std::atof(e) * DEG2RAD; R.lastYaw = R.pl.yaw; }   // (screenshots) turned from the start, degrees
+    if (const char* e = std::getenv("GUNSMITH_RANGEWALK")) { double fw = std::atof(e); R.pl.feet.x += std::cos(R.pl.yaw) * fw; R.pl.feet.z += std::sin(R.pl.yaw) * fw; }   // (and walked forward, m)
     if (const char* e = std::getenv("GUNSMITH_RANGEHOLSTER")) { R.holstered = true; R.holsterU = (float)std::atof(e); }   // (put away; how far along)
     if (std::getenv("GUNSMITH_RANGESTAB")) { R.stabT = 0; R.stabHit = false; }
 }
@@ -1003,7 +1020,7 @@ void rangeUpdate(float dt, bool modal) {
     if (A.S && R.dead) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); { perf::Scope t(perf::Physics); perf::substeps(sim::run(*A.S, dt, 1200)); } A.S->events.clear(); }
     if (A.S && !R.dead) {
         auto& S = *A.S;
-        bool atReady = R.readyU > 0.15f || R.holsterU > 0.05f;   // (the muzzle off the target: the finger stays off the trigger until it's back)
+        bool atReady = R.readyU > 0.15f || R.holsterU > 0.05f || R.wallU > 0.3f;   // (the muzzle off the target: the finger stays off the trigger until it's back)
         static bool waitRelease = false;
         if (atReady && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) waitRelease = true;
         if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) waitRelease = false;
@@ -1382,6 +1399,23 @@ void rangeRender() {
     A.cam = cam;
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
     mapDrawSky(R.map.look, 0, 0, W, H, (float)R.pl.pitch, cam.fovy);
+    {   // a wall (or a shut door) closer than the gun reaches: it backs off, then tips up out of the way
+        V3 rt = gmap::norm(gmap::cross(f, up));
+        double d = 1e9;
+        for (V3 o : {eye, eye - up * 0.08 + rt * 0.06, eye - up * 0.16 + rt * 0.1}) {
+            gmap::Hit h = gmap::rayMap(R.map, o, f, R.gunReach + 0.3);
+            if (h.brush >= 0) d = std::min(d, h.t);
+            double dt2 = doors::ray(R.map, o, f, R.gunReach + 0.3);
+            if (dt2 >= 0) d = std::min(d, dt2);
+        }
+        double over = R.gunReach + 0.04 - d;   // (how far it would go into the wall)
+        if (std::getenv("GUNSMITH_WALLDBG")) { gmap::Hit hh = gmap::rayMap(R.map, eye, f, 50); std::printf("wall %.2f reach %.2f far %.2f at %.2f %.2f\n", d, R.gunReach, hh.t, eye.x, eye.z); }
+        double back = std::clamp(over, 0.0, 0.18) * 1000;   // first it slides back toward you, up to 18 cm,
+        float want = (float)std::clamp((over - 0.12) / 0.2, 0.0, 1.0);   // then the muzzle comes up
+        float k = std::min(1.f, GetFrameTime() * 12);
+        R.wallBack += (back - R.wallBack) * k;
+        R.wallU += (want - R.wallU) * k;
+    }
     // the gun, in the hands (placed first: its light shines on everything)
     placeGun(eye, f, gmap::norm(gmap::cross(f, up)), up);
     mapBeginViewport(cam, 0, 0, W, H);

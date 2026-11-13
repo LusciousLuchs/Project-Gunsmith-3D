@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.22-alpha
+
+- **Guns no longer go through walls.** Walk up to a wall or a shut door and the gun slides back toward you, then tips its muzzle up out of the way, instead of poking through. You can't fire while it's tipped up. A long rifle feels it sooner than a pistol.
+
 ## 0.8.21-alpha
 
 - **Holstering.** H puts the gun away (down and out of sight) and draws it again; clicking either mouse button draws it too. While it's away you can't fire, reload, work the action or inspect it. Switching guns now draws the new one up into your hands.
