@@ -1069,7 +1069,8 @@ static void drawSceneImpl(bool gunOnly) {
             int st = !A.S || !sim::hasCylinder(*A.S) ? (br.loaded ? 1 : 0) : j == cur ? (A.S->chambered ? 1 : A.S->spent ? 2 : 0) : A.S->cyl[j];
             if (st == 0) continue;
             double turns = j - shown;
-            Vector3 o = cylPoint(cyg, cyg.face, 0, turns), o2 = cylPoint(cyg, to, 0, turns);
+            float zc = bodyZ(cyg.part);   // (the cylinder's own depth: it needn't sit on the gun's middle)
+            Vector3 o = cylPoint(cyg, cyg.face, zc, turns), o2 = cylPoint(cyg, to, zc, turns);
             drawCartridgeAt(o, Vector3Normalize(Vector3Subtract(o2, o)), st == 2);
         }
     }

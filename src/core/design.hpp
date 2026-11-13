@@ -224,6 +224,7 @@ struct BodyDef {
     MeshDef mesh;                        // a free 3D mesh (empty: shaped from the outline as above)
     std::vector<V2> meshRef;             // (not saved) the outline, depth and thickness last set from the mesh: when they're
     double meshRefZ = 0, meshRefThick = 0;   // changed as a whole (moved, turned, flipped, thicker), the mesh goes along
+    unsigned long long meshSig = 0;      // (not saved) a fingerprint of the mesh when the outline was last set from it
     std::vector<MarkDef> marks;          // engravings (looks only)
     std::vector<V2> markRef;             // (not saved) the outline, depth and thickness the marks were last placed for:
     double markRefZ = 0, markRefThick = 0;   // when the whole part moves, turns or flips, they go with it (followMarks)

@@ -431,6 +431,7 @@ static void physicalPistol(const char* key) {
         else CHECK(S->shots == 1 && (S->malf == sim::Malf::FailureToEject || S->malf == sim::Malf::FailureToFeed), "without an ejector it jams on the next round");
         // clear it by hand: hold the slide back, pick the case off the breech face, let the slide go
         sim::Body* sl = rootOf(S->find("slide"));
+        S->handStrength = 150;   // (a careful hand: a hard yank can flick the case off the claw)
         S->hand = {true, sl, {0, 0}, {sl->x0 - 0.046, sl->y0}}; sim::run(*S, 0.25);
         sim::Body* cs = nullptr;
         for (auto& b : S->bodies) if (b.isCase && !b.gone && b.rs != sim::RS::Loose) cs = &b;

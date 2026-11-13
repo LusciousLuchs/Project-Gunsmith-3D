@@ -225,9 +225,21 @@ void meshFromPart(BodyDef& b) {
     meshSync(b);
 }
 
+static unsigned long long meshFingerprint(const MeshDef& m) {
+    unsigned long long h = 1469598103934665603ull;
+    auto mix = [&](const void* p, size_t n) { const unsigned char* c = (const unsigned char*)p; for (size_t i = 0; i < n; i++) { h ^= c[i]; h *= 1099511628211ull; } };
+    for (auto& v : m.v) mix(&v, sizeof v);
+    for (auto& f : m.f) { size_t n = f.size(); mix(&n, sizeof n); mix(f.data(), f.size() * sizeof(int)); }
+    return h;
+}
 void meshSync(BodyDef& b) {
     if (!meshShaped(b)) { b.mesh = {}; b.meshRef.clear(); return; }
     MeshDef& m = b.mesh;
+    {   // nothing changed since last time (it's called every frame): nothing to do
+        bool same = b.meshSig != 0 && b.meshRef.size() == b.pts.size() && b.z == b.meshRefZ && b.thick == b.meshRefThick && !carve::tilted(b);
+        for (size_t i = 0; same && i < b.pts.size(); i++) same = b.pts[i].x == b.meshRef[i].x && b.pts[i].y == b.meshRef[i].y;
+        if (same && meshFingerprint(m) == b.meshSig) return;
+    }
     // the outline moved, turned or flipped as a whole: the mesh goes with it (reshaping the outline does nothing)
     const auto& A = b.meshRef; const auto& B = b.pts;
     bool moved = A.size() == B.size() && A.size() >= 2;
@@ -288,6 +300,7 @@ void meshSync(BodyDef& b) {
     b.bulge.assign(b.pts.size(), 0.0);
     b.depthOff.clear(); b.depthZn.clear(); b.depthZf.clear(); b.depthRef.clear();
     b.meshRef = b.pts; b.meshRefZ = b.z; b.meshRefThick = b.thick;
+    b.meshSig = meshFingerprint(m);
 }
 
 std::vector<int> meshCut(MeshDef& m, int axis, double at) {
