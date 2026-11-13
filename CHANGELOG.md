@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.11-alpha
+
+- **Fix: guns loaded one round at a time couldn't be reloaded on the range** (the single-shot rifle, the derringer). R now opens the action, puts a round in each empty chamber, and closes it again.
+
 ## 0.8.10-alpha
 
 - **Fix: the range's ammo counter ignored revolver cylinders.** It read 0 and "empty: R to reload" even with a full cylinder. It now shows the rounds in the cylinder, like "4 / 6".

@@ -76,6 +76,7 @@ struct Range {
     std::vector<Impact> impacts;
     std::vector<Target> targets;
     int shots = 0;
+    bool loadWhenOpen = false;           // R on a gun loaded by hand: the action is being opened, rounds go in as soon as it is
     std::string lastHit; float lastHitT = 0;
     double mass = 1;                     // the gun, kg
     bool twoHands = false;
@@ -407,6 +408,16 @@ static void countAmmo(sim::Sim& S) {
     }
     seeAmmo(S);
 }
+// a round into every chamber that's open and empty, while there are rounds to spare (loaded by hand); how many went in
+static int loadOpenChambers(sim::Sim& S) {
+    int n = 0;
+    for (int k = 0; k < sim::chamberCount(S) && R.reserve > 0; k++) {
+        sim::useChamber(S, k);
+        if (sim::handLoad(S)) { R.reserve--; n++; }
+    }
+    sim::useChamber(S, 0);
+    return n;
+}
 void reload() {
     if (!A.S) return;
     if (R.reserve <= 0) { toast("Out of ammunition: find an ammo box."); return; }
@@ -420,8 +431,11 @@ void reload() {
         return;
     }
     if (sim::fillMagazines(S) > 0) { toast("Topped up."); return; }
-    if (sim::handLoad(S)) { R.reserve--; return; }   // (one round, by hand)
-    toast("Open the action first (B), then reload.");
+    if (loadOpenChambers(S) > 0) return;   // (by hand, into the open action)
+    if (!sim::chamberCount(S) || sim::chamberedCount(S) >= sim::chamberCount(S)) { toast("It's loaded."); return; }
+    // loaded by hand and shut: open it, put the rounds in as soon as it's open, and close it again
+    R.loadWhenOpen = true;
+    workAction();
 }
 }  // namespace
 
@@ -901,14 +915,21 @@ void rangeUpdate(float dt, bool modal) {
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !holdFire) S.pressed = true;   // (as on the bench: a fresh pull of the trigger)
         if (std::getenv("GUNSMITH_RANGEAUTOFIRE")) {   // (tests) pull the trigger every 0.4 s by itself
             static float at = 0, rl = 0; at += dt; rl += dt;
-            trig = std::fmod(at, 0.4f) < 0.1f;
+            trig = std::fmod(at, 0.4f) < 0.1f && !sim::animPlaying(S);   // (hands off the trigger while working the action)
             R.aim = 1;
             sim::Body* M = sim::seatedMag(S);
-            if (!S.chambered && (!M || M->rounds == 0) && rl > 1.5f) { reload(); rl = 0; }
-            if (trig && std::fmod(at, 0.4f) < dt * 1.5f) S.pressed = true;
+            if (sim::chamberedCount(S) == 0 && (!M || M->rounds == 0) && rl > 1.5f && !sim::animPlaying(S)) { reload(); rl = 0; }
+            else if (!S.chambered && M && M->rounds > 0 && !sim::hasCylinder(S) && sim::chamberedCount(S) == 0 && S.t - S.fireT > 0.8 && rl > 0.8f && !sim::animPlaying(S)) { workAction(); rl = 0; }   // (still shut on the case: work it)   // (worked by hand: the bolt, the pump)
+            static bool was = false;
+            if (trig && !was) S.pressed = true;   // (each new pull)
+            was = trig;
         }
         S.trigger = trig;
         sim::setKey(S, "fire", trig);
+        if (R.loadWhenOpen) {   // opening it to load by hand: in they go once it's open
+            loadOpenChambers(S);
+            if (!sim::animPlaying(S)) R.loadWhenOpen = false;
+        }
         if (actPressed(Act::Reload)) reload();
         if (actPressed(Act::WorkAction)) workAction();
         if (actPressed(Act::Gadgets)) toggleGadgets();
@@ -928,6 +949,8 @@ void rangeUpdate(float dt, bool modal) {
         }
         sim::setKey(S, "k1", held[1]); sim::setKey(S, "k2", held[2]); sim::setKey(S, "k3", held[3]); sim::setKey(S, "k4", held[4]);
         { perf::Scope t(perf::Physics); perf::substeps(sim::run(S, dt, 1200)); }
+        if (std::getenv("GUNSMITH_RANGECHDBG")) for (auto& p : S.pushers) if (p.key == "fire") { V2 w = sim::wpt(*p.b, p.l); std::printf("  trigger part moved %.2f mm (on %d)\n", ((w.x - (p.b->x0 + p.l.x)) * p.dx + (w.y - (p.b->y0 + p.l.y)) * p.dy) * 1000, p.on); }
+        if (std::getenv("GUNSMITH_RANGECHDBG")) { static int fr = 0; if (fr++ < 300 && fr % 6 == 0) std::printf("frame %d lwo %d gap %.1f t %.3f fireT %.3f cc %d chambered %d spent %d gap %.2f shots %d acc %.2f %.2f hand %d anim %d trig %d pressed %d cocked %d dead %d inB %d igAt %.2f\n", fr, R.loadWhenOpen, sim::breechGap(S), S.t, S.fireT, sim::chamberedCount(S), S.chambered, S.spent, sim::breechGap(S), S.shots, S.frameAccel.x, S.frameAccel.y, S.hand.on, sim::animPlaying(S), S.trigger, S.pressed, S.cocked, S.deadPull, sim::inBattery(S), S.igniteAt); }
         countAmmo(S);   // what went into the gun came out of your ammunition
         // a dropped magazine and the spent cases fly with the gun's frame here, so they're cleared once they've fallen away
         sim::tidy(S, dt, 1.2, 0.8, 2);
