@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.16-alpha
+
+- **Counter paperwork looks like real paper.** The transfer form is now a printed Form 7140 from the AFRaC (Agency of Firearm Regulation and Control), filled in by hand in blue ink: boxed fields, black section bars, Yes and No tick boxes, and a signature. The ID is a proper plastic licence with a coloured band, the customer's photo and printed labels.
+- **Customers hand you their papers.** When a customer reaches the counter they lay their form down, then their ID beside it, ready for you to check.
+
 ## 0.8.15-alpha
 
 - **Fix: single-shot guns failed the reliability test.** A new gun starts on "Feeds from: Magazine", so a gun with no magazine was never loaded and the test gave up. The test now loads by hand any gun without a magazine, whatever that setting says, and refills a built-in counter when it runs dry.

@@ -404,7 +404,16 @@ void meWalk(bool fromCamera) {
         if (!ME.top) ME.pl.yaw = ME.yaw;
     }
     if (const char* e = std::getenv("GUNSMITH_WALKYAW")) ME.pl.yaw = std::atof(e);   // (screenshots) which way you face
-    if (const char* e = std::getenv("GUNSMITH_WALKAT")) { double x = 0, z = 0; if (std::sscanf(e, "%lf,%lf", &x, &z) == 2) { ME.pl.feet.x = x; ME.pl.feet.z = z; } }   // (screenshots) where you stand
+    if (const char* e = std::getenv("GUNSMITH_WALKAT"); e && std::string(e) == "counter") {   // (screenshots) behind the counter, looking down at it
+        const gmap::Entity *c = nullptr, *d = nullptr;
+        for (auto& en : ME.map.ents) { if (en.type == "shop_counter") c = &en; if (en.type == "shop_door") d = &en; }
+        if (c) {
+            double a = c->yaw * PI / 180; gmap::V3 f{std::cos(a), 0, std::sin(a)};
+            if (d && (d->pos.x - c->pos.x) * f.x + (d->pos.z - c->pos.z) * f.z < 0) f = f * -1.0;   // (the customers' side)
+            ME.pl.feet.x = c->pos.x - f.x * 0.75; ME.pl.feet.z = c->pos.z - f.z * 0.75;
+            ME.pl.yaw = std::atan2(f.z, f.x); ME.pl.pitch = -0.55;
+        }
+    } else if (const char* e = std::getenv("GUNSMITH_WALKAT")) { double x = 0, z = 0; if (std::sscanf(e, "%lf,%lf", &x, &z) == 2) { ME.pl.feet.x = x; ME.pl.feet.z = z; } }   // (screenshots) where you stand
     ME.walking = true;
     DisableCursor();
 }

@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstdio>
+#include <cfloat>
 
 void openDesignInEditor(const Design& d, const std::string& msg);   // (panel_build.cpp)
 
@@ -383,6 +384,187 @@ static void workshopTab() {
     ImGui::TextDisabled("New people come looking each week.");
 }
 
+// ---------------------------------------------------------------- the paperwork as paper (0.8.16)
+// The transfer form and the ID card drawn like the real things: a printed form (a made-up agency, AFRaC, and its
+// Form 7140), filled in by hand in blue ink, and a plastic licence with the customer's photo.
+namespace paper {
+static const ImU32 P_INK = IM_COL32(28, 48, 150, 255), P_BLACK = IM_COL32(20, 20, 22, 255), P_GREY = IM_COL32(95, 95, 100, 255);
+static const ImU32 P_FILL = IM_COL32(232, 238, 248, 255), P_PAPER = IM_COL32(251, 249, 242, 255), P_RULE = IM_COL32(60, 60, 66, 255);
+static ImVec2 measure(ImFont* f, float sz, const char* t, float wrap = 0) { return f->CalcTextSizeA(sz, FLT_MAX, wrap, t); }
+static void text(ImDrawList* dl, ImFont* f, float sz, ImVec2 p, ImU32 c, const char* t, float wrap = 0) { dl->AddText(f, sz, p, c, t, nullptr, wrap); }
+// a boxed field: a small printed label in the corner, what they wrote in ink below it
+static void field(ImDrawList* dl, ImVec2 a, ImVec2 b, const char* label, const std::string& value, float base, bool ink = true) {
+    dl->AddRectFilled(a, b, P_FILL);
+    dl->AddRect(a, b, P_RULE, 0, 0, 1.0f);
+    ImFont* f = ImGui::GetFont();
+    text(dl, f, base * 0.68f, {a.x + 4, a.y + 2}, P_GREY, label);
+    if (!value.empty()) text(dl, f, base * 1.08f, {a.x + 8, a.y + base * 0.85f}, ink ? P_INK : P_BLACK, value.c_str(), b.x - a.x - 12);
+}
+static float bar(ImDrawList* dl, float x0, float x1, float y, const char* t, float base) {
+    float h = base * 1.45f;
+    dl->AddRectFilled({x0, y}, {x1, y + h}, P_BLACK);
+    text(dl, gFontBold, base * 0.92f, {x0 + 6, y + (h - base * 0.92f) * 0.5f}, IM_COL32(255, 255, 255, 255), t);
+    return y + h;
+}
+static void checkbox(ImDrawList* dl, ImVec2 p, float s, bool x) {
+    dl->AddRectFilled(p, {p.x + s, p.y + s}, IM_COL32(255, 255, 255, 255));
+    dl->AddRect(p, {p.x + s, p.y + s}, P_BLACK, 0, 0, 1.2f);
+    if (x) {   // a hand-drawn X, a little past the box
+        dl->AddLine({p.x - 1, p.y + 1}, {p.x + s + 1, p.y + s - 1}, P_INK, 2.2f);
+        dl->AddLine({p.x + s + 1, p.y}, {p.x, p.y + s + 1}, P_INK, 2.2f);
+    }
+}
+
+// Form 7140, as wide as the space it's given
+static void form(const career::Walkin& w, int day) {
+    float W = std::min(ImGui::GetContentRegionAvail().x - 8, 820 * CFG.uiScale);
+    float base = ImGui::GetFontSize();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 o = ImGui::GetCursorScreenPos();
+    float m = 18 * CFG.uiScale, x0 = o.x + m, x1 = o.x + W - m, y = o.y + m;
+    ImFont* f = ImGui::GetFont();
+    dl->ChannelsSplit(2);
+    dl->ChannelsSetCurrent(1);
+    // the heading: the agency on the left, the title in the middle, the form number boxed on the right
+    text(dl, gFontBold, base * 0.72f, {x0, y}, P_BLACK, "AGENCY OF FIREARM\nREGULATION AND CONTROL");
+    text(dl, f, base * 0.66f, {x0, y + base * 1.75f}, P_GREY, "AFRaC");
+    const char* title = "Firearm Transfer Record";
+    ImVec2 ts = measure(gFontBold, base * 1.6f, title);
+    text(dl, gFontBold, base * 1.6f, {o.x + (W - ts.x) * 0.5f, y}, P_BLACK, title);
+    const char* sub = "Part I: over-the-counter transfer";
+    ImVec2 ss = measure(f, base * 0.8f, sub);
+    text(dl, f, base * 0.8f, {o.x + (W - ss.x) * 0.5f, y + ts.y + 1}, P_GREY, sub);
+    ImVec2 fa = {x1 - 118 * CFG.uiScale, y}, fb = {x1, y + base * 2.5f};
+    dl->AddRect(fa, fb, P_BLACK, 0, 0, 1.5f);
+    text(dl, gFontBold, base * 0.95f, {fa.x + 6, fa.y + 3}, P_BLACK, "Form 7140");
+    text(dl, f, base * 0.66f, {fa.x + 6, fa.y + base * 1.3f}, P_GREY, "Revised March 2030");
+    y += base * 2.9f;
+    text(dl, f, base * 0.7f, {x0, y}, P_GREY, "Print in ink. Read every question before answering. A false answer on this record is a criminal offence.", x1 - x0);
+    y += base * 1.15f;
+    // Section A
+    y = bar(dl, x0, x1, y, "Section A  -  To be filled in, in person, by the buyer", base);
+    float fh = base * 2.25f, cw = x1 - x0;
+    auto row = [&](std::initializer_list<std::pair<float, std::pair<const char*, std::string>>> cells) {
+        float x = x0;
+        for (auto& c : cells) { float xe = x + cw * c.first; field(dl, {x, y}, {xe, y + fh}, c.second.first, c.second.second, base); x = xe; }
+        y += fh;
+    };
+    row({{0.58f, {"1. Full name (first, middle, last)", w.name}}, {0.12f, {"2. Sex", w.sex}}, {0.15f, {"3. Height", w.height}}, {0.15f, {"4. Weight", w.weight}}});
+    row({{0.72f, {"5. Home address (number, street, city, state, ZIP)", w.address}}, {0.28f, {"6. Date of birth (MM/DD/YYYY)", w.dob}}});
+    row({{0.55f, {"7. Place of birth (city and state, or country)", w.birthPlace}}, {0.45f, {"8. Today's date", "day " + std::to_string(day) + ", 2031"}}});
+    y += base * 0.5f;
+    // Section B: the questions, with Yes and No boxes on the right
+    y = bar(dl, x0, x1, y, "Section B  -  Mark every question with an X under Yes or No", base);
+    float boxS = base * 0.95f, colYes = x1 - base * 5.2f, colNo = x1 - base * 2.4f;
+    text(dl, gFontBold, base * 0.72f, {colYes - 2, y + 2}, P_BLACK, "Yes");
+    text(dl, gFontBold, base * 0.72f, {colNo + 1, y + 2}, P_BLACK, "No");
+    y += base * 1.0f;
+    const auto& Q = career::formQuestions();
+    for (size_t i = 0; i < Q.size(); i++) {
+        char a = i < w.answers.size() ? w.answers[i] : ' ';
+        std::string q = std::to_string(i + 9) + ".  " + Q[i];
+        float wrap = colYes - x0 - base * 1.5f;
+        ImVec2 qs = measure(f, base * 0.86f, q.c_str(), wrap);
+        float rh = std::max(qs.y, boxS) + base * 0.55f;
+        if (i % 2 == 1) dl->AddRectFilled({x0, y}, {x1, y + rh}, IM_COL32(240, 238, 230, 255));
+        text(dl, f, base * 0.86f, {x0 + 6, y + base * 0.27f}, P_BLACK, q.c_str(), wrap);
+        float by = y + (rh - boxS) * 0.5f;
+        checkbox(dl, {colYes, by}, boxS, a == 'Y');
+        checkbox(dl, {colNo, by}, boxS, a == 'N');
+        dl->AddLine({x0, y + rh}, {x1, y + rh}, IM_COL32(190, 188, 180, 255));
+        y += rh;
+    }
+    y += base * 0.5f;
+    // Section C: the signature
+    y = bar(dl, x0, x1, y, "Section C  -  Certification", base);
+    y += base * 0.3f;
+    const char* cert = "I certify that every answer I have given in Sections A and B is true, correct and complete, that I am the person "
+                       "buying the firearm and not buying it for anyone else, and that I understand a false answer is a crime.";
+    ImVec2 cs = measure(f, base * 0.78f, cert, cw);
+    text(dl, f, base * 0.78f, {x0, y}, P_BLACK, cert, cw);
+    y += cs.y + base * 0.4f;
+    float sh = base * 2.6f;
+    field(dl, {x0, y}, {x0 + cw * 0.7f, y + sh}, "Buyer's signature", "", base);
+    if (w.signedForm) {   // a slanted scrawl of their name, underlined with a flourish
+        ImVec2 p = {x0 + 16, y + base * 0.9f};
+        text(dl, gFontBold, base * 1.35f, p, P_INK, w.name.c_str());
+        float nw = measure(gFontBold, base * 1.35f, w.name.c_str()).x;
+        dl->AddBezierCubic({p.x - 4, p.y + base * 1.45f}, {p.x + nw * 0.3f, p.y + base * 1.75f}, {p.x + nw * 0.7f, p.y + base * 1.2f}, {p.x + nw + 14, p.y + base * 1.5f}, P_INK, 1.6f);
+    } else text(dl, f, base * 0.75f, {x0 + 16, y + base * 1.2f}, IM_COL32(170, 60, 50, 255), "(left blank)");
+    field(dl, {x0 + cw * 0.7f, y}, {x1, y + sh}, "Date signed", w.signedForm ? "day " + std::to_string(day) : "", base);
+    y += sh + base * 0.7f;
+    text(dl, f, base * 0.66f, {x0, y}, P_GREY, "AFRaC Form 7140 (Rev. 03/2030)");
+    const char* pg = "Page 1 of 1";
+    text(dl, f, base * 0.66f, {x1 - measure(f, base * 0.66f, pg).x, y}, P_GREY, pg);
+    y += base * 0.9f + m;
+    // the sheet itself, behind it all, with a soft shadow
+    dl->ChannelsSetCurrent(0);
+    dl->AddRectFilled({o.x + 5, o.y + 6}, {o.x + W + 5, y + 6}, IM_COL32(0, 0, 0, 90), 2);
+    dl->AddRectFilled(o, {o.x + W, y}, P_PAPER, 2);
+    dl->ChannelsMerge();
+    ImGui::Dummy({W + 6, y - o.y + 8});
+}
+
+// their licence: a card with a coloured band, the photo, the details with small printed labels
+static void idCard(const career::Walkin& w, Texture2D face) {
+    float s = CFG.uiScale, W = 470 * s, H = W / 1.586f, base = ImGui::GetFontSize();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 o = ImGui::GetCursorScreenPos(), e = {o.x + W, o.y + H};
+    ImFont* f = ImGui::GetFont();
+    unsigned hsh = 2166136261u; for (char c : w.idState) hsh = (hsh ^ (unsigned char)c) * 16777619u;
+    ImU32 band = ImGui::ColorConvertFloat4ToU32(ImVec4(0.15f + (hsh & 63) / 255.0f, 0.25f + ((hsh >> 6) & 63) / 255.0f, 0.45f + ((hsh >> 12) & 63) / 255.0f, 1));
+    float r = 14 * s;
+    dl->AddRectFilled({o.x + 4, o.y + 6}, {e.x + 4, e.y + 6}, IM_COL32(0, 0, 0, 100), r);
+    dl->AddRectFilledMultiColor(o, e, IM_COL32(236, 242, 246, 255), IM_COL32(246, 240, 228, 255), IM_COL32(226, 236, 240, 255), IM_COL32(240, 232, 222, 255));
+    // the security print: fine waves across the card
+    dl->PushClipRect(o, e, true);
+    for (int k = 0; k < 14; k++) {
+        float yy = o.y + H * 0.22f + k * H * 0.058f;
+        ImVec2 prev = {o.x, yy};
+        for (int i = 1; i <= 40; i++) { float xx = o.x + W * i / 40.0f; ImVec2 p = {xx, yy + std::sin(i * 0.55f + k) * 4 * s}; dl->AddLine(prev, p, IM_COL32(150, 170, 190, 70)); prev = p; }
+    }
+    dl->PopClipRect();
+    // round the corners again over the gradient (it can't be rounded itself)
+    dl->AddRect(o, e, IM_COL32(120, 120, 125, 255), r, 0, 1.5f);
+    dl->AddRectFilled(o, {e.x, o.y + H * 0.19f}, band, r, ImDrawFlags_RoundCornersTop);
+    text(dl, gFontBold, base * 1.35f, {o.x + 14 * s, o.y + H * 0.035f}, IM_COL32(255, 255, 255, 255), w.idState.c_str());
+    const char* dl1 = "DRIVER LICENSE";
+    text(dl, gFontBold, base * 1.05f, {e.x - measure(gFontBold, base * 1.05f, dl1).x - 14 * s, o.y + H * 0.055f}, IM_COL32(255, 255, 255, 235), dl1);
+    // the photo
+    ImVec2 pa = {o.x + 14 * s, o.y + H * 0.25f}, pb = {pa.x + H * 0.48f, pa.y + H * 0.6f};
+    if (face.id) dl->AddImage((ImTextureID)(intptr_t)face.id, pa, pb, {0, 1}, {1, 0});
+    else dl->AddRectFilled(pa, pb, IM_COL32(180, 180, 185, 255));
+    dl->AddRect(pa, pb, IM_COL32(90, 90, 95, 255));
+    // the details
+    ImU32 lab = IM_COL32(175, 40, 40, 255);
+    float x = pb.x + 16 * s, yy = pa.y, ls = base * 0.62f, vs = base * 0.98f;
+    auto item = [&](float xx, float y0, const char* l, const std::string& v, bool bold = false) {
+        text(dl, gFontBold, ls, {xx, y0}, lab, l);
+        text(dl, bold ? gFontBold : f, vs, {xx, y0 + ls + 1}, P_BLACK, v.c_str(), e.x - xx - 12 * s);
+    };
+    item(x, yy, "DL NO.", w.idNumber, true);
+    item(x + W * 0.36f, yy, "EXP", w.idExpires, true);
+    yy += ls + vs + 6 * s;
+    item(x, yy, "NAME", w.idName, true);
+    yy += ls + vs + 6 * s;
+    text(dl, gFontBold, ls, {x, yy}, lab, "ADDRESS");
+    ImVec2 as = measure(f, vs * 0.92f, w.idAddress.c_str(), e.x - x - 14 * s);
+    text(dl, f, vs * 0.92f, {x, yy + ls + 1}, P_BLACK, w.idAddress.c_str(), e.x - x - 14 * s);
+    yy += ls + as.y + 6 * s;
+    float c3 = (e.x - x - 14 * s) / 4;
+    item(x, yy, "DOB", w.idDob);
+    item(x + c3 * 1.55f, yy, "SEX", w.sex);
+    item(x + c3 * 2.15f, yy, "HGT", w.height);
+    item(x + c3 * 3.0f, yy, "WGT", w.weight);
+    // the signature strip under the photo
+    float sy = pb.y + 8 * s;
+    text(dl, gFontBold, base * 1.0f, {pa.x + 4, sy}, P_INK, w.idName.c_str());
+    // a little ghost photo, faded, at the right edge
+    if (face.id) { ImVec2 ga = {e.x - H * 0.2f - 12 * s, e.y - H * 0.26f - 10 * s}; dl->AddImage((ImTextureID)(intptr_t)face.id, ga, {ga.x + H * 0.2f, ga.y + H * 0.26f}, {0, 1}, {1, 0}, IM_COL32(255, 255, 255, 60)); }
+    ImGui::Dummy({W + 8, H + 10});
+}
+}  // namespace paper
+
 // ---------------------------------------------------------------- the counter
 static void counterTab() {
     auto& C = CAREER;
@@ -435,27 +617,9 @@ static void counterTab() {
     if (stepForced == -2) { const char* e = std::getenv("GUNSMITH_COUNTERSTEP"); stepForced = e ? std::atoi(e) : -1; }   // (screenshots) which step
     if (ImGui::BeginTabBar("##steps")) {
         if (ImGui::BeginTabItem("1  Their form", nullptr, stepForced == 0 ? ImGuiTabItemFlags_SetSelected : 0)) {
-            ImGui::BeginChild("##formpaper", {0, -40 * CFG.uiScale}, ImGuiChildFlags_Borders);
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.9f, 0.84f, 1));
-            ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("FIREARM TRANSFER RECORD  (Form TR-1)"); ImGui::PopFont();
-            ImGui::TextDisabled("Section A: the buyer fills this in");
-            ImGui::Text("Full name:  %s", w.name.c_str());
-            ImGui::Text("Home address:  %s", w.address.c_str());
-            ImGui::Text("Date of birth:  %s        Place of birth:  %s", w.dob.c_str(), w.birthPlace.c_str());
-            ImGui::Text("Sex:  %s      Height:  %s      Weight:  %s", w.sex.c_str(), w.height.c_str(), w.weight.c_str());
-            ImGui::Dummy({0, 4 * CFG.uiScale});
-            ImGui::TextDisabled("Section B: answer every question Yes or No");
-            const auto& Q = career::formQuestions();
-            for (size_t i = 0; i < Q.size() && i < w.answers.size(); i++) {
-                char a = w.answers[i];
-                ImGui::TextColored(a == ' ' ? ImVec4(0.6f, 0.6f, 0.6f, 1) : ImVec4(0.95f, 0.85f, 0.5f, 1), "[%s]", a == 'Y' ? "Yes" : a == 'N' ? "No " : "   ");
-                ImGui::SameLine();
-                ImGui::PushTextWrapPos(0); ImGui::TextUnformatted((std::to_string(i + 1) + ". " + Q[i]).c_str()); ImGui::PopTextWrapPos();
-            }
-            ImGui::Dummy({0, 4 * CFG.uiScale});
-            ImGui::TextDisabled("Section C: I certify my answers are true");
-            ImGui::Text("Signature:  %s        Date:  %s", w.signedForm ? w.name.c_str() : "____________________", TextFormat("day %d", C.day));
-            ImGui::PopStyleColor();
+            ImGui::BeginChild("##formpaper", {0, -40 * CFG.uiScale}, 0);
+            ImGui::Dummy({0, 2}); ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 4);
+            paper::form(w, C.day);
             ImGui::EndChild();
             if (ImGui::Button("Hand it back to correct")) {
                 if (career::fixForm(C, w.id)) { careerSave(); toast("They fix it and hand it back."); }
@@ -463,21 +627,12 @@ static void counterTab() {
             }
             if (tipHover()) ImGui::SetTooltip("A question left blank, no signature, or an address or date of birth that doesn't match their ID: they'll fix it.\nSelling on a form with mistakes is on record: a records inspection fines you for each one.");
             ImGui::SameLine();
-            ImGui::TextDisabled("Question 1 must be Yes, the rest No.");
+            ImGui::TextDisabled("Question 9 must be Yes, the rest No.");
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("2  Their ID", nullptr, stepForced == 1 ? ImGuiTabItemFlags_SetSelected : 0)) {
-            ImGui::BeginChild("##idcard", {460 * CFG.uiScale, 210 * CFG.uiScale}, ImGuiChildFlags_Borders);
-            ImGui::PushFont(gFontBold, 15.0f); ImGui::TextColored({0.55f, 0.75f, 1, 1}, "DRIVER LICENSE   %s", w.idState.c_str()); ImGui::PopFont();
-            if (face.id) { ImGui::Image((ImTextureID)(intptr_t)face.id, {90 * CFG.uiScale, 112 * CFG.uiScale}, {0, 1}, {1, 0}); ImGui::SameLine(); }
-            ImGui::BeginGroup();
-            ImGui::Text("No. %s", w.idNumber.c_str());
-            ImGui::Text("%s", w.idName.c_str());
-            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 330 * CFG.uiScale); ImGui::Text("%s", w.idAddress.c_str()); ImGui::PopTextWrapPos();
-            ImGui::Text("DOB %s   Sex %s   Ht %s", w.idDob.c_str(), w.sex.c_str(), w.height.c_str());
-            ImGui::Text("Expires %s", w.idExpires.c_str());
-            ImGui::EndGroup();
-            ImGui::EndChild();
+            ImGui::Dummy({0, 6 * CFG.uiScale}); ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 6);
+            paper::idCard(w, face);
             if (!w.scanned) { if (accentButton(ICON_FA_BARCODE "  Scan it", true)) { career::scanId(C, w.id); careerSave(); } }
             else ImGui::TextColored(w.scan == "VALID" ? ImVec4(0.5f, 0.9f, 0.55f, 1) : ImVec4(1, 0.4f, 0.35f, 1), "Scanner: %s", w.scan.c_str());
             ImGui::TextDisabled("Does the name on the ID match the form? The date of birth, the address? Has it run out?");

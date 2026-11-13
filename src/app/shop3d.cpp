@@ -271,6 +271,60 @@ bool shopWalkUpdate(float dt) {
     return false;
 }
 
+
+// The customer at the counter lays their transfer form and then their ID on the counter top, slid across to you.
+static void drawCounterPapers() {
+    const gmap::Entity* counter = findType("shop_counter");
+    if (!counter) return;
+    const Walker* at = nullptr;
+    for (auto& [id, w] : gWalkers) {
+        if (w.staff || w.leaving || !w.path.empty()) continue;
+        if (std::hypot(w.pos.x - counter->pos.x, w.pos.z - counter->pos.z) > 1.1) continue;
+        if (!at || w.idle > at->idle) at = &w;
+    }
+    if (!at) return;
+    gmap::V3 f = frontOf(*counter);
+    float sg = (at->pos.x - counter->pos.x) * f.x + (at->pos.z - counter->pos.z) * f.z > 0 ? 1.0f : -1.0f;   // (their side)
+    Matrix R = MatrixRotateY(-(float)counter->yaw * DEG2RAD);
+    Vector3 base{(float)counter->pos.x, (float)counter->pos.y, (float)counter->pos.z};
+    auto lay = [&](double delay, float x, float z, float turnDeg, float w, float len, std::function<void(std::function<void(float, float, float, float, float, Color)>)> marks) {
+        float t = (float)std::clamp((at->idle - delay) / 0.6, 0.0, 1.0);
+        if (t <= 0) return;
+        float e = 1 - (1 - t) * (1 - t);                              // (eased: put down, slid over)
+        float xx = sg * (x + (1 - e) * 0.3f), lift = 0.12f * std::sin(t * PI) * (1 - t);
+        Matrix Rp = MatrixMultiply(MatrixRotateY(turnDeg * DEG2RAD), R);
+        Vector3 c = Vector3Add(base, Vector3Transform({xx, 1.012f + lift, z}, R));
+        // u runs toward the customer (the top of the page), v along the counter
+        auto put = [&](float u, float v, float su, float sv, float h, Color col) {
+            drawBox(Vector3Add(c, Vector3Transform({sg * u, h, v}, Rp)), {su, 0.0008f, sv}, col, Rp);
+        };
+        put(0, 0, len, w, 0, Color{247, 245, 238, 255});
+        marks(put);
+    };
+    // the form: a black heading, ruled boxes, ink, a column of tick boxes, a signature
+    lay(0.0, 0.08f, -0.28f, sg * 4.0f, 0.216f, 0.279f, [&](auto put) {
+        const Color ink{40, 60, 160, 255}, blk{25, 25, 28, 255}, rule{150, 150, 155, 255}, fill{226, 232, 244, 255};
+        put(0.118f, 0, 0.018f, 0.12f, 0.0006f, blk);                                // the title
+        put(0.095f, 0, 0.008f, 0.19f, 0.0006f, blk);                                // Section A's bar
+        for (int r = 0; r < 3; r++) { put(0.075f - r * 0.017f, 0, 0.014f, 0.19f, 0.0006f, fill); put(0.073f - r * 0.017f, -0.03f + 0.01f * r, 0.0025f, 0.08f, 0.0012f, ink); }
+        put(0.02f, 0, 0.008f, 0.19f, 0.0006f, blk);                                 // Section B's bar
+        for (int q = 0; q < 9; q++) {
+            float u = 0.006f - q * 0.0095f;
+            put(u, -0.03f, 0.0018f, 0.13f, 0.0006f, rule);
+            put(u, 0.075f, 0.005f, 0.005f, 0.0009f, q == 0 ? blk : rule);
+            put(u, 0.088f, 0.005f, 0.005f, 0.0009f, q == 0 ? rule : blk);
+        }
+        put(-0.092f, 0, 0.008f, 0.19f, 0.0006f, blk);                               // Section C
+        put(-0.115f, -0.035f, 0.003f, 0.09f, 0.0012f, ink);                         // the signature
+    });
+    // the ID card, a moment later
+    lay(0.7, 0.12f, 0.06f, -sg * 9.0f, 0.054f, 0.086f, [&](auto put) {
+        put(0.035f, 0, 0.014f, 0.054f, 0.0006f, Color{50, 80, 150, 255});            // its coloured band
+        put(-0.006f, -0.014f, 0.032f, 0.022f, 0.0008f, Color{150, 115, 90, 255});    // the photo
+        for (int r = 0; r < 4; r++) put(0.012f - r * 0.008f, 0.012f, 0.002f, 0.022f, 0.0008f, Color{60, 60, 66, 255});
+    });
+}
+
 void shopDrawPeople() {
     if (!ME.walking && ME.map.build.on()) {   // build mode: the property's floor (white) and its storefront (gold), outlined
         auto outline = [](const gmap::Zone& z, Color c) {
@@ -322,6 +376,7 @@ void shopDrawPeople() {
         double look = w.path.empty() && !w.staff ? 18 * std::sin(w.idle * 0.6 + id) : 0;   // (standing about: they look round)
         drawNpcAt(w.speed > 0.05 ? npcai::walking(n, w.phase, w.speed) : n, {(float)w.pos.x, (float)w.pos.y, (float)w.pos.z}, (float)(w.yaw + look * 0.25), 0.001f);
     }
+    drawCounterPapers();
 }
 
 void shopHud() {
