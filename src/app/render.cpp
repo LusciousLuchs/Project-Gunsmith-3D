@@ -16,6 +16,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <sstream>
+#include <future>
+#include <chrono>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -110,10 +113,8 @@ bool mainPart(const sim::Body& b) {  // moving parts worth graphing: not magazin
 // ---------------------------------------------------------------- 3D scene
 // A part's solid, centred on its outline's middle with y up (world units): its outline extruded (or turned, or shaped in
 // depth), its cuts made (not while `rough`), its picture laid on, and leaned if tilted. Shared by the gun and attachments.
-Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
-    BodyDef d = dIn;   // (a round part's shape is brought up to date on the copy)
-    Mesh mesh{};
-    V2 c = centroidOf(d);
+// (in three steps, so the slow middle one, cutting the solid, can run on a worker thread while a part is edited)
+static Mesh partBase(BodyDef& d, V2 c) {   // the uncut solid (may bring a round part's thickness up to date)
     std::vector<V2> local;
     for (auto& p : outlineOf(d)) local.push_back({p.x - c.x, p.y - c.y});
     if (d.round && !meshShaped(d)) {  // turned on a lathe about its long middle line
@@ -121,17 +122,20 @@ Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
         carve::RoundAxis ax = carve::roundAxis(d);
         std::vector<char> sm;
         std::vector<V2> S = carve::roundShape(d, 48, &sm);
-        mesh = latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
-    } else if (meshShaped(d)) mesh = freeMesh(d, c);     // a free 3D mesh
-    else if (depthShaped(d)) mesh = depthMesh(d, c);   // shaped in depth: corners on both faces
-    else mesh = extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
-    std::vector<CarveDef> cuts = rough ? std::vector<CarveDef>{} : d.carves;
+        return latheMesh(carve::roundProfile(d, ax), {ax.o.x - c.x, ax.o.y - c.y}, ax.dir, S, sm);
+    }
+    if (meshShaped(d)) return freeMesh(d, c);     // a free 3D mesh
+    if (depthShaped(d)) return depthMesh(d, c);   // shaped in depth: corners on both faces
+    return extrude(local, bodyDepth(d), (float)(d.smooth * std::max(1.0, d.thick) / 2));
+}
+static std::vector<std::vector<csg::Poly>> partCutters(const BodyDef& d, V2 c) {   // its cuts as solids, in the mesh's frame
+    std::vector<CarveDef> cuts = d.carves;
     V2 rear, muz;
-    if (!rough && barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
+    if (barrelEnds(d, rear, muz)) {  // a barrel: its chamber, its bore, and the rifling's grooves (for the eye: the
         // chamber's walls are the cartridge physics' business, not the solid's)
         const Cartridge& ct = d.barrel.cart;
         double L = std::hypot(muz.x - rear.x, muz.y - rear.y);
-        V2 u{(muz.x - rear.x) / L, (muz.y - rear.y) / L}, n{-u.y, u.x};
+        V2 u{(muz.x - rear.x) / L, (muz.y - rear.y) / L};
         CarveDef ch; ch.shape = "circle"; ch.at = rear; ch.atZ = 0; ch.dx = u.x; ch.dy = u.y; ch.dz = 0;
         ch.w = ch.h = std::max(ct.baseDia, ct.shoulderDia) + 0.4; ch.depth = ct.caseLen;
         cuts.push_back(ch);
@@ -142,7 +146,7 @@ Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
     {   // a revolving cylinder: its chambers bored right through it, round the axis
         const BreechDef& br = A.design.breech;
         CylGeo g = cylGeo();
-        if (!rough && g.ok && d.id == br.chamber) {
+        if (g.ok && d.id == br.chamber) {
             const Cartridge& ct = br.cart;
             V2 n0{g.face.x - g.foot.x, g.face.y - g.foot.y};
             for (int k = 0; k < g.n; k++) {
@@ -156,22 +160,20 @@ Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
             }
         }
     }
-    if (!cuts.empty()) {  // cut the carves out of the solid, in the mesh's frame (centred, y up)
-        std::vector<std::vector<csg::Poly>> cut;
-        for (auto& cv : cuts) {
-            std::vector<csg::Poly> ps;
-            for (auto& q : carve::prismPolys(carve::prism(cv, d), cv)) {
-                std::vector<csg::Vert> vs;
-                for (auto it = q.v.rbegin(); it != q.v.rend(); ++it)  // mirroring y turns the winding round
-                    vs.push_back({{it->p.x - c.x, -(it->p.y - c.y), it->p.z - d.z}, {it->n.x, -it->n.y, it->n.z}});
-                ps.push_back(csg::makePoly(vs));
-            }
-            cut.push_back(ps);
+    std::vector<std::vector<csg::Poly>> cut;
+    for (auto& cv : cuts) {
+        std::vector<csg::Poly> ps;
+        for (auto& q : carve::prismPolys(carve::prism(cv, d), cv)) {
+            std::vector<csg::Vert> vs;
+            for (auto it = q.v.rbegin(); it != q.v.rend(); ++it)  // mirroring y turns the winding round
+                vs.push_back({{it->p.x - c.x, -(it->p.y - c.y), it->p.z - d.z}, {it->n.x, -it->n.y, it->n.z}});
+            ps.push_back(csg::makePoly(vs));
         }
-        Mesh carved = carveMesh(mesh, cut);
-        UnloadMesh(mesh);
-        mesh = carved;
+        cut.push_back(ps);
     }
+    return cut;
+}
+static void partFinish(Mesh& mesh, const BodyDef& d) {   // its picture laid on, and leaned if tilted
     if (!d.texture.empty()) {  // lay the picture on every face from the side it faces (box mapping), in mm
         Mesh& m = mesh;
         double sc = std::max(1.0, d.texScale) * U;
@@ -198,8 +200,58 @@ Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
         UpdateMeshBuffer(m, 0, m.vertices, m.vertexCount * 3 * sizeof(float), 0);
         if (m.normals) UpdateMeshBuffer(m, 2, m.normals, m.vertexCount * 3 * sizeof(float), 0);
     }
+}
+Mesh buildPartMesh(const BodyDef& dIn, bool rough) {
+    BodyDef d = dIn;   // (a round part's shape is brought up to date on the copy)
+    V2 c = centroidOf(d);
+    Mesh mesh = partBase(d, c);
+    if (!rough) {
+        auto cut = partCutters(d, c);
+        if (!cut.empty()) { Mesh carved = carveMesh(mesh, cut); UnloadMesh(mesh); mesh = carved; }
+    }
+    partFinish(mesh, d);
     return mesh;
 }
+// Cutting a part on a worker thread: its uncut solid and its cutters go in, the cut solid's triangles come out; the
+// part shows uncut until then (cutting a part with many cuts can take a good part of a second)
+namespace {
+struct CutJob { std::string key, id; std::future<CarvedTris> fut; };
+std::map<int, std::unique_ptr<CutJob>> gCutJobs;
+}
+static bool cutJob(int i, const BodyDef& dIn, const std::string& key) {   // true once the cut solid is in place
+    auto it = gCutJobs.find(i);
+    if (it != gCutJobs.end() && (it->second->key != key || it->second->id != dIn.id)) {   // (changed again: that one's stale)
+        it->second->fut.wait();
+        gCutJobs.erase(it);
+        it = gCutJobs.end();
+    }
+    if (it == gCutJobs.end()) {
+        BodyDef d = dIn;
+        V2 c = centroidOf(d);
+        Mesh base = partBase(d, c);
+        std::vector<float> v(base.vertices, base.vertices + base.vertexCount * 3), n(base.normals, base.normals + base.vertexCount * 3);
+        UnloadMesh(base);
+        auto cut = partCutters(d, c);
+        auto job = std::make_unique<CutJob>();
+        job->key = key; job->id = dIn.id;
+        if (std::getenv("GUNSMITH_CARVEPERF")) std::printf("CARVEPERF part %d sent to the worker thread\n", i);
+        job->fut = std::async(std::launch::async, [v = std::move(v), n = std::move(n), cut = std::move(cut)]() { return carveTris(v, n, cut); });
+        gCutJobs[i] = std::move(job);
+        return false;
+    }
+    if (it->second->fut.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
+    CarvedTris t = it->second->fut.get();
+    gCutJobs.erase(it);
+    if (std::getenv("GUNSMITH_CARVEPERF")) std::printf("CARVEPERF part %d cut on the worker thread: %d triangles\n", i, (int)(t.v.size() / 9));
+    Mesh m = uploadTris(t);
+    BodyDef d = dIn;
+    partFinish(m, d);
+    if (A.meshes[i].ok) UnloadMesh(A.meshes[i].mesh);
+    A.meshes[i].mesh = m;
+    A.meshes[i].rough = false;
+    return true;
+}
+static bool gSyncCuts = std::getenv("GUNSMITH_SYNCCUTS") != nullptr;   // (screenshots and tests: cut at once)
 static void ensureMeshes() {
     auto& D = A.design;
     A.meshes.resize(D.bodies.size());
@@ -220,9 +272,10 @@ static void ensureMeshes() {
         // made once it has been still for a moment: cutting the solid every frame is what makes dragging slow
         const double SETTLE = 0.6;
         double now = GetTime();
-        bool hasCuts = !d.carves.empty() || d.barrel.on;
+        bool hasCuts = !d.carves.empty() || d.barrel.on || (D.breech.cylinder.on && d.id == D.breech.chamber);
         if (A.meshes[i].ok && A.meshes[i].key == key) {
             if (!(A.meshes[i].rough && now - A.meshes[i].changedAt >= SETTLE)) continue;   // (rough and settled: cut it now)
+            if (A.mode == Mode::Build && !gSyncCuts) { cutJob((int)i, d, key); continue; }   // (on a worker thread: the editor doesn't stall)
         } else if (A.meshes[i].ok) A.meshes[i].changedAt = now;
         bool rough = hasCuts && A.meshes[i].ok && now - A.meshes[i].changedAt < SETTLE && A.mode == Mode::Build;
         if (A.meshes[i].ok) UnloadMesh(A.meshes[i].mesh);

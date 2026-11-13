@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <vector>
 
 // ---------------------------------------------------------------- graphics kit
@@ -335,15 +336,16 @@ Mesh latheMesh(const std::vector<V2>& st, V2 o, V2 dir, const std::vector<V2>& S
 }
 
 // Cut solids out of a part's mesh. `cutters` are closed solids in the mesh's own frame, in millimetres.
-Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutters) {
+CarvedTris carveTris(const std::vector<float>& bv, const std::vector<float>& bn, const std::vector<std::vector<csg::Poly>>& cutters) {
     std::vector<csg::Poly> solid;
-    for (int t = 0; t < base.vertexCount / 3; t++) {
+    int count = (int)(bv.size() / 3);
+    for (int t = 0; t < count / 3; t++) {
         std::vector<csg::Vert> v;
         csg::P3 ns{0, 0, 0};
         for (int k = 0; k < 3; k++) {
             int i = t * 3 + k;
-            csg::P3 p{base.vertices[i * 3] / U, base.vertices[i * 3 + 1] / U, base.vertices[i * 3 + 2] / U};
-            csg::P3 n{base.normals[i * 3], base.normals[i * 3 + 1], base.normals[i * 3 + 2]};
+            csg::P3 p{bv[i * 3] / U, bv[i * 3 + 1] / U, bv[i * 3 + 2] / U};
+            csg::P3 n{bn[i * 3], bn[i * 3 + 1], bn[i * 3 + 2]};
             v.push_back({p, n}); ns = ns + n;
         }
         csg::Poly q = csg::makePoly(v);
@@ -352,24 +354,30 @@ Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutt
         solid.push_back(q);
     }
     for (auto& c : cutters) solid = csg::subtract(solid, c);
-    int tris = 0;
-    for (auto& q : solid) tris += (int)q.v.size() - 2;
-    Mesh m{};
-    m.vertexCount = tris * 3; m.triangleCount = tris;
-    m.vertices = (float*)MemAlloc(std::max(1, m.vertexCount) * 3 * sizeof(float));
-    m.normals = (float*)MemAlloc(std::max(1, m.vertexCount) * 3 * sizeof(float));
-    m.texcoords = (float*)MemAlloc(std::max(1, m.vertexCount) * 2 * sizeof(float));
-    int k = 0;
+    CarvedTris out;
     auto put = [&](const csg::Vert& v) {
-        m.vertices[k * 3] = (float)(v.p.x * U); m.vertices[k * 3 + 1] = (float)(v.p.y * U); m.vertices[k * 3 + 2] = (float)(v.p.z * U);
+        out.v.push_back((float)(v.p.x * U)); out.v.push_back((float)(v.p.y * U)); out.v.push_back((float)(v.p.z * U));
         csg::P3 n = csg::unit(v.n);
-        m.normals[k * 3] = (float)n.x; m.normals[k * 3 + 1] = (float)n.y; m.normals[k * 3 + 2] = (float)n.z;
-        m.texcoords[k * 2] = 0; m.texcoords[k * 2 + 1] = 0; k++;
+        out.n.push_back((float)n.x); out.n.push_back((float)n.y); out.n.push_back((float)n.z);
     };
     for (auto& q : solid)
         for (size_t i = 1; i + 1 < q.v.size(); i++) { put(q.v[0]); put(q.v[i]); put(q.v[i + 1]); }
+    return out;
+}
+Mesh uploadTris(const CarvedTris& t) {
+    Mesh m{};
+    m.vertexCount = (int)(t.v.size() / 3); m.triangleCount = m.vertexCount / 3;
+    m.vertices = (float*)MemAlloc(std::max(1, m.vertexCount) * 3 * sizeof(float));
+    m.normals = (float*)MemAlloc(std::max(1, m.vertexCount) * 3 * sizeof(float));
+    m.texcoords = (float*)MemAlloc(std::max(1, m.vertexCount) * 2 * sizeof(float));
+    if (!t.v.empty()) { std::memcpy(m.vertices, t.v.data(), t.v.size() * sizeof(float)); std::memcpy(m.normals, t.n.data(), t.n.size() * sizeof(float)); }
+    std::memset(m.texcoords, 0, std::max(1, m.vertexCount) * 2 * sizeof(float));
     UploadMesh(&m, false);
     return m;
+}
+Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutters) {
+    std::vector<float> v(base.vertices, base.vertices + base.vertexCount * 3), n(base.normals, base.normals + base.vertexCount * 3);
+    return uploadTris(carveTris(v, n, cutters));
 }
 
 void initGfx() {

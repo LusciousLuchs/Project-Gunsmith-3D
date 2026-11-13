@@ -478,6 +478,17 @@ int main(int argc, char** argv) {
         if (A.showTutorials) tutorialsWindow();
         else if (A.showPause || A.showSettings) pauseMenu();
         if (fireArg && frame < 30) A.fireBtnHeld = true;
+        if (std::getenv("GUNSMITH_CUTNUDGE") && A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size() && frame >= 10 && frame < 14) {
+            BodyDef& b = A.design.bodies[A.sel.idx];   // (tests) cuts added, then one edited as dragging its size would
+            if (b.carves.empty()) {
+                V2 c = centroidOf(b);
+                for (int k = 0; k < std::atoi(std::getenv("GUNSMITH_CUTNUDGE")); k++) {
+                    CarveDef cv; cv.shape = "circle"; cv.at = {c.x - 40 + (k % 10) * 8, c.y - 4 + (k / 10) * 5}; cv.atZ = b.thick / 2; cv.dx = 0; cv.dy = 0; cv.dz = -1; cv.w = cv.h = 3; cv.depth = 2;
+                    b.carves.push_back(cv);
+                }
+            } else b.carves[0].w += 0.3;
+        }
+
         handleKeys();
         if (!demo.empty() && A.S && demo == "reload") A.S->magRelease = frame >= 5 && frame < 40;
         hintOverlay();

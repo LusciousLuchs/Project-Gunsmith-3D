@@ -45,5 +45,9 @@ struct BodyDef;
 Mesh depthMesh(const BodyDef& d, V2 c);
 Mesh freeMesh(const BodyDef& d, V2 c);   // a free 3D mesh part's solid (BodyDef::mesh), centred on c, y up
 Mesh latheMesh(const std::vector<V2>& st, V2 o, V2 dir, const std::vector<V2>& S, const std::vector<char>& smooth);  // a round (turned) part
+struct CarvedTris { std::vector<float> v, n; };   // triangles (world units, mesh frame) and their normals
+// base minus the cutters, without graphics (safe on a worker thread), and its upload
+CarvedTris carveTris(const std::vector<float>& v, const std::vector<float>& n, const std::vector<std::vector<csg::Poly>>& cutters);
+Mesh uploadTris(const CarvedTris& t);
 Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutters);  // base minus the cutters (mm, mesh frame)
 void initGfx();
