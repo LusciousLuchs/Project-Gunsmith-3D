@@ -115,7 +115,10 @@ double kitSpringScale(const Design& kit, const Cartridge& c) {
     double s = kitScale(kit, c), i0 = kit.breech.cart.impulse(), i1 = c.impulse();
     if (i0 <= 0 || i1 <= 0) return 1;
     double r = i1 / i0;
-    return r * r / std::pow(s, 5);
+    // ...but never weaker than the small parts' springs (k x s): on the way back it has to strip the next round from
+    // the magazine and push the scaled parts home, and those forces grow as s^2 (measured: a blowback slide scaled 1.3x
+    // with the energy rule alone stopped 2 mm short of closing)
+    return std::max(s, r * r / std::pow(s, 5));
 }
 Design fitKitTo(const Design& kitIn, const Cartridge& c, double springK) {
     Design d = kitIn;
