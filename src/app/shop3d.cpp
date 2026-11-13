@@ -130,9 +130,24 @@ std::vector<Spot> people() {
         gmap::V3 f = frontOf(*got);
         out.push_back({got->pos + f * 0.7, std::atan2(-f.z, -f.x) * 180 / 3.14159265358979, (int)(std::hash<std::string>()(emp.name) & 0x7fffffff), emp.name, true});
     }
-    if (ME.map.build.on()) {   // (everyone inside the building)
+    auto inside = [&](gmap::V3& p) {
+        if (!ME.map.build.on()) return;
         const gmap::Zone& z = ME.map.build;
-        for (auto& p : out) { p.at.x = std::clamp(p.at.x, z.x0 + 0.35, z.x1 - 0.35); p.at.z = std::clamp(p.at.z, z.z0 + 0.35, z.z1 - 0.35); }
+        p.x = std::clamp(p.x, z.x0 + 0.35, z.x1 - 0.35); p.z = std::clamp(p.z, z.z0 + 0.35, z.z1 - 0.35);
+    };
+    for (auto& p : out) inside(p.at);   // (everyone inside the building)
+    // nobody stands in anybody else: a spot squeezed onto another (a queue running into a wall) steps aside
+    for (size_t i = 0; i < out.size(); i++) {
+        const gmap::V3 base = out[i].at;
+        for (int tries = 0; tries < 12; tries++) {
+            bool clash = false;
+            for (size_t j = 0; j < i && !clash; j++) clash = std::hypot(out[i].at.x - out[j].at.x, out[i].at.z - out[j].at.z) < 0.55;
+            if (!clash) break;
+            double a = tries * 2.39996;   // (round and out, a golden-angle spiral)
+            double r = 0.6 * (1 + tries / 3);
+            out[i].at = {base.x + std::cos(a) * r, base.y, base.z + std::sin(a) * r};
+            inside(out[i].at);
+        }
     }
     return out;
 }

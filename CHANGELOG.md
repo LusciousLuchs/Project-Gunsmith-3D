@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.12-alpha
+
+- **Fix: customers stood inside each other at the counter.** In a small shop the queue ran into the wall, and everyone squeezed onto the same spot. Anyone pushed onto someone else's spot now steps aside.
+
 ## 0.8.11-alpha
 
 - **Fix: guns loaded one round at a time couldn't be reloaded on the range** (the single-shot rifle, the derringer). R now opens the action, puts a round in each empty chamber, and closes it again.
