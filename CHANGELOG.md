@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.13-alpha
+
+- **Fix: the Knife and "Combine with another part" on a 3D mesh part.** They change a part's outline, which a mesh part ignores, so the result snapped back (a cut gave two whole copies). Now the result becomes an ordinary flat part with the new outline, and a message tells you.
+
 ## 0.8.12-alpha
 
 - **Fix: customers stood inside each other at the counter.** In a small shop the queue ran into the wall, and everyone squeezed onto the same spot. Anyone pushed onto someone else's spot now steps aside.

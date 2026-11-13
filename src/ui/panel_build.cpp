@@ -475,6 +475,7 @@ static bool combineSection(BodyDef& b) {
             else if (op == 1 && std::min(n1, m1) - std::max(n0, m0) < 0.05) toast("They don't overlap in depth: nothing would be left.");
             else if (!combineOutlines(b, o, op, out, &why, &rad)) toast("Can't: " + why + ".");
             else {
+                if (meshShaped(b)) { b.mesh = {}; b.meshRef.clear(); toast("Combined as flat outlines: the 3D mesh is now an ordinary part."); }
                 b.pts = out; b.rad = rad; b.bulge.assign(out.size(), 0.0);
                 if (op == 0) { b.z = (std::min(n0, m0) + std::max(n1, m1)) / 2; b.thick = std::max(n1, m1) - std::min(n0, m0); }
                 if (op == 1) { double z0 = std::max(n0, m0), z1 = std::min(n1, m1); b.z = (z0 + z1) / 2; b.thick = z1 - z0; }

@@ -574,6 +574,10 @@ void buildInput(bool overUI) {
                 int i = targets[ti];
                 auto pcs = splitBody(D.bodies[i], a, w);
                 if (pcs.size() < 2) continue;
+                if (meshShaped(D.bodies[i])) {   // (the knife cuts outlines: a 3D mesh part's pieces are flat parts)
+                    for (auto& pc : pcs) { pc.mesh = {}; pc.meshRef.clear(); }
+                    toast("The 3D mesh part was cut as a flat outline: its pieces are ordinary parts now.");
+                }
                 std::string base = D.bodies[i].name;
                 {   // "Frame 2" cut again gives "Frame 3", not "Frame 2 2"
                     size_t sp = base.find_last_of(' ');
