@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.19-alpha
+
+- **Point shooting.** Hold the middle mouse button on the range to bring the gun up under your eye without using the sights: it comes up about twice as fast as aiming, held a little low and canted in, with no crosshair. In between for accuracy, measured on the blowback pistol: from the hip shots now wander about 1.4 degrees, point shooting about 0.4, through the sights under 0.1. A keyboard key can be set for it in Settings > Controls.
+- **Hip fire is less accurate now.** Before, a shot from the hip went exactly where the gun pointed. Now each shot wanders a couple of degrees, less when crouched or prone.
+
 ## 0.8.18-alpha
 
 - **High ready and low ready.** The poser's three holds are now Aim, High ready (muzzle up, the gun in front of your chest) and Low ready (muzzle down; the old Lowered). The old Hip hold becomes the high ready, with a new starting pose.

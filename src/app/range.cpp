@@ -70,6 +70,8 @@ struct Range {
     gmap::Player pl;
     gmap::Stance want = gmap::Stance::Stand;
     float aim = 0;                       // 0 from the hip .. 1 aiming down the gun
+    float point = 0;                     // point shooting (middle mouse held): the gun brought up under the eye without the
+                                         // sights, quicker than aiming and steadier than the hip; 0 .. 1
     int ready = 0;                       // carried at the ready (X): 0 no, 1 high ready (muzzle up), 2 low ready (down)
     int readyShown = 1;                  // which ready the gun is moving to or from
     float readyU = 0;                    // 0 level .. 1 fully at that ready
@@ -140,8 +142,13 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
     double eyeZ = aimH.eyeZ;
     // aiming: the eye looks over the top of the gun, the way you look over its sights, in line with the bore
     if (R.optic) eyeMM.x = eyeMM.x + (R.optEyeX - eyeMM.x) * a;   // an optic: the eye where its sight line and eye relief put it
-    eyeMM.y = eyeMM.y + (R.sightY - eyeMM.y) * a;
-    eyeZ = eyeZ + (R.boreZ - eyeZ) * a;
+    // point shooting: up toward the line of sight like aiming, but held a little low and to the right, under the eye,
+    // looking over the gun rather than through its sights
+    float pw = (1 - a) * R.point;
+    float a2 = a + pw;
+    eyeMM.y = eyeMM.y + (R.sightY - eyeMM.y) * a2 - pw * 55;
+    eyeZ = eyeZ + (R.boreZ - eyeZ) * a2 - pw * 30;
+    a = a2;   // (the hip's offsets below fade as it comes up)
     eyeZ -= (1 - a) * (R.twoHands ? 75 : 110);
     eyeMM.y -= (1 - a) * (R.twoHands ? 70 : 95);
     eyeMM.x -= (1 - a) * (R.twoHands ? 0 : -60);   // a pistol comes in a little closer
@@ -185,7 +192,7 @@ void placeGun(V3 eye, V3 f, V3 r, V3 u) {
         // (a stocked gun's low ready seen from the eye right over it: shown at 60% of the posed angle, or it leaves the view)
         double shown = !high && stock ? tilt * 0.6 : tilt;
         double g[6] = {u * (high ? -30.0 : stock ? 0.0 : 30.0), u * (high ? -10.0 : stock ? 45.0 : -50.0), u * (high ? (stock ? 90.0 : 40.0) : stock ? 40.0 : -20.0),
-                       -shown * u + R.stanceDip * 25, u * (high ? 0.0 : -12.0), u * (high ? 10.0 : -12.0) + R.stanceDip * 10};
+                       -shown * u + R.stanceDip * 25, u * (high ? 0.0 : -12.0), u * (high ? 10.0 : -12.0) + R.stanceDip * 10 - (1 - R.aim) * R.point * 12};   // (point shooting: canted in a little)
         if (gunMoved(g)) {
             int fi = P.firing.on ? D.bodyIndex(P.firing.part) : -1, bi = stock ? D.bodyIndex(P.butt.part) : -1;
             Vector3 pv = P.firing.on ? W3(P.firing.at, fi >= 0 ? (float)(D.bodies[fi].z * U) : 0.f) : pe;
@@ -235,6 +242,15 @@ void fireBullets(int chamber) {
         }
     }
     V3 side = gmap::norm(gmap::cross(dir, {0, 1, 0})), upv = gmap::cross(side, dir);
+    {   // the shooter: from the hip the gun isn't held steady on anything, so each shot goes off a few degrees either way;
+        // point shooting holds it much closer; through the sights, only the sway (already in where the gun points)
+        double pw = (1 - R.aim) * R.point;
+        double hip = R.twoHands ? 0.035 : 0.045, pt = R.twoHands ? 0.010 : 0.013;   // (about 2 and 0.6 degrees)
+        double err = (1 - R.aim) * ((1 - pw) * hip + pw * pt)
+                   * (R.pl.stance == gmap::Stance::Prone ? 0.7 : R.pl.stance == gmap::Stance::Crouch ? 0.85 : 1.0);
+        dir = gmap::norm(dir + side * rnd((float)err) + upv * rnd((float)err));
+        side = gmap::norm(gmap::cross(dir, {0, 1, 0})); upv = gmap::cross(side, dir);
+    }
     for (int i = 0; i < n; i++) {
         V3 d = gmap::norm(dir + side * rnd(spread) + upv * rnd(spread));
         R.bullets.push_back({m, d * cart.velocity, k, 0, 0, mass, -1, 0, dia});
@@ -677,12 +693,13 @@ void enterRange(const Design& gun, const gmap::Map& map) {
 }
 bool rangeSpawnerOpen() { return inRange() && R.spawnerOpen; }
 // an attachment crate: the gun in your hands on the fitting bench (the designer's view, the gun itself locked)
-static bool gForceAim = false, gForceFree = false;
+static bool gForceAim = false, gForceFree = false, gForcePoint = false;
 void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) a loadout on the gun in hand; aiming held
     if (!loadout.empty() && R.cur >= 0) { loadLoadout(loadout); restartTest(); armGun(); R.roundsIn = -1; }
     gForceAim = aim;
     gForceFree = std::getenv("GUNSMITH_RANGEALT") != nullptr;   // (the attachments' buttons shown)
     if (std::getenv("GUNSMITH_RANGEPRONE")) R.want = gmap::Stance::Prone;   // (lying down)
+    gForcePoint = std::getenv("GUNSMITH_RANGEPOINT") != nullptr;   // (point shooting held)
     if (const char* e = std::getenv("GUNSMITH_RANGEREADY")) { R.ready = std::atoi(e); R.readyShown = std::max(1, R.ready); }   // (1 high ready, 2 low ready)
     if (std::getenv("GUNSMITH_RANGECROUCH")) R.want = gmap::Stance::Crouch;
     if (std::getenv("GUNSMITH_RANGESTAB")) { R.stabT = 0; R.stabHit = false; }
@@ -942,12 +959,18 @@ void rangeUpdate(float dt, bool modal) {
     bool sprinting = in.sprint && in.forward > 0 && std::hypot(R.pl.vel.x, R.pl.vel.z) > 4.0;
     R.readyForced = crawling || sprinting;
     bool firePress = IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && !R.freeMouse;
-    if ((aimWant || firePress) && !R.readyForced) R.ready = 0;
+    bool pointWant = (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) || actDown(Act::PointShoot)) && !R.freeMouse && !aimWant;
+    if (gForcePoint) pointWant = true;
+    if ((aimWant || firePress || pointWant) && !R.readyForced) R.ready = 0;
     int readyWant = R.readyForced ? 2 : R.ready;
     if (readyWant) { if (R.readyU < 0.05f) R.readyShown = readyWant; else if (readyWant != R.readyShown) readyWant = 0; }   // (through level to the other one)
     float rrate = 1.f / (0.22f + (float)R.mass * 0.04f);
     R.readyU = std::clamp(R.readyU + (readyWant ? rrate : -rrate) * dt, 0.f, 1.f);
-    if (readyWant) aimWant = false;
+    if (readyWant) aimWant = pointWant = false;
+    {   // point shooting comes up fast: about twice as quick as the sights
+        float prate = 1.f / (0.06f + (float)R.mass * 0.025f);
+        R.point = std::clamp(R.point + (pointWant ? prate : -prate) * dt, 0.f, 1.f);
+    }
     {   // getting down or up: the gun dips and swings back
         double eh = R.pl.eye;
         double v = R.lastEyeH < 0 || dt <= 0 ? 0 : (eh - R.lastEyeH) / dt;
@@ -970,7 +993,7 @@ void rangeUpdate(float dt, bool modal) {
         if (std::getenv("GUNSMITH_RANGEAUTOFIRE")) {   // (tests) pull the trigger every 0.4 s by itself
             static float at = 0, rl = 0; at += dt; rl += dt;
             trig = std::fmod(at, 0.4f) < 0.1f && !sim::animPlaying(S);   // (hands off the trigger while working the action)
-            R.aim = 1;
+            if (!std::getenv("GUNSMITH_RANGEHIP") && !gForcePoint) R.aim = 1;   // (or from the hip / point shooting, to measure them)
             sim::Body* M = sim::seatedMag(S);
             if (sim::chamberedCount(S) == 0 && (!M || M->rounds == 0) && rl > 1.5f && !sim::animPlaying(S)) { reload(); rl = 0; }
             else if (!S.chambered && M && M->rounds > 0 && !sim::hasCylinder(S) && sim::chamberedCount(S) == 0 && S.t - S.fireT > 0.8 && rl > 0.8f && !sim::animPlaying(S)) { workAction(); rl = 0; }   // (still shut on the case: work it)   // (worked by hand: the bolt, the pump)
@@ -1329,7 +1352,7 @@ void rangeRender() {
     V3 f = gmap::playerForward(R.pl), r = gmap::norm(gmap::cross(f, {0, 1, 0})), u = gmap::cross(r, f);
     V3 up = u * std::cos(roll) + r * std::sin(roll);
     // a little breathing sway when aiming, more for a heavy gun held out in one hand
-    double sway = R.aim * (R.twoHands ? 0.0012 : 0.0025) * (0.6 + R.mass * 0.25) * R.swayK * (R.rested ? 0.15 : 1.0)
+    double sway = std::max(R.aim, (1 - R.aim) * R.point * 0.8f) * (R.twoHands ? 0.0012 : 0.0025) * (0.6 + R.mass * 0.25) * R.swayK * (R.rested ? 0.15 : 1.0)
                  * (R.pl.stance == gmap::Stance::Prone ? 0.4 : R.pl.stance == gmap::Stance::Crouch ? 0.7 : 1.0);   // (kneeling, lying down: steadier)   // (a grip, a stock: steadier; rested on a bipod, hardly at all)
     R.lagYaw += std::sin(R.t * 1.1) * sway * 0.02;
     R.lagPitch += std::sin(R.t * 1.7 + 1) * sway * 0.015;
@@ -1414,11 +1437,12 @@ void rangeHud() {
         std::string st = R.pl.stance == gmap::Stance::Prone ? "Prone" : R.pl.stance == gmap::Stance::Crouch ? "Crouching" : "";
         const char* rd = R.readyU > 0.5f ? (R.readyShown == 1 ? "High ready" : "Low ready") : nullptr;
         if (rd) st += (st.empty() ? "" : "   ") + std::string(rd);
+        else if (R.point > 0.5f && R.aim < 0.5f) st += (st.empty() ? "" : "   ") + std::string("Point shooting");
         if (!st.empty() && R.cur >= 0) viewText(st.c_str(), 24, H - 70, 14, Color{220, 224, 230, 200});
     }
     if (R.rested) viewText("Rested on its bipod", cx - viewTextWidth("Rested on its bipod", 13) / 2, cy + H * 0.3f, 13, Color{170, 230, 180, 220});
     if (!A.fitItems.empty() && R.cur >= 0 && !R.freeMouse && CFG.hints) viewText("Hold Alt: your attachments", W - viewTextWidth("Hold Alt: your attachments", 12) - 24, 110, 12, Color{210, 214, 220, 170});
-    if (R.aim < 0.5f) { DrawCircleV({cx, cy}, 2.5f, Color{255, 255, 255, 200}); DrawCircleLinesV({cx, cy}, 2.5f, Color{0, 0, 0, 120}); }
+    if (R.aim < 0.5f && R.point < 0.5f) { DrawCircleV({cx, cy}, 2.5f, Color{255, 255, 255, 200}); DrawCircleLinesV({cx, cy}, 2.5f, Color{0, 0, 0, 120}); }
     {   // your health; a red edge when you're hurt; and dying
         if (R.hurtT > 0) {
             unsigned char al = (unsigned char)std::min(160.f, R.hurtT * 420);
