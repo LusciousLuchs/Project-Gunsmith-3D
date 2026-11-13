@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.25-alpha
+
+- **Fix: some guns' cases stayed stuck to the gun.** Guns using simplified feeding (like the long-recoil example) threw their cases along with the gun instead of into the world. Now every gun's cases land on the floor.
+- **Spent cases: calmer and longer-lasting.** A case now makes one small hop when it lands, then lies still for five minutes (it used to bounce around and vanish after two). No gun throws them more than a few metres any more: the tilting-barrel pistol was sending them nearly 8 m sideways.
+
 ## 0.8.24-alpha
 
 - **Moving targets.** The practice range has two paper targets sliding across on rails (at 11 m and 20 m, one faster than the other). Your holes ride along with the paper and score rings like the others.

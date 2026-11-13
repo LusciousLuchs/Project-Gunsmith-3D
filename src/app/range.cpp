@@ -1134,6 +1134,22 @@ void rangeUpdate(float dt, bool modal) {
                 if (!any && br.hasMuzzle) fireBullets(0);
             }
             if (e.kind == sim::Ev::Eject || e.kind == sim::Ev::EjectLive || e.kind == sim::Ev::Chambered) actionEventSound(S, e.kind);
+            if (e.kind == sim::Ev::Eject && !S.physicalFeed && br.hasFace && R.placed) {   // simplified feeding: no case part to hand off, so throw one
+                V2 fc = curMM(br.breech, br.face);
+                int ci = A.design.bodyIndex(br.chamber);
+                float zc = ci >= 0 ? bodyZ(ci) : 0;
+                const Cartridge& c = br.cart;
+                Range::Case k;
+                k.p = gunToMap({fc.x - c.caseLen * 0.5, fc.y - c.headDia()}, zc);
+                V3 up = gunToMap({fc.x, fc.y - 100}, zc) - gunToMap(fc, zc), rt = gunToMap(fc, zc + 100 * U) - gunToMap(fc, zc);
+                k.v = gmap::norm(rt) * (3.0 + rnd(0.8f)) + gmap::norm(up) * (1.6 + rnd(0.5f)) + R.pl.vel;
+                k.axis = gmap::norm(gunToMap({fc.x + 10, fc.y}, zc) - gunToMap(fc, zc));
+                k.spinAx = gmap::norm(gmap::cross(k.axis, {0, 1, 0}));
+                k.spin = 30 + rnd(15.f);
+                k.len = c.caseLen / 1000; k.dia = c.headDia() / 1000;
+                k.col = c.kind == "shotshell" ? GetColor(c.hullColor) : Color{214, 170, 76, 255};
+                if (c.kind != "caseless") R.cases.push_back(k);
+            }
             if (e.kind == sim::Ev::Click && SFX.ok && A.sound) PlaySound(SFX.click);
             if (e.kind == sim::Ev::Index && SFX.ok && A.sound) { SetSoundPitch(SFX.click, 1.7f); PlaySound(SFX.click); SetSoundPitch(SFX.click, 1.f); }   // (a cylinder turning)
             if (e.kind == sim::Ev::Malfunction && S.malf != sim::Malf::None && SFX.ok && A.sound) PlaySound(SFX.click);
@@ -1213,6 +1229,7 @@ static void handOffCases(sim::Sim& S) {
     double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
     for (auto& b : D.bodies) if (!b.magazine) for (auto& q : b.pts) { x0 = std::min(x0, q.x); x1 = std::max(x1, q.x); y0 = std::min(y0, q.y); y1 = std::max(y1, q.y); }
     const Cartridge& c = D.breech.cart;
+    if (std::getenv("GUNSMITH_CASEDBG")) { static int fr = 0; if (++fr % 60 == 0) for (auto& b : S.bodies) if (b.isCase && !b.gone) std::printf("simcase rs %d idle %.1f at %.0f %.0f %.0f box %.0f..%.0f %.0f..%.0f\n", (int)b.rs, b.idle, b.x * 1000, b.y * 1000, b.z * 1000, x0, x1, y0, y1); }
     for (auto& b : S.bodies) {
         if (b.gone || !b.isCase || b.rs != sim::RS::Loose || b.idle > 50) continue;
         double mx = b.x * 1000, my = b.y * 1000, mz = b.z * 1000;
@@ -1224,7 +1241,11 @@ static void handOffCases(sim::Sim& S) {
         V3 q = gunToMap({mx + b.vx * 1000 * h, my + b.vy * 1000 * h}, (float)((mz + b.vz * 1000 * h) * U));
         V3 ax = gunToMap({mx + std::cos(b.a) * 10, my + std::sin(b.a) * 10}, zd) - p;
         Range::Case k;
-        k.p = p; k.v = (q - p) * (1 / h) + R.pl.vel;
+        k.p = p;
+        V3 thrown = (q - p) * (1 / h);
+        double ts = gmap::len(thrown);
+        if (ts > 4.5) thrown = thrown * (4.5 / ts);   // (a real gun throws its cases a couple of metres, not across the range)
+        k.v = thrown + R.pl.vel;
         k.v = k.v * (1 + rnd(0.18f)) + V3{rnd(0.35f), rnd(0.25f), rnd(0.35f)};   // (no two leave quite alike)
         k.axis = gmap::norm(ax);
         k.spinAx = gmap::norm(gmap::cross(k.axis, {0, 1, 0}));
@@ -1234,7 +1255,7 @@ static void handOffCases(sim::Sim& S) {
         R.cases.push_back(k);
         b.idle = 100;   // (the gun's copy goes: tidy retires it)
     }
-    while (R.cases.size() > 150) R.cases.erase(R.cases.begin());
+    while (R.cases.size() > 400) R.cases.erase(R.cases.begin());
 }
 static void stepCases(float dt) {
     if (std::getenv("GUNSMITH_CASEDBG")) { static int fr = 0; if (++fr % 60 == 0) { std::printf("cases %zu:", R.cases.size()); for (auto& k : R.cases) std::printf(" (%.2f %.2f %.2f %s b%d)", k.p.x, k.p.y, k.p.z, k.rest ? "rest" : "fly", k.bounces); std::printf("  me %.2f %.2f %.2f\n", R.pl.feet.x, R.pl.feet.y, R.pl.feet.z); } }
@@ -1253,7 +1274,7 @@ static void stepCases(float dt) {
                 k.v = vt * 0.55 - h.n * (vn * 0.3);
                 k.spin *= 0.6;
                 k.bounces++;
-                if (h.n.y > 0.7 && gmap::len(k.v) < 0.35) {   // settled on a floor: lies on its side
+                if (h.n.y > 0.7 && (k.bounces >= 2 || gmap::len(k.v) < 1.0)) {   // one small hop, then it lies on its side: no more physics
                     k.rest = true;
                     k.axis = gmap::norm(V3{k.axis.x, 0, k.axis.z});
                     if (gmap::len(k.axis) < 0.5) k.axis = {1, 0, 0};
@@ -1270,7 +1291,7 @@ static void stepCases(float dt) {
         k.axis = gmap::norm(V3{nx.x, nx.y, nx.z});
         if (k.p.y < -200) k.life = 1e9;
     }
-    R.cases.erase(std::remove_if(R.cases.begin(), R.cases.end(), [](const Range::Case& k) { return k.life > 120; }), R.cases.end());
+    R.cases.erase(std::remove_if(R.cases.begin(), R.cases.end(), [](const Range::Case& k) { return k.life > 300; }), R.cases.end());   // (five minutes)
 }
 static void drawCases() {
     for (auto& k : R.cases) {
