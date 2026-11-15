@@ -531,6 +531,38 @@ static void inspectPart(BodyDef& b) {
     }
     if (section("Part", true)) {
         pCheck("Fixed", b.fixed, "Fixed parts are the frame: they don't move.");
+        if (!b.magazine) {   // a bolt: a checkbox, and only then its settings
+            bool was = b.bolt;
+            if (pCheck("Bolt", b.bolt, "Mark this part as a bolt: the part whose face holds the cartridge and closes the breech.")) {
+                editedAny = true;
+                if (b.bolt && !was && D.breech.on) D.breech.breech = b.id;   // (it closes the breech now)
+            }
+            if (b.bolt) {
+                auto& br = D.breech;
+                int kind = b.fixed ? 0 : br.openBolt && br.breech == b.id ? 2 : 1;
+                prop("Kind", "Fixed: a standing breech face that never moves (a revolver's frame, a break-open's standing breech).\n"
+                             "Closed bolt: it sits closed on a round and fires when the trigger lets the hammer or striker go.\n"
+                             "Open bolt: it's held back, open; the trigger lets it fly forward and it fires as it closes.");
+                if (ImGui::Combo("##boltkind", &kind, "Fixed (standing breech face)\0Closed bolt\0Open bolt\0")) {
+                    b.fixed = kind == 0;
+                    if (kind == 0) b.rollOn = false;
+                    if (br.breech == b.id || br.breech.empty()) { br.breech = b.id; br.openBolt = kind == 2; }
+                    editedAny = true;
+                }
+                if (kind == 2 && br.breech != b.id) muted("Open bolt applies to the part that closes the breech: pick this part as the Breech in the Firing panel.");
+                if (kind != 0) {
+                    if (pCheck("Rotates", b.rollOn, "Turns about the bore to lock and unlock (a turn bolt, a rotating bolt).")) {
+                        if (b.rollOn && b.rollMax - b.rollMin < 1) { b.rollMin = 0; b.rollMax = 90; }
+                        editedAny = true;
+                    }
+                    if (b.rollOn) {
+                        double deg = b.rollMax - b.rollMin;
+                        if (pNum("Degrees of rotation", deg, 5, "%.0f\xc2\xb0", "How far it turns from locked to open.")) { b.rollMax = b.rollMin + std::clamp(deg, 1.0, 360.0); editedAny = true; }
+                        pNumU("Handle length", b.handle, 1, Q::Length, -1, "Draws a bolt handle you can grab and drag on the bench. 0 for none.");
+                    }
+                }
+            }
+        }
         tutAnchor("part:fixed");
         pCheck("See-through", b.ghost, "Drawn as a ghost while X-ray is on (the eye button, or X), so you can see what's inside it.\nOnly parts you tick (and magazines, so their rounds show) are see-through.");
         bool solid = b.layer != "none";

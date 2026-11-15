@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.29-alpha
+
+- **Bolt checkbox.** Every part now has a *Bolt* box under *Fixed*. Tick it and the part becomes your gun's bolt (it closes the breech), and its bolt settings appear right there:
+  - **Kind:** Fixed (a standing breech face that never moves), Closed bolt, or Open bolt.
+  - **Rotates:** turns about the bore to lock, with how many **degrees** it turns and its handle length.
+  - These are the same settings as before, gathered in one place.
+
 ## 0.8.28-alpha
 
 - **Cheats** (Settings > Cheats). Not realistic, just fun, and they work everywhere: test bench, range, reliability tests and career.

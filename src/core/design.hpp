@@ -169,6 +169,7 @@ struct BodyDef {
     double tiltX = 0, tiltY = 0;         // degrees: leaned out of the side view about the part's middle (X: about the
                                          // gun's length, + top toward you; Y: about the upright, + front toward you)
     double smooth = 0;                   // 0..1: rounds the front and back edges (grips, dehorned slides). Looks only.
+    bool bolt = false;                   // marked as a bolt (the panel's Bolt section): it closes the breech
     bool rollOn = false;                 // rotates about the bore (rotating bolt)
     double rollMin = 0, rollMax = 90;    // degrees
     double handle = 0;                   // bolt handle length, mm

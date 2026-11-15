@@ -991,6 +991,7 @@ std::string designToJson(const Design& d, bool pretty) {
         json jb = {{"id", b.id}, {"name", b.name}, {"fixed", b.fixed}, {"layer", b.layer},
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
+        if (b.bolt) jb["bolt"] = true;
         if (!b.weld.empty()) jb["weld"] = b.weld;
         if (depthShaped(b)) {
             json a = json::array();
@@ -1266,6 +1267,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
+        b.bolt = opt<bool>(jb, "bolt", false);
         b.weld = opt<std::string>(jb, "weld", "");
         b.mirror = opt<std::string>(jb, "mirror", "");
         b.mirrorKind = opt<std::string>(jb, "mirrorKind", "depth");

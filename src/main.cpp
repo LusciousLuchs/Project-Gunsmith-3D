@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
     bool direct = !menuArg && (!presetArg.empty() || !fittingArg.empty() || testArg || sideArg || fireArg || !demo.empty() || designerArg || !selectArg.empty() || relArg > 0 || pauseArg);
     if (direct) enterWorkshop(false);
     if (sideArg) sideView();
-    if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
+    if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) { A.sel = {1, i, -1}; if (std::getenv("GUNSMITH_MARKBOLT")) A.design.bodies[i].bolt = true; } }   // (screenshots) marked as a bolt
     if (const char* c = std::getenv("GUNSMITH_PARTRING")) { int ax = 0; double dg = 0; A.rotateMode = true; if (std::sscanf(c, "%d,%lf", &ax, &dg) == 2) partRingTest(ax, dg); }   // (tests) the selected part's rings
     if (carveTool) A.tool = Tool::Carve;
     if (meshDemo && A.sel.kind != 1) {   // a plain block beside the gun, to show the tool on
