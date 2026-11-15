@@ -95,6 +95,12 @@ is up to them, and the game's own examples stay original.
 - **Stage 3: the storefront.** Walk-in customers at your counter; a background check on each: 99% clean, 1% something wrong: refuse and call the police. Selling anyway: a fine and some reputation (the owner: no harsher consequence, it's a cozy game).
 - **Stage 4: bigger business.** Reputation tiers; police and military volume contracts; range demonstrations for big contracts (a course of fire for the customer) on top of the bench test.
 
+## To clarify with the owner (0.8.28)
+
+- [ ] **Graphical fidelity**: the game doesn't look good enough yet. To pin down: what bothers most (lighting and shadows, textures, models, the gun itself, the characters), and what look to aim for.
+- [ ] **A possible port to the "Foundry" engine** (C++, Vulkan). To pin down: which engine this is (an existing one, or one to be built for OAB Foundry), and whether the aim is better looks or something else. A port means rewriting the rendering, editor drawing and panels; the physics, designs, career and maps (`src/core`) carry over as they are. A cheaper step first: better graphics on the current renderer (shadows, better lighting, materials), or ANGLE for a Vulkan backend under it.
+- [ ] **Day and night cycle on maps**: the sun moving through the day, the sky and daylight changing with it, map lights mattering at night. To pin down: how fast a day passes, whether each map sets its time or it runs, and whether career days follow it.
+
 ## Next
 
 - **Firing range**: first person, walking the range with your gun, using its poses; weighty handling (inertia, sway, time to aim), holstering, recoil from the bench, live-fire jams from the measured jam rate.
