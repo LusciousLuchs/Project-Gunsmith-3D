@@ -95,11 +95,11 @@ is up to them, and the game's own examples stay original.
 - **Stage 3: the storefront.** Walk-in customers at your counter; a background check on each: 99% clean, 1% something wrong: refuse and call the police. Selling anyway: a fine and some reputation (the owner: no harsher consequence, it's a cozy game).
 - **Stage 4: bigger business.** Reputation tiers; police and military volume contracts; range demonstrations for big contracts (a course of fire for the customer) on top of the bench test.
 
-## To clarify with the owner (0.8.28)
+## Graphics, engine and time of day (the owner's answers, 0.8.28)
 
-- [ ] **Graphical fidelity**: the game doesn't look good enough yet. To pin down: what bothers most (lighting and shadows, textures, models, the gun itself, the characters), and what look to aim for.
-- [ ] **A possible port to the "Foundry" engine** (C++, Vulkan). To pin down: which engine this is (an existing one, or one to be built for OAB Foundry), and whether the aim is better looks or something else. A port means rewriting the rendering, editor drawing and panels; the physics, designs, career and maps (`src/core`) carry over as they are. A cheaper step first: better graphics on the current renderer (shadows, better lighting, materials), or ANGLE for a Vulkan backend under it.
-- [ ] **Day and night cycle on maps**: the sun moving through the day, the sky and daylight changing with it, map lights mattering at night. To pin down: how fast a day passes, whether each map sets its time or it runs, and whether career days follow it.
+- [ ] **Better graphics.** The look to aim for: Stormworks' vibe (clean low-poly shapes, strong sun and shadows, a lit sky, fog, night lights that matter). Missing today: shadows (lights shine through walls), soft ambient shading in corners, a sky that changes with the time.
+- [ ] **Port to the Foundry Engine** (the owner's engine: LusciousLuchs/Foundry-Engine, C++20, Vulkan first, OpenGL fallback, Windows, Linux through Wine). Goal: better graphics and Vulkan. Its plan already includes a raylib-style compat layer so the game ports in steps. As of its first commit it has: a Win32 window and input with raylib's key codes, a Vulkan 1.3 device and swapchain drawing a triangle, and raylib's maths. Still to build before the game can run on it: meshes, textures and shaders through the RHI, the raylib drawing calls the game uses (DrawMesh, lines, spheres, 2D shapes, text), the lighting and shadows, and a Dear ImGui backend. The game's core (physics, designs, career, maps) moves across unchanged.
+- [ ] **Day and night on maps.** Each map chooses: a fixed time of day (for its mood) or a real cycle. Career: the clock runs through the business day and stops at 12 when the day is over.
 
 ## Next
 
