@@ -6,6 +6,7 @@
 // swings more slowly, and one held in one hand kicks more than one in the shoulder.
 #include "app/range.hpp"
 #include "app/doors.hpp"
+#include "app/furnish.hpp"
 #include "core/penetrate.hpp"
 #include "app/fitbench.hpp"
 #include "app/view.hpp"
@@ -48,7 +49,7 @@ struct Impact { V3 p, n; bool steel = false; double r = 0.005; int tgt = -1; }; 
 struct Target { V3 c, n; double size = 0.6; V3 base; double travel = 0, speed = 0, phase = 0; };   // travel > 0: it slides side to side
 
 struct Carried { Design d; std::unique_ptr<sim::Sim> S; std::vector<fit::Item> fit; int reserve = -1; };   // (fit: its attachments)   // a gun you carry (the one in your hands lives in A.design / A.S)
-struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; std::vector<fit::Item> fit; int reserve = -1; };   // one lying on the ground
+struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0; std::vector<fit::Item> fit; int reserve = -1; bool fromMap = false; };   // fromMap: placed in the level (on a shelf, a table): put back when it restarts   // one lying on the ground
 
 struct Range {
     gmap::Map map;
@@ -75,6 +76,13 @@ struct Range {
                                          // sights, quicker than aiming and steadier than the hip; 0 .. 1
     struct Case { V3 p, v, axis, spinAx; double spin = 0, life = 0, len = 0.02, dia = 0.01; Color col; bool rest = false; int bounces = 0; };
     std::vector<Case> cases;             // spent cases out in the world: flying, bouncing, then lying on the floor
+    // things to pick up (the map's props, and those on its furniture): upright boxes that fall, bounce, slide and
+    // stack; carried in front of you (F), put down or thrown (click); shots and your feet knock them about
+    struct Prop { gmap::Entity e; V3 v, lo, hi; double spin = 0, mass = 1, check = 0; bool rest = true; };
+    std::vector<Prop> props;
+    int carry = -1;                      // the prop in your hands (-1: none)
+    bool carryWasHolstered = false;      // (the gun goes away while your hands are full, and comes back after)
+    double carryYaw = 0;
     float wallU = 0;                     // up against a wall: the gun pulled back and its muzzle tipped up (0 .. 1)
     double wallBack = 0;                 // how far it's pulled back (mm)
     double gunReach = 0.6;               // how far the gun reaches in front of the eye (m), from its frontmost point
@@ -345,6 +353,204 @@ static void bulletThroughMovers(const Bullet& b, V3 step) {
         }
     }
 }
+// ---------------------------------------------------------------- things to pick up
+// A prop is moved as an upright box (its blocks' bounds turned by its yaw): gravity, the map's brushes, a bounce that
+// loses most of the speed into the surface, then it rests. It stays upright (no tipping over yet).
+static void propBox(const Range::Prop& p, V3& mn, V3& mx) {
+    double y = p.e.yaw * DEG2RAD, c = std::cos(y), sn = std::sin(y);
+    mn = {1e30, p.e.pos.y + p.lo.y, 1e30}; mx = {-1e30, p.e.pos.y + p.hi.y, -1e30};
+    for (double x : {p.lo.x, p.hi.x}) for (double z : {p.lo.z, p.hi.z}) {
+        double wx = p.e.pos.x + x * c - z * sn, wz = p.e.pos.z + x * sn + z * c;
+        mn.x = std::min(mn.x, wx); mx.x = std::max(mx.x, wx); mn.z = std::min(mn.z, wz); mx.z = std::max(mx.z, wz);
+    }
+}
+// where a ray (unit dir) first enters a box, or -1
+static double rayAabb(V3 o, V3 d, V3 mn, V3 mx) {
+    double t0 = 0, t1 = 1e30;
+    const double O[3] = {o.x, o.y, o.z}, D[3] = {d.x, d.y, d.z}, A0[3] = {mn.x, mn.y, mn.z}, A1[3] = {mx.x, mx.y, mx.z};
+    for (int i = 0; i < 3; i++) {
+        if (std::fabs(D[i]) < 1e-12) { if (O[i] < A0[i] || O[i] > A1[i]) return -1; continue; }
+        double a = (A0[i] - O[i]) / D[i], b = (A1[i] - O[i]) / D[i];
+        if (a > b) std::swap(a, b);
+        t0 = std::max(t0, a); t1 = std::min(t1, b);
+        if (t0 > t1) return -1;
+    }
+    return t0;
+}
+static void placeProps() {
+    R.props.clear(); R.carry = -1;
+    R.ground.erase(std::remove_if(R.ground.begin(), R.ground.end(), [](const WorldGun& w) { return w.fromMap; }), R.ground.end());
+    auto add = [&](const gmap::Entity& e) {
+        if (e.type == "prop" && !e.parts.empty()) {
+            Range::Prop p; p.e = e; p.mass = gmap::propMass(e);
+            p.lo = {1e30, 1e30, 1e30}; p.hi = {-1e30, -1e30, -1e30};
+            for (auto& b : e.parts) { V3 a, c; gmap::brushBounds(b, a, c); p.lo = {std::min(p.lo.x, a.x), std::min(p.lo.y, a.y), std::min(p.lo.z, a.z)}; p.hi = {std::max(p.hi.x, c.x), std::max(p.hi.y, c.y), std::max(p.hi.z, c.z)}; }
+            p.check = 0.2 * R.props.size() / 50.0;   // (spread out: not every prop looks at its support the same frame)
+            R.props.push_back(p);
+        } else if (e.type == "gun_item") {
+            const Design* d = gunItemDesign(e.ref);
+            if (!d) return;
+            WorldGun w; w.d = *d; w.pos = e.pos; w.yaw = e.yaw; w.fromMap = true;
+            R.ground.push_back(std::move(w));
+        }
+    };
+    for (auto& e : R.map.ents) {
+        add(e);
+        if (e.type == "furniture") for (auto& k : gmap::placedItems(e)) add(k);
+    }
+}
+// a bullet's step through a prop: it's knocked about (some of the bullet's push), the bullet goes on slower
+static void bulletThroughProps(Bullet& b, V3 step) {
+    double L = gmap::len(step);
+    if (L < 1e-9) return;
+    V3 d = step * (1 / L);
+    for (int i = 0; i < (int)R.props.size(); i++) {
+        if (i == R.carry) continue;
+        auto& p = R.props[i];
+        V3 mn, mx; propBox(p, mn, mx);
+        if (b.p.x + std::min(0.0, step.x) > mx.x + 0.01 || b.p.x + std::max(0.0, step.x) < mn.x - 0.01) continue;   // (quickly out of the way)
+        double t = rayAabb(b.p, d, mn, mx);
+        if (std::getenv("GUNSMITH_PROPDBG") && t >= 0) std::printf("bullet %.2f %.2f %.2f step %.2f %.2f %.2f  prop0 %.2f..%.2f %.2f..%.2f %.2f..%.2f t %.3f\n", b.p.x, b.p.y, b.p.z, step.x, step.y, step.z, mn.x, mx.x, mn.y, mx.y, mn.z, mx.z, t);
+        if (t < 0 || t > L) continue;
+        V3 dv = b.v * (b.mass * 0.5 / p.mass);
+        double s = gmap::len(dv);
+        if (s > 15) dv = dv * (15 / s), s = 15;
+        p.v += dv + V3{0, s * 0.25, 0};
+        p.spin += rnd(1.f) * s * 90;
+        p.rest = false;
+        b.v = b.v * (p.mass < 3 ? 0.85 : 0.55);
+        break;
+    }
+}
+static void stepProps(float dt) {
+    if (R.props.empty()) return;
+    {   // (tests) GUNSMITH_RANGECARRY=i picks prop i up at once; GUNSMITH_RANGETHROW=s throws it s seconds in
+        static bool took = false, threw = false;
+        if (const char* e = std::getenv("GUNSMITH_RANGECARRY")) if (!took && R.t > 0.2f) {
+            int i = std::atoi(e);
+            if (i >= 0 && i < (int)R.props.size()) { R.carry = i; R.carryWasHolstered = R.holstered; R.holstered = true; R.carryYaw = 0; R.props[i].rest = false; }
+            took = true;
+        }
+        if (const char* e = std::getenv("GUNSMITH_RANGETHROW")) if (!threw && R.carry >= 0 && R.t > std::atof(e)) {
+            auto& p = R.props[R.carry];
+            p.v = gmap::playerForward(R.pl) * std::clamp(9 / std::sqrt(p.mass), 1.5, 14.0) + V3{0, 1.2, 0};
+            p.rest = false; R.carry = -1; R.holstered = R.carryWasHolstered; threw = true;
+        }
+        if (std::getenv("GUNSMITH_PROPDBG")) {
+            static int fr = 0;
+            if (++fr % 30 == 0) { int moving = 0; for (auto& p : R.props) moving += !p.rest; std::printf("t %.2f props %zu moving %d carry %d", R.t, R.props.size(), moving, R.carry);
+                for (auto& p : R.props) if (!p.rest || &p - &R.props[0] == R.carry) std::printf("  [%s %.2f %.2f %.2f]", p.e.ref.c_str(), p.e.pos.x, p.e.pos.y, p.e.pos.z); std::printf("\n"); }
+        }
+    }
+    V3 eye = gmap::playerEye(R.pl, R.map), f = gmap::playerForward(R.pl);
+    for (int i = 0; i < (int)R.props.size(); i++) {
+        auto& p = R.props[i];
+        V3 mn, mx; propBox(p, mn, mx);
+        V3 half = (mx - mn) * 0.5, c = (mn + mx) * 0.5, sh = half * 0.98;
+        if (i == R.carry) {   // in front of you, a little low, following the view (a heavy one lags)
+            V3 want = eye + f * (0.5 + std::max(half.x, half.z)) + V3{0, -0.18 - 0.7 * half.y, 0};
+            double k = 16 / (1 + p.mass * 0.06);
+            V3 to = c + (want - c) * std::min(1.0, k * dt);
+            gmap::Hit h = gmap::sweepBox(R.map, c, to, sh);   // (not through walls)
+            V3 mv = (to - c) * (h.startSolid ? 1.0 : std::max(0.0, h.t - 0.01));
+            p.e.pos += mv;
+            p.v = mv * (1 / std::max(1e-4, (double)dt));
+            p.e.yaw = R.pl.yaw * RAD2DEG + R.carryYaw;
+            continue;
+        }
+        if (p.rest) {   // lying still: once in a while, is anything still under it?
+            if ((p.check -= dt) > 0) continue;
+            p.check = 0.3;
+            gmap::Hit h = gmap::sweepBox(R.map, c, c - V3{0, 0.03, 0}, sh);
+            if (h.t < 1 || h.startSolid) continue;
+            bool onProp = false;
+            for (int j = 0; j < (int)R.props.size() && !onProp; j++) {
+                if (j == i || j == R.carry) continue;
+                V3 a, b; propBox(R.props[j], a, b);
+                onProp = a.x < mx.x && b.x > mn.x && a.z < mx.z && b.z > mn.z && std::fabs(b.y - mn.y) < 0.03;
+            }
+            if (!onProp) p.rest = false;
+            continue;
+        }
+        if (const char* dbg = std::getenv("GUNSMITH_PROPDBG")) if (dbg[0] == '2') std::printf("  prop %d %s pos %.3f %.3f %.3f v %.2f %.2f %.2f\n", i, p.e.ref.c_str(), p.e.pos.x, p.e.pos.y, p.e.pos.z, p.v.x, p.v.y, p.v.z);
+        V3 pos0 = p.e.pos;
+        p.v.y -= 9.81 * dt;
+        p.e.yaw += p.spin * dt;
+        p.spin *= std::exp(-dt * 0.8);
+        // moved along its way: stopped by a surface, it slides along it with what's left of the step (up to 3 surfaces)
+        V3 step = p.v * dt;
+        bool floor = false;
+        for (int it = 0; it < 3 && gmap::len(step) > 1e-7; it++) {
+            V3 cc = c + (p.e.pos - pos0);
+            gmap::Hit h = gmap::sweepBox(R.map, cc, cc + step, sh);
+            double t = h.t;
+            V3 n = h.n;
+            if (h.startSolid) {   // (already touching something: eased out the shortest way, then on again)
+                bool freed = false;
+                for (double d : {0.001, 0.003, 0.008, 0.02})
+                    for (V3 dir : {V3{0, 1, 0}, V3{1, 0, 0}, V3{-1, 0, 0}, V3{0, 0, 1}, V3{0, 0, -1}})
+                        if (!freed && gmap::boxFree(R.map, cc + dir * d, sh)) { p.e.pos += dir * d; freed = true; }
+                if (!freed) { p.e.pos += step; break; }
+                continue;
+            }
+            if (step.y < 0) for (int j = 0; j < (int)R.props.size(); j++) {   // landing on another prop
+                if (j == i || j == R.carry || !R.props[j].rest) continue;
+                V3 a, b; propBox(R.props[j], a, b);
+                V3 off = p.e.pos - pos0;
+                if (!(a.x < mx.x + off.x && b.x > mn.x + off.x && a.z < mx.z + off.z && b.z > mn.z + off.z)) continue;
+                double bottom = mn.y + off.y;
+                if (bottom >= b.y - 0.005 && bottom + step.y < b.y) {
+                    double tt = (b.y - bottom) / step.y;
+                    if (tt < t) { t = tt; n = {0, 1, 0}; }
+                }
+            }
+            if (t >= 1) { p.e.pos += step; break; }
+            p.e.pos += step * std::max(0.0, t - 0.001 / std::max(1e-6, gmap::len(step)));
+            step = step * (1 - t);
+            double vn = gmap::dot(p.v, n);
+            if (vn < -1.2) {   // a real knock: it bounces (most of the speed into the surface lost)
+                p.v = (p.v - n * vn) * 0.7 - n * (vn * 0.25);
+                p.spin *= 0.6;
+            } else if (vn < 0) p.v = p.v - n * vn;   // resting against it: only along
+            step = step - n * gmap::dot(step, n);
+            if (n.y > 0.7) floor = true;
+        }
+        if (floor) {   // on something: friction slows it, and once nearly still it rests
+            V3 vt{p.v.x, 0, p.v.z};
+            double s = gmap::len(vt), dv = 0.5 * 9.81 * dt;
+            vt = s > dv ? vt * ((s - dv) / s) : V3{0, 0, 0};
+            p.v = {vt.x, p.v.y, vt.z};
+            p.spin *= std::exp(-dt * 6);
+            if (gmap::len(p.v) < 0.08 && std::fabs(p.spin) < 20) { p.rest = true; p.v = {0, 0, 0}; p.spin = 0; p.check = 0.3; }
+        }
+        if (p.e.pos.y < -200) { p.rest = true; p.v = {0, 0, 0}; }
+    }
+    // you, walking into them: a small light one is kicked along, a big one stands in your way
+    if (R.pl.stance == gmap::Stance::Stand || R.pl.stance == gmap::Stance::Crouch) {
+        const double rad = 0.3;
+        for (int i = 0; i < (int)R.props.size(); i++) {
+            if (i == R.carry) continue;
+            auto& p = R.props[i];
+            V3 mn, mx; propBox(p, mn, mx);
+            if (mx.y < R.pl.feet.y + 0.02 || mn.y > R.pl.feet.y + 1.6) continue;
+            double nx = std::clamp(R.pl.feet.x, mn.x, mx.x), nz = std::clamp(R.pl.feet.z, mn.z, mx.z);
+            double dx = R.pl.feet.x - nx, dz = R.pl.feet.z - nz, dd = std::hypot(dx, dz);
+            if (dd >= rad) continue;
+            double tall = mx.y - mn.y;
+            double sp = std::hypot(R.pl.vel.x, R.pl.vel.z);
+            if (tall < 0.35 && p.mass < 6 && mn.y < R.pl.feet.y + 0.3) {   // kicked
+                if (sp > 0.3) { V3 dir = gmap::norm(V3{R.pl.vel.x, 0, R.pl.vel.z}); p.v = dir * (sp * 1.4 / std::sqrt(std::max(0.3, p.mass))) + V3{0, 0.8, 0}; p.spin += sp * 120; p.rest = false; }
+                continue;
+            }
+            if (dd < 1e-6) { dx = R.pl.feet.x - (mn.x + mx.x) / 2; dz = R.pl.feet.z - (mn.z + mx.z) / 2; dd = std::max(1e-6, std::hypot(dx, dz)); }
+            R.pl.feet.x += dx / dd * (rad - dd); R.pl.feet.z += dz / dd * (rad - dd);   // (pushed out round it)
+        }
+    }
+}
+static void drawProps() {
+    for (auto& p : R.props) mapDrawBrushes(p.e.parts, entityMatrix(p.e.pos, p.e.yaw));
+}
+
 void stepBullets(double dt) {
     const int sub = 4;
     double h = dt / sub;
@@ -357,6 +563,7 @@ void stepBullets(double dt) {
             V3 step = (b.v + nv) * (0.5 * h);
             double L = gmap::len(step);
             bulletThroughMovers(b, step);
+            bulletThroughProps(b, step);
             if (L > 1e-9 && b.npc < 0 && !R.actors.empty()) {   // your bullet: an NPC's bone in the way?
                 int ha = -1, hb = -1; double bestS = 2;
                 for (size_t ai = 0; ai < R.actors.size(); ai++) {
@@ -720,6 +927,8 @@ static void restartLevel() {
     R.health = 100; R.dead = false; R.deadT = 0; R.hurtT = 0;
     R.bullets.clear();
     placeNpcs();
+    if (R.carry >= 0) R.holstered = R.carryWasHolstered;
+    placeProps();
     R.lastYaw = R.pl.yaw; R.lastPitch = R.pl.pitch;
 }
 // the closest a bullet's step passes to a bone (segment to segment)
@@ -757,6 +966,7 @@ void enterRange(const Design& gun, const gmap::Map& map) {
     gmap::playerSpawn(R.pl, R.map);
     findTargets();
     placeNpcs();
+    placeProps();
     A.design = Design(); A.S.reset();
     takeGun(gun);
     R.lastYaw = R.pl.yaw; R.lastPitch = R.pl.pitch;
@@ -776,6 +986,7 @@ void rangeShotExtras(const std::string& loadout, bool aim) {   // (screenshots) 
     if (const char* e = std::getenv("GUNSMITH_RANGETURN")) { R.pl.yaw += std::atof(e) * DEG2RAD; R.lastYaw = R.pl.yaw; }   // (screenshots) turned from the start, degrees
     if (const char* e = std::getenv("GUNSMITH_RANGEPITCH")) { R.pl.pitch = std::atof(e) * DEG2RAD; R.lastPitch = R.pl.pitch; }   // (looking up or down, degrees)
     if (const char* e = std::getenv("GUNSMITH_RANGEWALK")) { double fw = std::atof(e); R.pl.feet.x += std::cos(R.pl.yaw) * fw; R.pl.feet.z += std::sin(R.pl.yaw) * fw; }   // (and walked forward, m)
+    if (const char* e = std::getenv("GUNSMITH_RANGEAT")) { double x = 0, z = 0; if (std::sscanf(e, "%lf,%lf", &x, &z) == 2) { R.pl.feet.x = x; R.pl.feet.z = z; } }   // (stood here, m)
     if (const char* e = std::getenv("GUNSMITH_RANGEHOLSTER")) { R.holstered = true; R.holsterU = (float)std::atof(e); }   // (put away; how far along)
     if (std::getenv("GUNSMITH_RANGESTAB")) { R.stabT = 0; R.stabHit = false; }
 }
@@ -970,15 +1181,63 @@ void rangeUpdate(float dt, bool modal) {
             double l = gmap::len(d);
             if (l < 1.6 && gmap::dot(gmap::norm(d), V3{fw.x, 0, fw.z}) > 0.2 && l < best) { best = l; ground = (int)i; spawner = -1; }
         }
+        // a prop in front of you (looked at, within reach): picked up with F
+        int lookProp = -1;
+        if (R.carry < 0 && !R.dead) {
+            V3 eye = gmap::playerEye(R.pl, R.map), d = gmap::playerForward(R.pl);
+            gmap::Hit wh = gmap::rayMap(R.map, eye, d, 2.2);
+            double bt = wh.brush >= 0 ? wh.t : 2.2;
+            for (int i = 0; i < (int)R.props.size(); i++) {
+                V3 mn, mx; propBox(R.props[i], mn, mx);
+                double t = rayAabb(eye, d, mn - V3{0.03, 0.03, 0.03}, mx + V3{0.03, 0.03, 0.03});
+                if (t >= 0 && t < bt) { bt = t; lookProp = i; }
+            }
+            if (lookProp >= 0) {   // (the gun you're looking at on a shelf wins over the box under it only if it's nearer)
+                ground = -1;
+                for (size_t i = 0; i < R.ground.size(); i++) {
+                    double L = gunItemLength(R.ground[i].d) / 2 + 0.05;
+                    V3 g = R.ground[i].pos + V3{0, 0.03, 0};
+                    double t = rayAabb(eye, d, g - V3{L, 0.06, L}, g + V3{L, 0.06, L});
+                    if (t >= 0 && t < bt) { lookProp = -1; ground = (int)i; break; }
+                }
+            }
+        }
+        if (lookProp >= 0) { ammo = spawner = crate = -1; }
         if (ground >= 0) ammo = -1;
-        if (ground >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": pick up the " + R.ground[ground].d.name;
+        if (R.carry >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": put down the " + R.props[R.carry].e.ref + "    Click: throw it";
+        else if (lookProp >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (gmap::propMass(R.props[lookProp].e) > 40 ? ": the " + R.props[lookProp].e.ref + " (too heavy to lift)" : ": pick up the " + R.props[lookProp].e.ref);
+        else if (ground >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": pick up the " + R.ground[ground].d.name;
         else if (ammo >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (R.inv.empty() ? ": ammunition (no gun to fill)" : R.reserve >= R.reserveMax ? ": ammunition (you're full)" : ": take ammunition");
         else if (spawner >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + ": take a gun";
         else if (crate >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (R.cur >= 0 ? ": fit attachments to the " + A.design.name : ": attachments (hold a gun first)");
-        int door = (ground < 0 && ammo < 0 && spawner < 0 && crate < 0) ? doors::facing(R.map, gmap::playerEye(R.pl, R.map), gmap::playerForward(R.pl)) : -1;
+        bool propUse = false;
+        if (R.carry >= 0 && !R.freeMouse && (actPressed(Act::Use) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT))) {   // put it down, or throw it
+            auto& p = R.props[R.carry];
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+                double sp = std::clamp(9 / std::sqrt(p.mass), 1.5, 14.0);
+                p.v = gmap::playerForward(R.pl) * sp + V3{0, 1.2, 0} + R.pl.vel;
+                p.spin = rnd(1.f) * 200;
+                holdFire = true;   // (the click was a throw, not a shot)
+            } else p.v = R.pl.vel * 0.5;
+            p.rest = false;
+            R.carry = -1;
+            R.holstered = R.carryWasHolstered;
+            propUse = true;
+        } else if (lookProp >= 0 && actPressed(Act::Use)) {
+            if (gmap::propMass(R.props[lookProp].e) <= 40) {
+                R.carry = lookProp;
+                R.carryWasHolstered = R.holstered;
+                R.holstered = true;   // (your hands are full: the gun goes away)
+                R.carryYaw = R.props[lookProp].e.yaw - R.pl.yaw * RAD2DEG;
+                R.props[lookProp].rest = false;
+                playAction(0.3, 1.2);
+            }
+            propUse = true;
+        }
+        int door = (!propUse && ground < 0 && ammo < 0 && spawner < 0 && crate < 0) ? doors::facing(R.map, gmap::playerEye(R.pl, R.map), gmap::playerForward(R.pl)) : -1;
         if (door >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (doors::isOpen(R.map, door) ? ": shut the door" : ": open the door");
         if (door >= 0 && actPressed(Act::Use)) doors::toggle(R.map, door, R.pl.feet);
-        else if (actPressed(Act::Use)) {
+        else if (actPressed(Act::Use) && !propUse) {
             if (ground >= 0) {
                 WorldGun w = std::move(R.ground[ground]);
                 R.ground.erase(R.ground.begin() + ground);
@@ -1030,8 +1289,8 @@ void rangeUpdate(float dt, bool modal) {
     // carrying it at the ready (X: high ready, low ready, back); sprinting or crawling takes it to low ready by itself.
     // Aiming or pulling the trigger brings it back up first.
     if (actPressed(Act::Ready) && !R.dead) R.ready = (R.ready + 1) % 3;
-    if (actPressed(Act::Holster) && !R.dead && R.cur >= 0) R.holstered = !R.holstered;
-    if (R.holstered && (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) && !R.freeMouse) R.holstered = false;   // (a click draws it)
+    if (actPressed(Act::Holster) && !R.dead && R.cur >= 0 && R.carry < 0) R.holstered = !R.holstered;
+    if (R.holstered && R.carry < 0 && (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) && !R.freeMouse) R.holstered = false;   // (a click draws it)
     {   // putting it away or drawing it: about half a second, slower for a heavy gun
         float hrate = 1.f / (0.35f + (float)R.mass * 0.08f);
         R.holsterU = std::clamp(R.holsterU + (R.holstered ? hrate : -hrate) * dt, 0.f, 1.f);
@@ -1215,6 +1474,7 @@ void rangeUpdate(float dt, bool modal) {
     }
     stepBullets(dt);
     stepCases((float)dt);
+    stepProps((float)dt);
     R.lastHitT = std::max(0.f, R.lastHitT - dt);
     A.flash = std::max(0.f, A.flash - dt);
     stepEffects(dt);
@@ -1383,8 +1643,9 @@ static void drawRangeThings() {
     for (auto& e : R.map.ents) if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
     for (auto& e : R.map.ents) if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw);
     for (auto& e : R.map.ents) if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
-    for (auto& g : R.ground)   // a gun case on the floor (the gun itself is drawn once it's in your hands)
-        drawBox(rv(g.pos + V3{0, 0.06, 0}), {0.75f, 0.12f, 0.28f}, Color{58, 52, 44, 255}, MatrixRotateY((float)(-g.yaw * DEG2RAD)));
+    for (size_t i = 0; i < R.ground.size(); i++)   // guns lying on the floor, a shelf, a table
+        drawDesignModel("ground:" + std::to_string(i), R.ground[i].d, gunItemMatrix(R.ground[i].d, R.ground[i].pos, R.ground[i].yaw));
+    drawProps();
     // bullets in flight: a faint streak
     for (auto& b : R.bullets) DrawLine3D(rv(b.p), rv(b.p - b.v * 0.004), Color{255, 236, 190, 120});
 }
@@ -1643,7 +1904,7 @@ void rangeHud() {
     {   // how you're standing and carrying it
         std::string st = R.pl.stance == gmap::Stance::Prone ? "Prone" : R.pl.stance == gmap::Stance::Crouch ? "Crouching" : "";
         const char* rd = R.readyU > 0.5f ? (R.readyShown == 1 ? "High ready" : "Low ready") : nullptr;
-        if (R.holsterU > 0.5f) rd = R.holstered ? "Holstered (H or click to draw)" : nullptr;
+        if (R.holsterU > 0.5f) rd = R.carry >= 0 ? nullptr : R.holstered ? "Holstered (H or click to draw)" : nullptr;
         if (rd) st += (st.empty() ? "" : "   ") + std::string(rd);
         else if (R.point > 0.5f && R.aim < 0.5f) st += (st.empty() ? "" : "   ") + std::string("Point shooting");
         if (!st.empty() && R.cur >= 0) viewText(st.c_str(), 24, H - 70, 14, Color{220, 224, 230, 200});

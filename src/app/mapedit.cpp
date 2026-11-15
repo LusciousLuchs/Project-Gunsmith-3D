@@ -3,6 +3,7 @@
 #include "app/paths.hpp"
 #include "app/mapedit.hpp"
 #include "app/doors.hpp"
+#include "app/furnish.hpp"
 #include "app/shop3d.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
@@ -125,6 +126,18 @@ static bool rayPlane(V3 o, V3 d, V3 n, double pd, V3& p) {
     return true;
 }
 static bool isSel(int b) { return std::find(ME.sel.begin(), ME.sel.end(), b) != ME.sel.end(); }
+// furniture's blocks are put back into the map after every change (they're its own): the selection is kept
+static void rebake() {
+    std::vector<int> ordOf(ME.map.brushes.size(), -1);
+    int k = 0;
+    for (size_t i = 0; i < ME.map.brushes.size(); i++) if (!ME.map.brushes[i].furn) ordOf[i] = k++;
+    std::vector<int> ns;
+    for (int i : ME.sel) if (i >= 0 && i < (int)ordOf.size() && ordOf[i] >= 0) ns.push_back(ordOf[i]);
+    gmap::bakeFurniture(ME.map);
+    ME.sel = ns;
+    if (ME.sel.size() != 1) ME.face = -1;
+}
+void meRebake() { rebake(); }
 static int startEntity() { for (size_t i = 0; i < ME.map.ents.size(); i++) if (ME.map.ents[i].type == "player_start") return (int)i; return -1; }
 
 // ---------------------------------------------------------------- undo, files
@@ -158,6 +171,7 @@ void meChanged() {
         if (gmap::mapFromJson(ME.undo.back(), m)) { ME.map = m; ME.undo.pop_back(); ME.sel.clear(); ME.ent = -1; ME.face = -1; }
         toast("That's outside your property: build inside its walls.");
     }
+    rebake();
     ME.version++;
     ME.dirty = true;
     if (CFG.autosave != AutosaveEvery::Off) writeAutosave();
@@ -274,6 +288,73 @@ bool mePlaceGroup(const std::string& name) {
     toast("Placed " + name + ". It's selected: drag it where you want it.");
     return true;
 }
+// ---------------------------------------------------------------- furniture
+bool meMakeFurniture(bool prop, const std::string& name) {
+    if (ME.sel.empty()) { toast("Select the blocks it's made of first (Shift-click adds more)."); return false; }
+    V3 mn{1e30, 1e30, 1e30}, mx{-1e30, -1e30, -1e30};
+    std::vector<gmap::Brush> bs;
+    for (int i : ME.sel) {
+        if (ME.map.brushes[i].locked) { toast("A property's own walls can't go into furniture."); return false; }
+        bs.push_back(ME.map.brushes[i]);
+        V3 a, c; gmap::brushBounds(ME.map.brushes[i], a, c);
+        mn = {std::min(mn.x, a.x), std::min(mn.y, a.y), std::min(mn.z, a.z)};
+        mx = {std::max(mx.x, c.x), std::max(mx.y, c.y), std::max(mx.z, c.z)};
+    }
+    meSnapshot();
+    V3 at{(mn.x + mx.x) / 2, mn.y, (mn.z + mx.z) / 2};
+    gmap::Entity e = gmap::makeFurniture(bs, at, prop ? "prop" : "furniture", name.empty() ? (prop ? "Prop" : "Furniture") : name);
+    if (!prop) {   // what stands on it comes with it
+        const double pad = 0.05;
+        for (int i = (int)ME.map.ents.size() - 1; i >= 0; i--) {
+            const auto& k = ME.map.ents[i];
+            if (k.type != "prop" && k.type != "gun_item") continue;
+            if (k.pos.x < mn.x - pad || k.pos.x > mx.x + pad || k.pos.z < mn.z - pad || k.pos.z > mx.z + pad || k.pos.y < mn.y - pad || k.pos.y > mx.y + pad) continue;
+            gmap::Entity loc = k; loc.pos = k.pos - at;
+            e.items.insert(e.items.begin(), loc);
+            ME.map.ents.erase(ME.map.ents.begin() + i);
+        }
+    }
+    std::vector<int> s = ME.sel;
+    std::sort(s.rbegin(), s.rend());
+    for (int i : s) ME.map.brushes.erase(ME.map.brushes.begin() + i);
+    ME.sel.clear(); ME.face = -1;
+    ME.map.ents.push_back(e);
+    ME.ent = (int)ME.map.ents.size() - 1;
+    meChanged();
+    toast(prop ? "Made a prop: it can be picked up on the range." : TextFormat("Made a piece of furniture%s. It moves and turns as one now.", e.items.empty() ? "" : TextFormat(" (with the %d thing%s on it)", (int)e.items.size(), e.items.size() == 1 ? "" : "s")));
+    return true;
+}
+void meBreakApart() {
+    if (ME.ent < 0 || ME.ent >= (int)ME.map.ents.size()) return;
+    gmap::Entity e = ME.map.ents[ME.ent];
+    if (e.type != "furniture" && e.type != "prop") return;
+    meSnapshot();
+    ME.map.ents.erase(ME.map.ents.begin() + ME.ent);
+    ME.ent = -1;
+    ME.sel.clear(); ME.face = -1;
+    gmap::bakeFurniture(ME.map);   // (its blocks out of the map before they go back in as plain ones)
+    int keep = 0;
+    for (auto& b : ME.map.brushes) if (!b.furn) keep++;
+    std::vector<gmap::Brush> plain, furn;
+    for (auto& b : ME.map.brushes) (b.furn ? furn : plain).push_back(b);
+    for (auto& p : e.parts) { plain.push_back(gmap::placedBrush(e, p)); ME.sel.push_back((int)plain.size() - 1); }
+    plain.insert(plain.end(), furn.begin(), furn.end());
+    ME.map.brushes = plain;
+    if (e.type == "furniture") for (auto& k : gmap::placedItems(e)) ME.map.ents.push_back(k);
+    (void)keep;
+    meChanged();
+    toast("Back into blocks: they're selected.");
+}
+bool meSaveFurniture() {
+    if (ME.ent < 0 || ME.ent >= (int)ME.map.ents.size()) return false;
+    const auto& e = ME.map.ents[ME.ent];
+    if (e.type != "furniture" && e.type != "prop") return false;
+    std::string file;
+    if (!saveFurniture(e, file)) { toast("Couldn't save it."); return false; }
+    toast("Saved " + file + " in your Furniture folder: place it again from the " + (e.type == "prop" ? std::string("Prop") : std::string("Furniture")) + " tool, in any map.");
+    return true;
+}
+
 std::vector<std::string> meMapFiles() {
     std::vector<std::string> out;
     std::error_code ec;
@@ -592,8 +673,18 @@ static int entityUnderMouse(double* tOut) {
     int best = -1; double bt = 1e30;
     for (size_t i = 0; i < ME.map.ents.size(); i++) {
         V3 p = ME.map.ents[i].pos;
-        bool lamp = ME.map.ents[i].type == "light";   // (a lamp: a small ball where it hangs)
+        const auto& en = ME.map.ents[i];
+        if (en.type == "furniture") continue;   // (picked by its blocks)
+        bool lamp = en.type == "light";   // (a lamp: a small ball where it hangs)
         gmap::Brush b = lamp ? gmap::makeBox(p - V3{0.22, 0.22, 0.22}, p + V3{0.22, 0.22, 0.22}, 0) : gmap::makeBox(p - V3{0.3, 0, 0.3}, p + V3{0.3, 1.8, 0.3}, 0);
+        if (en.type == "prop") { V3 a, c; gmap::entityBounds(en, a, c); b = gmap::makeBox(a - V3{0.01, 0.01, 0.01}, c + V3{0.01, 0.01, 0.01}, 0); }
+        if (en.type == "gun_item") {
+            const Design* gd = gunItemDesign(en.ref);
+            double L = gd ? gunItemLength(*gd) / 2 : 0.15;
+            V3 f{std::cos(en.yaw * DEG2RAD), 0, std::sin(en.yaw * DEG2RAD)};
+            V3 a = p - f * L, c = p + f * L;
+            b = gmap::makeBox({std::min(a.x, c.x) - 0.04, p.y, std::min(a.z, c.z) - 0.04}, {std::max(a.x, c.x) + 0.04, p.y + 0.06, std::max(a.z, c.z) + 0.04}, 0);
+        }
         gmap::Hit h = gmap::rayBrush(b, o, d, 5000);
         if (h.brush >= 0 && h.t < bt) { bt = h.t; best = (int)i; }
     }
@@ -655,7 +746,8 @@ static void toolInput() {
             }
             double te; int e = entityUnderMouse(&te);
             gmap::Hit h = gmap::rayMap(ME.map, o, d, 5000);
-            if (e >= 0 && (h.brush < 0 || te < h.t)) {
+            if (h.brush >= 0 && ME.map.brushes[h.brush].furn && (e < 0 || h.t <= te)) { e = ME.map.brushes[h.brush].furn - 1; te = h.t; }   // (a furniture's block: the whole piece)
+            if (e >= 0 && (h.brush < 0 || te <= h.t)) {
                 if (ME.ent != e) { ME.sel.clear(); ME.face = -1; ME.ent = e; break; }
                 ME.sel.clear(); ME.face = -1; ME.ent = e;
                 beginDrag(Drag::MoveEnt);
@@ -724,6 +816,32 @@ static void toolInput() {
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 90) * 90 + 720, 360);
             ME.map.ents.push_back(e);
             ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meChanged();
+            break;
+        }
+        case MTool::Furniture: case MTool::Prop: {   // a piece of furniture on the floor, facing you (its back to a wall you click); a thing to pick up on any surface
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            gmap::Entity e;
+            const std::string& pick = ME.tool == MTool::Prop ? ME.propPick : ME.furnPick;
+            if (!furnitureFromPick(pick, e)) { toast("Pick what to place in the panel first."); break; }
+            double facing = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
+            if (ME.tool == MTool::Furniture && std::fabs(n.y) < 0.3) {   // a wall: its back against it, standing on the floor below
+                double back = 0;
+                for (auto& q : e.parts) { V3 a, c; gmap::brushBounds(q, a, c); back = std::min(back, a.x); }
+                V3 at = p + V3{n.x, 0, n.z} * (-back + 0.003);
+                gmap::Hit fl = gmap::rayMap(ME.map, at + V3{0, 0.05, 0}, {0, -1, 0}, 50);
+                e.pos = {at.x, fl.brush >= 0 ? at.y + 0.05 - fl.t : 0, at.z};
+                e.yaw = std::atan2(n.z, n.x) * RAD2DEG;
+            } else {
+                bool fine = ME.tool == MTool::Prop;   // (on a shelf: to the centimetre, not the grid)
+                e.pos = fine ? V3{std::round(p.x * 100) / 100, n.y > 0.7 ? p.y : 0, std::round(p.z * 100) / 100} : V3{snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+                e.yaw = facing;
+                if (e.type == "gun_item") e.yaw = std::fmod(facing + 90, 360);   // (lying across in front of you)
+            }
+            meSnapshot();
+            ME.map.ents.push_back(e);
+            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear(); ME.face = -1;
             meChanged();
             break;
         }
@@ -807,7 +925,7 @@ static void toolInput() {
                 V3 dl = p - dragHit;
                 dl = {snapG(dl.x), snapG(dl.y), snapG(dl.z)};
                 if (drag == Drag::Move) for (size_t k = 0; k < ME.sel.size() && k < dragOrig.size(); k++) { ME.map.brushes[ME.sel[k]] = dragOrig[k]; gmap::translate(ME.map.brushes[ME.sel[k]], dl); }
-                else if (ME.ent >= 0) ME.map.ents[ME.ent].pos = dragEntOrig + dl;
+                else if (ME.ent >= 0) { ME.map.ents[ME.ent].pos = dragEntOrig + dl; if (ME.map.ents[ME.ent].type == "furniture") rebake(); }
                 if (gmap::len(dl) > 0) { dragChanged = true; ME.version++; }
             }
         } else if (drag == Drag::Face && !dragOrig.empty()) {
@@ -1021,7 +1139,16 @@ static const char* HINT[] = {
     "Click to place a gun spawner: on the map, walk up to it and press F to take any of your guns.",
     "Click to place armour plates: players walk over them to fill their armour bar. Set how many and whether they come back in the panel.",
     "Click to place an attachment crate: on the map, walk up to it and press F to fit attachments to the gun in your hands.",
+    "Click a ceiling, a wall or the floor to place a light. Its colour, brightness and reach are in the panel.",
+    "Click to place an ammo box: press F by it on the map to fill up every gun you carry.",
+    "Click to place a weapon crate: press F by it on the map to take any of your guns.",
+    "Click to place the workstation chosen in the panel (career mode).",
+    "Click a floor in a doorway to place a door. F opens and shuts it on foot.",
+    "Click the floor (it stands at chest height) or a wall to place a paper target.",
+    "Click the floor to place the furniture chosen in the panel, facing you. Click a wall to stand it with its back to the wall.",
+    "Click any surface (a shelf, a table, the floor) to place the thing chosen in the panel. Players pick it up with F.",
 };
+static_assert(sizeof(HINT) / sizeof(HINT[0]) == (int)MTool::Prop + 1, "a hint for every tool");
 
 static void drawEditor3D() {
     CamB b = camBasis();
@@ -1091,6 +1218,7 @@ static void drawEditor3D() {
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++)
             drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k), (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
     }
+    drawMapThings(ME.map, ME.ent);
     (void)b;
 }
 
@@ -1203,6 +1331,7 @@ void mapEditorRender() {
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
     }
+    if (ME.walking) drawMapThings(ME.map, -1);
     doors::draw(ME.map, ME.walking ? -1 : ME.ent);
     if (shopActive()) shopDrawPeople();   // (career: customers at the counter, staff at their workstations)
     EndMode3D();

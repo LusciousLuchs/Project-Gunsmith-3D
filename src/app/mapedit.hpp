@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station, Door, Target };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station, Door, Target, Furniture, Prop };
 
 struct MapEd {
     std::string doorStyle = "wood";       // the Door tool: wood, metal, glass
@@ -44,7 +44,9 @@ struct MapEd {
     std::string stationKind = "bench";     // the Station tool: bench, lathe, mill, qc, counter
     gmap::Player pl;
     std::string status;                    // one-line message in the panel
-    std::string npcPick;                   // the NPC the NPC spawn tool places (its name)
+    std::string npcPick;
+    std::string furnPick = "builtin:shelf";   // the Furniture tool's piece
+    std::string propPick = "builtin:crate";   // the Prop tool's thing to pick up (a prop, or a gun: "gun:...")                   // the NPC the NPC spawn tool places (its name)
 };
 extern MapEd ME;
 
@@ -77,6 +79,11 @@ bool meOpen(const std::string& path);
 bool meSaveGroup(const std::string& name); // to user/groups/<name>.json
 std::vector<std::string> meGroupFiles();   // their names
 bool mePlaceGroup(const std::string& name);   // in front of the camera, selected so it can be moved straight away
+// furniture: the selected brushes (and the props and guns standing on them) made into one piece, or a prop
+bool meMakeFurniture(bool prop, const std::string& name);
+void meBreakApart();
+void meRebake();                          // furniture moved or turned: its blocks follow                       // the selected furniture or prop back into blocks (and its things)
+bool meSaveFurniture();                    // the selected furniture or prop into your Furniture folder
 std::vector<std::string> meMapFiles();
 void meWalk(bool fromCamera);
 void meStopWalking();                      // back to the editor (the mouse freed)

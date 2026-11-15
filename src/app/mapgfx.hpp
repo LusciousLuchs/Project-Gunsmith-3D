@@ -13,7 +13,9 @@ void mapRestoreLook();                          // back to the workshop lighting
 // The map's lights for the lit shader: `extra` first (a gun's light, a muzzle flash), then the nearest to the eye
 void mapSetLamps(const gmap::Map& m, gmap::V3 eye, const std::vector<Lamp>& extra = {});
 void mapWorkLight(int mode);                    // the level editor: 0 as players see it, 1 a work light (dark maps still show), 2 fullbright
-void mapDrawWorld();                            // the meshes built last
+void mapDrawWorld();
+// blocks given round their own origin (a prop, a furniture's piece), drawn under M (cached by their shape)
+void mapDrawBrushes(const std::vector<gmap::Brush>& local, Matrix M, Color tint = WHITE);                            // the meshes built last
 void mapDrawSky(const gmap::Look& L, float x, float y, float w, float h, float pitch, float fovY);  // screen space, before 3D
 Color mapSkyHorizon(const gmap::Look& L);
 // Begin a 3D pass in a part of the window. Pair with EndMode3D() and then mapEndViewport().

@@ -390,6 +390,80 @@ void lightAt(const Map& m, V3 p, V3 n, double out[3]) {
     for (int i = 0; i < 3; i++) out[i] += 0.9 * acc[i] / (1 + 0.45 * acc[i]) / 0.7;   // (as the shader: bright, not burnt out)
 }
 
+static json brushJ(const Brush& b) {
+    json fs = json::array();
+    for (auto& f : b.faces) {
+        json jf = {{"n", v3j(f.n)}, {"d", f.d}, {"mat", materialNames()[std::clamp(f.mat, 0, (int)materialNames().size() - 1)]}};
+        if (f.scale != 1) jf["scale"] = f.scale;
+        if (f.shiftU != 0 || f.shiftV != 0) jf["shift"] = json::array({f.shiftU, f.shiftV});
+        fs.push_back(jf);
+    }
+    json jb = {{"faces", fs}};
+    if (b.locked) jb["locked"] = true;
+    return jb;
+}
+static bool brushFromJ(const json& jb, Brush& b) {
+    for (auto& jf : jb.at("faces")) {
+        Face f;
+        f.n = norm(jv3(jf.at("n")));
+        f.d = jf.at("d").get<double>();
+        f.mat = materialIndex(jf.value("mat", "dev_grid"));
+        f.scale = jf.value("scale", 1.0);
+        if (jf.contains("shift")) { f.shiftU = jf["shift"].at(0).get<double>(); f.shiftV = jf["shift"].at(1).get<double>(); }
+        b.faces.push_back(f);
+    }
+    b.locked = jb.value("locked", false);
+    return brushValid(b);
+}
+static json entJ(const Entity& e) {
+    json je = {{"type", e.type}, {"pos", v3j(e.pos)}, {"yaw", e.yaw}};
+    if (!e.ref.empty()) je["ref"] = e.ref;
+    if (e.count != 1) je["count"] = e.count;
+    if (e.respawn > 0) je["respawn"] = e.respawn;
+    if (e.type == "door") je["width"] = e.width;
+    if (e.type == "target_paper" && e.ref == "moving") { je["travel"] = e.width; je["speed"] = e.range; }
+    if (e.type == "light") je["light"] = {{"color", c3j(e.color)}, {"power", e.power}, {"range", e.range}, {"cone", e.cone}, {"pitch", e.pitch}};
+    if (!e.parts.empty()) { json ps = json::array(); for (auto& b : e.parts) ps.push_back(brushJ(b)); je["parts"] = ps; }
+    if (!e.items.empty()) { json is = json::array(); for (auto& k : e.items) is.push_back(entJ(k)); je["items"] = is; }
+    if (e.mass > 0) je["mass"] = e.mass;
+    return je;
+}
+static Entity entFromJ(const json& je) {
+    Entity e;
+    e.type = je.value("type", "player_start");
+    e.pos = jv3(je.at("pos"));
+    e.yaw = je.value("yaw", 0.0);
+    e.ref = je.value("ref", "");
+    e.count = std::max(1, je.value("count", 1));
+    e.respawn = std::max(0.0, je.value("respawn", 0.0));
+    e.width = std::clamp(je.value("width", 0.9), 0.4, 4.0);
+    if (je.contains("travel")) e.width = std::clamp(je.value("travel", 3.0), 0.2, 100.0);   // a moving target: how far it slides
+    if (je.contains("speed")) e.range = std::clamp(je.value("speed", 1.2), 0.05, 30.0);     // ...and how fast (m/s)
+    if (je.contains("light") && je["light"].is_object()) {
+        auto& jl = je["light"];
+        if (jl.contains("color")) jc3(jl["color"], e.color);
+        e.power = std::clamp(jl.value("power", 3.0), 0.0, 1000.0);
+        e.range = std::clamp(jl.value("range", 10.0), 0.5, 500.0);
+        e.cone = std::clamp(jl.value("cone", 0.0), 0.0, 179.0);
+        e.pitch = std::clamp(jl.value("pitch", -90.0), -90.0, 90.0);
+    }
+    if (je.contains("parts") && je["parts"].is_array())
+        for (auto& jb : je["parts"]) { Brush b; if (brushFromJ(jb, b)) e.parts.push_back(b); }
+    if (je.contains("items") && je["items"].is_array())
+        for (auto& k : je["items"]) e.items.push_back(entFromJ(k));
+    e.mass = std::max(0.0, je.value("mass", 0.0));
+    return e;
+}
+std::string entityToJson(const Entity& e) { json j = entJ(e); j["format"] = "gunsmith3d-furniture"; return j.dump(1); }
+bool entityFromJson(const std::string& s, Entity& e) {
+    try {
+        json j = json::parse(s);
+        if (j.value("format", "") != "gunsmith3d-furniture") return false;
+        e = entFromJ(j);
+        return !e.parts.empty();
+    } catch (...) { return false; }
+}
+
 std::string mapToJson(const Map& m) {
     json j;
     j["format"] = "gunsmith3d-map";
@@ -399,34 +473,14 @@ std::string mapToJson(const Map& m) {
                  {"skyTop", c3j(m.look.skyTop)}, {"skyHorizon", c3j(m.look.skyHorizon)}, {"fogStart", m.look.fogStart}, {"fogEnd", m.look.fogEnd}};
     if (m.look.daylight != 1) j["look"]["daylight"] = m.look.daylight;
     json bs = json::array();
-    for (auto& b : m.brushes) {
-        json fs = json::array();
-        for (auto& f : b.faces) {
-            json jf = {{"n", v3j(f.n)}, {"d", f.d}, {"mat", materialNames()[std::clamp(f.mat, 0, (int)materialNames().size() - 1)]}};
-            if (f.scale != 1) jf["scale"] = f.scale;
-            if (f.shiftU != 0 || f.shiftV != 0) jf["shift"] = json::array({f.shiftU, f.shiftV});
-            fs.push_back(jf);
-        }
-        json jb = {{"faces", fs}};
-        if (b.locked) jb["locked"] = true;
-        bs.push_back(jb);
-    }
+    for (auto& b : m.brushes) if (!b.furn) bs.push_back(brushJ(b));   // (furniture's blocks travel in the furniture)
     j["brushes"] = bs;
     if (m.build.on() || m.store.on()) {
         auto zj = [](const Zone& z) { return json::array({z.x0, z.z0, z.x1, z.z1}); };
         j["career"] = {{"build", zj(m.build)}, {"store", zj(m.store)}, {"roof", m.roofY}};
     }
     json es = json::array();
-    for (auto& e : m.ents) {
-        json je = {{"type", e.type}, {"pos", v3j(e.pos)}, {"yaw", e.yaw}};
-        if (!e.ref.empty()) je["ref"] = e.ref;
-        if (e.count != 1) je["count"] = e.count;
-        if (e.respawn > 0) je["respawn"] = e.respawn;
-        if (e.type == "door") je["width"] = e.width;
-        if (e.type == "target_paper" && e.ref == "moving") { je["travel"] = e.width; je["speed"] = e.range; }
-        if (e.type == "light") je["light"] = {{"color", c3j(e.color)}, {"power", e.power}, {"range", e.range}, {"cone", e.cone}, {"pitch", e.pitch}};
-        es.push_back(je);
-    }
+    for (auto& e : m.ents) es.push_back(entJ(e));
     j["entities"] = es;
     if (!m.npcs.empty()) {
         json np = json::object();
@@ -459,17 +513,7 @@ bool mapFromJson(const std::string& s, Map& out) {
         }
         for (auto& jb : j.value("brushes", json::array())) {
             Brush b;
-            for (auto& jf : jb.at("faces")) {
-                Face f;
-                f.n = norm(jv3(jf.at("n")));
-                f.d = jf.at("d").get<double>();
-                f.mat = materialIndex(jf.value("mat", "dev_grid"));
-                f.scale = jf.value("scale", 1.0);
-                if (jf.contains("shift")) { f.shiftU = jf["shift"].at(0).get<double>(); f.shiftV = jf["shift"].at(1).get<double>(); }
-                b.faces.push_back(f);
-            }
-            b.locked = jb.value("locked", false);
-            if (brushValid(b)) m.brushes.push_back(b);
+            if (brushFromJ(jb, b)) m.brushes.push_back(b);
         }
         if (j.contains("career") && j["career"].is_object()) {
             auto zr = [](const json& a, Zone& z) { if (a.is_array() && a.size() == 4) { z.x0 = a[0].get<double>(); z.z0 = a[1].get<double>(); z.x1 = a[2].get<double>(); z.z1 = a[3].get<double>(); } };
@@ -477,31 +521,12 @@ bool mapFromJson(const std::string& s, Map& out) {
             if (j["career"].contains("store")) zr(j["career"]["store"], m.store);
             m.roofY = j["career"].value("roof", 0.0);
         }
-        for (auto& je : j.value("entities", json::array())) {
-            Entity e;
-            e.type = je.value("type", "player_start");
-            e.pos = jv3(je.at("pos"));
-            e.yaw = je.value("yaw", 0.0);
-            e.ref = je.value("ref", "");
-            e.count = std::max(1, je.value("count", 1));
-            e.respawn = std::max(0.0, je.value("respawn", 0.0));
-            e.width = std::clamp(je.value("width", 0.9), 0.4, 4.0);
-            if (je.contains("travel")) e.width = std::clamp(je.value("travel", 3.0), 0.2, 100.0);   // a moving target: how far it slides
-            if (je.contains("speed")) e.range = std::clamp(je.value("speed", 1.2), 0.05, 30.0);     // ...and how fast (m/s)
-            if (je.contains("light") && je["light"].is_object()) {
-                auto& jl = je["light"];
-                if (jl.contains("color")) jc3(jl["color"], e.color);
-                e.power = std::clamp(jl.value("power", 3.0), 0.0, 1000.0);
-                e.range = std::clamp(jl.value("range", 10.0), 0.5, 500.0);
-                e.cone = std::clamp(jl.value("cone", 0.0), 0.0, 179.0);
-                e.pitch = std::clamp(jl.value("pitch", -90.0), -90.0, 90.0);
-            }
-            m.ents.push_back(e);
-        }
+        for (auto& je : j.value("entities", json::array())) m.ents.push_back(entFromJ(je));
         if (j.contains("npcs") && j["npcs"].is_object())
             for (auto& [name, v] : j["npcs"].items()) m.npcs.push_back({name, v.dump()});
         if (j.contains("npcGuns") && j["npcGuns"].is_object())
             for (auto& [name, v] : j["npcGuns"].items()) m.npcGuns.push_back({name, v.dump()});
+        bakeFurniture(m);
         out = m;
         return true;
     } catch (...) {
@@ -814,10 +839,35 @@ Map builtinRange() {
     m.ents.push_back(ammo);
     Entity guns; guns.type = "weapon_crate"; guns.pos = {-3.8, 0, -4.6}; guns.yaw = -10;   // more guns
     m.ents.push_back(guns);
+    {   // furniture against the back wall: a shelf of things to pick up (and knock over), a table with guns laid out on it
+        auto piece = [](const std::vector<Furnishing>& list, const char* key) { for (auto& f : list) if (f.key == key) return f.e; return Entity(); };
+        auto item = [&](const char* key, V3 at, double yaw) { Entity e = piece(builtinProps(), key); e.pos = at; e.yaw = yaw; return e; };
+        Entity shelf = piece(builtinFurniture(), "shelf");
+        shelf.pos = {-7.6, 0, -7.2}; shelf.yaw = 0;
+        for (double z : {-0.32, -0.2, -0.08}) shelf.items.push_back(item("can", {0, 0.92, z}, 0));
+        for (double z : {0.12, 0.26}) shelf.items.push_back(item("bottle", {0, 0.92, z}, 0));
+        shelf.items.push_back(item("ammocan", {0, 0.5, -0.2}, 0));
+        shelf.items.push_back(item("ammocan", {0, 0.5, 0.15}, 10));
+        shelf.items.push_back(item("brick", {0, 1.34, -0.1}, 0));
+        shelf.items.push_back(item("box", {0, 0.08, 0.1}, 0));
+        shelf.items.push_back(item("bucket", {0, 1.34, 0.22}, 0));
+        m.ents.push_back(shelf);
+        Entity table = piece(builtinFurniture(), "table");
+        table.pos = {-6.9, 0, -9.6}; table.yaw = 0;
+        Entity g; g.type = "gun_item"; g.ref = "preset:tilting"; g.pos = {0.15, 0.9, -0.5}; g.yaw = 90; table.items.push_back(g);
+        g.ref = "preset:boltaction"; g.pos = {-0.12, 0.9, 0.15}; g.yaw = 90; table.items.push_back(g);
+        m.ents.push_back(table);
+        lamp({-6.4, 2.75, -8.4}, 3.5, 7, 0, 0, -90, 1.0, 0.85, 0.65);   // (a lamp over them)
+        for (int k = 0; k < 3; k++) {   // crates stacked by the wall, and one on its own
+            Entity c = item("crate", {-7.4, 0.45 * (k == 1), 8.0 + (k == 2 ? 0.7 : 0)}, k * 7.0);
+            m.ents.push_back(c);
+        }
+    }
     Entity start;
     start.pos = {-3, 0, 0};
     start.yaw = 0;
     m.ents.push_back(start);
+    bakeFurniture(m);
     return m;
 }
 

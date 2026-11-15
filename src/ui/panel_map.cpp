@@ -3,6 +3,7 @@
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "app/mapedit.hpp"
+#include "app/furnish.hpp"
 #include "app/npcedit.hpp"
 #include "app/mapgfx.hpp"
 #include "app/careermode.hpp"
@@ -87,7 +88,9 @@ void mapToolbar() {
         {ICON_FA_BOX, "Weapon crate: press F by it to take any of your guns (like a gun spawner)", MTool::Weapons},
         {ICON_FA_INDUSTRY, "Workstation (career mode): a bench, a lathe, a mill, a test bench, or your shop counter", MTool::Station},
         {ICON_FA_DOOR_OPEN, "Door: click a floor in a doorway. F opens and shuts it on foot (it swings away from you)", MTool::Door},
-        {ICON_FA_BULLSEYE, "Paper target: click the floor (it stands at chest height) or a wall. Pick it to make it move side to side", MTool::Target}};
+        {ICON_FA_BULLSEYE, "Paper target: click the floor (it stands at chest height) or a wall. Pick it to make it move side to side", MTool::Target},
+        {ICON_FA_COUCH, "Furniture: shelves, tables, racks, or your own pieces (make them from blocks in the Select panel)", MTool::Furniture},
+        {ICON_FA_HAND_HOLDING, "Things to pick up: crates, cans, bottles, your own props, and guns. Put them on shelves and tables", MTool::Prop}};
     int i = 0;
     for (auto& t : tools) {
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
@@ -272,6 +275,45 @@ static void editTab() {
         } else if (e.type == "attachment_crate") {
             heading("Attachment crate");
             ImGui::TextDisabled("Walk up to it on the map and press F: fit attachments from your Attachments folder\nto the gun in your hands (or load a loadout).");
+        } else if (e.type == "furniture" || e.type == "prop") {
+            bool isProp = e.type == "prop";
+            heading(isProp ? "Prop" : "Furniture");
+            static char nm[64];
+            static int forEnt = -1;
+            if (forEnt != ME.ent || !ImGui::IsAnyItemActive()) { std::snprintf(nm, sizeof nm, "%s", e.ref.c_str()); forEnt = ME.ent; }
+            prop("Name");
+            if (ImGui::InputText("##fname", nm, sizeof nm, ImGuiInputTextFlags_EnterReturnsTrue) || ImGui::IsItemDeactivatedAfterEdit()) { meSnapshot(); e.ref = nm; meChanged(); }
+            ImGui::PushTextWrapPos(0);
+            if (isProp) {
+                ImGui::TextDisabled("Players pick it up with F, carry it, put it down or throw it. Shots knock it about.");
+                double kg = gmap::propMass(e);
+                prop("Weight", "Heavier things are thrown less far and take more to knock over.");
+                if (ImGui::DragScalar("##pmass", ImGuiDataType_Double, &kg, 0.05f, nullptr, nullptr, "%.2f kg")) { e.mass = std::clamp(kg, 0.05, 200.0); ME.dirty = true; }
+                if (ImGui::IsItemActivated()) meSnapshot();
+                if (ImGui::IsItemDeactivatedAfterEdit()) meChanged();
+            } else {
+                ImGui::TextDisabled("%zu block%s, solid like the rest of the map: players walk round it and stand on it.", e.parts.size(), e.parts.size() == 1 ? "" : "s");
+                if (!e.items.empty()) ImGui::TextDisabled("%zu thing%s on it (props and guns players can pick up).", e.items.size(), e.items.size() == 1 ? "" : "s");
+            }
+            ImGui::PopTextWrapPos();
+            if (ImGui::Button(isProp ? "Save in my props" : "Save in my furniture", {-1, 0})) meSaveFurniture();
+            if (tipHover()) ImGui::SetTooltip("Into your Furniture folder: place it again with the %s tool in any map.", isProp ? "Prop" : "Furniture");
+            if (ImGui::Button("Break it apart into blocks", {-1, 0})) { meBreakApart(); return; }
+            if (tipHover()) ImGui::SetTooltip("Back into the blocks it was made of (and its things), to change it. Make it again from the selection.");
+        } else if (e.type == "gun_item") {
+            heading("Gun");
+            ImGui::PushTextWrapPos(0);
+            ImGui::TextDisabled("Lies here for players to pick up with F (it goes in your hands, as from a spawner).");
+            ImGui::PopTextWrapPos();
+            prop("Which");
+            if (ImGui::BeginCombo("##gunref", gunItemLabel(e.ref).c_str())) {
+                for (auto& c : furnitureChoices(true)) {
+                    if (c.pick.rfind("gun:", 0) != 0) continue;
+                    if (ImGui::Selectable(c.label.c_str() + 5, e.ref == c.pick.substr(4))) { meSnapshot(); e.ref = c.pick.substr(4); meChanged(); }
+                }
+                ImGui::EndCombo();
+            }
+            if (!gunItemDesign(e.ref)) ImGui::TextColored({1.0f, 0.55f, 0.3f, 1}, "That gun's blueprint is missing.");
         } else if (e.type == "armor_plate") {
             heading("Armour plates");
             double cnt = e.count;
@@ -292,14 +334,14 @@ static void editTab() {
         static bool editing = false;
         prop("Facing");
         float yaw = (float)e.yaw;
-        if (ImGui::SliderFloat("##yaw", &yaw, 0, 360, "%.0f deg")) { if (!editing) { meSnapshot(); editing = true; } e.yaw = yaw; ME.version++; } typeable();
+        if (ImGui::SliderFloat("##yaw", &yaw, 0, 360, "%.0f deg")) { if (!editing) { meSnapshot(); editing = true; } e.yaw = yaw; meRebake(); ME.version++; } typeable();
         if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
         for (int a = 0; a < 3; a++) {
             static const char* L[] = {"X", "Height", "Z"};
             prop(L[a]);
             double* c = a == 0 ? &e.pos.x : a == 1 ? &e.pos.y : &e.pos.z;
             ImGui::PushID(a);
-            if (lenDrag("##p", *c, ME.grid)) { if (!editing) { meSnapshot(); editing = true; } ME.version++; }
+            if (lenDrag("##p", *c, ME.grid)) { if (!editing) { meSnapshot(); editing = true; } meRebake(); ME.version++; }
             if (ImGui::IsItemDeactivatedAfterEdit()) { editing = false; meChanged(); }
             ImGui::PopID();
         }
@@ -316,6 +358,15 @@ static void editTab() {
     }
     if (ME.sel.size() == 1) heading(ME.face >= 0 ? "Face" : "Brush");
     else { char b[48]; std::snprintf(b, sizeof b, "%zu brushes", ME.sel.size()); heading(b); }
+    if (ME.face < 0 && section("Make furniture", false)) {
+        static char fn[64] = "My shelf";
+        prop("Name");
+        ImGui::InputText("##mkfname", fn, sizeof fn);
+        if (ImGui::Button("Make furniture", {-1, 0})) meMakeFurniture(false, fn);
+        if (tipHover()) ImGui::SetTooltip("The selected blocks become one piece: it moves and turns as one, and stays solid.\nProps and guns standing on it come with it. Save it in your Furniture folder from its panel.");
+        if (ImGui::Button("Make a prop (players pick it up)", {-1, 0})) meMakeFurniture(true, fn);
+        if (tipHover()) ImGui::SetTooltip("The selected blocks become one thing players can pick up, carry and throw.\nKeep it small: a box, a can, a tool.");
+    }
 
     // position and size of a single brush (its bounding box)
     if (ME.sel.size() == 1 && ME.face < 0) {
@@ -421,6 +472,27 @@ static void groupTools() {   // groups of objects: save the selection as one, pl
     }
 }
 static void toolOptions() {
+    if (ME.tool == MTool::Furniture || ME.tool == MTool::Prop) {
+        bool props = ME.tool == MTool::Prop;
+        std::string& pick = props ? ME.propPick : ME.furnPick;
+        auto list = furnitureChoices(props);
+        std::string cur = "Choose...";
+        for (auto& c : list) if (c.pick == pick) cur = c.label;
+        prop(props ? "Place" : "Piece");
+        if (ImGui::BeginCombo("##furnpick", cur.c_str(), ImGuiComboFlags_HeightLarge)) {
+            bool mine = false, guns = false;
+            for (auto& c : list) {
+                if (!mine && c.pick.rfind("user:", 0) == 0) { ImGui::SeparatorText("Yours"); mine = true; }
+                if (!guns && c.pick.rfind("gun:", 0) == 0) { ImGui::SeparatorText("Guns"); guns = true; }
+                if (ImGui::Selectable(c.label.c_str(), c.pick == pick)) pick = c.pick;
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled(props ? "Click a shelf, a table or the floor. Make your own from blocks: select them, then Make a prop."
+                                  : "Click the floor (it faces you) or a wall (its back to it). Make your own from blocks: select them, then Make furniture.");
+        ImGui::PopTextWrapPos();
+    }
     if (ME.tool == MTool::Npc) {
         prop("NPC");
         if (ImGui::BeginCombo("##npcpick", ME.npcPick.empty() ? "Choose..." : ME.npcPick.c_str())) {

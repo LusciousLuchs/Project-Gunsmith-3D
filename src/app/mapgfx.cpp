@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdint>
 #include <vector>
+#include <map>
+#include <string>
 #include <atomic>
 #include <thread>
 
@@ -351,13 +353,14 @@ Texture2D mapTexture(int m) {
 // ---------------------------------------------------------------- meshes
 static std::vector<Mesh> MESH;  // one per material; vertexCount 0 when unused
 
-void mapBuildMeshes(const gmap::Map& m) {
+// a list of brushes as one mesh per material
+static void buildBrushMeshes(const std::vector<gmap::Brush>& brushes, std::vector<Mesh>& out) {
     ensureUserMaterials();
-    for (auto& mesh : MESH) if (mesh.vertexCount > 0) UnloadMesh(mesh);
+    for (auto& mesh : out) if (mesh.vertexCount > 0) UnloadMesh(mesh);
     int count = (int)gmap::materialNames().size();
-    MESH.assign(count, Mesh{});
+    out.assign(count, Mesh{});
     std::vector<std::vector<float>> pos(count), nrm(count), uv(count);
-    for (auto& b : m.brushes)
+    for (auto& b : brushes)
         for (size_t fi = 0; fi < b.faces.size(); fi++) {
             auto poly = gmap::facePolygon(b, (int)fi);
             if (poly.size() < 3) continue;
@@ -383,7 +386,7 @@ void mapBuildMeshes(const gmap::Map& m) {
     for (int i = 0; i < count; i++) {
         int vc = (int)pos[i].size() / 3;
         if (vc == 0) continue;
-        Mesh& mesh = MESH[i];
+        Mesh& mesh = out[i];
         mesh.vertexCount = vc; mesh.triangleCount = vc / 3;
         mesh.vertices = (float*)MemAlloc(vc * 3 * sizeof(float));
         mesh.normals = (float*)MemAlloc(vc * 3 * sizeof(float));
@@ -393,6 +396,34 @@ void mapBuildMeshes(const gmap::Map& m) {
         std::copy(uv[i].begin(), uv[i].end(), mesh.texcoords);
         UploadMesh(&mesh, false);
     }
+}
+void mapBuildMeshes(const gmap::Map& m) { buildBrushMeshes(m.brushes, MESH); }
+
+// a prop's blocks (round its own origin), cached by a key made from its faces
+static std::string brushesKey(const std::vector<gmap::Brush>& bs) {
+    std::string k;
+    char buf[64];
+    for (auto& b : bs) { for (auto& f : b.faces) { std::snprintf(buf, sizeof buf, "%.4f,%.4f,%.4f,%.4f,%d,%.3f;", f.n.x, f.n.y, f.n.z, f.d, f.mat, f.scale); k += buf; } k += '|'; }
+    return k;
+}
+void mapDrawBrushes(const std::vector<gmap::Brush>& local, Matrix M, Color tint) {
+    static std::map<std::string, std::vector<Mesh>> cache;
+    std::string key = brushesKey(local);
+    auto it = cache.find(key);
+    if (it == cache.end()) {
+        if (cache.size() > 300) { for (auto& [k, v] : cache) for (auto& m : v) if (m.vertexCount > 0) UnloadMesh(m); cache.clear(); }
+        it = cache.emplace(key, std::vector<Mesh>{}).first;
+        buildBrushMeshes(local, it->second);
+    }
+    setSpecular(0.15f);
+    for (size_t i = 0; i < it->second.size() && i < MATS.size(); i++) {
+        if (it->second[i].vertexCount == 0) continue;
+        Color keep = MATS[i].maps[MATERIAL_MAP_DIFFUSE].color;
+        MATS[i].maps[MATERIAL_MAP_DIFFUSE].color = tint;
+        DrawMesh(it->second[i], MATS[i], M);
+        MATS[i].maps[MATERIAL_MAP_DIFFUSE].color = keep;
+    }
+    setSpecular(0.3f);
 }
 
 void mapDrawWorld() {

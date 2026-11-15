@@ -46,6 +46,7 @@ struct Face {
 };
 struct Brush {
     std::vector<Face> faces;
+    int furn = 0;          // (not saved) put in by furniture entity furn-1 (bakeFurniture): its blocks, solid in the map
     // (brushBounds remembers its answer until the faces' planes change: collision asks it constantly)
     mutable double boundsCache[6] = {0, 0, 0, 0, 0, 0};
     mutable unsigned long long boundsKey = 0;
@@ -65,6 +66,12 @@ struct Entity {
     double range = 10;    // metres: nothing past this
     double cone = 0;      // degrees edge to edge: 0 shines all round; a spot (a floodlight, a ceiling spot) otherwise
     double pitch = -90;   // a spot's aim: up (+) or down from level, toward `yaw`
+    // furniture (type "furniture") and props (type "prop", things you can pick up): their blocks, round `pos` before
+    // turning by `yaw`, metres. `ref` is the name. Furniture's blocks are solid parts of the map (bakeFurniture); a
+    // prop moves. Furniture also carries what stands on it (`items`: props, guns), round pos the same way.
+    std::vector<Brush> parts;
+    std::vector<Entity> items;
+    double mass = 0;      // prop: kg (0: worked out from its size, as wood)
     double width = 0.9;   // door: how wide the doorway is (m); its style is `ref`: wood, metal, glass. It stands at `pos`
                           // (the middle of the doorway's floor), facing along `yaw` when shut
 };
@@ -136,6 +143,24 @@ Hit rayMap(const Map& m, V3 o, V3 dir, double maxT);
 // Sweep an axis-aligned box (half extents `half`, centred on the path) from a to b. t is the fraction travelled.
 Hit sweepBox(const Map& m, V3 a, V3 b, V3 half);
 bool boxFree(const Map& m, V3 centre, V3 half);
+
+// ---- furniture and props
+V3 entityToWorld(const Entity& e, V3 local);              // a point given round an entity (turned by its yaw, moved to pos)
+Brush placedBrush(const Entity& e, const Brush& local);
+std::vector<Entity> placedItems(const Entity& furniture);  // what stands on it, where it stands in the map
+// Every furniture entity's blocks put into the map's brushes (marked `furn`), after any put there before: call after
+// furniture is placed, moved, turned or removed. mapFromJson does it; mapToJson leaves them out.
+void bakeFurniture(Map& m);
+// Brushes (in the map, round `at` on its floor) made into one furniture or prop entity there: their blocks round it
+Entity makeFurniture(const std::vector<Brush>& world, V3 at, const std::string& type, const std::string& name);
+void entityBounds(const Entity& e, V3& mn, V3& mx);         // a furniture's or prop's blocks, placed (world)
+double propMass(const Entity& prop);                        // kg
+// the built-in furniture and props (key, name, the entity at the origin facing +X)
+struct Furnishing { std::string key, label; Entity e; };
+const std::vector<Furnishing>& builtinFurniture();
+const std::vector<Furnishing>& builtinProps();
+std::string entityToJson(const Entity& e);                  // a furniture/prop saved on its own (Furniture folder)
+bool entityFromJson(const std::string& s, Entity& e);
 
 // ---- files
 std::string mapToJson(const Map& m);
