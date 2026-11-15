@@ -1998,6 +1998,7 @@ void rangeHud() {
     viewText(mag, W - viewTextWidth(mag, 12) - 36, H - 32, 12, Color{200, 204, 212, 200});
     std::snprintf(b, sizeof b, "%s   %d shot%s", A.design.name.c_str(), R.shots, R.shots == 1 ? "" : "s");
     viewText(b, 24, H - 32, 13, Color{235, 238, 242, 220});
+    if (std::string ch = sim::cheatsOn(S); !ch.empty()) viewText(("Cheats: " + ch).c_str(), 24, H - 52, 12, Color{255, 150, 80, 230});
     if (S.malf != sim::Malf::None) {
         std::string t = std::string("Jammed: ") + sim::malfName(S.malf) + ".  B works the action to clear it.";
         float tw = viewTextWidth(t.c_str(), 16);

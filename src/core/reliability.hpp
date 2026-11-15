@@ -36,6 +36,7 @@ struct ReliabilityReport {
     std::vector<ReliabilityEvent> events;
     bool gaveUp = false;          // a jam that could not be cleared: the test stopped
     std::string note;             // why it stopped, or anything else worth saying
+    std::string cheats;           // cheats it ran with ("auto feed, brute force"), "" for none: not the gun's own result
     double jamRate() const { return fired + jams > 0 ? 100.0 * jams / (fired + jams) : 0; }  // % of rounds that jammed
     double mrbf() const { return jams > 0 ? (double)fired / jams : fired; }                  // mean rounds between failures
 };

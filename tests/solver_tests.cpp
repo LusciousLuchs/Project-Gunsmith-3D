@@ -2785,6 +2785,65 @@ static void hollowParts() {
     }
 }
 
+// Cheats: auto feed makes a gun with a bad feed path feed; brute force keeps a self-loader that can't run itself going,
+// and works a bolt action by itself. Reports say they were on. (Switched off again after.)
+static void cheatsTest() {
+    std::printf("\n== cheats\n");
+    sim::ReliabilityOptions o; o.rounds = 10; o.stallSeconds = 20;
+    Design bad = loadPreset("tilting");
+    for (auto& b : bad.bodies) if (b.magazine) { b.roundSet = true; b.roundAngle = -25; }   // the top round nose down: it can't feed
+    Design noGas = loadPreset("gaspistol"); noGas.breech.gas.clear();                       // nothing to unlock and cycle it
+    auto r0 = sim::runReliability(bad, o), g0 = sim::runReliability(noGas, o);
+    CHECK(r0.fired < 5 && r0.cheats.empty(), ("a tilting pistol with its top round nose down hardly fires (" + std::to_string(r0.fired) + "/10)").c_str());
+    CHECK(g0.jams >= 8, ("the gas pistol with no gas port jams every shot (" + std::to_string(g0.jams) + " jams)").c_str());
+    sim::cheats().autoFeed = true;
+    auto r1 = sim::runReliability(bad, o);
+    CHECK(r1.fired == 10 && r1.jams == 0 && r1.cheats == "auto feed", ("auto feed: it feeds every round (" + std::to_string(r1.fired) + "/10, " + std::to_string(r1.jams) + " jams), flagged").c_str());
+    sim::cheats().autoFeed = false; sim::cheats().bruteForce = true;
+    auto g1 = sim::runReliability(noGas, o);
+    CHECK(g1.fired == 10 && g1.jams <= 1 && g1.cheats == "brute force", ("brute force: the gas pistol keeps going (" + std::to_string(g1.jams) + " jams), flagged").c_str());
+    {   // a bolt action fired again and again, nobody touching the bolt
+        auto S = sim::build(loadPreset("boltaction"));
+        sim::run(*S, 0.2);
+        if (S->magTmpl) { sim::quickReload(*S); sim::run(*S, 0.2); }
+        S->design.anims["w"] = sim::autoWorkAction(*S); sim::playAnim(*S, "w"); sim::run(*S, 2.5);
+        int shots0 = S->shots;
+        for (int i = 0; i < 6; i++) {
+            sim::setKey(*S, "fire", true); S->pressed = S->trigger = true; sim::run(*S, 0.08);
+            sim::setKey(*S, "fire", false); S->pressed = S->trigger = false; sim::run(*S, 1.3);
+        }
+        CHECK(S->shots - shots0 >= 4, ("brute force: a bolt action works itself (" + std::to_string(S->shots - shots0) + " of 6 pulls fired)").c_str());
+    }
+    sim::cheats() = sim::Cheats();
+}
+// Furniture on maps: its blocks are solid parts of the map, kept inside it; files keep it whole
+static void furnitureTest() {
+    std::printf("\n== furniture\n");
+    gmap::Map m = gmap::builtinRange();
+    int furn = 0, items = 0;
+    for (auto& e : m.ents) if (e.type == "furniture") { furn++; items += (int)e.items.size(); }
+    int baked = 0;
+    for (auto& b : m.brushes) if (b.furn) baked++;
+    CHECK(furn == 2 && items >= 10 && baked > 5, "the practice range has a shelf and a table, with things on them, solid in the map");
+    gmap::Map back;
+    CHECK(gmap::mapFromJson(gmap::mapToJson(m), back) && back.brushes.size() == m.brushes.size() && back.ents.size() == m.ents.size(),
+          "saved and read back: the same blocks (furniture's from inside it) and things");
+    // a shelf turned to face +Z: its blocks are turned with it
+    gmap::Entity sh = gmap::builtinFurniture()[0].e;
+    sh.pos = {10, 0, 5}; sh.yaw = 90;
+    gmap::Map t; t.ents.push_back(sh); gmap::bakeFurniture(t);
+    gmap::V3 mn{1e9, 1e9, 1e9}, mx{-1e9, -1e9, -1e9};
+    for (auto& b : t.brushes) { gmap::V3 a, c; gmap::brushBounds(b, a, c); mn = {std::min(mn.x, a.x), std::min(mn.y, a.y), std::min(mn.z, a.z)}; mx = {std::max(mx.x, c.x), std::max(mx.y, c.y), std::max(mx.z, c.z)}; }
+    CHECK(std::fabs((mx.x - mn.x) - 1.0) < 0.01 && std::fabs((mx.z - mn.z) - 0.4) < 0.01, "turned 90 degrees: 1 m wide across X now, 0.4 deep along Z");
+    gmap::Hit h = gmap::rayMap(t, {10, 5, 5}, {0, -1, 0}, 10);
+    CHECK(h.brush >= 0 && std::fabs(5 - h.t - 1.78) < 0.01, "you land on its top board, 1.78 m up");
+    // blocks made into a piece round their floor, and a file of it read back
+    std::vector<gmap::Brush> bs = {gmap::makeBox({1, 0, 1}, {1.5, 0.5, 1.5}, 0)};
+    gmap::Entity p = gmap::makeFurniture(bs, {1.25, 0, 1.25}, "prop", "Box");
+    gmap::Entity q;
+    CHECK(gmap::entityFromJson(gmap::entityToJson(p), q) && q.parts.size() == 1 && q.type == "prop" && q.ref == "Box", "a prop saved on its own and read back");
+    CHECK(std::fabs(gmap::propMass(q) - 37.5) < 0.1, "its weight from its size: a 0.5 m box, 37.5 kg (mostly air)");
+}
 static void actionKitsTest() {
     std::printf("actionKits\n");
     for (auto& k : ::actionKits()) {
@@ -3040,6 +3099,8 @@ int main() {
         else if (o == "pose") grips();
         else if (o == "kits") actionKitsTest();
         else if (o == "hollow") hollowParts();
+        else if (o == "cheats") cheatsTest();
+        else if (o == "furniture") furnitureTest();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -3110,6 +3171,8 @@ int main() {
     handLoadedReliability();
     actionKitsTest();
     hollowParts();
+    cheatsTest();
+    furnitureTest();
     npcPaths();
     armFreedom();
     cartridgeSharing();

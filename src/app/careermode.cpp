@@ -311,6 +311,7 @@ void careerTestStart(const std::string& gun, int contractId) {
         T.sheet.jamRate = r.gaveUp && r.fired == 0 ? 100 : r.jamRate();
         if (r.gaveUp && r.fired < o.rounds) T.sheet.jamRate = std::max(T.sheet.jamRate, 100.0 * (o.rounds - r.fired) / o.rounds);   // (stuck for good)
         T.sheet.fired = r.fired;
+        T.sheet.cheats = r.cheats;
         T.sheet.manual = r.manual;
         T.stalled = r.gaveUp && r.note.rfind("Gave up", 0) == 0;
         T.finished = true;

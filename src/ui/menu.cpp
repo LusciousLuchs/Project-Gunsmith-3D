@@ -444,7 +444,7 @@ void benchPicker() {
 
 // ---------------------------------------------------------------- settings
 namespace {
-enum class Page { Display, Audio, Interface, Designer, Bench, Controls, Files };
+enum class Page { Display, Audio, Interface, Designer, Bench, Controls, Files, Cheats };
 Page page = Page::Display;
 Settings pending;          // display choices not applied yet
 bool pendingInit = false;
@@ -674,6 +674,21 @@ void filesPage() {
     ImGui::TextUnformatted(fs::absolute(appFolder().empty() ? "." : appFolder(), ec).string().c_str());
     ImGui::PopTextWrapPos();
 }
+void cheatsPage() {
+    ImGui::SeparatorText("Cheats");
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled("Not realistic, just fun. They work everywhere: the test bench, the range, reliability tests and career mode. "
+                        "Anything tested with a cheat on says so in its report.");
+    ImGui::PopTextWrapPos();
+    bool ch = false;
+    row("Auto feed", "Every time the action opens far enough, a round goes from the magazine into the chamber, whatever the\n"
+                     "magazine and the feed path are like (and the empty case is thrown clear). The action still has to move.");
+    ch |= ImGui::Checkbox("##cheatfeed", &CFG.cheatAutoFeed);
+    row("Brute force", "An action that didn't cycle after a shot, or that jams, is worked at once by an unseen strong hand:\n"
+                       "self-loaders that can't run themselves keep going, and a bolt action or a pump works itself.");
+    ch |= ImGui::Checkbox("##cheatforce", &CFG.cheatBruteForce);
+    if (ch) { dirty = true; applyCheats(); }
+}
 void controlsPage() {
     ImGui::SeparatorText("Mouse (first person)");
     row("Sensitivity");
@@ -704,7 +719,7 @@ void controlsPage() {
 }
 }  // namespace
 
-void settingsPageIndex(int i) { page = (Page)std::clamp(i, 0, 6); }
+void settingsPageIndex(int i) { page = (Page)std::clamp(i, 0, (int)Page::Cheats); }
 
 void settingsWindow() {
     dimBackground(0.6f);
@@ -717,7 +732,7 @@ void settingsWindow() {
     // pages down the left, the chosen page on the right
     ImGui::BeginChild("##nav", {170 * S(), -46 * S()});
     struct P { const char* l; Page p; } pages[] = {{"Display", Page::Display}, {"Audio", Page::Audio}, {"Interface", Page::Interface},
-                                                   {"Designer", Page::Designer}, {"Test bench", Page::Bench}, {"Controls", Page::Controls}, {"Files", Page::Files}};
+                                                   {"Designer", Page::Designer}, {"Test bench", Page::Bench}, {"Controls", Page::Controls}, {"Files", Page::Files}, {"Cheats", Page::Cheats}};
     for (auto& p : pages) {
         bool on = page == p.p;
         if (on) ImGui::PushStyleColor(ImGuiCol_Text, colAccent());
@@ -735,10 +750,11 @@ void settingsWindow() {
     case Page::Bench: benchPage(); break;
     case Page::Controls: controlsPage(); break;
     case Page::Files: filesPage(); break;
+    case Page::Cheats: cheatsPage(); break;
     }
     ImGui::EndChild();
     ImGui::Separator();
-    ImGui::TextDisabled("Changes are saved automatically. None of them change how guns behave.");
+    ImGui::TextDisabled("Changes are saved automatically. Only the cheats change how guns behave.");
     ImGui::SameLine(ImGui::GetWindowWidth() - 130 * S());
     bool close = ImGui::Button("Done", {116 * S(), 0}) || (IsKeyPressed(KEY_ESCAPE) && capturing < 0 && confirmUntil == 0);
     ImGui::End();

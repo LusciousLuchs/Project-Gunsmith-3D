@@ -177,6 +177,33 @@ double breechStroke(Sim& S, Body* B) {
 // The hand takes the part that's worked by hand (or the breech assembly), turns it if it turns about the bore, draws
 // it all the way back, and brings it home (or lets its spring do that); a part hinged to the frame is swung open
 // and shut. Times are a person's pace. Empty when there's nothing to work.
+// Brute force (a cheat): after a shot the action didn't open far enough to take the next round, or it's jammed: an
+// unseen strong hand works it at once, three times as quick as a person (the plain way, autoWorkAction)
+void bruteForceTick(Sim& S) {
+    if (!S.cheatForce || !S.BR || !S.hasFace) return;
+    if (S.fireT != S.cheatShot) { S.cheatShot = S.fireT; S.cheatOpen = 0; S.cheatDone = false; }
+    double gap = breechGap(S);
+    S.cheatOpen = std::max(S.cheatOpen, gap);
+    if (animPlaying(S) || S.hand.on || S.held) return;
+    Body* B = S.BR->root ? S.BR->root : S.BR;
+    const BreechDef& br = S.design.breech;
+    double need = S.physicalFeed ? br.cart.oal + 6 : (S.cheatFeed ? std::max(2.0, std::min(br.feed, br.cart.oal * 0.6)) : br.feed) + 2;
+    double stroke = B->fixed ? 0 : breechStroke(S, B) * 1000;
+    if (stroke > 1) need = std::min(need, stroke * 0.85);
+    bool want = false;
+    if (!S.cheatDone && S.t - S.fireT > 0.08 && S.cheatOpen < need) want = true;   // fired, and it stayed shut
+    if (S.malf != Malf::None && S.t - S.cheatT > 0.5) want = true;                  // jammed
+    if (S.cheatDone && S.t - S.fireT > 0.15 && S.cheatOpen >= need && !S.chambered && S.spent && inBattery(S) && S.t - S.cheatT > 0.5) want = true;   // shut on its case
+    if (!want) return;
+    S.cheatDone = true; S.cheatT = S.t;
+    Animation an = autoWorkAction(S);
+    if (an.keys.empty()) return;
+    double t0 = an.keys.front().t;
+    for (auto& k : an.keys) k.t = (k.t - t0) * 0.2;
+    S.design.anims["cheat:cycle"] = an;
+    playAnim(S, "cheat:cycle");
+}
+
 Animation autoWorkAction(Sim& S) {
     Animation an;
     if (!S.BR || !S.hasFace) return an;
@@ -249,6 +276,7 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
     d.friction *= 1 + o.frictionSpread * uni(rng);  // how dirty the action is, for this run
     auto Sp = build(d);
     Sim& S = *Sp;
+    R.cheats = cheatsOn(S);
     if (!S.BR || !S.hasFace) { R.note = "This design has no breech face, so it can't fire."; return R; }
     Body* B = S.BR->root ? S.BR->root : S.BR;
     for (auto& b : S.bodies)  // a part marked "worked by hand" (a pump's fore-end, a charging handle) is what the shooter pulls
@@ -322,6 +350,10 @@ ReliabilityReport runReliability(const Design& design, const ReliabilityOptions&
         S.pressed = false; S.trigger = false;
         run(S, R.manual ? 0.05 : 0.25);
         if (!R.manual && !inBattery(S) && S.malf == Malf::None) run(S, 0.2);  // give a slow action time to settle or jam
+        if (S.cheatForce) {   // (brute force: its unseen hand works the action, given the time to)
+            run(S, 0.1);
+            for (int w = 0; w < 40 && animPlaying(S); w++) run(S, 0.05);
+        }
         R.attempts++;
         if (S.shots == before) {
             if (wasChambered) {  // the trigger fell on a chambered round and nothing happened

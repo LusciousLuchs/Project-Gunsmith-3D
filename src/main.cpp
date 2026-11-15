@@ -29,6 +29,7 @@
 #include "app/mapedit.hpp"
 #include "ui/ui.hpp"
 #include "app/range.hpp"
+#include "solver.hpp"
 #include "version.hpp"
 #include "imgui.h"
 #include "rlImGui.h"
@@ -136,6 +137,11 @@ int main(int argc, char** argv) {
 #endif
     initAppFolder();     // Documents/OAB Foundry/Gunsmith on Windows: the settings and autosave (moved over from the game folder)
     loadSettings();
+    if (const char* c = std::getenv("GUNSMITH_CHEATS")) {   // (screenshots, tests) f: auto feed, b: brute force
+        std::string s = c;
+        CFG.cheatAutoFeed = s.find('f') != std::string::npos; CFG.cheatBruteForce = s.find('b') != std::string::npos;
+        sim::cheats().autoFeed = CFG.cheatAutoFeed; sim::cheats().bruteForce = CFG.cheatBruteForce;
+    }
     update::cleanup();   // the program file the last update moved aside
     if (CFG.autoUpdate && ((frames == 0 && shotPath.empty()) || std::getenv("GUNSMITH_UPDATE_API"))) update::start();   // (not for screenshot runs, unless testing it)
     setUserFolder(CFG.userDir.empty() ? defaultUserFolder() : CFG.userDir);   // your files: Blueprints, Levels, Rounds, ...

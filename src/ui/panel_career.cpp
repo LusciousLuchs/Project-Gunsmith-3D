@@ -93,7 +93,7 @@ static void gunsTab() {
             auto it = C.sheets.find(g.name);
             bool rated = it != C.sheets.end() && it->second.rated;
             career::GunSheet s = g.fresh;   // the gun as it is now, with the bench's numbers if it's been rated
-            if (rated) { s.rated = true; s.jamRate = it->second.jamRate; s.fired = it->second.fired; s.manual = it->second.manual; }
+            if (rated) { s.rated = true; s.jamRate = it->second.jamRate; s.fired = it->second.fired; s.manual = it->second.manual; s.cheats = it->second.cheats; }
             ImGui::TableNextRow();
             ImGui::TableNextColumn(); ImGui::TextUnformatted(g.name.c_str());
             ImGui::TextDisabled("%s, %d parts", !s.posed ? "hold not set" : s.twoHands ? "two hands" : "one hand", s.parts);
@@ -103,6 +103,7 @@ static void gunsTab() {
             if (tipHover()) ImGui::SetTooltip("As drawn: each part's volume times its material (the part's Material in the designer; steel if not chosen),\nunless you set its Mass. A wooden stock left as steel weighs ten times too much.");
             ImGui::TableNextColumn();
             if (rated) ImGui::TextColored(s.jamRate < 1 ? ImVec4(0.5f, 0.9f, 0.55f, 1) : s.jamRate < 5 ? ImVec4(0.95f, 0.8f, 0.4f, 1) : ImVec4(1, 0.45f, 0.4f, 1), "%.1f%%", s.jamRate);
+            if (rated && !s.cheats.empty()) { ImGui::SameLine(); ImGui::TextColored({1.0f, 0.55f, 0.3f, 1}, "(cheats)"); if (ImGui::IsItemHovered()) ImGui::SetTooltip("Tested with cheats on: %s. Not the gun's own result.", s.cheats.c_str()); }
             else ImGui::TextDisabled("not rated");
             ImGui::TableNextColumn(); if (s.moa > 0) ImGui::Text("%.1f MOA", s.moa); else ImGui::TextDisabled("shot");
             ImGui::TableNextColumn(); ImGui::Text("%.1f h", s.buildHours); ImGui::TextDisabled("%s material", usd(s.materialCost).c_str());

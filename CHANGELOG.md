@@ -8,6 +8,21 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.28-alpha
+
+- **Cheats** (Settings > Cheats). Not realistic, just fun, and they work everywhere: test bench, range, reliability tests and career.
+  - **Auto feed:** whenever the action opens far enough, a round goes from the magazine into the chamber, however the magazine and feed path are built. A tilting-barrel pistol whose rounds sat nose down fired 1 of 10; with auto feed, 10 of 10.
+  - **Brute force:** an action that didn't cycle after a shot, or that jammed, is worked straight away by an unseen strong hand. The gas pistol with its gas port taken away jammed every shot; with brute force, none. A bolt action or a pump works itself after each shot.
+  - Anything tested with a cheat on says so: reliability reports, career ratings ("(cheats)"), and a line on the bench and the range.
+- **Furniture** (Level editor). A new Furniture tool: shelf unit, wall shelf, display table, workbench, counter, gun rack and display cabinet. Click the floor (it faces you) or a wall (its back against it). It moves and turns as one piece and stays solid.
+  - **Make your own:** select some blocks, then *Make furniture*. Props and guns standing on it come with it. Save it in your new Furniture folder to use in any map, or break it back into blocks to change it.
+- **Things to pick up.** A new tool places crates, boxes, ammo cans, tin cans, bottles, paint buckets and bricks, or any gun (examples or your own), on shelves, tables or the floor. Select blocks and *Make a prop* to make your own.
+  - **On the range:** F picks a thing up (your gun goes away while your hands are full). F puts it down; a click throws it. They fall, slide, stack and land on each other. Shots knock them about, you kick small ones as you walk, and big ones are in your way.
+  - **Guns on furniture:** pick them up with F, like a dropped gun. Dropped guns now lie on the ground as themselves instead of as a case.
+  - The practice range has a shelf of things, stacked crates and a table with two guns on it, by the back wall.
+  - Not yet: things stay upright (they don't tip over), you can't stand on them, and picking up works on the range only.
+- Fix: the Level editor's hint line showed nonsense for the newer tools.
+
 ## 0.8.27-alpha
 
 - **Hollow parts.** Any part can now be a shell: tick *Hollow* in its panel and set the wall thickness. Pick two neighbouring corners to give that edge its own wall, or leave that side open (a slide's underside, the ends of a tube). *Side walls* sets the walls on the gun's left and right; 0 opens it right through. The physics treats the inside as real empty space: parts sit and slide inside it, and the part weighs only its walls. One setting instead of dozens of cuts, so it's quick for the physics too. (Not yet for round or leaned parts.)

@@ -105,6 +105,7 @@ static void reliabilitySection() {
     std::lock_guard<std::mutex> lk(REL.m);
     const auto& R = REL.report;
     ImGui::Text("%s: %d rounds fired%s", REL.designName.c_str(), R.fired, R.manual ? " (action worked by hand)" : "");
+    if (!R.cheats.empty()) ImGui::TextColored({1.0f, 0.55f, 0.3f, 1}, "CHEATS ON (%s): not the gun's own result.", R.cheats.c_str());
     ImVec4 col = R.jams == 0 ? colGood() : R.jamRate() < 2 ? colWarn() : colBad();
     if (R.jams == 0) ImGui::TextColored(col, "No jams.");
     else ImGui::TextColored(col, "%d jam%s: %.1f%% of rounds, about one every %.0f", R.jams, R.jams == 1 ? "" : "s", R.jamRate(), R.mrbf());
@@ -501,6 +502,10 @@ void testPanel() {
     bool batt = sim::inBattery(S);
     sim::Body* mag = sim::seatedMag(S);   // removable (latched) or built in
 
+    if (std::string ch = sim::cheatsOn(S); !ch.empty()) {
+        ImGui::TextColored({1.0f, 0.55f, 0.3f, 1}, "Cheats on: %s", ch.c_str());
+        if (tipHover()) ImGui::SetTooltip("Not realistic: switch them off in Settings > Cheats.");
+    }
     // ---- the state of the gun, in one line, then what to do about it
     ImGui::PushFont(gFontBold, 18.0f);
     if (S.malf != sim::Malf::None) ImGui::TextColored(colBad(), "Jammed: %s", sim::malfName(S.malf));

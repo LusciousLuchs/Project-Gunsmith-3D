@@ -104,7 +104,7 @@ void cartridgeSetup(Sim& S) {
             S.gunBox[2] = std::max(S.gunBox[2], w.x); S.gunBox[3] = std::max(S.gunBox[3], w.y);
         }
     }
-    S.physicalFeed = S.design.breech.on && S.design.breech.physicalFeed && S.hasFace && S.feedMode != "internal";
+    S.physicalFeed = S.design.breech.on && S.design.breech.physicalFeed && S.hasFace && S.feedMode != "internal" && !S.cheatFeed;
 }
 
 static void setState(Body& b, RS s) {

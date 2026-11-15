@@ -210,6 +210,12 @@ struct Sim {
     // physical feeding: rounds come up under the magazine lips, are stripped, ride the feed ramp, enter the chamber
     // only if they arrive straight, and are pulled out by the extractor and kicked clear by an ejector you draw
     bool physicalFeed = false;
+    // cheats (sim::cheats(), set when it's built): auto feed (rounds go from the magazine into the chamber the simple way,
+    // whatever the magazine and feed path are like) and brute force (an action that didn't cycle, or jammed, is
+    // worked by an unseen strong hand straight away)
+    bool cheatFeed = false, cheatForce = false;
+    double cheatShot = -1e9, cheatOpen = 0, cheatT = -1e9;
+    bool cheatDone = true;
     std::vector<double> chamberR;        // chamber radius every 0.5 mm from the chamber face (m)
     double gunBox[4] = {0, 0, 0, 0};     // x0, y0, x1, y1 (m) of the gun as drawn
     double gunZmin = 0, gunZmax = 0;     // depth the gun's parts span (m): a case beyond it has left the gun
@@ -262,6 +268,12 @@ int chamberedCount(Sim& S);
 std::unique_ptr<Sim> build(const Design& d);
 void substep(Sim& S);
 int run(Sim& S, double dt, int maxSteps = 0);
+// Cheats, for fun: not realistic. Every gun built while one is on uses it (bench, range, reliability tests, career);
+// reports say so.
+struct Cheats { bool autoFeed = false, bruteForce = false; };
+Cheats& cheats();
+std::string cheatsOn(const Sim& S);   // "" or "auto feed, brute force" (what this gun was built with)
+void bruteForceTick(Sim& S);         // (run() calls it)
 bool inBattery(const Sim& S);
 double breechGap(const Sim& S);                // mm
 V2 wpt(const Body& b, V2 l);                   // local (m) -> world (m)

@@ -18,6 +18,7 @@ struct GunSheet {
     double jamRate = 0;          // % of rounds that jammed in the test
     int fired = 0;               // rounds fired in it
     bool manual = false;         // worked by hand (bolt, pump, single shot)
+    std::string cheats;          // the bench test ran with cheats on ("auto feed"...): "" for none
     std::string caliber;         // the cartridge's name
     double energy = 0, velocity = 0;   // J, m/s (muzzle)
     double massKg = 0;           // empty

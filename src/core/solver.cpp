@@ -250,6 +250,8 @@ double holdPoint(const BreechDef& br) {
 
 std::unique_ptr<Sim> build(const Design& design) {
     auto S = std::make_unique<Sim>();
+    S->cheatFeed = cheats().autoFeed; S->cheatForce = cheats().bruteForce;
+    if (S->cheatForce) S->handStrength = 3000;   // (the unseen hand doesn't give up)
     S->design = design;
     syncBarrels(S->design);  // barrels drawn with the Barrel tool set the chambers and muzzles
     Sim& s = *S;
@@ -1486,7 +1488,7 @@ void substep(Sim& S) {
     }
     useChamber(S, 0);
     if (S.BR && S.hasFace) {
-        double gap = breechGap(S), feed = br.feed;
+        double gap = breechGap(S), feed = S.cheatFeed ? std::max(2.0, std::min(br.feed, br.cart.oal * 0.6)) : br.feed;
         if (gap < 1 && (S.chambered || S.spent)) S.gripped = true;  // the extractor takes hold when the breech closes on it
         if (gap > feed && !S.physicalFeed) {  // simplified feeding: rounds jump from magazine to chamber
             if (S.spent) { S.spent = false; S.gripped = false; S.events.push_back({Ev::Eject, S.t}); }   // the case is out: the extractor holds nothing now
@@ -1649,6 +1651,13 @@ bool playAnim(Sim& S, const std::string& slot) {
     return true;
 }
 bool animPlaying(const Sim& S) { return S.animT >= 0; }
+Cheats& cheats() { static Cheats c; return c; }
+std::string cheatsOn(const Sim& S) {
+    std::string s;
+    if (S.cheatFeed) s = "auto feed";
+    if (S.cheatForce) s += s.empty() ? "brute force" : ", brute force";
+    return s;
+}
 AnimHands animHandsNow(const Sim& S) {
     auto it = S.design.anims.find(S.animSlot);
     if (S.animT < 0 || it == S.design.anims.end()) { AnimHands o; o.firing = S.design.pose.firing; o.support = S.design.pose.support; return o; }
@@ -1731,7 +1740,7 @@ static void animTick(Sim& S) {
 int run(Sim& S, double dt, int maxSteps) {
     int n = (int)std::lround(dt / H);
     if (maxSteps > 0) n = std::min(n, maxSteps);
-    for (int i = 0; i < n; i++) { animTick(S); substep(S); }
+    for (int i = 0; i < n; i++) { animTick(S); substep(S); if (S.cheatForce && i % 20 == 0) bruteForceTick(S); }
     return n;
 }
 

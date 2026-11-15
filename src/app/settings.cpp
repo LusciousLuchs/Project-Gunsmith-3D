@@ -4,6 +4,7 @@
 #include "app/app.hpp"
 #include "app/audio.hpp"
 #include "json.hpp"
+#include "solver.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -32,6 +33,9 @@ void loadSettings() {
         CFG.userDir = g("userDir", d.userDir);
         CFG.poseCharacter = g("poseCharacter", d.poseCharacter);
         CFG.fpArms = g("fpArms", d.fpArms);
+        CFG.cheatAutoFeed = g("cheatAutoFeed", d.cheatAutoFeed);
+        CFG.cheatBruteForce = g("cheatBruteForce", d.cheatBruteForce);
+        sim::cheats().autoFeed = CFG.cheatAutoFeed; sim::cheats().bruteForce = CFG.cheatBruteForce;
         CFG.uiScale = std::clamp(g("uiScale", d.uiScale), 0.75f, 2.0f);
         CFG.uiScaleAuto = g("uiScaleAuto", std::fabs(CFG.uiScale - 1.0f) < 0.01f);  // (older settings: a scale someone set stays set)
         CFG.msaa = g("msaa", d.msaa);
@@ -77,7 +81,7 @@ void loadSettings() {
 void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
-        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
+        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused}, {"autoUpdate", CFG.autoUpdate},
@@ -135,4 +139,14 @@ void applyAudio() {
     SetSoundVolume(SFX.clack, CFG.volMechanical);
     SetSoundVolume(SFX.click, CFG.volMechanical);
     SetSoundVolume(SFX.tick, CFG.volInterface);
+}
+
+void applyCheats() {
+    bool feedChanged = sim::cheats().autoFeed != CFG.cheatAutoFeed;
+    sim::cheats().autoFeed = CFG.cheatAutoFeed; sim::cheats().bruteForce = CFG.cheatBruteForce;
+    if (A.S) {
+        A.S->cheatForce = CFG.cheatBruteForce;   // (straight away)
+        A.S->handStrength = CFG.cheatBruteForce ? 3000 : 250;
+        if (feedChanged) restartTest();          // (feeding is set up when the gun is built: built again)
+    }
 }

@@ -670,7 +670,7 @@ std::string careerToJson(const Career& c) {
     o["rng"] = c.rng; o["nextId"] = c.nextId;
     json S = json::object();
     for (auto& [k, s] : c.sheets)
-        S[k] = {{"rated", s.rated}, {"jamRate", s.jamRate}, {"fired", s.fired}, {"manual", s.manual}, {"caliber", s.caliber}, {"energy", s.energy},
+        S[k] = {{"rated", s.rated}, {"jamRate", s.jamRate}, {"fired", s.fired}, {"manual", s.manual}, {"cheats", s.cheats}, {"caliber", s.caliber}, {"energy", s.energy},
                 {"velocity", s.velocity}, {"massKg", s.massKg}, {"recoil", s.recoil}, {"barrelMm", s.barrelMm}, {"moa", s.moa}, {"capacity", s.capacity},
                 {"twoHands", s.twoHands}, {"posed", s.posed}, {"parts", s.parts}, {"buildHours", s.buildHours}, {"materialCost", s.materialCost}};
     o["sheets"] = S;
@@ -726,7 +726,7 @@ bool careerFromJson(const std::string& text, Career& out) {
     if (o.contains("sheets") && o["sheets"].is_object())
         for (auto& [k, j] : o["sheets"].items()) {
             GunSheet s; s.name = k;
-            s.rated = j.value("rated", false); s.jamRate = j.value("jamRate", 0.0); s.fired = j.value("fired", 0); s.manual = j.value("manual", false);
+            s.rated = j.value("rated", false); s.jamRate = j.value("jamRate", 0.0); s.fired = j.value("fired", 0); s.manual = j.value("manual", false); s.cheats = j.value("cheats", std::string());
             s.caliber = j.value("caliber", ""); s.energy = j.value("energy", 0.0); s.velocity = j.value("velocity", 0.0); s.massKg = j.value("massKg", 0.0);
             s.recoil = j.value("recoil", 0.0); s.barrelMm = j.value("barrelMm", 0.0); s.moa = j.value("moa", 0.0); s.capacity = j.value("capacity", 0);
             s.twoHands = j.value("twoHands", false); s.posed = j.value("posed", true); s.parts = j.value("parts", 0); s.buildHours = j.value("buildHours", 1.0); s.materialCost = j.value("materialCost", 0.0);
