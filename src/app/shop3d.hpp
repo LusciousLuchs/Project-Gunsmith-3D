@@ -10,6 +10,7 @@ bool shopWalking();         // ...and on foot
 void shopEnter();           // (after the workshop map is opened, on foot) the computer and door added where missing
 bool shopWalkUpdate(float dt);   // every frame on foot, before moving: true if a screen is open (no walking then)
 void shopDrawPeople();      // in the 3D pass: customers at the counter, staff at their stations
+void shopShadowCasters();   // their sun shadows (plain outlines), inside mapShadowPass
 void shopHud();             // after the 3D pass: day, money, what F does here
 void shopWindows();         // in the ImGui pass: the open thing's screen
 void shopBuildMode();       // to building (the level editor), remembering where you stood

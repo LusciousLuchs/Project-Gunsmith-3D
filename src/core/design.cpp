@@ -688,10 +688,26 @@ std::vector<BodyDef> splitBody(const BodyDef& b0, V2 a, V2 c) {
     }
     return out;
 }
+double roundAxisAngle(const BodyDef& b) {
+    carve::RoundAxis ax = carve::roundAxis(b);
+    return std::atan2(ax.dir.y, ax.dir.x) * 180 / PI_;
+}
+// an axis angle as the plainest setting that gives it (level, upright, or turned)
+static void setRoundAxisAngle(BodyDef& b, double deg) {
+    double d = std::remainder(deg, 180.0);   // (an axis has no direction: -180..180 folds to -90..90)
+    if (std::fabs(d) < 0.01) { b.roundAxis = 0; b.roundAxisDeg = 0; }
+    else if (std::fabs(std::fabs(d) - 90) < 0.01) { b.roundAxis = 1; b.roundAxisDeg = 90; }
+    else { b.roundAxis = 3; b.roundAxisDeg = d; }
+}
+void turnRoundAxis(BodyDef& b, double deg) {
+    if (!b.round) return;
+    setRoundAxisAngle(b, roundAxisAngle(b) + deg);
+}
 void mirrorBody(BodyDef& b, V2 a, V2 c) {
     fixShape(b);
     double dx = c.x - a.x, dy = c.y - a.y, l2 = dx * dx + dy * dy;
     if (l2 < 1e-12) return;
+    if (b.round && b.roundAxis != 2) setRoundAxisAngle(b, 2 * std::atan2(dy, dx) * 180 / PI_ - roundAxisAngle(b));   // (its axis mirrored too)
     carve::mirrorCarves(b, a, c);
     auto refl = [&](V2 p) {
         double t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2;
@@ -1030,6 +1046,7 @@ std::string designToJson(const Design& d, bool pretty) {
             if (b.roundTurn != 0) jb["roundTurn"] = b.roundTurn;
             if (b.roundSweep < 360) jb["roundSweep"] = b.roundSweep;
             if (b.roundAxis) jb["roundAxis"] = b.roundAxis;
+            if (b.roundAxis == 3) jb["roundAxisDeg"] = b.roundAxisDeg;
         }
         if (!b.carves.empty()) {
             json cs = json::array();
@@ -1280,7 +1297,8 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         if (b.roundSides > 0 && b.roundSides < 3) b.roundSides = 3;
         b.roundTurn = opt<double>(jb, "roundTurn", 0.0);
         b.roundSweep = std::clamp(opt<double>(jb, "roundSweep", 360.0), 1.0, 360.0);
-        b.roundAxis = std::clamp(opt<int>(jb, "roundAxis", 0), 0, 2);
+        b.roundAxis = std::clamp(opt<int>(jb, "roundAxis", 0), 0, 3);
+        b.roundAxisDeg = opt<double>(jb, "roundAxisDeg", 0.0);
         if (jb.contains("carves") && jb["carves"].is_array())
             for (auto& jc : jb["carves"]) {
                 if (!jc.is_object()) continue;

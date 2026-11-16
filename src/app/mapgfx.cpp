@@ -434,6 +434,18 @@ static const int SHADOW_SIZE = 2048;
 static const float SHADOW_SPAN = 90;   // metres across the shadowed area
 void mapShadowsOff() { setShadow(false); }
 void mapShadowDebugDraw() { if (gShadowRT.depth.id && std::getenv("GUNSMITH_SHADOWDBG")) { Texture2D t = gShadowRT.depth; DrawTextureEx(t, {0, 0}, 0, 200.0f / t.width, WHITE); } }
+void shadowBody(Vector3 feet, float h, Vector3 lie) {
+    float k = h / 1.75f, r = 0.17f * k;
+    if (lie.x * lie.x + lie.z * lie.z < 1e-6f) {
+        DrawCapsule({feet.x, feet.y + r, feet.z}, {feet.x, feet.y + h - 0.32f * k, feet.z}, r, 8, 4, BLACK);
+        DrawSphereEx({feet.x, feet.y + h - 0.13f * k, feet.z}, 0.11f * k, 6, 8, BLACK);
+    } else {
+        float l = std::sqrt(lie.x * lie.x + lie.z * lie.z), dx = lie.x / l, dz = lie.z / l, y = feet.y + 0.12f * k;
+        DrawCapsule({feet.x + dx * r, y, feet.z + dz * r}, {feet.x + dx * (h - 0.32f * k), y, feet.z + dz * (h - 0.32f * k)}, r * 0.8f, 8, 4, BLACK);
+        DrawSphereEx({feet.x + dx * (h - 0.13f * k), y, feet.z + dz * (h - 0.13f * k)}, 0.11f * k, 6, 8, BLACK);
+    }
+}
+
 void mapShadowPass(const gmap::Look& L, Vector3 focus, void (*extra)()) {
     const double day = std::clamp(L.daylight, 0.0, 1.0);
     if (!CFG.shadows || day < 0.12 || gWorkLight) { setShadow(false); return; }

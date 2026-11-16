@@ -1,5 +1,6 @@
 // Gunsmith3D - career mode on foot (see shop3d.hpp).
 #include "app/shop3d.hpp"
+#include "app/mapgfx.hpp"
 #include "app/app.hpp"
 #include "app/careermode.hpp"
 #include "app/mapedit.hpp"
@@ -78,7 +79,7 @@ void openThing(int thing) { gOpen = thing; EnableCursor(); }
 // where the people stand
 struct Spot { gmap::V3 at; double yaw; int person; std::string name; bool staff = false; };
 std::vector<Spot> people() {
-    std::vector<Spot> out;
+    std::vector<Spot> out, waitOut;   // (waitOut: those waiting outside the door, left where they are)
     const gmap::Entity* counter = findType("shop_counter");
     const gmap::Entity* door = findType("shop_door");
     if (counter) {   // customers queue on the counter's far side (the door's side), facing it
@@ -88,23 +89,69 @@ std::vector<Spot> people() {
             if (to.x * f.x + to.z * f.z > 0) s = f;
         }
         double yaw = std::atan2(-s.z, -s.x) * 180 / 3.14159265358979;
-        // the displays they look at while they wait (each stands in front of one, facing it), then the queue
+        // the queue: a line straight back from the counter, 0.8 m apart, each facing the one ahead; where it would run
+        // into a wall, a fixture or out of the building it turns along it. Anyone past the room in the line looks at
+        // the displays while they wait.
+        auto freeAt = [&](gmap::V3 p) {
+            if (ME.map.build.on() && !ME.map.build.has(p, -0.2)) return false;
+            if (door && std::hypot(p.x - door->pos.x, p.z - door->pos.z) < 1.1) return false;   // (keep the way in clear)
+            for (auto& e : ME.map.ents) {   // workstations, the counter and displays are drawn, not blocks: keep off them
+                bool big = e.type == "shop_counter" || e.type.rfind("station_", 0) == 0 || gmap::isDisplay(e.type);
+                if (!big && e.type != "shop_computer") continue;
+                gmap::V3 ef = frontOf(e), d = p - e.pos;
+                double across = std::fabs(d.x * ef.x + d.z * ef.z), along = std::fabs(-d.x * ef.z + d.z * ef.x);
+                if (across < 0.65 && along < (e.type == "shop_counter" ? 1.3 : 0.9)) return false;
+            }
+            return gmap::boxFree(ME.map, {p.x, p.y + 0.95, p.z}, {0.22, 0.85, 0.22});
+        };
+        std::vector<gmap::V3> line;
+        {
+            gmap::V3 dir = s, at = counter->pos + s * 0.75;
+            for (int k = 0; k < 10; k++) {
+                if (k > 0) {
+                    gmap::V3 nx = at + dir * 0.8;
+                    if (!freeAt(nx)) {   // turn: whichever way along the obstacle has room
+                        gmap::V3 l{-dir.z, 0, dir.x}, r{dir.z, 0, -dir.x};
+                        auto room = [&](gmap::V3 d) { int n = 0; while (n < 6 && freeAt(at + d * (0.8 * (n + 1)))) n++; return n; };
+                        int nl = room(l), nr = room(r);
+                        if (nl == 0 && nr == 0) break;
+                        // toward the way in if there's room (so nobody has to squeeze past the ones already waiting),
+                        // else the side with the longer run
+                        gmap::V3 in = door ? door->pos - at : gmap::V3{0, 0, 0};
+                        double tl = in.x * l.x + in.z * l.z;
+                        if (door && nl > 0 && tl > 0.1) dir = l;
+                        else if (door && nr > 0 && tl < -0.1) dir = r;
+                        else dir = nl >= nr ? l : r;
+                        nx = at + dir * 0.8;
+                    }
+                    at = nx;
+                }
+                line.push_back(at);
+            }
+        }
         std::vector<const gmap::Entity*> shows;
         for (auto& e : ME.map.ents) if (gmap::isDisplay(e.type)) shows.push_back(&e);
-        int k = 0, browsing = 0;
-        bool first = true;
+        int k = 0, browsing = 0, outside = 0;
         for (auto& w : CAREER.walkins) {
             if (w.state != 0 || (!CAREER.props.empty() && w.prop != CAREER.here)) continue;
-            if (!first && browsing < (int)shows.size()) {   // (the first waits at the counter; the others look round)
+            if (k < (int)line.size()) {
+                gmap::V3 ahead = k == 0 ? counter->pos : line[k - 1], p = line[k];
+                double fy = std::atan2(ahead.z - p.z, ahead.x - p.x) * 180 / 3.14159265358979;
+                out.push_back({p, k == 0 ? yaw : fy, w.id, w.name});
+                k++;
+            } else if (browsing < (int)shows.size()) {
                 const gmap::Entity& d = *shows[browsing++];
                 gmap::V3 f = frontOf(d);
                 out.push_back({d.pos + f * 0.75, std::atan2(f.z, f.x) * 180 / 3.14159265358979 + 180, w.id, w.name});
-                continue;
+            } else if (door) {   // no room left inside: they wait outside the door, one behind the other
+                gmap::V3 o = door->pos - (ME.map.build.on() ? gmap::V3{(ME.map.build.x0 + ME.map.build.x1) / 2, 0, (ME.map.build.z0 + ME.map.build.z1) / 2} : counter->pos);
+                o.y = 0;
+                double ol = std::hypot(o.x, o.z);
+                o = ol > 1e-6 ? o * (1 / ol) : gmap::V3{1, 0, 0};
+                if (std::fabs(o.x) > std::fabs(o.z)) o = {o.x > 0 ? 1.0 : -1.0, 0, 0}; else o = {0, 0, o.z > 0 ? 1.0 : -1.0};   // (square to the wall)
+                gmap::V3 p = door->pos + o * (1.3 + 0.8 * outside++);
+                waitOut.push_back({p, std::atan2(-o.z, -o.x) * 180 / 3.14159265358979, w.id, w.name});
             }
-            first = false;
-            gmap::V3 side{-s.z, 0, s.x};
-            out.push_back({counter->pos + s * (0.75 + 0.75 * k) + side * (k % 2 ? 0.25 : -0.1 * k), yaw, w.id, w.name});
-            if (++k >= 6) break;
         }
     }
     // staff: each at a workstation that suits them (you keep the first bench)
@@ -135,7 +182,8 @@ std::vector<Spot> people() {
         const gmap::Zone& z = ME.map.build;
         p.x = std::clamp(p.x, z.x0 + 0.35, z.x1 - 0.35); p.z = std::clamp(p.z, z.z0 + 0.35, z.z1 - 0.35);
     };
-    for (auto& p : out) inside(p.at);   // (everyone inside the building)
+    for (auto& p : out) inside(p.at);   // (everyone inside the building, but for those waiting outside)
+    out.insert(out.end(), waitOut.begin(), waitOut.end());
     // nobody stands in anybody else: a spot squeezed onto another (a queue running into a wall) steps aside
     for (size_t i = 0; i < out.size(); i++) {
         const gmap::V3 base = out[i].at;
@@ -188,6 +236,8 @@ void stepWalkers(float dt) {
     auto spots = people();
     std::map<int, const Spot*> want;
     for (auto& sp : spots) want[sp.person] = &sp;
+    std::map<int, int> rank;   // who gives way: the one further back in the queue gives way to the one ahead of them
+    for (size_t i = 0; i < spots.size(); i++) rank[spots[i].person] = (int)i + 1;
     for (auto& sp : spots) {
         auto it = gWalkers.find(sp.person);
         if (it == gWalkers.end()) {   // someone new: customers come in at the door, staff are already at work
@@ -210,8 +260,51 @@ void stepWalkers(float dt) {
             if (w.staff) { it = gWalkers.erase(it); continue; }
             plan(w, doorSpot());
         }
-        // walk along the path
-        double moved = 0, want2 = 1.15 * dt;
+        // walk along the path, minding the others: behind someone going your way (or standing), slow down and wait;
+        // meeting someone coming the other way, both keep to their right and pass
+        if (w.path.empty() && !w.leaving) {   // nudged off their spot: step back to it
+            double gx = w.goal.x - w.pos.x, gz = w.goal.z - w.pos.z;
+            if (gx * gx + gz * gz > 0.01) w.path.push_back(w.goal);
+        }
+        auto yieldsTo = [&](int me, const Walker& a, int other, const Walker& b) {
+            auto rk = [&](int id, const Walker& x) { return x.leaving ? 0 : (rank.count(id) ? rank[id] : 1000); };
+            int ra = rk(me, a), rb = rk(other, b);
+            return ra != rb ? ra > rb : me > other;
+        };
+        double want2 = 1.15 * dt;
+        auto headOf = [](const Walker& o, double& x, double& z) {
+            x = z = 0;
+            if (o.path.empty()) return false;
+            double dx = o.path.front().x - o.pos.x, dz = o.path.front().z - o.pos.z, l = std::hypot(dx, dz);
+            if (l < 1e-4) return false;
+            x = dx / l; z = dz / l; return true;
+        };
+        double hx, hz;
+        if (headOf(w, hx, hz)) {
+            for (auto& [oid, o] : gWalkers) {
+                if (oid == it->first || !yieldsTo(it->first, w, oid, o)) continue;
+                double ox = o.pos.x - w.pos.x, oz = o.pos.z - w.pos.z, od = std::hypot(ox, oz);
+                if (od < 1e-4 || od > 1.0) continue;
+                double ahead = (ox * hx + oz * hz) / od, px, pz;
+                bool moving = headOf(o, px, pz);
+                bool oncoming = moving && px * hx + pz * hz < -0.3;
+                double side = (ox * -hz + oz * hx);   // + : they're on our left
+                if (ahead > 0.5 && !oncoming && od < 0.8 && std::fabs(side) < 0.4)
+                    want2 *= std::clamp((od - 0.5) / 0.3, 0.0, 1.0);   // (queue up behind them)
+                if (ahead > 0.3 && (oncoming || !moving) && od < 1.0 && std::fabs(side) < 0.45) {   // keep right of them
+                    double k = std::min(1.0, (double)dt * 3) * (1.0 - od) * 0.6;
+                    w.pos.x += hz * k; w.pos.z += -hx * k;
+                }
+            }
+        }
+        for (auto& [oid, o] : gWalkers) {   // never inside each other (the one giving way is the one moved)
+            if (oid == it->first || !yieldsTo(it->first, w, oid, o)) continue;
+            double ox = o.pos.x - w.pos.x, oz = o.pos.z - w.pos.z, od = std::hypot(ox, oz);
+            if (od < 1e-4 || od > 0.5) continue;
+            double push = (0.5 - od) * 0.5 * std::min(1.0, (double)dt * 8);
+            w.pos.x -= ox / od * push; w.pos.z -= oz / od * push;
+        }
+        double moved = 0;
         while (!w.path.empty() && moved < want2) {
             gmap::V3 t = w.path.front();
             double dx = t.x - w.pos.x, dz = t.z - w.pos.z, d = std::hypot(dx, dz);
@@ -333,6 +426,9 @@ static void drawCounterPapers() {
     });
 }
 
+void shopShadowCasters() {
+    for (auto& [id, w] : gWalkers) shadowBody({(float)w.pos.x, (float)w.pos.y, (float)w.pos.z}, 1.72f);
+}
 void shopDrawPeople() {
     if (!ME.walking && ME.map.build.on()) {   // build mode: the property's floor (white) and its storefront (gold), outlined
         auto outline = [](const gmap::Zone& z, Color c) {

@@ -2880,6 +2880,29 @@ static void dayNightTest() {
     CHECK(gmap::mapFromJson(gmap::mapToJson(m), r) && r.look.time == 17 && r.look.dayMinutes == 40, "the practice range's late afternoon and running day are saved with it");
     CHECK(gmap::clockText(17.5) == "17:30" && gmap::clockText(24) == "00:00", "the clock reads right");
 }
+// A round part rotated in the side view keeps its shape: its turning axis goes round with it (it used to stay level and
+// spin the turned outline into an hourglass)
+static void roundTurnTest() {
+    std::printf("\n== round parts turned\n");
+    BodyDef b; b.id = "bar"; b.round = true; b.thick = 10;
+    b.pts = {{0, 0}, {100, 0}, {100, 10}, {0, 10}}; b.rad.assign(4, 0); b.bulge.assign(4, 0);
+    auto turn = [](BodyDef& d, double deg) {
+        turnRoundAxis(d, deg);
+        V2 c = centroidOf(d); double a = deg * 3.14159265358979 / 180;
+        for (auto& p : d.pts) { double x = p.x - c.x, y = p.y - c.y; p = {c.x + x * std::cos(a) - y * std::sin(a), c.y + x * std::sin(a) + y * std::cos(a)}; }
+    };
+    BodyDef t = b; turn(t, 30);
+    carve::RoundAxis ax = carve::roundAxis(t);
+    CHECK(std::fabs(std::atan2(ax.dir.y, ax.dir.x) * 180 / 3.14159265358979 - 30) < 0.01 && std::fabs(ax.R - 5) < 0.01, "turned 30 degrees: its axis turns too, still 10 mm thick");
+    BodyDef u = b; turn(u, 90);
+    CHECK(u.roundAxis == 1 && std::fabs(carve::roundAxis(u).R - 5) < 0.01, "turned upright: the plain Upright setting");
+    BodyDef v = b; turn(v, 30); turn(v, -30);
+    CHECK(v.roundAxis == 0, "turned and back: Level again");
+    BodyDef w = t; flipBody(w, true);
+    CHECK(std::fabs(roundAxisAngle(w) + 30) < 0.01, "flipped: the axis is mirrored with it");
+    Design d; d.bodies = {t}; Design r;
+    CHECK(designFromJson(designToJson(d), r) && r.bodies[0].roundAxis == 3 && std::fabs(r.bodies[0].roundAxisDeg - 30) < 1e-6, "the turned axis is saved");
+}
 static void actionKitsTest() {
     std::printf("actionKits\n");
     for (auto& k : ::actionKits()) {
@@ -3136,6 +3159,7 @@ int main() {
         else if (o == "kits") actionKitsTest();
         else if (o == "kitfit") kitFittingTest();
         else if (o == "daynight") dayNightTest();
+        else if (o == "roundturn") roundTurnTest();
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
@@ -3210,6 +3234,7 @@ int main() {
     actionKitsTest();
     kitFittingTest();
     dayNightTest();
+    roundTurnTest();
     hollowParts();
     cheatsTest();
     furnitureTest();

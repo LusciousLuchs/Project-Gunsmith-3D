@@ -393,6 +393,7 @@ bool hire(Career& c, int i, std::string* why) {
 void letGo(Career& c, int i) { if (i >= 0 && i < (int)c.staff.size()) c.staff.erase(c.staff.begin() + i); }
 
 namespace { Walkin walkin(Career& c); }
+void addWalkins(Career& c, int n, int prop) { for (int i = 0; i < n; i++) { Walkin w = walkin(c); w.prop = prop; c.walkins.push_back(w); } }
 Career newCareer(unsigned seed) {
     Career c;
     c.on = true;

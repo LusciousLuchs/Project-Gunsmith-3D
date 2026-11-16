@@ -16,6 +16,9 @@ void mapWorkLight(int mode);                    // the level editor: 0 as player
 void mapDrawWorld();
 // Sun shadows: the map (and `extra` casters) drawn from the sun into a depth picture round `focus` (an area about 90 m
 // across); the lit shader then shades whatever's behind something. Off at night, and when Settings has them off.
+// A person's shadow, kept simple (the owner's: the body's outline only, no gun): a body and a head. Upright, or lying
+// along `lie` (a direction on the floor) when fallen. Only drawn inside mapShadowPass's `extra`.
+void shadowBody(Vector3 feet, float height, Vector3 lie = {0, 0, 0});
 void mapShadowPass(const gmap::Look& L, Vector3 focus, void (*extra)() = nullptr);
 void mapShadowsOff();
 void mapShadowDebugDraw();   // (GUNSMITH_SHADOWDBG) the sun's depth picture, top left

@@ -126,6 +126,7 @@ void partRingsDraw() {
 
 void rotateBody(int i, V2 c, double deg) {
     BodyDef& d = A.design.bodies[i];
+    turnRoundAxis(d, deg);   // (a round part's axis turns with it: else it's spun about the old line, an hourglass)
     double a = deg * 3.14159265358979 / 180, cs = std::cos(a), sn = std::sin(a);
     auto rot = [&](V2& p) { double x = p.x - c.x, y = p.y - c.y; p = {c.x + x * cs - y * sn, c.y + x * sn + y * cs}; };
     for (auto& p : d.pts) rot(p);

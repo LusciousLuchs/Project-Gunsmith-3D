@@ -247,7 +247,9 @@ struct BodyDef {
     double roundTurn = 0;                // degrees the cross-section is turned about the axis (0 = a flat on top)
     double roundSweep = 360;             // degrees it goes round: less makes a wedge (a lug), centred on the Turn direction
     int roundAxis = 0;                   // the line it turns about, through its middle: 0 level (front to back), 1 upright,
-                                         // 2 along its own length (for parts drawn at a slant)
+                                         // 2 along its own length (for parts drawn at a slant), 3 at roundAxisDeg (turned
+                                         // with the part: rotating a round part sets this, so its shape turns as drawn)
+    double roundAxisDeg = 0;             // roundAxis 3: the axis's angle in the side view, degrees (0 level, 90 upright)
 };
 
 struct JointDef {
@@ -520,7 +522,11 @@ int mirrorPartner(const Design& d, int bodyIndex);                  // the other
 // Keeps live mirrors in step. With `prev`: the part of each pair that changed since then is copied to the other (if
 // both changed, `prefer` when it's in the pair). Without: `prefer` is copied to its partner. Returns parts updated.
 int syncMirrors(Design& d, const Design* prev = nullptr, int prefer = -1);                         // reflect across the line through a and c
-void flipBody(BodyDef& b, bool horizontal);                      // flip about its own centre
+void flipBody(BodyDef& b, bool horizontal);
+// a round part's turning axis, as an angle (degrees, the side view): what roundAxis gives now
+double roundAxisAngle(const BodyDef& b);
+// a round part turned by deg (call before its outline turns): its axis goes with it
+void turnRoundAxis(BodyDef& b, double deg);                      // flip about its own centre
 constexpr int MAX_CORNERS = 1024;                                 // corners a part can be given (older blueprints may have more)
 int subdivideBody(BodyDef& b);                                   // add a vertex in the middle of every edge, longest first, up to
                                                                  // MAX_CORNERS; returns how many were added

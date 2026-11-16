@@ -549,6 +549,17 @@ static void stepProps(float dt) {
         }
     }
 }
+static void drawProps();
+// what casts a sun shadow besides the map: props, and people as plain outlines (you too; no guns)
+static void shadowCasters() {
+    drawProps();
+    for (auto& a : R.actors) {
+        if (!a.dead) shadowBody(rv(a.body.feet), (float)npcai::height(a));
+        else if (a.deadT < 9) shadowBody(rv(a.body.feet), (float)npcai::height(a), rv(a.fallDir));
+    }
+    if (R.pl.stance == gmap::Stance::Prone) shadowBody(rv(R.pl.feet), 1.75f, {(float)std::cos(R.pl.yaw), 0, (float)std::sin(R.pl.yaw)});
+    else shadowBody(rv(R.pl.feet), (float)std::max(0.6, R.pl.eye + 0.12));
+}
 static void drawProps() {
     for (auto& p : R.props) mapDrawBrushes(p.e.parts, entityMatrix(p.e.pos, p.e.yaw));
 }
@@ -1815,7 +1826,7 @@ void rangeRender() {
     cam.position = rv(eye); cam.target = rv(eye + f); cam.up = rv(up); cam.fovy = CFG.fov - 12 * R.aim; cam.projection = CAMERA_PERSPECTIVE;
     {   // sun shadows round where you are, reaching out ahead of you
         V3 ahead = gmap::norm(V3{f.x, 0, f.z});
-        mapShadowPass(R.map.look, rv(eye + ahead * 25), drawProps);
+        mapShadowPass(R.map.look, rv(eye + ahead * 25), shadowCasters);
     }
     renderScopePicture(up);   // (with last frame's gun: before this frame's view)
     A.cam = cam;

@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.34-alpha
+
+- **Turning round parts no longer breaks them.** Rotating a round part (a cylinder, a barrel) at an angle used to turn its outline but not the axis it's spun about, so it came out as an hourglass or worse. Its axis now turns with it (new Axis setting "Turned with the part", with an Axis angle). Mirroring and scaling keep it right too.
+- **Customers queue.** People buying stuff now stand in a line behind the counter, each facing the one ahead, keep the doorway clear, and wait outside the door when the shop is full. They step round each other instead of walking through one another.
+- **People cast shadows.** Customers, staff, NPCs on the range and you yourself cast a simple body shadow in the sun (no gun shadow).
+- Fixed: walking round your shop showed only sky since the sun shadows came in.
+
 ## 0.8.33-alpha
 
 - **Level editor units.** The toolbar has a units list: metres, centimetres, feet (with inches), inches or yards. Every length in the Level editor uses it: sizes, positions, the new-block height, wall thickness, door widths, light reach, moving targets, fog and texture shifts. The grid steps change with it (1/2 in to 4 ft, or 1 cm to 2 m), and your choice is remembered.

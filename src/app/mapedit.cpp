@@ -1311,6 +1311,13 @@ void mapEditorUpdate(float dt, bool modal) {
     if (ME.built != ME.version) { mapBuildMeshes(ME.map); ME.built = ME.version; }
 }
 
+// people's sun shadows on foot: you, and in the career shop the customers and staff (plain outlines, the owner's)
+static void walkShadows() {
+    if (!ME.walking) return;
+    if (ME.pl.stance == gmap::Stance::Prone) shadowBody(rv(ME.pl.feet), 1.75f, {(float)std::cos(ME.pl.yaw), 0, (float)std::sin(ME.pl.yaw)});
+    else shadowBody(rv(ME.pl.feet), (float)std::max(0.6, ME.pl.eye + 0.12));
+    if (shopActive()) shopShadowCasters();
+}
 void mapEditorRender() {
     VP v = viewRect();
     Camera3D cam;
@@ -1332,17 +1339,17 @@ void mapEditorRender() {
     if (!ME.walking) gWalkHour = -1;
     if (shopActive() && ME.walking) { if (look.time < 0) look.time = 12; look = gmap::lookAtHour(look, shopHour()); }   // (career: the shop's clock)
     else if (look.time >= 0) look = gmap::lookAtHour(look, ME.walking && gWalkHour >= 0 ? gWalkHour : look.time);
-    if (ME.top && !ME.walking) DrawRectangle((int)v.x, (int)v.y, (int)v.w, (int)v.h, Color{38, 42, 49, 255});
-    else mapDrawSky(look, v.x, v.y, v.w, v.h, pitch, fov);
-    mapBeginViewport(cam, v.x, v.y, v.w, v.h);
-    if (ME.top && !ME.walking) { look.fogStart = 1e6; look.fogEnd = 2e6; }  // the top-view camera sits far above the map
     mapWorkLight(ME.walking ? 0 : ME.lightMode);
     if (!(ME.top && !ME.walking)) {   // sun shadows round the camera (none in the top view or under the work light)
         V3 at = ME.walking ? gmap::playerEye(ME.pl, ME.map) : ME.cam;
         CamB cb = camBasis();
         V3 ahead = ME.walking ? gmap::norm(V3{std::cos(ME.pl.yaw), 0, std::sin(ME.pl.yaw)}) : gmap::norm(V3{cb.fwd.x, 0, cb.fwd.z});
-        mapShadowPass(look, rv(at + ahead * 25));
+        mapShadowPass(look, rv(at + ahead * 25), walkShadows);
     } else mapShadowsOff();
+    if (ME.top && !ME.walking) DrawRectangle((int)v.x, (int)v.y, (int)v.w, (int)v.h, Color{38, 42, 49, 255});
+    else mapDrawSky(look, v.x, v.y, v.w, v.h, pitch, fov);
+    mapBeginViewport(cam, v.x, v.y, v.w, v.h);
+    if (ME.top && !ME.walking) { look.fogStart = 1e6; look.fogEnd = 2e6; }  // the top-view camera sits far above the map
     mapApplyLook(look);
     mapSetLamps(ME.map, ME.walking ? gmap::playerEye(ME.pl, ME.map) : ME.cam);
     mapDrawWorld();

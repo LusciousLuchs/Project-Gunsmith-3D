@@ -279,6 +279,7 @@ int main(int argc, char** argv) {
         if (const char* e = std::getenv("GUNSMITH_SHOPWALK")) { (void)e; shopWalk(); }   // (screenshots) press Walk
         if (const char* e = std::getenv("GUNSMITH_SHOPOPEN")) shopOpen(std::atoi(e));   // (screenshots) a thing in your shop, used
         if (const char* e = std::getenv("GUNSMITH_CAREERDAYS")) for (int k = std::atoi(e); k > 0; k--) career::endDay(CAREER);
+        if (const char* e = std::getenv("GUNSMITH_WALKINS")) career::addWalkins(CAREER, std::atoi(e), CAREER.here);   // (screenshots) customers waiting
     }
     if (const char* c = std::getenv("GUNSMITH_NPCCAM")) std::sscanf(c, "%f,%f,%f,%f", &NE.dist, &NE.yaw, &NE.pitch, &NE.targetY);   // (screenshots) the NPC editor's camera
     if (const char* c = std::getenv("GUNSMITH_LOOK")) {   // (screenshots) the character maker's choices: body,hair,top,pants,extras

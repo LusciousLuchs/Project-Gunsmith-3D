@@ -40,6 +40,7 @@ RoundAxis roundAxis(const BodyDef& b) {
     else if (std::fabs(std::fabs(deg) - 90) < 2) th = PI_R / 2;
     if (b.roundAxis == 0) th = 0;                                     // level, front to back (most parts)
     else if (b.roundAxis == 1) th = PI_R / 2;                         // upright
+    else if (b.roundAxis == 3) th = rad(b.roundAxisDeg);              // turned with the part
     ax.dir = {std::cos(th), std::sin(th)};
     if (b.barrel.on) {   // a barrel: its bore runs down the middle of its outline (not its centre of area, which a
         double v0 = 1e9, v1 = -1e9;   // thicker chamber end or an uneven edit pulls to one side)

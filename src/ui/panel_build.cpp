@@ -594,7 +594,11 @@ static void inspectPart(BodyDef& b) {
             prop("Axis", "The line it turns about, through the middle of the outline.\n"
                          "For a lug: draw it right across the bolt, centred on the bore, then set Sweep.");
             ImGui::SetNextItemWidth(-1);
-            if (ImGui::Combo("##raxis", &b.roundAxis, "Level (front to back)\0Upright\0Along its length\0")) editedAny = true;
+            if (ImGui::Combo("##raxis", &b.roundAxis, "Level (front to back)\0Upright\0Along its length\0Turned with the part\0")) {
+                if (b.roundAxis == 3) b.roundAxisDeg = 0;
+                editedAny = true;
+            }
+            if (b.roundAxis == 3) pNum("Axis angle", b.roundAxisDeg, 1, "%.1f\xc2\xb0", "The axis's angle in the side view: 0 level, 90 upright. Rotating the part changes it for you.");
             int sl = b.roundSides >= 3 ? b.roundSides : 33;
             prop("Sides", "4 is the square bar as drawn, 6 a hex, 8 an octagon, and all the way up is a full circle.\n"
                           "The flats touch the outline you drew.");

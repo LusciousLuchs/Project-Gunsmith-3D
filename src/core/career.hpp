@@ -211,4 +211,6 @@ bool deliver(Career& c, int contractId, const std::string& gun, const GunSheet& 
 // (the owner's choice: no harsher consequence in a cozy game). (Used by the storefront, stage 3.)
 void soldToProhibited(Career& c);
 
+// (tests, screenshots) n more customers at that property's counter
+void addWalkins(Career& c, int n, int prop);
 }  // namespace career

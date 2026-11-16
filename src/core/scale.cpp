@@ -64,6 +64,10 @@ void scaleParts(Design& D, const std::vector<int>& parts, V2 c, double sx, doubl
         }
         if (!d.marks.empty()) { d.markRef = d.pts; d.markRefZ = d.z; d.markRefThick = d.thick; }
         if (d.ctrl != "none") sc(d.ctrlPt);
+        if (d.round && d.roundAxis == 3) {   // a turned axis stretched with the part
+            double t = d.roundAxisDeg * 3.14159265358979 / 180;
+            d.roundAxisDeg = std::atan2(std::sin(t) * sy, std::cos(t) * sx) * 180 / 3.14159265358979;
+        }
         if (d.mass > 0) d.mass *= area * (d.round ? lin : sz);   // a weight you set grows with the part
         // what's attached at points on it
         const std::string& id = d.id;
