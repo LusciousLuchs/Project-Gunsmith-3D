@@ -39,9 +39,10 @@ void mapTests(int& failures) {
         CHECK(mapFromJson(mapToJson(m), back) && back.ents.size() == 1 && back.ents[0].type == "light" && near(back.ents[0].power, 6) && near(back.ents[0].range, 8) &&
               near(back.ents[0].cone, 40) && near(back.ents[0].color[1], 0.5) && near(back.look.daylight, 0), "a map keeps its daylight and its lights");
         Map r = builtinRange();
+        r.look = lookAtHour(r.look, 21);   // (its day runs: after nightfall)
         int lamps = 0; for (auto& e : r.ents) if (e.type == "light") lamps++;
         double paper[3]; lightAt(r, {7, 1.45, 0}, {-1, 0, 0}, paper);
-        CHECK(r.look.daylight < 0.2 && lamps >= 8 && paper[0] > 0.3, "the practice range is dark, lit by its own lamps (its paper targets well lit)");
+        CHECK(r.look.daylight < 0.2 && lamps >= 8 && paper[0] > 0.3, "the practice range after nightfall is dark, lit by its own lamps (its paper targets well lit)");
     }
     std::printf("Armour: the bar and plates\n");
     {

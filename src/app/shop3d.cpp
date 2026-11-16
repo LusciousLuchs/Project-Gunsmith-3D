@@ -240,6 +240,14 @@ void stepWalkers(float dt) {
 }
 }  // namespace
 
+// the shop's clock: the business day opens at 8 and the clock runs while you're in the shop; once the day is over it
+// stops at midnight until you close up (the owner's choice). A day takes the map's own day length, else 20 minutes.
+static double gShopHour = 8;
+double shopHour() { return gShopHour; }
+void shopClockTick(float dt) {
+    double mins = ME.map.look.dayMinutes > 0 ? ME.map.look.dayMinutes : 20;
+    gShopHour = std::min(24.0, gShopHour + dt * 24.0 / (mins * 60));
+}
 bool shopActive() { return inCareer() && A.screen == Screen::MapEditor && !ME.careerFile.empty(); }
 bool shopWalking() { return shopActive() && ME.walking; }
 
@@ -388,7 +396,7 @@ void shopHud() {
         where = hp->name.empty() ? career::propertyKind(hp->kind).name : hp->name;
         if (hp->sells()) where += TextFormat("   store %.1f / 5", hp->rating);
     }
-    const char* top = TextFormat("Day %d    %s    %s    %s", C.day, TextFormat("$%.0f", C.money), career::tierName(C.reputation), where.c_str());
+    const char* top = TextFormat("Day %d  %s%s    %s    %s    %s", C.day, gmap::clockText(gShopHour).c_str(), gShopHour >= 24 ? " (closed: end the day at the door)" : "", TextFormat("$%.0f", C.money), career::tierName(C.reputation), where.c_str());
     float w = viewTextWidth(top, 15);
     DrawRectangleRounded({12 * s, 12 * s, w + 24 * s, 30 * s}, 0.4f, 6, Color{20, 23, 28, 170});
     viewText(top, 24 * s, 19 * s, 15, Color{235, 238, 242, 240});
@@ -472,6 +480,7 @@ void shopWalk() {
 }
 
 void shopNewDay() {
+    gShopHour = 8;
     int waiting = 0;
     for (auto& w : CAREER.walkins) if (w.state == 0) waiting++;
     toast(TextFormat("Day %d. %s", CAREER.day, waiting ? TextFormat("%d customer%s at the counter.", waiting, waiting == 1 ? "" : "s") : "Nobody at the counter yet."));

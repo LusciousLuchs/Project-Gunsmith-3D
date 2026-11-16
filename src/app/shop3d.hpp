@@ -16,5 +16,7 @@ void shopBuildMode();       // to building (the level editor), remembering where
 void shopWalk();            // back on foot where you were (the workstations counted again)
 void shopOpen(int thing);   // open a screen (0 computer, 1 workstation, 2 counter, 3 door)
 void shopCloseThing();      // close whatever screen is open
-void shopNewDay();          // after the day ends: a word about it
+void shopNewDay();
+double shopHour();          // the shop's clock (8 at opening, stops at 24)
+void shopClockTick(float dt);          // after the day ends: a word about it
 void cursorGuard();         // every frame: hide the cursor only while looking around on foot, show it everywhere else

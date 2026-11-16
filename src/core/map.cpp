@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
 
 namespace gmap {
 using json = nlohmann::json;
@@ -464,6 +465,41 @@ bool entityFromJson(const std::string& s, Entity& e) {
     } catch (...) { return false; }
 }
 
+// ---------------------------------------------------------------- time of day
+static double smooth01(double e0, double e1, double x) { double t = std::clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3 - 2 * t); }
+Look lookAtHour(const Look& b, double hour) {
+    if (b.time < 0) return b;
+    Look L = b;
+    double h = std::fmod(std::fmod(hour, 24.0) + 24.0, 24.0);
+    const double PI = 3.14159265358979;
+    double el = 62 * std::sin(PI * (h - 6) / 12);                 // the sun's height, degrees (below 0 at night)
+    double day = smooth01(-9, 10, el);                            // 0 night .. 1 day (twilight while the sun is under 9 degrees down)
+    double dusk = std::clamp(1 - std::fabs(el - 3) / 20, 0.0, 1.0);   // the low, warm light either side of sunrise and sunset
+    L.sunYaw = b.sunYaw + (h - 12) * 15;
+    L.sunPitch = std::max(el, 6.0);                               // (at night the moon stands in for it, high-ish)
+    if (el < 0) { L.sunYaw = b.sunYaw + 180 + (h - 24) * 15; L.sunPitch = 35; }
+    auto mix = [](const double* a, const double* c, double t, double* out) { for (int i = 0; i < 3; i++) out[i] = a[i] + (c[i] - a[i]) * t; };
+    const double warm[3] = {1.0, 0.58, 0.32}, moon[3] = {0.55, 0.65, 0.95};
+    const double duskTop[3] = {0.32, 0.36, 0.58}, duskHor[3] = {0.98, 0.58, 0.36};
+    const double nightTop[3] = {0.10, 0.13, 0.28}, nightHor[3] = {0.16, 0.20, 0.36}, nightAmb[3] = {0.30, 0.36, 0.55};
+    double sun[3], top[3], hor[3], amb[3];
+    mix(b.sun, warm, dusk, sun);
+    mix(sun, moon, 1 - day, sun);
+    mix(b.skyTop, duskTop, dusk * 0.8, top);   mix(top, nightTop, 1 - day, top);
+    mix(b.skyHorizon, duskHor, dusk, hor);     mix(hor, nightHor, 1 - day, hor);
+    mix(b.ambient, nightAmb, 1 - day, amb);
+    for (int i = 0; i < 3; i++) { L.sun[i] = sun[i]; L.skyTop[i] = top[i]; L.skyHorizon[i] = hor[i]; L.ambient[i] = amb[i]; }
+    L.daylight = std::clamp(b.daylight, 0.0, 1.0) * (0.07 + 0.93 * day);   // (a moonlit night: about a fourteenth of the day)
+    if (el < 0) L.fogEnd = b.fogEnd * (0.55 + 0.45 * day);                  // (you see less far at night)
+    return L;
+}
+std::string clockText(double hour) {
+    double h = std::fmod(std::fmod(hour, 24.0) + 24.0, 24.0);
+    int hh = (int)h, mm = (int)((h - hh) * 60);
+    char buf[8]; std::snprintf(buf, sizeof buf, "%02d:%02d", hh, mm);
+    return buf;
+}
+
 std::string mapToJson(const Map& m) {
     json j;
     j["format"] = "gunsmith3d-map";
@@ -472,6 +508,7 @@ std::string mapToJson(const Map& m) {
     j["look"] = {{"sunYaw", m.look.sunYaw}, {"sunPitch", m.look.sunPitch}, {"sun", c3j(m.look.sun)}, {"ambient", c3j(m.look.ambient)},
                  {"skyTop", c3j(m.look.skyTop)}, {"skyHorizon", c3j(m.look.skyHorizon)}, {"fogStart", m.look.fogStart}, {"fogEnd", m.look.fogEnd}};
     if (m.look.daylight != 1) j["look"]["daylight"] = m.look.daylight;
+    if (m.look.time >= 0) { j["look"]["time"] = m.look.time; if (m.look.dayMinutes > 0) j["look"]["dayMinutes"] = m.look.dayMinutes; }
     json bs = json::array();
     for (auto& b : m.brushes) if (!b.furn) bs.push_back(brushJ(b));   // (furniture's blocks travel in the furniture)
     j["brushes"] = bs;
@@ -510,6 +547,8 @@ bool mapFromJson(const std::string& s, Map& out) {
             if (l.contains("skyHorizon")) jc3(l["skyHorizon"], m.look.skyHorizon);
             m.look.fogStart = l.value("fogStart", m.look.fogStart); m.look.fogEnd = l.value("fogEnd", m.look.fogEnd);
             m.look.daylight = std::clamp(l.value("daylight", 1.0), 0.0, 1.0);
+            m.look.time = l.contains("time") ? std::clamp(l.value("time", 12.0), 0.0, 24.0) : -1;
+            m.look.dayMinutes = std::clamp(l.value("dayMinutes", 0.0), 0.0, 1440.0);
         }
         for (auto& jb : j.value("brushes", json::array())) {
             Brush b;
@@ -817,8 +856,9 @@ Map builtinRange() {
         box({x, 0, z - 0.05}, {x + 0.1, 0.9, z + 0.05}, steel);           // post
         box({x - 0.03, 0.9, z - 0.25}, {x + 0.0, 1.4, z + 0.25}, orange);  // plate
     }
-    // evening: the range is lit by its own lamps (under the roof, over each target, on the steel)
-    m.look.daylight = 0.05;
+    // late afternoon with the day running: the sun sets a couple of minutes in, then the range is lit by its own lamps
+    // (under the roof, over each target, on the steel)
+    m.look.daylight = 1; m.look.time = 17; m.look.dayMinutes = 40;
     auto lamp = [&](V3 at, double power, double range, double cone, double yaw, double pitch, double r, double g, double b) {
         Entity e; e.type = "light"; e.pos = at; e.power = power; e.range = range; e.cone = cone; e.yaw = yaw; e.pitch = pitch;
         e.color[0] = r; e.color[1] = g; e.color[2] = b; m.ents.push_back(e);

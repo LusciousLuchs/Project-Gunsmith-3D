@@ -1020,7 +1020,13 @@ static void keyInput() {
 }
 
 // ---------------------------------------------------------------- walking
+static double gWalkHour = -1;   // walking a map with a running day: its clock (from the map's time when you start)
 static void walkUpdate(float dt) {
+    if (shopActive()) shopClockTick(dt);
+    else if (ME.map.look.time >= 0 && ME.map.look.dayMinutes > 0) {
+        if (gWalkHour < 0) gWalkHour = ME.map.look.time;
+        gWalkHour = std::fmod(gWalkHour + dt * 24.0 / (ME.map.look.dayMinutes * 60), 24.0);
+    }
     if (shopActive() && shopWalkUpdate(dt)) return;   // (your shop in career mode: F uses things, B builds, Esc is the menu)
     if (IsKeyPressed(KEY_ESCAPE)) { stopWalking(); return; }
     Vector2 md = GetMouseDelta();
@@ -1313,10 +1319,13 @@ void mapEditorRender() {
         pitch = (float)ME.pitch;
     }
     A.cam = cam;  // the grid shader reads the camera from here
-    if (ME.top && !ME.walking) DrawRectangle((int)v.x, (int)v.y, (int)v.w, (int)v.h, Color{38, 42, 49, 255});
-    else mapDrawSky(ME.map.look, v.x, v.y, v.w, v.h, pitch, fov);
-    mapBeginViewport(cam, v.x, v.y, v.w, v.h);
     gmap::Look look = ME.map.look;
+    if (!ME.walking) gWalkHour = -1;
+    if (shopActive() && ME.walking) { if (look.time < 0) look.time = 12; look = gmap::lookAtHour(look, shopHour()); }   // (career: the shop's clock)
+    else if (look.time >= 0) look = gmap::lookAtHour(look, ME.walking && gWalkHour >= 0 ? gWalkHour : look.time);
+    if (ME.top && !ME.walking) DrawRectangle((int)v.x, (int)v.y, (int)v.w, (int)v.h, Color{38, 42, 49, 255});
+    else mapDrawSky(look, v.x, v.y, v.w, v.h, pitch, fov);
+    mapBeginViewport(cam, v.x, v.y, v.w, v.h);
     if (ME.top && !ME.walking) { look.fogStart = 1e6; look.fogEnd = 2e6; }  // the top-view camera sits far above the map
     mapWorkLight(ME.walking ? 0 : ME.lightMode);
     mapApplyLook(look);

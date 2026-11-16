@@ -53,6 +53,8 @@ struct WorldGun { Design d; std::unique_ptr<sim::Sim> S; V3 pos; double yaw = 0;
 
 struct Range {
     gmap::Map map;
+    gmap::Look baseLook;                 // the map's own look; with a time of day, map.look is it at `hour`
+    double hour = 12;
     std::vector<Carried> inv;            // the guns you carry, up to 4; inv[cur] is the one in your hands (empty here)
     int cur = -1;                        // -1: empty hands
     std::vector<WorldGun> ground;
@@ -960,6 +962,10 @@ void enterRange(const Design& gun, const gmap::Map& map) {
     mapGfxInit();
     R = Range();
     R.map = map;
+    R.baseLook = map.look;
+    R.hour = map.look.time >= 0 ? map.look.time : 12;
+    if (const char* e = std::getenv("GUNSMITH_HOUR")) { R.hour = std::atof(e); if (R.baseLook.time < 0) { R.baseLook.time = R.hour; R.baseLook.daylight = 1; } }   // (screenshots) this time of day
+    R.map.look = gmap::lookAtHour(R.baseLook, R.hour);
     R.nav.clear();
     installMapNpcs(R.map);   // the NPCs this map brought with it
     mapBuildMeshes(R.map);
@@ -1121,6 +1127,10 @@ void rangeUpdate(float dt, bool modal) {
         if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); }
         holdFire = true; skipLook = true;
         return;
+    }
+    if (R.baseLook.time >= 0) {   // the time of day: the sun, sky and light follow it (a running day moves it on)
+        if (R.baseLook.dayMinutes > 0) R.hour = std::fmod(R.hour + dt * 24.0 / (R.baseLook.dayMinutes * 60), 24.0);
+        R.map.look = gmap::lookAtHour(R.baseLook, R.hour);
     }
     R.freeMouse = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT) || gForceFree;   // Alt held: the mouse is yours (the attachments' buttons)
     if (R.freeMouse) { if (IsCursorHidden()) EnableCursor(); holdFire = true; skipLook = true; if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); } }
@@ -1998,6 +2008,7 @@ void rangeHud() {
     viewText(mag, W - viewTextWidth(mag, 12) - 36, H - 32, 12, Color{200, 204, 212, 200});
     std::snprintf(b, sizeof b, "%s   %d shot%s", A.design.name.c_str(), R.shots, R.shots == 1 ? "" : "s");
     viewText(b, 24, H - 32, 13, Color{235, 238, 242, 220});
+    if (R.baseLook.time >= 0) { std::string t = gmap::clockText(R.hour); viewText(t.c_str(), W - viewTextWidth(t.c_str(), 15) - 24, 20, 15, Color{235, 238, 242, 200}); }   // (the time of day)
     if (std::string ch = sim::cheatsOn(S); !ch.empty()) viewText(("Cheats: " + ch).c_str(), 24, H - 52, 12, Color{255, 150, 80, 230});
     if (S.malf != sim::Malf::None) {
         std::string t = std::string("Jammed: ") + sim::malfName(S.malf) + ".  B works the action to clear it.";

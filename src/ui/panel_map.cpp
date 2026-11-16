@@ -594,6 +594,24 @@ static void mapTab() {
         float day = (float)L.daylight;
         prop("Daylight", "1: broad daylight. 0: night, or indoors with no windows: only the map's own lights (the Light tool) and a gun's light show anything.");
         track(ImGui::SliderFloat("##day", &day, 0, 1, "%.2f")); typeable(); L.daylight = std::clamp((double)day, 0.0, 1.0);
+        bool timed = L.time >= 0;
+        prop("Time of day", "The sun moves with the hour: rising at 6, high at noon, setting at 18; dawn and dusk glow, nights are dark\n"
+                            "(lit by a faint moon and your lights). Off: the sun stays where Sun and sky puts it.");
+        if (ImGui::Checkbox("##timed", &timed)) { meSnapshot(); L.time = timed ? 12 : -1; if (!timed) L.dayMinutes = 0; meChanged(); }
+        if (timed) {
+            float hr = (float)L.time;
+            prop("Hour", "The time the map starts at (and stays at, unless the day runs).");
+            track(ImGui::SliderFloat("##hour", &hr, 0, 24, gmap::clockText(hr).c_str())); typeable(); L.time = std::clamp((double)hr, 0.0, 24.0);
+            bool runs = L.dayMinutes > 0;
+            prop("The day runs", "Time passes while you play: the sun crosses the sky and night falls. Off: it stays at the hour you set (for a mood).");
+            if (ImGui::Checkbox("##runs", &runs)) { meSnapshot(); L.dayMinutes = runs ? 24 : 0; meChanged(); }
+            if (runs) {
+                float mins = (float)L.dayMinutes;
+                prop("A whole day takes", "Minutes of play for 24 hours.");
+                track(ImGui::SliderFloat("##daymin", &mins, 2, 240, "%.0f min", ImGuiSliderFlags_Logarithmic)); typeable(); L.dayMinutes = std::clamp((double)mins, 1.0, 1440.0);
+            }
+            ImGui::TextDisabled("Daylight is now the light at noon.");
+        }
         int lamps = 0; for (auto& e : ME.map.ents) if (e.type == "light") lamps++;
         ImGui::TextDisabled("%d light%s on this map (the nearest %d shine at once).", lamps, lamps == 1 ? "" : "s", MAX_LAMPS);
         prop("View while building", "How the editor lights the view (also the button at the top right). Players always see it as played.");

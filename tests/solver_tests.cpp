@@ -2865,6 +2865,21 @@ static void kitFittingTest() {
     auto a = sim::runReliability(k, o), b = sim::runReliability(same, o);
     CHECK(a.fired == b.fired && a.jams == b.jams, "fitted to its own round: it fires exactly as it came");
 }
+// Time of day on maps: the sun follows the hour, nights are dark, older maps unchanged, the time saved with the map
+static void dayNightTest() {
+    std::printf("\n== day and night\n");
+    gmap::Look b; b.time = 12; b.daylight = 1;
+    auto at = [&](double h) { return gmap::lookAtHour(b, h); };
+    CHECK(at(12).daylight > 0.95 && at(0).daylight < 0.1 && at(6.5).daylight > at(5).daylight, "bright at noon, dark at midnight, lighter after sunrise");
+    CHECK(at(12).sunPitch > 55 && at(7).sunPitch < 25 && std::fabs(at(9).sunYaw - at(15).sunYaw) > 80, "high at noon, low in the morning, and it crosses the sky");
+    CHECK(at(6.8).skyHorizon[0] > at(12).skyHorizon[0] - 0.01 && at(6.8).skyHorizon[2] < at(12).skyHorizon[2], "a warm horizon at dawn");
+    gmap::Look old; old.daylight = 0.3;
+    gmap::Look o2 = gmap::lookAtHour(old, 3);
+    CHECK(o2.daylight == 0.3 && o2.sunYaw == old.sunYaw, "a map without a time of day looks as it always did");
+    gmap::Map m = gmap::builtinRange(), r;
+    CHECK(gmap::mapFromJson(gmap::mapToJson(m), r) && r.look.time == 17 && r.look.dayMinutes == 40, "the practice range's late afternoon and running day are saved with it");
+    CHECK(gmap::clockText(17.5) == "17:30" && gmap::clockText(24) == "00:00", "the clock reads right");
+}
 static void actionKitsTest() {
     std::printf("actionKits\n");
     for (auto& k : ::actionKits()) {
@@ -3120,6 +3135,7 @@ int main() {
         else if (o == "pose") grips();
         else if (o == "kits") actionKitsTest();
         else if (o == "kitfit") kitFittingTest();
+        else if (o == "daynight") dayNightTest();
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
@@ -3193,6 +3209,7 @@ int main() {
     handLoadedReliability();
     actionKitsTest();
     kitFittingTest();
+    dayNightTest();
     hollowParts();
     cheatsTest();
     furnitureTest();

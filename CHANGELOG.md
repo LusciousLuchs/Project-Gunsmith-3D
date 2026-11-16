@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.31-alpha
+
+- **Day and night.** Maps can now have a time of day (Level editor, Map tab > Light > Time of day). The sun rises at 6, is high at noon and sets at 18. Dawn and dusk glow orange, and nights are dark blue, lit by a faint moon and your lamps.
+  - Each map either stays at the hour you set (for a mood) or **runs**: time passes while you play, and you choose how many minutes a whole day takes. The time shows top right on the range.
+  - The practice range now starts at 17:00 with the day running: the sun sets a couple of minutes in, then its lamps take over.
+  - **Career:** your shop opens at 8:00 and the clock runs while you're there. When the business day is over it stops at midnight until you close up at the door.
+  - Maps made before this look exactly as they did.
+  - Not yet: shadows (lights still shine through walls). They're next.
+
 ## 0.8.30-alpha
 
 - **Action kits fitted to other rounds.** In Parts > Action kits, each kit now opens a list: drop it in as it comes, or fitted to another round. A fitted kit is resized for that round (longer for a longer round, taller and wider for a fatter one), with its springs and magazine refitted.

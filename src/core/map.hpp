@@ -83,7 +83,15 @@ struct Look {
     double skyHorizon[3] = {0.78, 0.84, 0.90};
     double fogStart = 60, fogEnd = 450;    // metres
     double daylight = 1;                    // 1 broad daylight .. 0 night (lit only by the map's lights); older maps 1
+                                            // (with a time of day: the daylight at noon)
+    double time = -1;                       // hour of the day (0..24) the sun, sky and light follow; -1: as set above
+    double dayMinutes = 0;                  // with a time: minutes of play for a whole day (0: the time stays put)
 };
+// The look at that hour (time of day on): the sun's height and direction (rising in the east at 6, highest at noon,
+// setting at 18, -yaw at sunrise), warm and low at dawn and dusk, the sky's colours and the daylight with it; a dim,
+// blue moonlight at night. A look without a time comes back as it is.
+Look lookAtHour(const Look& base, double hour);
+std::string clockText(double hour);         // "14:05"
 // What a map's light entity shines like, ready for drawing (positions in metres)
 struct LampAt { V3 pos, dir; double color[3]; double power, range, cosCone; };   // cosCone -2: all round
 LampAt lampOf(const Entity& e);
