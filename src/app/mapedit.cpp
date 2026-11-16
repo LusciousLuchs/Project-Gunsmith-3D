@@ -11,6 +11,7 @@
 #include "app/keys.hpp"
 #include "app/mapgfx.hpp"
 #include "app/npcedit.hpp"
+#include "app/gizmo.hpp"
 #include "app/scene.hpp"
 #include "app/settings.hpp"
 #include "imgui.h"
@@ -304,31 +305,38 @@ void meLoadBuiltin() {
 }
 
 // ---------------------------------------------------------------- operations
+gmap::Selection meSelection() {
+    gmap::Selection s;
+    for (int i : ME.sel) if (i >= 0 && i < (int)ME.map.brushes.size()) s.brushes.push_back(i);
+    for (int i : ME.entSel) if (i >= 0 && i < (int)ME.map.ents.size()) s.ents.push_back(i);
+    if (ME.ent >= 0 && ME.ent < (int)ME.map.ents.size() && std::find(s.ents.begin(), s.ents.end(), ME.ent) == s.ents.end()) s.ents.insert(s.ents.begin(), ME.ent);
+    return s;
+}
+void meSetSelection(const gmap::Selection& s) {
+    ME.sel = s.brushes; ME.entSel = s.ents; ME.ent = s.ents.empty() ? -1 : s.ents[0];
+    ME.face = -1; ME.vertSel.clear();
+}
 void meDelete() {
-    if (ME.ent >= 0) { meSnapshot(); ME.map.ents.erase(ME.map.ents.begin() + ME.ent); ME.ent = -1; meChanged(); return; }
-    if (ME.sel.empty()) return;
+    gmap::Selection s = meSelection();
+    if (s.empty()) return;
     meSnapshot();
-    std::vector<int> s = ME.sel;
-    std::sort(s.rbegin(), s.rend());
-    for (int i : s) ME.map.brushes.erase(ME.map.brushes.begin() + i);
-    ME.sel.clear(); ME.face = -1;
+    std::vector<int> bs = s.brushes, es = s.ents;
+    std::sort(bs.rbegin(), bs.rend()); std::sort(es.rbegin(), es.rend());
+    for (int i : bs) if (!ME.map.brushes[i].frozen) ME.map.brushes.erase(ME.map.brushes.begin() + i);
+    for (int i : es) if (!ME.map.ents[i].frozen) ME.map.ents.erase(ME.map.ents.begin() + i);
+    meSetSelection({});
     meChanged();
 }
 void meDuplicate() {
-    if (ME.sel.empty()) return;
+    gmap::Selection s = meSelection();
+    if (s.empty()) return;
     meSnapshot();
-    std::vector<int> ns;
     double off = std::max(ME.grid, 0.05);
-    for (int i : ME.sel) {
-        gmap::Brush b = ME.map.brushes[i];
-        gmap::translate(b, {off, 0, off});
-        ME.map.brushes.push_back(b);
-        ns.push_back((int)ME.map.brushes.size() - 1);
-    }
-    ME.sel = ns; ME.face = -1;
+    gmap::Piece p = gmap::copyPiece(ME.map, s);
+    meSetSelection(gmap::pastePiece(ME.map, p, {off, 0, off}));
     meChanged();
 }
-static V3 selCentre() {
+static V3 selCentre() {   // (the old way, for the focus)
     V3 mn{1e30, 1e30, 1e30}, mx{-1e30, -1e30, -1e30};
     for (int i : ME.sel) {
         V3 a, b; gmap::brushBounds(ME.map.brushes[i], a, b);
@@ -337,22 +345,143 @@ static V3 selCentre() {
     }
     return (mn + mx) * 0.5;
 }
-void meRotate(double deg) {
-    if (ME.ent >= 0) { meSnapshot(); ME.map.ents[ME.ent].yaw = std::fmod(ME.map.ents[ME.ent].yaw + deg + 360, 360); meChanged(); return; }
-    if (ME.sel.empty()) return;
+void meTurnAbout(int axis, double deg) {
+    gmap::Selection s = meSelection();
+    if (s.empty()) return;
     meSnapshot();
-    V3 c = selCentre();
-    c.x = snapG(c.x); c.z = snapG(c.z);
-    for (int i : ME.sel) gmap::rotateY(ME.map.brushes[i], deg * DEG2RAD, c);
+    V3 c = gmap::selectionCentre(ME.map, s);
+    if (axis == 1) { c.x = snapG(c.x); c.z = snapG(c.z); }
+    gmap::rotateSelection(ME.map, s, axis, deg * DEG2RAD, c);
     meChanged();
 }
+void meRotate(double deg) { meTurnAbout(1, deg); }
 void meMirror(int axis) {
-    if (ME.sel.empty()) return;
+    gmap::Selection s = meSelection();
+    if (s.empty()) return;
     meSnapshot();
-    V3 c = selCentre();
-    for (int i : ME.sel) gmap::mirror(ME.map.brushes[i], axis, c);
+    gmap::mirrorSelection(ME.map, s, axis, gmap::selectionCentre(ME.map, s));
     meChanged();
 }
+void meSelectAll() {
+    gmap::Selection s;
+    for (size_t i = 0; i < ME.map.brushes.size(); i++) { const auto& b = ME.map.brushes[i]; if (!b.hidden && !b.frozen && !b.locked) s.brushes.push_back((int)i); }
+    for (size_t i = 0; i < ME.map.ents.size(); i++) { const auto& e = ME.map.ents[i]; if (!e.hidden && !e.frozen) s.ents.push_back((int)i); }
+    meSetSelection(s);
+}
+void meCopy(bool cut) {
+    gmap::Selection s = meSelection();
+    if (s.empty()) { toast("Nothing picked to copy."); return; }
+    SetClipboardText(gmap::pieceToJson(gmap::copyPiece(ME.map, s)).c_str());
+    toast(cut ? "Cut. Ctrl+V pastes it here or in any other map." : "Copied. Ctrl+V pastes it here or in any other map.");
+    if (cut) meDelete();
+}
+bool mePaste() {
+    const char* t = GetClipboardText();
+    gmap::Piece p;
+    if (!t || !gmap::pieceFromJson(t, p)) { toast("The clipboard has no copied brushes."); return false; }
+    // where: in front of the camera (the middle of the view), on the grid
+    gmap::Selection none;
+    V3 mn{1e30, 1e30, 1e30}, mx{-1e30, -1e30, -1e30};
+    for (auto& b : p.brushes) { V3 a, c; gmap::brushBounds(b, a, c); mn = {std::min(mn.x, a.x), std::min(mn.y, a.y), std::min(mn.z, a.z)}; mx = {std::max(mx.x, c.x), std::max(mx.y, c.y), std::max(mx.z, c.z)}; }
+    for (auto& e : p.ents) { mn = {std::min(mn.x, e.pos.x), std::min(mn.y, e.pos.y), std::min(mn.z, e.pos.z)}; mx = {std::max(mx.x, e.pos.x), std::max(mx.y, e.pos.y), std::max(mx.z, e.pos.z)}; }
+    V3 here = ME.top ? ME.topC : ME.cam + camBasis().fwd * 8;
+    V3 move{snapG(here.x - (mn.x + mx.x) / 2), snapG(-mn.y), snapG(here.z - (mn.z + mx.z) / 2)};
+    meSnapshot();
+    meSetSelection(gmap::pastePiece(ME.map, p, move));
+    meChanged();
+    return true;
+}
+void meGroup(bool on) {
+    gmap::Selection s = meSelection();
+    if (s.empty()) return;
+    meSnapshot();
+    int id = 0;
+    if (on) { for (auto& b : ME.map.brushes) id = std::max(id, b.group); for (auto& e : ME.map.ents) id = std::max(id, e.group); id++; }
+    for (int i : s.brushes) ME.map.brushes[i].group = id;
+    for (int i : s.ents) ME.map.ents[i].group = id;
+    meChanged();
+    toast(on ? "Grouped: clicking one picks them all." : "Ungrouped.");
+}
+void meHide(bool hide) {
+    meSnapshot();
+    if (hide) {
+        gmap::Selection s = meSelection();
+        for (int i : s.brushes) ME.map.brushes[i].hidden = true;
+        for (int i : s.ents) ME.map.ents[i].hidden = true;
+        meSetSelection({});
+    } else {
+        for (auto& b : ME.map.brushes) b.hidden = false;
+        for (auto& e : ME.map.ents) e.hidden = false;
+    }
+    meChanged();
+}
+void meFreeze(bool freeze) {
+    meSnapshot();
+    if (freeze) {
+        gmap::Selection s = meSelection();
+        for (int i : s.brushes) ME.map.brushes[i].frozen = true;
+        for (int i : s.ents) ME.map.ents[i].frozen = true;
+        meSetSelection({});
+    } else {
+        for (auto& b : ME.map.brushes) b.frozen = false;
+        for (auto& e : ME.map.ents) e.frozen = false;
+    }
+    meChanged();
+}
+void meAlign(int axis, gmap::AlignTo to) {
+    gmap::Selection s = meSelection();
+    if (s.brushes.size() + s.ents.size() < 2) { toast("Pick two or more things to line up."); return; }
+    meSnapshot(); gmap::alignSelection(ME.map, s, axis, to); meChanged();
+}
+void meDistribute(int axis) {
+    gmap::Selection s = meSelection();
+    if (s.brushes.size() + s.ents.size() < 3) { toast("Pick three or more things to space out."); return; }
+    meSnapshot(); gmap::distributeSelection(ME.map, s, axis); meChanged();
+}
+void meArrayLinear() {
+    gmap::Selection s = meSelection();
+    if (s.empty()) { toast("Pick something to make copies of."); return; }
+    meSnapshot();
+    gmap::Selection n = gmap::linearArray(ME.map, s, ME.arrCount, ME.arrStep);
+    meSetSelection(n);
+    meChanged();
+}
+void meArrayRadial() {
+    gmap::Selection s = meSelection();
+    if (s.empty()) { toast("Pick something to make copies of."); return; }
+    meSnapshot();
+    V3 c = gmap::selectionCentre(ME.map, s);
+    V3 pivot = ME.radAxis == 1 ? V3{snapG(c.x), c.y, snapG(c.z)} : c;
+    gmap::Selection n = gmap::radialArray(ME.map, s, ME.radCount, pivot, ME.radAxis, ME.radTotal, ME.radTurn);
+    meSetSelection(n);
+    meChanged();
+}
+void meSetCentre(V3 c) {
+    gmap::Selection s = meSelection();
+    if (s.empty()) return;
+    V3 now = gmap::selectionCentre(ME.map, s), d = c - now;
+    if (gmap::len(d) < 1e-9) return;
+    meSnapshot(); gmap::moveSelection(ME.map, s, d); meChanged();
+}
+void meSetSize(V3 size) {
+    gmap::Selection s = meSelection();
+    if (s.brushes.empty()) return;
+    V3 mn, mx; gmap::selectionBounds(ME.map, s, mn, mx);
+    V3 cur = mx - mn, f{cur.x > 1e-6 ? size.x / cur.x : 1, cur.y > 1e-6 ? size.y / cur.y : 1, cur.z > 1e-6 ? size.z / cur.z : 1};
+    if (f.x < 0.001 || f.y < 0.001 || f.z < 0.001) return;
+    meSnapshot();
+    if (gmap::scaleSelection(ME.map, s, f, (mn + mx) * 0.5)) meChanged(); else ME.undo.pop_back();
+}
+void meCopyMapCode() { SetClipboardText(gmap::mapShareCode(ME.map).c_str()); toast("Map code copied. Paste it anywhere to share this map."); }
+bool mePasteMapCode() {
+    const char* t = GetClipboardText();
+    gmap::Map m;
+    if (!t || !gmap::mapFromShareText(t, m)) { toast("The clipboard has no map code."); return false; }
+    meReplaceMap(m);
+    toast("Map pasted from a code.");
+    return true;
+}
+bool meCanVertex() { return ME.sel.size() == 1 && ME.ent < 0; }
 void meHollow() {
     if (ME.sel.empty()) return;
     meSnapshot();
@@ -415,10 +544,12 @@ void meWalk(bool fromCamera) {
         }
     } else if (const char* e = std::getenv("GUNSMITH_WALKAT")) { double x = 0, z = 0; if (std::sscanf(e, "%lf,%lf", &x, &z) == 2) { ME.pl.feet.x = x; ME.pl.feet.z = z; } }   // (screenshots) where you stand
     ME.walking = true;
+    ME.version++;   // (rebuild: on foot, hidden brushes are there)
     DisableCursor();
 }
 static void stopWalking() {
     ME.walking = false;
+    ME.version++;
     EnableCursor();
 }
 void meStopWalking() { stopWalking(); }
@@ -530,19 +661,34 @@ static void flyCamera(float dt) {
 
 // ---------------------------------------------------------------- input: tools
 namespace {
-enum class Drag { None, Move, MoveEnt, Face, Create };
+enum class Drag { None, Move, Face, Create, Gizmo, Vertex, Extrude };
 Drag drag = Drag::None;
 bool dragChanged = false, dragVertical = false;
 V3 dragHit, dragPlaneN;
 double dragPlaneD = 0;
 std::vector<gmap::Brush> dragOrig;
-V3 dragEntOrig;
+std::vector<gmap::Entity> dragEnts;     // the picked things' starting places (with their numbers in dragEntIdx)
+std::vector<int> dragEntIdx;
 int dragFace = -1;
 Vector2 dragMouse0;
 V3 createA, createB;
 double createY = 0;
 std::string preDrag;
 gmap::Stance wantStance = gmap::Stance::Stand;
+// the handles on a selection (move arrows, turning rings, stretch squares)
+int gizAxis = -1;
+XMode gizMode = XMode::Move;
+V3 gizC, gizPivot, gizMn, gizMx;
+double gizT0 = 0;
+Vector2 gizPress{};
+gmap::Selection gizSel;
+std::vector<gmap::Brush> gizBrushes;
+std::vector<gmap::Entity> gizEnts;
+Rings gizRings;
+// corners
+gmap::Brush vertOrig;
+V3 vertBase;
+int extrudeIdx = -1;
 }
 
 static void beginDrag(Drag k) { drag = k; dragChanged = false; preDrag = gmap::mapToJson(ME.map); dragMouse0 = GetMousePosition(); }
@@ -554,6 +700,176 @@ static void endDrag() {
         meChanged();
     }
     drag = Drag::None;
+}
+
+// ---------------------------------------------------------------- handles, snapping and picking helpers
+static V3 axisVec(int a) { return a == 0 ? V3{1, 0, 0} : a == 1 ? V3{0, 1, 0} : V3{0, 0, 1}; }
+static Color axisColour(int a, bool hot = false) {
+    Color c = a == 0 ? Color{236, 84, 84, 255} : a == 1 ? Color{112, 214, 112, 255} : Color{96, 146, 244, 255};
+    return hot ? Color{255, 226, 120, 255} : c;
+}
+static ToScreen toScreenFn() { return [](Vector3 v) { Vector2 s; return project({v.x, v.y, v.z}, s) ? s : Vector2{-9999, -9999}; }; }
+static double pxPerMetre(V3 at) {
+    Vector2 a, b;
+    CamB c = camBasis();
+    if (!project(at, a) || !project(at + c.right, b)) return 0;
+    return Vector2Distance(a, b);
+}
+static double snapRadius(V3 at) {   // about 14 pixels, in metres
+    double px = pxPerMetre(at);
+    return px > 0 ? std::clamp(14.0 / px, 0.04, 1.5) : 0.3;
+}
+static double gizLen(V3 c) { double px = pxPerMetre(c); return px > 0 ? 90.0 / px : 1.0; }
+static double segDist(Vector2 p, Vector2 a, Vector2 b) {
+    Vector2 ab = Vector2Subtract(b, a);
+    float l2 = Vector2LengthSqr(ab);
+    float t = l2 > 0 ? std::clamp(Vector2DotProduct(Vector2Subtract(p, a), ab) / l2, 0.f, 1.f) : 0.f;
+    return Vector2Distance(p, Vector2Add(a, Vector2Scale(ab, t)));
+}
+// where along the line p0 + t*a the mouse ray comes closest (false when the line points straight along the view)
+static bool axisParam(V3 o, V3 d, V3 p0, V3 a, double& t) {
+    V3 w0 = p0 - o;
+    double b = dot(a, d), c = dot(d, d), dd = dot(a, w0), e = dot(d, w0);
+    double den = c - b * b;
+    if (std::fabs(den) < 1e-6 * c) return false;
+    t = (b * e - c * dd) / den;
+    return true;
+}
+// a ray against the brushes you can pick (not hidden, and not frozen unless `frozenToo`)
+static gmap::Hit edRay(V3 o, V3 d, bool pickable) {
+    gmap::Hit best;
+    best.brush = -1; best.t = 1e30;
+    for (size_t i = 0; i < ME.map.brushes.size(); i++) {
+        const auto& b = ME.map.brushes[i];
+        if (b.hidden || (pickable && (b.frozen || b.locked))) continue;
+        gmap::Hit h = gmap::rayBrush(b, o, d, 5000);
+        if (h.brush >= 0 && h.t < best.t) { best = h; best.brush = (int)i; }
+    }
+    return best;
+}
+static void normalizeSelection() {
+    auto okB = [](int i) { return i >= 0 && i < (int)ME.map.brushes.size(); };
+    ME.sel.erase(std::remove_if(ME.sel.begin(), ME.sel.end(), [&](int i) { return !okB(i); }), ME.sel.end());
+    if (ME.ent >= (int)ME.map.ents.size()) ME.ent = -1;
+    ME.entSel.erase(std::remove_if(ME.entSel.begin(), ME.entSel.end(), [&](int i) { return i < 0 || i >= (int)ME.map.ents.size(); }), ME.entSel.end());
+    if (ME.ent < 0) ME.entSel.clear();
+    else if (std::find(ME.entSel.begin(), ME.entSel.end(), ME.ent) == ME.entSel.end()) ME.entSel = {ME.ent};
+    if (ME.vertexMode && !meCanVertex()) { ME.vertexMode = false; ME.vertSel.clear(); }
+}
+// pick a brush, and everything grouped with it; `toggle` adds it to (or takes it from) what's picked
+static void pickBrush(int bi, bool toggle) {
+    gmap::Selection s = toggle ? meSelection() : gmap::Selection{};
+    const auto& b = ME.map.brushes[bi];
+    std::vector<int> bs, es;
+    if (b.group) {
+        for (size_t i = 0; i < ME.map.brushes.size(); i++) if (ME.map.brushes[i].group == b.group && !ME.map.brushes[i].hidden && !ME.map.brushes[i].frozen) bs.push_back((int)i);
+        for (size_t i = 0; i < ME.map.ents.size(); i++) if (ME.map.ents[i].group == b.group && !ME.map.ents[i].hidden && !ME.map.ents[i].frozen) es.push_back((int)i);
+    } else bs.push_back(bi);
+    bool had = std::find(s.brushes.begin(), s.brushes.end(), bi) != s.brushes.end();
+    for (int i : bs) {
+        auto it = std::find(s.brushes.begin(), s.brushes.end(), i);
+        if (toggle && had) { if (it != s.brushes.end()) s.brushes.erase(it); }
+        else if (it == s.brushes.end()) s.brushes.push_back(i);
+    }
+    for (int i : es) if (std::find(s.ents.begin(), s.ents.end(), i) == s.ents.end()) s.ents.push_back(i);
+    meSetSelection(s);
+}
+static void pickEnt(int ei, bool toggle) {
+    gmap::Selection s = toggle ? meSelection() : gmap::Selection{};
+    const auto& e = ME.map.ents[ei];
+    std::vector<int> bs, es;
+    if (e.group) {
+        for (size_t i = 0; i < ME.map.brushes.size(); i++) if (ME.map.brushes[i].group == e.group && !ME.map.brushes[i].hidden && !ME.map.brushes[i].frozen) bs.push_back((int)i);
+        for (size_t i = 0; i < ME.map.ents.size(); i++) if (ME.map.ents[i].group == e.group && !ME.map.ents[i].hidden && !ME.map.ents[i].frozen) es.push_back((int)i);
+    } else es.push_back(ei);
+    bool had = std::find(s.ents.begin(), s.ents.end(), ei) != s.ents.end();
+    for (int i : es) {
+        auto it = std::find(s.ents.begin(), s.ents.end(), i);
+        if (toggle && had) { if (it != s.ents.end()) s.ents.erase(it); }
+        else if (it == s.ents.end()) s.ents.push_back(i);
+    }
+    for (int i : bs) if (std::find(s.brushes.begin(), s.brushes.end(), i) == s.brushes.end()) s.brushes.push_back(i);
+    meSetSelection(s);
+}
+static V3 snapOnGround(V3 p, double y, bool alt) {   // a point on the ground plane: onto another brush's corner or the grid
+    if (ME.snapObjects && !alt) {
+        gmap::SnapHit h = gmap::snapPoint(ME.map, {}, {p.x, y, p.z}, snapRadius({p.x, y, p.z}), {1, 0, 1});
+        if (h.hit) { ME.snapShown = true; ME.snapFrom = {p.x, y, p.z}; ME.snapTo = h.to; return {h.to.x, y, h.to.z}; }
+    }
+    return {snapG(p.x), y, snapG(p.z)};
+}
+static Rings makeRings(V3 c) {
+    Rings g;
+    g.c = rv(c);
+    g.ax[0] = {1, 0, 0}; g.ax[1] = {0, 1, 0}; g.ax[2] = {0, 0, 1};
+    g.label[0] = "X"; g.label[1] = "Y"; g.label[2] = "Z";
+    ringsFit(g, toScreenFn(), 78);
+    return g;
+}
+// the handle under the mouse for the selection: 0..2 an arrow (or stretch square), 3 the middle (stretch all), 10..12 a ring; -1 none
+static int gizmoPick(Vector2 m) {
+    gmap::Selection s = meSelection();
+    if (s.empty()) return -1;
+    V3 c = gmap::selectionCentre(ME.map, s);
+    if (ME.xmode == XMode::Rotate) { int r = ringsPick(makeRings(c), toScreenFn(), m); return r >= 0 ? 10 + r : -1; }
+    Vector2 sc;
+    if (!project(c, sc)) return -1;
+    double L = gizLen(c);
+    int best = -1;
+    double bd = 9;
+    for (int a = 0; a < 3; a++) {
+        Vector2 st;
+        if (!project(c + axisVec(a) * L, st)) continue;
+        double d = segDist(m, sc, st);
+        if (d < bd) { bd = d; best = a; }
+    }
+    if (ME.xmode == XMode::Scale && Vector2Distance(m, sc) < 11) return 3;
+    return best;
+}
+static void startGizmo(int ga, V3 o, V3 d) {
+    gmap::Selection s = meSelection();
+    gizSel = s;
+    gizMode = ME.xmode;
+    gizAxis = ga >= 10 ? ga - 10 : ga;
+    gizBrushes.clear(); gizEnts.clear();
+    for (int i : s.brushes) gizBrushes.push_back(ME.map.brushes[i]);
+    for (int i : s.ents) gizEnts.push_back(ME.map.ents[i]);
+    gmap::selectionBounds(ME.map, s, gizMn, gizMx);
+    gizC = (gizMn + gizMx) * 0.5;
+    gizPress = GetMousePosition();
+    beginDrag(Drag::Gizmo);
+    gizPivot = gizC;
+    if (gizMode == XMode::Rotate) { gizRings = makeRings(gizC); ringsBegin(gizRings, gizAxis, toScreenFn(), gizPress); }
+    else if (gizMode == XMode::Move) { if (!axisParam(o, d, gizC, axisVec(gizAxis), gizT0)) gizT0 = 0; }
+    else if (gizAxis < 3) {   // stretching along an axis: the far side stays put (Ctrl: the middle does)
+        bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        if (!ctrl) { V3 mn = gizMn; double lo = gizAxis == 0 ? mn.x : gizAxis == 1 ? mn.y : mn.z; if (gizAxis == 0) gizPivot.x = lo; else if (gizAxis == 1) gizPivot.y = lo; else gizPivot.z = lo; }
+        if (!axisParam(o, d, gizPivot, axisVec(gizAxis), gizT0) || std::fabs(gizT0) < 1e-4) gizT0 = 1;
+    }
+}
+static void startBodyDrag(V3 o, V3 d, V3 hit, bool alt) {
+    beginDrag(Drag::Move);
+    dragHit = hit; dragVertical = alt;
+    gmap::Selection s = meSelection();
+    dragOrig.clear(); dragEnts.clear(); dragEntIdx = s.ents;
+    for (int i : s.brushes) dragOrig.push_back(ME.map.brushes[i]);
+    for (int i : s.ents) dragEnts.push_back(ME.map.ents[i]);
+    (void)o; (void)d;
+}
+// the corners and edge middles of the one picked brush: which is under the mouse (corner: index; edge: 1000 + index)
+static int vertexHandleAt(Vector2 m, const gmap::Brush& b, std::vector<V3>& verts, std::vector<std::pair<int, int>>& edges) {
+    verts = gmap::brushVertices(b);
+    edges = gmap::brushEdges(b, verts);
+    int best = -1;
+    double bd = 9;
+    for (size_t i = 0; i < verts.size(); i++) { Vector2 s; if (project(verts[i], s) && Vector2Distance(s, m) < bd) { bd = Vector2Distance(s, m); best = (int)i; } }
+    if (best >= 0) return best;
+    bd = 8;
+    for (size_t i = 0; i < edges.size(); i++) {
+        Vector2 s;
+        if (project((verts[edges[i].first] + verts[edges[i].second]) * 0.5, s) && Vector2Distance(s, m) < bd) { bd = Vector2Distance(s, m); best = 1000 + (int)i; }
+    }
+    return best;
 }
 
 // the face handle under the mouse, for a single selected brush
@@ -581,7 +897,7 @@ static int wedgeDir() {
 
 static bool surfaceUnderMouse(V3& p, V3& n, int& brush, int& face) {
     V3 o, d; mouseRay(o, d);
-    gmap::Hit h = gmap::rayMap(ME.map, o, d, 5000);
+    gmap::Hit h = edRay(o, d, false);   // (frozen brushes are still surfaces to build on; hidden ones aren't there)
     if (h.brush >= 0) { p = o + d * h.t; n = h.n; brush = h.brush; face = h.face; return true; }
     brush = face = -1; n = {0, 1, 0};
     return rayPlaneY(o, d, 0, p);
@@ -591,6 +907,7 @@ static int entityUnderMouse(double* tOut) {
     V3 o, d; mouseRay(o, d);
     int best = -1; double bt = 1e30;
     for (size_t i = 0; i < ME.map.ents.size(); i++) {
+        if (ME.map.ents[i].hidden || ME.map.ents[i].frozen) continue;
         V3 p = ME.map.ents[i].pos;
         bool lamp = ME.map.ents[i].type == "light";   // (a lamp: a small ball where it hangs)
         gmap::Brush b = lamp ? gmap::makeBox(p - V3{0.22, 0.22, 0.22}, p + V3{0.22, 0.22, 0.22}, 0) : gmap::makeBox(p - V3{0.3, 0, 0.3}, p + V3{0.3, 1.8, 0.3}, 0);
@@ -643,50 +960,96 @@ static void toolInput() {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && mouseInView()) {
         switch (ME.tool) {
         case MTool::Select: {
-            // the first click picks (a brush, a thing, a face's square); press on it again to drag it
+            gmap::Selection cs = meSelection();
+            // the handles on what's picked: arrows to move along an axis, rings to turn, squares to stretch
+            if (!ME.vertexMode && !cs.empty()) { int ga = gizmoPick(m); if (ga >= 0) { startGizmo(ga, o, d); break; } }
+            // corner editing: a corner or an edge of the one picked brush
+            if (ME.vertexMode && meCanVertex()) {
+                std::vector<V3> verts; std::vector<std::pair<int, int>> edges;
+                int h = vertexHandleAt(m, ME.map.brushes[ME.sel[0]], verts, edges);
+                if (h >= 0) {
+                    std::vector<int> pick;
+                    if (h >= 1000) pick = {edges[h - 1000].first, edges[h - 1000].second};
+                    else {
+                        pick = ME.vertSel;
+                        auto it = std::find(pick.begin(), pick.end(), h);
+                        if (shift) { if (it != pick.end()) pick.erase(it); else pick.push_back(h); }
+                        else if (it == pick.end()) pick = {h};
+                    }
+                    ME.vertSel = pick;
+                    vertOrig = ME.map.brushes[ME.sel[0]];
+                    vertBase = {0, 0, 0};
+                    for (int i : pick) vertBase += verts[i];
+                    vertBase = vertBase * (1.0 / std::max<size_t>(1, pick.size()));
+                    beginDrag(Drag::Vertex);
+                    dragHit = vertBase; dragVertical = alt;
+                    break;
+                }
+            }
+            // the first click on a face's square picks it; press on it again to drag it (Shift: pull a new piece out of it)
             static int pickedFace = -1;
-            int fh = faceHandleAt(m);
-            if (fh >= 0 && fh != pickedFace) { pickedFace = fh; ME.status = "Face picked: drag it to resize."; break; }
+            int fh = ME.vertexMode ? -1 : faceHandleAt(m);
+            if (fh >= 0 && fh != pickedFace && !shift) { pickedFace = fh; ME.status = "Face picked: drag it to resize. Shift+drag pulls a new piece out of it."; break; }
             if (fh < 0) pickedFace = -1;
             if (fh >= 0) {
-                beginDrag(Drag::Face);
-                dragFace = fh; dragOrig = {ME.map.brushes[ME.sel[0]]};
+                beginDrag(shift ? Drag::Extrude : Drag::Face);
+                dragFace = fh; dragOrig = {ME.map.brushes[ME.sel[0]]}; extrudeIdx = -1;
                 break;
             }
             double te; int e = entityUnderMouse(&te);
-            gmap::Hit h = gmap::rayMap(ME.map, o, d, 5000);
+            gmap::Hit h = edRay(o, d, true);
             if (e >= 0 && (h.brush < 0 || te < h.t)) {
-                if (ME.ent != e) { ME.sel.clear(); ME.face = -1; ME.ent = e; break; }
-                ME.sel.clear(); ME.face = -1; ME.ent = e;
-                beginDrag(Drag::MoveEnt);
-                dragEntOrig = ME.map.ents[e].pos;
-                dragHit = o + d * te; dragVertical = alt;
+                bool inSel = std::find(cs.ents.begin(), cs.ents.end(), e) != cs.ents.end();
+                if (shift) { pickEnt(e, true); break; }
+                if (!inSel) { pickEnt(e, false); break; }
+                startBodyDrag(o, d, o + d * te, alt);
                 break;
             }
-            if (h.brush < 0) { if (!shift) { ME.sel.clear(); ME.face = -1; ME.ent = -1; } break; }
-            ME.ent = -1;
-            if (ctrl) { ME.sel = {h.brush}; ME.face = h.face; ME.mat = ME.map.brushes[h.brush].faces[h.face].mat; break; }
-            if (shift) {
-                if (isSel(h.brush)) ME.sel.erase(std::find(ME.sel.begin(), ME.sel.end(), h.brush));
-                else ME.sel.push_back(h.brush);
-                ME.face = -1;
-                break;
-            }
-            if (!isSel(h.brush)) { ME.sel = {h.brush}; ME.face = -1; break; }
+            if (h.brush < 0) { if (!shift) { meSetSelection({}); ME.vertSel.clear(); } break; }
+            if (ctrl) { ME.sel = {h.brush}; ME.entSel.clear(); ME.ent = -1; ME.face = h.face; ME.vertSel.clear(); ME.mat = ME.map.brushes[h.brush].faces[h.face].mat; break; }
+            if (shift) { pickBrush(h.brush, true); break; }
+            if (!isSel(h.brush)) { pickBrush(h.brush, false); break; }
             ME.face = -1;
-            beginDrag(Drag::Move);
-            dragHit = o + d * h.t; dragVertical = alt;
-            dragOrig.clear();
-            for (int i : ME.sel) dragOrig.push_back(ME.map.brushes[i]);
+            startBodyDrag(o, d, o + d * h.t, alt);
             break;
         }
-        case MTool::Box: case MTool::Wedge: case MTool::Cylinder: case MTool::Stairs: {
+        case MTool::Box: case MTool::Wedge: case MTool::Cylinder: case MTool::Stairs:
+        case MTool::Cone: case MTool::Sphere: case MTool::Round: case MTool::Arch: case MTool::Pipe: {
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
             createY = (b >= 0 && n.y > 0.7) ? p.y : 0;
             if (b >= 0 && n.y > 0.7) createY = std::round(createY / 0.001) * 0.001;
-            createA = createB = {snapG(p.x), createY, snapG(p.z)};
+            ME.snapShown = false;
+            createA = createB = snapOnGround(p, createY, alt);
             beginDrag(Drag::Create);
+            break;
+        }
+        case MTool::Prop: {   // furniture and clutter, made of brushes: click where it stands, facing you
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            const auto& kinds = gmap::propKinds();
+            std::string kind = kinds[std::clamp(ME.propKind, 0, (int)kinds.size() - 1)];
+            double yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 90) * 90 + 180 + 720, 360);
+            V3 base{snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            meSnapshot();
+            auto made = gmap::makeProp(kind, base, yaw);
+            gmap::Selection s;
+            for (auto& br : made) { ME.map.brushes.push_back(br); s.brushes.push_back((int)ME.map.brushes.size() - 1); }
+            int gid = 0;
+            for (auto& br : ME.map.brushes) gid = std::max(gid, br.group);
+            for (auto& e : ME.map.ents) gid = std::max(gid, e.group);
+            for (int i : s.brushes) { ME.map.brushes[i].group = gid + 1; ME.map.brushes[i].name = kind; }
+            meSetSelection(s);
+            meChanged();
+            break;
+        }
+        case MTool::Measure: {   // two points: how far, and how steep
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            V3 q = snap3(p);
+            if (ME.snapObjects && !alt) { gmap::SnapHit h = gmap::snapPoint(ME.map, {}, p, snapRadius(p)); if (h.hit) q = h.to; }
+            if (ME.measurePts.size() >= 2) ME.measurePts.clear();
+            ME.measurePts.push_back(q);
             break;
         }
         case MTool::Clip: {
@@ -710,7 +1073,7 @@ static void toolInput() {
             e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
             ME.map.ents.push_back(e);
-            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meSetSelection({{}, {(int)ME.map.ents.size() - 1}});
             meChanged();
             break;
         }
@@ -723,7 +1086,7 @@ static void toolInput() {
             e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 90) * 90 + 720, 360);
             ME.map.ents.push_back(e);
-            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meSetSelection({{}, {(int)ME.map.ents.size() - 1}});
             meChanged();
             break;
         }
@@ -739,7 +1102,7 @@ static void toolInput() {
             e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);   // facing you
             ME.map.ents.push_back(e);
-            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meSetSelection({{}, {(int)ME.map.ents.size() - 1}});
             meChanged();
             break;
         }
@@ -757,7 +1120,7 @@ static void toolInput() {
             }
             e.width = 3; e.range = 1.2;
             ME.map.ents.push_back(e);
-            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meSetSelection({{}, {(int)ME.map.ents.size() - 1}});
             meChanged();
             break;
         }
@@ -773,7 +1136,7 @@ static void toolInput() {
                 e.cone = 90; e.pitch = -30; e.yaw = std::atan2(n.z, n.x) * RAD2DEG;
             }
             ME.map.ents.push_back(e);
-            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meSetSelection({{}, {(int)ME.map.ents.size() - 1}});
             meChanged();
             break;
         }
@@ -785,7 +1148,7 @@ static void toolInput() {
             if (e < 0) { ME.map.ents.push_back(gmap::Entity()); e = (int)ME.map.ents.size() - 1; }
             ME.map.ents[e].pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
             ME.map.ents[e].yaw = ME.top ? ME.map.ents[e].yaw : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 720, 360);
-            ME.ent = e; ME.sel.clear();
+            meSetSelection({{}, {e}});
             meChanged();
             break;
         }
@@ -794,7 +1157,8 @@ static void toolInput() {
 
     if (drag != Drag::None && IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
         bool moved = Vector2Distance(m, dragMouse0) > 5;
-        if (drag == Drag::Move || drag == Drag::MoveEnt) {
+        ME.snapShown = false;
+        if (drag == Drag::Move) {
             V3 p;
             bool ok;
             if (dragVertical && !ME.top) {
@@ -804,13 +1168,86 @@ static void toolInput() {
                 if (ok) p = {dragHit.x, p.y, dragHit.z};
             } else ok = ME.top ? (p = o + d * ((o.y - dragHit.y) / -d.y), true) : rayPlaneY(o, d, dragHit.y, p);
             if (ok && moved) {
+                gmap::Selection s;
+                s.ents = dragEntIdx;
+                for (size_t k = 0; k < ME.sel.size() && k < dragOrig.size(); k++) { s.brushes.push_back(ME.sel[k]); ME.map.brushes[ME.sel[k]] = dragOrig[k]; }
+                for (size_t k = 0; k < dragEntIdx.size() && k < dragEnts.size(); k++) ME.map.ents[dragEntIdx[k]] = dragEnts[k];
                 V3 dl = p - dragHit;
                 dl = {snapG(dl.x), snapG(dl.y), snapG(dl.z)};
-                if (drag == Drag::Move) for (size_t k = 0; k < ME.sel.size() && k < dragOrig.size(); k++) { ME.map.brushes[ME.sel[k]] = dragOrig[k]; gmap::translate(ME.map.brushes[ME.sel[k]], dl); }
-                else if (ME.ent >= 0) ME.map.ents[ME.ent].pos = dragEntOrig + dl;
+                if (ME.snapObjects && !alt) {   // land a corner, edge middle or face middle on something else
+                    V3 mask = (dragVertical && !ME.top) ? V3{0, 1, 0} : V3{1, 0, 1};
+                    V3 c = gmap::selectionCentre(ME.map, s);
+                    gmap::SnapHit h = gmap::snapMove(ME.map, s, dl, snapRadius(c), mask);
+                    if (h.hit) { dl = h.delta; ME.snapShown = true; ME.snapFrom = h.from; ME.snapTo = h.to; }
+                }
+                gmap::moveSelection(ME.map, s, dl);
                 if (gmap::len(dl) > 0) { dragChanged = true; ME.version++; }
             }
-        } else if (drag == Drag::Face && !dragOrig.empty()) {
+        } else if (drag == Drag::Gizmo) {
+            for (size_t k = 0; k < gizSel.brushes.size(); k++) ME.map.brushes[gizSel.brushes[k]] = gizBrushes[k];
+            for (size_t k = 0; k < gizSel.ents.size(); k++) ME.map.ents[gizSel.ents[k]] = gizEnts[k];
+            V3 ax = axisVec(std::max(gizAxis, 0));
+            if (gizMode == XMode::Move) {
+                double t;
+                if (axisParam(o, d, gizC, ax, t)) {
+                    V3 dl = ax * (t - gizT0);
+                    dl = {snapG(dl.x), snapG(dl.y), snapG(dl.z)};
+                    if (ME.snapObjects && !alt) {
+                        gmap::SnapHit h = gmap::snapMove(ME.map, gizSel, dl, snapRadius(gizC), V3{gizAxis == 0 ? 1.0 : 0.0, gizAxis == 1 ? 1.0 : 0.0, gizAxis == 2 ? 1.0 : 0.0});
+                        if (h.hit) { dl = h.delta; ME.snapShown = true; ME.snapFrom = h.from; ME.snapTo = h.to; }
+                    }
+                    gmap::moveSelection(ME.map, gizSel, dl);
+                    dragChanged = gmap::len(dl) > 0;
+                }
+            } else if (gizMode == XMode::Rotate) {
+                double deg = ringsDrag(gizRings, m, !alt);   // 15 degree steps (Alt: free)
+                gmap::rotateSelection(ME.map, gizSel, gizAxis, deg * DEG2RAD, gizC);
+                dragChanged = std::fabs(deg) > 1e-6;
+            } else {
+                double s = 1;
+                V3 f{1, 1, 1};
+                if (gizAxis == 3) {
+                    Vector2 sc;
+                    if (project(gizC, sc)) { float d0 = std::max(10.f, Vector2Distance(gizPress, sc)); s = Vector2Distance(m, sc) / d0; }
+                    s = std::clamp(s, 0.05, 40.0);
+                    if (ME.grid > 0) { V3 sz = gizMx - gizMn; double big = std::max({sz.x, sz.y, sz.z}); if (big > 1e-6) s = snapG(big * s) / big; }
+                    f = {s, s, s};
+                } else {
+                    double t;
+                    if (axisParam(o, d, gizPivot, ax, t)) {
+                        s = std::clamp(t / gizT0, 0.02, 80.0);
+                        V3 sz = gizMx - gizMn;
+                        double size0 = gizAxis == 0 ? sz.x : gizAxis == 1 ? sz.y : sz.z;
+                        if (size0 > 1e-6 && ME.grid > 0) s = std::max(ME.grid, snapG(size0 * s)) / size0;
+                        (gizAxis == 0 ? f.x : gizAxis == 1 ? f.y : f.z) = s;
+                    }
+                }
+                if (f.x > 0 && f.y > 0 && f.z > 0) gmap::scaleSelection(ME.map, gizSel, f, gizPivot);
+                dragChanged = std::fabs(s - 1) > 1e-6;
+            }
+            ME.version++;
+        } else if (drag == Drag::Vertex) {
+            V3 p;
+            bool ok;
+            if (dragVertical && !ME.top) {
+                CamB c = camBasis();
+                V3 n = norm({c.fwd.x, 0, c.fwd.z});
+                ok = rayPlane(o, d, n, dot(n, dragHit), p);
+                if (ok) p = {dragHit.x, p.y, dragHit.z};
+            } else if (ME.top) ok = rayPlaneY(o, d, dragHit.y, p);
+            else { CamB c = camBasis(); ok = rayPlane(o, d, c.fwd * -1.0, dot(c.fwd * -1.0, dragHit), p); }
+            if (ok && moved && !ME.sel.empty()) {
+                V3 target = p;
+                if (ME.snapObjects && !alt) {
+                    gmap::Selection skip{{ME.sel[0]}, {}};
+                    gmap::SnapHit h = gmap::snapPoint(ME.map, skip, p, snapRadius(p));
+                    if (h.hit) { target = h.to; ME.snapShown = true; ME.snapFrom = p; ME.snapTo = h.to; }
+                    else target = snap3(p);
+                } else if (!alt) target = snap3(p);
+                gmap::Brush nb;
+                if (gmap::moveVertices(vertOrig, ME.vertSel, target - vertBase, nb)) { ME.map.brushes[ME.sel[0]] = nb; dragChanged = true; ME.version++; }
+            }
+        } else if ((drag == Drag::Face || drag == Drag::Extrude) && !dragOrig.empty()) {
             gmap::Brush b = dragOrig[0];
             auto poly = gmap::facePolygon(b, dragFace);
             V3 cen; for (auto& q : poly) cen += q; if (!poly.empty()) cen = cen * (1.0 / poly.size());
@@ -821,13 +1258,22 @@ static void toolInput() {
                 if (l2 > 1) {
                     Vector2 md = Vector2Subtract(m, dragMouse0);
                     double amt = snapG((md.x * sv.x + md.y * sv.y) / l2);
-                    if (gmap::pushFace(b, dragFace, amt)) { ME.map.brushes[ME.sel[0]] = b; ME.version++; dragChanged = amt != 0; }
+                    if (drag == Drag::Face) {
+                        if (gmap::pushFace(b, dragFace, amt)) { ME.map.brushes[ME.sel[0]] = b; ME.version++; dragChanged = amt != 0; }
+                    } else {   // a new brush pulled out of the face
+                        gmap::Brush nb;
+                        if (amt > 1e-6 && gmap::extrudeFace(dragOrig[0], dragFace, amt, nb)) {
+                            if (extrudeIdx < 0) { ME.map.brushes.push_back(nb); extrudeIdx = (int)ME.map.brushes.size() - 1; }
+                            else ME.map.brushes[extrudeIdx] = nb;
+                            ME.version++; dragChanged = true;
+                        } else if (extrudeIdx >= 0) { ME.map.brushes.erase(ME.map.brushes.begin() + extrudeIdx); extrudeIdx = -1; ME.version++; dragChanged = false; }
+                    }
                 }
             }
         } else if (drag == Drag::Create) {
             V3 p;
             bool ok = rayPlaneY(o, d, createY, p);
-            if (ok) createB = {snapG(p.x), createY, snapG(p.z)};
+            if (ok) createB = snapOnGround(p, createY, alt);
         }
     }
 
@@ -841,13 +1287,30 @@ static void toolInput() {
                 if (ME.tool == MTool::Box) made.push_back(gmap::makeBox(mn, mx, ME.mat));
                 else if (ME.tool == MTool::Wedge) made.push_back(gmap::makeWedge(mn, mx, wedgeDir(), ME.mat));
                 else if (ME.tool == MTool::Cylinder) made.push_back(gmap::makeCylinder(mn, mx, ME.cylSides, ME.mat));
+                else if (ME.tool == MTool::Cone) made.push_back(gmap::makeCone(mn, mx, ME.shapeSides, ME.mat));
+                else if (ME.tool == MTool::Sphere) made.push_back(gmap::makeSphere(mn, mx, std::max(3, ME.shapeSides / 2), ME.shapeSides, ME.mat));
+                else if (ME.tool == MTool::Round) made.push_back(gmap::makeQuarterRound(mn, mx, ME.shapeSides, wedgeDir(), ME.mat));
+                else if (ME.tool == MTool::Arch) made = gmap::makeArch(mn, mx, ME.archSegs, ME.archWall, wedgeDir(), ME.mat);
+                else if (ME.tool == MTool::Pipe) made = gmap::makePipe(mn, mx, std::max(6, ME.shapeSides), ME.pipeWall, ME.mat);
                 else made = gmap::makeStairs(mn, mx, ME.stairSteps, wedgeDir(), ME.mat);
-                ME.sel.clear();
+                ME.sel.clear(); ME.entSel.clear();
                 for (auto& b : made) if (gmap::brushValid(b)) { ME.map.brushes.push_back(b); ME.sel.push_back((int)ME.map.brushes.size() - 1); }
+                if (ME.sel.size() > 1) {   // an arch or a pipe is one thing to pick
+                    int gid = 0;
+                    for (auto& br : ME.map.brushes) gid = std::max(gid, br.group);
+                    for (auto& e : ME.map.ents) gid = std::max(gid, e.group);
+                    for (int i : ME.sel) ME.map.brushes[i].group = gid + 1;
+                }
                 ME.face = -1; ME.ent = -1;
                 dragChanged = !made.empty();
             }
+        } else if (drag == Drag::Extrude && extrudeIdx >= 0) {
+            ME.sel = {extrudeIdx}; ME.face = -1; ME.entSel.clear(); ME.ent = -1;   // the new piece is what's picked now
+        } else if (drag == Drag::Vertex) {
+            ME.vertSel.clear();   // (the corners are numbered again after the change)
         }
+        ME.snapShown = false;
+        extrudeIdx = -1;
         endDrag();
     }
 }
@@ -860,6 +1323,17 @@ static void keyInput() {
     if (actPressed(Act::Delete) || (IsKeyPressed(KEY_BACKSPACE) && !ctrl)) meDelete();
     if (actPressed(Act::Duplicate)) meDuplicate();
     if (ctrl && IsKeyPressed(KEY_S)) meSave();
+    if (ctrl && IsKeyPressed(KEY_C)) meCopy(false);
+    if (ctrl && IsKeyPressed(KEY_X)) meCopy(true);
+    if (ctrl && IsKeyPressed(KEY_V)) mePaste();
+    if (ctrl && IsKeyPressed(KEY_A)) meSelectAll();
+    if (ctrl && IsKeyPressed(KEY_G)) meGroup(!shift);
+    if (ctrl && IsKeyPressed(KEY_H)) meHide(!shift);
+    if (ctrl && IsKeyPressed(KEY_L)) meFreeze(!shift);
+    if (!ctrl && !shift && IsKeyPressed(KEY_ONE)) ME.xmode = XMode::Move;
+    if (!ctrl && !shift && IsKeyPressed(KEY_TWO)) ME.xmode = XMode::Rotate;
+    if (!ctrl && !shift && IsKeyPressed(KEY_THREE)) ME.xmode = XMode::Scale;
+    if (!ctrl && IsKeyPressed(KEY_C)) { if (meCanVertex()) { ME.vertexMode = !ME.vertexMode; ME.vertSel.clear(); } else toast("Pick one brush to edit its corners."); }
     if (actPressed(Act::MapRotate)) meRotate(shift ? -90 : 90);
     if (actPressed(Act::MapHollow)) meHollow();
     if (actPressed(Act::MapTopView)) { if (!ME.top) { ME.topC = {ME.cam.x, 0, ME.cam.z}; } ME.top = !ME.top; }
@@ -886,17 +1360,18 @@ static void keyInput() {
     if (IsKeyPressed(KEY_LEFT)) nud -= rx * g;
     if (IsKeyPressed(KEY_PAGE_UP)) nud.y += g;
     if (IsKeyPressed(KEY_PAGE_DOWN)) nud.y -= g;
-    if (gmap::len(nud) > 0 && (!ME.sel.empty() || ME.ent >= 0)) {
+    if (gmap::len(nud) > 0 && !meSelection().empty()) {
         meSnapshot();
-        for (int i : ME.sel) gmap::translate(ME.map.brushes[i], nud);
-        if (ME.ent >= 0) ME.map.ents[ME.ent].pos += nud;
+        gmap::moveSelection(ME.map, meSelection(), nud);
         meChanged();
     }
     if (IsKeyPressed(KEY_ESCAPE)) {
         if (drag != Drag::None) { restore(preDrag); drag = Drag::None; ME.version++; }
         else if (!ME.clipPts.empty()) ME.clipPts.clear();
+        else if (!ME.measurePts.empty()) ME.measurePts.clear();
+        else if (ME.vertexMode) { ME.vertexMode = false; ME.vertSel.clear(); }
         else if (ME.tool != MTool::Select) ME.tool = MTool::Select;
-        else if (!ME.sel.empty() || ME.ent >= 0) { ME.sel.clear(); ME.face = -1; ME.ent = -1; }
+        else if (!meSelection().empty()) meSetSelection({});
         else A.showPause = true;
     }
 }
@@ -1010,7 +1485,7 @@ static void drawStart(const gmap::Entity& e, bool sel) {
 }
 
 static const char* HINT[] = {
-    "Click a brush to select (Shift adds, Ctrl picks one face). Drag to move, Alt+drag up and down. Drag the squares to resize. Right mouse: look and fly with WASD.",
+    "Click a brush to select (Shift adds, Ctrl picks one face). Drag to move. Arrows, rings and squares turn and stretch it (keys 1 move, 2 turn, 3 stretch). C edits corners. Right mouse: look and fly with WASD.",
     "Drag on the ground, or on top of a brush, to draw a box. Its height is set in the top bar.",
     "Drag to draw a ramp. It rises away from where you're looking.",
     "Drag to draw a cylinder. Its number of sides is in the panel.",
@@ -1021,7 +1496,21 @@ static const char* HINT[] = {
     "Click to place a gun spawner: on the map, walk up to it and press F to take any of your guns.",
     "Click to place armour plates: players walk over them to fill their armour bar. Set how many and whether they come back in the panel.",
     "Click to place an attachment crate: on the map, walk up to it and press F to fit attachments to the gun in your hands.",
+    "Click a ceiling, a wall or the floor to hang a lamp there. Pick it to change its colour, power and reach.",
+    "Click to place an ammo box: press F by it on foot to fill up the ammunition for every gun you carry.",
+    "Click to place a weapon crate: press F by it on foot to take any of your guns.",
+    "Click to place a workstation (career mode).",
+    "Click a floor in a doorway to place a door. It swings away from you on foot.",
+    "Click the floor (a target at chest height) or a wall to place a paper target.",
+    "Drag to draw a cone, or a pyramid with 4 sides. Its sides are in the panel.",
+    "Drag to draw a ball (or an egg) that fills the box.",
+    "Drag to draw a rounded corner: a quarter of a cylinder. It curves away from where you're looking.",
+    "Drag to draw an arch (a doorway with a curved top): two legs and a curve of blocks, picked together.",
+    "Drag to draw a pipe: an upright tube with a hole through it.",
+    "Click to place furniture or clutter (chosen in the panel), made of brushes so it blocks like a wall. It faces you.",
+    "Click two points to measure between them: distance, run, rise and slope. They snap to corners.",
 };
+static const char* hintFor(MTool t) { size_t i = (size_t)t; return i < sizeof HINT / sizeof HINT[0] ? HINT[i] : ""; }
 
 static void drawEditor3D() {
     CamB b = camBasis();
@@ -1052,6 +1541,11 @@ static void drawEditor3D() {
             if (ME.tool == MTool::Box) pv.push_back(gmap::makeBox(mn, mx, 0));
             else if (ME.tool == MTool::Wedge) pv.push_back(gmap::makeWedge(mn, mx, wedgeDir(), 0));
             else if (ME.tool == MTool::Cylinder) pv.push_back(gmap::makeCylinder(mn, mx, ME.cylSides, 0));
+            else if (ME.tool == MTool::Cone) pv.push_back(gmap::makeCone(mn, mx, ME.shapeSides, 0));
+            else if (ME.tool == MTool::Sphere) pv.push_back(gmap::makeSphere(mn, mx, std::max(3, ME.shapeSides / 2), ME.shapeSides, 0));
+            else if (ME.tool == MTool::Round) pv.push_back(gmap::makeQuarterRound(mn, mx, ME.shapeSides, wedgeDir(), 0));
+            else if (ME.tool == MTool::Arch) pv = gmap::makeArch(mn, mx, ME.archSegs, ME.archWall, wedgeDir(), 0);
+            else if (ME.tool == MTool::Pipe) pv = gmap::makePipe(mn, mx, std::max(6, ME.shapeSides), ME.pipeWall, 0);
             else pv = gmap::makeStairs(mn, mx, ME.stairSteps, wedgeDir(), 0);
             for (auto& p : pv) drawBrushEdges(p, Color{120, 230, 200, 255});
         }
@@ -1079,25 +1573,129 @@ static void drawEditor3D() {
     // entities
     for (size_t i = 0; i < ME.map.ents.size(); i++) {
         const auto& e = ME.map.ents[i];
-        if (e.type == "player_start") drawStart(e, (int)i == ME.ent);
-        else if (e.type == "npc_spawn") drawNpcSpawn(e, (int)i == ME.ent);
-        else if (e.type == "gun_spawner") drawSpawner(e, (int)i == ME.ent);
-        else if (e.type == "light") drawLampMarker(e, (int)i == ME.ent);
-        else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0 || gmap::isDisplay(e.type) || gmap::isDecor(e.type)) drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
-        else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
-        else if (e.type == "target_paper") drawPaperTargetMarker(e, (int)i == ME.ent);
-        else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
-        else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        if (e.hidden) continue;
+        bool selE = std::find(ME.entSel.begin(), ME.entSel.end(), (int)i) != ME.entSel.end() || (int)i == ME.ent;
+        if (e.type == "player_start") drawStart(e, selE);
+        else if (e.type == "npc_spawn") drawNpcSpawn(e, selE);
+        else if (e.type == "gun_spawner") drawSpawner(e, selE);
+        else if (e.type == "light") drawLampMarker(e, selE);
+        else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0 || gmap::isDisplay(e.type) || gmap::isDecor(e.type)) drawStation(e.type, rv(e.pos), (float)e.yaw, selE ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, selE ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type == "target_paper") drawPaperTargetMarker(e, selE);
+        else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, selE ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, selE ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++)
-            drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k), (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+            drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k), selE ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
     }
     (void)b;
+}
+
+static std::string selectionInfo() {
+    gmap::Selection s = meSelection();
+    if (s.empty()) return "";
+    V3 mn, mx; gmap::selectionBounds(ME.map, s, mn, mx);
+    V3 sz = mx - mn;
+    std::string t;
+    if (!s.brushes.empty()) t += std::to_string(s.brushes.size()) + (s.brushes.size() == 1 ? " brush" : " brushes");
+    if (!s.ents.empty()) t += std::string(t.empty() ? "" : ", ") + std::to_string(s.ents.size()) + (s.ents.size() == 1 ? " thing" : " things");
+    if (!s.brushes.empty()) t += "   " + meLen(sz.x) + " x " + meLen(sz.y) + " x " + meLen(sz.z);
+    return t;
+}
+static void drawHandlesOverlay() {
+    Vector2 mouse = GetMousePosition();
+    // the move arrows, turning rings and stretch squares on what's picked
+    if (ME.tool == MTool::Select && !ME.vertexMode) {
+        gmap::Selection s = meSelection();
+        if (!s.empty()) {
+            V3 c = drag == Drag::Gizmo ? gizC : gmap::selectionCentre(ME.map, s);
+            Vector2 sc;
+            if (project(c, sc)) {
+                if (ME.xmode == XMode::Rotate) {
+                    Rings g = (drag == Drag::Gizmo && gizMode == XMode::Rotate) ? gizRings : makeRings(c);
+                    if (drag != Drag::Gizmo) g.hot = ringsPick(g, toScreenFn(), mouse);
+                    ringsDraw(g, toScreenFn(), rv(ME.top ? V3{c.x, c.y + 100, c.z} : ME.cam));
+                    if (drag == Drag::Gizmo && gizMode == XMode::Rotate) {
+                        char b[32]; std::snprintf(b, sizeof b, "%.0f deg", gizRings.deg);
+                        viewText(b, mouse.x + 16, mouse.y + 14, 13, Color{255, 226, 120, 255});
+                    }
+                } else {
+                    double L = gizLen(c);
+                    int hot = drag == Drag::Gizmo ? gizAxis : gizmoPick(mouse);
+                    for (int a = 0; a < 3; a++) {
+                        Vector2 st;
+                        if (!project(c + axisVec(a) * L, st)) continue;
+                        Color col = axisColour(a, hot == a);
+                        DrawLineEx(sc, st, 3, col);
+                        Vector2 dir = Vector2Normalize(Vector2Subtract(st, sc)), side{-dir.y, dir.x};
+                        if (ME.xmode == XMode::Move) DrawTriangle(Vector2Add(st, Vector2Scale(dir, 14)), Vector2Add(st, Vector2Scale(side, 6)), Vector2Subtract(st, Vector2Scale(side, 6)), col);
+                        else DrawRectangle((int)st.x - 6, (int)st.y - 6, 12, 12, col);
+                    }
+                    if (ME.xmode == XMode::Scale) DrawRectangle((int)sc.x - 6, (int)sc.y - 6, 12, 12, hot == 3 ? Color{255, 226, 120, 255} : Color{235, 238, 242, 255});
+                    if (drag == Drag::Gizmo) {
+                        V3 now = gmap::selectionCentre(ME.map, s), mn, mx;
+                        gmap::selectionBounds(ME.map, s, mn, mx);
+                        std::string t = gizMode == XMode::Move ? meLen(dot(now - gizC, axisVec(gizAxis))) : meLen(mx.x - mn.x) + " x " + meLen(mx.y - mn.y) + " x " + meLen(mx.z - mn.z);
+                        viewText(t.c_str(), mouse.x + 16, mouse.y + 14, 13, Color{255, 226, 120, 255});
+                    }
+                }
+            }
+        }
+    }
+    // corner editing
+    if (ME.vertexMode && meCanVertex() && ME.tool == MTool::Select) {
+        std::vector<V3> verts; std::vector<std::pair<int, int>> edges;
+        int hot = drag == Drag::None ? vertexHandleAt(mouse, ME.map.brushes[ME.sel[0]], verts, edges) : -1;
+        if (drag != Drag::Vertex) {
+            if (verts.empty()) { verts = gmap::brushVertices(ME.map.brushes[ME.sel[0]]); edges = gmap::brushEdges(ME.map.brushes[ME.sel[0]], verts); }
+            for (size_t i = 0; i < edges.size(); i++) {
+                Vector2 s;
+                if (project((verts[edges[i].first] + verts[edges[i].second]) * 0.5, s)) DrawCircleV(s, hot == 1000 + (int)i ? 6.f : 4.f, hot == 1000 + (int)i ? Color{255, 226, 120, 255} : Color{110, 210, 150, 255});
+            }
+            for (size_t i = 0; i < verts.size(); i++) {
+                Vector2 s;
+                if (!project(verts[i], s)) continue;
+                bool picked = std::find(ME.vertSel.begin(), ME.vertSel.end(), (int)i) != ME.vertSel.end();
+                float r = hot == (int)i ? 7.f : 5.5f;
+                DrawRectangleRec({s.x - r, s.y - r, 2 * r, 2 * r}, picked || hot == (int)i ? Color{255, 226, 120, 255} : Color{90, 150, 250, 255});
+                DrawRectangleLinesEx({s.x - r, s.y - r, 2 * r, 2 * r}, 1.5f, Color{20, 24, 32, 255});
+            }
+        }
+    }
+    // where a drag landed on something else
+    if (ME.snapShown) {
+        Vector2 a, b;
+        if (project(ME.snapTo, b)) {
+            if (project(ME.snapFrom, a) && Vector2Distance(a, b) > 3) DrawLineEx(a, b, 1.5f, Color{255, 226, 120, 160});
+            DrawCircleLinesV(b, 9, Color{255, 226, 120, 255});
+            DrawLineEx({b.x - 13, b.y}, {b.x + 13, b.y}, 1.5f, Color{255, 226, 120, 255});
+            DrawLineEx({b.x, b.y - 13}, {b.x, b.y + 13}, 1.5f, Color{255, 226, 120, 255});
+        }
+    }
+    // measuring
+    if (!ME.measurePts.empty()) {
+        Vector2 a;
+        if (project(ME.measurePts[0], a)) DrawCircleV(a, 5, Color{255, 255, 255, 255});
+        if (ME.measurePts.size() == 2) {
+            Vector2 b;
+            if (project(ME.measurePts[1], b) && project(ME.measurePts[0], a)) {
+                DrawLineEx(a, b, 2, Color{255, 255, 255, 230});
+                DrawCircleV(b, 5, Color{255, 255, 255, 255});
+                gmap::Measure ms = gmap::measure(ME.measurePts[0], ME.measurePts[1]);
+                char sl[24]; std::snprintf(sl, sizeof sl, "%.1f deg", ms.slopeDegrees);
+                std::string t = meLen(ms.distance) + "   run " + meLen(ms.flat) + "   rise " + meLen(ms.dy) + "   (x " + meLen(ms.dx) + ", z " + meLen(ms.dz) + ", slope " + sl + ")";
+                float w = viewTextWidth(t.c_str(), 13);
+                Vector2 mid{(a.x + b.x) / 2, (a.y + b.y) / 2};
+                DrawRectangleRounded({mid.x - w / 2 - 8, mid.y - 24, w + 16, 22}, 0.4f, 6, Color{20, 23, 28, 220});
+                viewText(t.c_str(), mid.x - w / 2, mid.y - 20, 13, Color{255, 255, 255, 255});
+            }
+        }
+    }
 }
 
 static void drawEditorOverlay() {
     VP v = viewRect();
     // face handles on the single selected brush
-    if (ME.sel.size() == 1 && ME.face < 0 && ME.tool == MTool::Select) {
+    if (ME.sel.size() == 1 && ME.face < 0 && ME.tool == MTool::Select && !ME.vertexMode) {
         const auto& b = ME.map.brushes[ME.sel[0]];
         CamB c = camBasis();
         int hot = drag == Drag::Face ? dragFace : faceHandleAt(GetMousePosition());
@@ -1114,6 +1712,15 @@ static void drawEditorOverlay() {
             DrawRectangleLinesEx({s.x - r, s.y - r, 2 * r, 2 * r}, 1.5f, Color{255, 205, 60, 255});
         }
     }
+    drawHandlesOverlay();
+    {   // what's picked, and how big
+        std::string info = selectionInfo();
+        if (!info.empty()) {
+            float w = viewTextWidth(info.c_str(), 12);
+            DrawRectangleRounded({v.x + 12, v.y + v.h - (CFG.hints ? 58.f : 30.f), w + 20, 22}, 0.4f, 6, Color{20, 23, 28, 170});
+            viewText(info.c_str(), v.x + 22, v.y + v.h - (CFG.hints ? 53.f : 25.f), 12, Color{255, 226, 120, 255});
+        }
+    }
     // measurements while drawing a brush
     if (drag == Drag::Create) {
         Vector2 m = GetMousePosition();
@@ -1123,7 +1730,7 @@ static void drawEditorOverlay() {
         viewText(t.c_str(), m.x + 21, m.y + 18, 12, Color{236, 238, 242, 255});
     }
     if (CFG.hints) {
-        const char* h = HINT[(int)ME.tool];
+        const char* h = hintFor(ME.tool);
         float w = viewTextWidth(h, 12);
         DrawRectangleRounded({v.x + 12, v.y + v.h - 30, w + 20, 22}, 0.4f, 6, Color{20, 23, 28, 170});
         viewText(h, v.x + 22, v.y + v.h - 25, 12, Color{220, 224, 230, 255});
@@ -1165,7 +1772,14 @@ void mapEditorUpdate(float dt, bool modal) {
             flyCamera(dt); toolInput(); keyInput();
         }
     }
-    if (ME.built != ME.version) { mapBuildMeshes(ME.map); ME.built = ME.version; }
+    normalizeSelection();
+    if (ME.built != ME.version) {
+        bool anyHidden = false;
+        for (auto& b : ME.map.brushes) if (b.hidden) { anyHidden = true; break; }
+        if (!anyHidden || ME.walking) mapBuildMeshes(ME.map);
+        else { gmap::Map vis = ME.map; vis.brushes.erase(std::remove_if(vis.brushes.begin(), vis.brushes.end(), [](const gmap::Brush& b) { return b.hidden; }), vis.brushes.end()); mapBuildMeshes(vis); }
+        ME.built = ME.version;
+    }
 }
 
 void mapEditorRender() {

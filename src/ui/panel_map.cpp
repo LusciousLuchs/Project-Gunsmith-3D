@@ -15,7 +15,9 @@
 #include "extras/IconsFontAwesome6.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <map>
 #include <string>
 #include <cstdio>
 #include <cstdlib>
@@ -87,13 +89,55 @@ void mapToolbar() {
         {ICON_FA_BOX, "Weapon crate: press F by it to take any of your guns (like a gun spawner)", MTool::Weapons},
         {ICON_FA_INDUSTRY, "Workstation (career mode): a bench, a lathe, a mill, a test bench, or your shop counter", MTool::Station},
         {ICON_FA_DOOR_OPEN, "Door: click a floor in a doorway. F opens and shuts it on foot (it swings away from you)", MTool::Door},
-        {ICON_FA_BULLSEYE, "Paper target: click the floor (it stands at chest height) or a wall. Pick it to make it move side to side", MTool::Target}};
-    int i = 0;
-    for (auto& t : tools) {
-        if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
-        gap(i == 0 || i == 4 || i == 5 ? 12 : 3);
-        i++;
-    }
+        {ICON_FA_BULLSEYE, "Paper target: click the floor (it stands at chest height) or a wall. Pick it to make it move side to side", MTool::Target},
+        {ICON_FA_CARET_UP, "Cone or pyramid", MTool::Cone}, {ICON_FA_GEM, "Ball", MTool::Sphere}, {ICON_FA_CIRCLE_NOTCH, "Rounded corner (a quarter cylinder)", MTool::Round},
+        {ICON_FA_BRIDGE, "Arch: a doorway with a curved top", MTool::Arch}, {ICON_FA_ELLIPSIS, "Pipe: a tube with a hole through it", MTool::Pipe},
+        {ICON_FA_CHAIR, "Props: tables, chairs, shelves, crates, barrels and more, built from brushes", MTool::Prop}, {ICON_FA_RULER, "Measure: distance, run, rise and slope between two points", MTool::Measure}};
+    auto find = [&](MTool k) -> const TB& { for (auto& t : tools) if (t.t == k) return t; return tools[0]; };
+    auto toolBtn = [&](MTool k) { const TB& t = find(k); if (iconBtn(t.icon, t.tip, ME.tool == k)) { ME.tool = k; ME.clipPts.clear(); } };
+    // the shapes and the things you place sit in two menus, so the bar fits a small window
+    static const MTool shapes[] = {MTool::Box, MTool::Wedge, MTool::Cylinder, MTool::Stairs, MTool::Cone, MTool::Sphere, MTool::Round, MTool::Arch, MTool::Pipe};
+    static const MTool things[] = {MTool::Start, MTool::Npc, MTool::Spawner, MTool::Armor, MTool::Crate, MTool::Light, MTool::Ammo, MTool::Weapons, MTool::Station, MTool::Door, MTool::Target};
+    static const char* shapeNames[] = {"Box", "Ramp", "Cylinder", "Stairs", "Cone or pyramid", "Ball", "Rounded corner", "Arch", "Pipe"};
+    static const char* thingNames[] = {"Player start", "NPC", "Gun spawner", "Armour plates", "Attachment crate", "Light", "Ammo box", "Weapon crate", "Workstation", "Door", "Paper target"};
+    static MTool lastShape = MTool::Box, lastThing = MTool::Light;
+    auto menuBtn = [&](const char* id, const MTool* list, const char** names, int n, MTool& last, const char* title) {
+        bool on = false;
+        for (int k = 0; k < n; k++) if (ME.tool == list[k]) { on = true; last = list[k]; }
+        ImGui::PushID(id);
+        if (iconBtn(find(last).icon, find(last).tip, on)) { ME.tool = last; ME.clipPts.clear(); }
+        ImGui::SameLine(0, 0);
+        if (iconBtn(ICON_FA_CARET_DOWN, title)) ImGui::OpenPopup("##menu");
+        if (ImGui::BeginPopup("##menu")) {
+            for (int k = 0; k < n; k++) {
+                std::string l = std::string(find(list[k]).icon) + "   " + names[k];
+                if (ImGui::Selectable(l.c_str(), ME.tool == list[k])) { ME.tool = list[k]; last = list[k]; ME.clipPts.clear(); }
+                if (tipHover()) ImGui::SetTooltip("%s", find(list[k]).tip);
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+    };
+    toolBtn(MTool::Select);
+    gap(12);
+    menuBtn("shapes", shapes, shapeNames, 9, lastShape, "More shapes: box, ramp, cylinder, stairs, cone, ball, rounded corner, arch, pipe");
+    gap(3);
+    toolBtn(MTool::Clip);
+    gap(3);
+    toolBtn(MTool::Prop);
+    gap(3);
+    toolBtn(MTool::Measure);
+    gap(12);
+    menuBtn("things", things, thingNames, 11, lastThing, "Things to place: player start, NPCs, spawners, lights, doors, targets and more");
+    gap(12);
+    if (iconBtn(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "Handles: move (1)", ME.xmode == XMode::Move && ME.tool == MTool::Select)) { ME.xmode = XMode::Move; ME.tool = MTool::Select; }
+    gap(3);
+    if (iconBtn(ICON_FA_ROTATE, "Handles: turn (2)", ME.xmode == XMode::Rotate && ME.tool == MTool::Select)) { ME.xmode = XMode::Rotate; ME.tool = MTool::Select; }
+    gap(3);
+    if (iconBtn(ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, "Handles: stretch (3)", ME.xmode == XMode::Scale && ME.tool == MTool::Select)) { ME.xmode = XMode::Scale; ME.tool = MTool::Select; }
+    gap(3);
+    if (iconBtn(ICON_FA_MAGNET, "Snap to other things' corners and middles (Alt while dragging: off for that move)", ME.snapObjects)) ME.snapObjects = !ME.snapObjects;
+    gap(12);
     if (iconBtn(ICON_FA_ROTATE_LEFT, "Undo (Ctrl+Z)")) meUndo();
     gap(3);
     if (iconBtn(ICON_FA_ROTATE_RIGHT, "Redo (Ctrl+Y)")) meRedo();
@@ -404,6 +448,219 @@ static void editTab() {
     }
 }
 
+
+// ---------------------------------------------------------------- moving, turning, stretching, arranging
+// a position or size: three typed fields that apply when you let go (so one undo step per change)
+static bool vec3Field(const char* id, gmap::V3 cur, gmap::V3& out) {
+    static std::map<std::string, std::pair<gmap::V3, bool>> state;
+    auto& st = state[id];
+    if (!st.second) st.first = cur;
+    bool commit = false, active = false;
+    ImGui::PushID(id);
+    float w = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+    const char* ax[3] = {"X", "Y", "Z"};
+    double* v[3] = {&st.first.x, &st.first.y, &st.first.z};
+    for (int i = 0; i < 3; i++) {
+        if (i) ImGui::SameLine();
+        ImGui::PushID(i);
+        ImGui::SetNextItemWidth(w);
+        char lab[8]; std::snprintf(lab, sizeof lab, "##%s", ax[i]);
+        lenDrag(lab, *v[i], std::max(ME.grid, 0.01));
+        if (ImGui::IsItemActive()) active = true;
+        if (ImGui::IsItemDeactivatedAfterEdit()) commit = true;
+        if (tipHover()) ImGui::SetTooltip("%s: drag, or double-click to type", ax[i]);
+        ImGui::PopID();
+    }
+    ImGui::PopID();
+    st.second = active;
+    if (commit) { out = st.first; st.second = false; return true; }
+    return false;
+}
+static void transformTools() {
+    gmap::Selection sel = meSelection();
+    heading("Move, turn, stretch");
+    {
+        struct M { const char* icon; const char* label; const char* tip; XMode m; } modes[] = {
+            {ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT, "Move", "Arrows slide along one axis. Drag the brush itself to slide it over the ground (Alt: up and down). Key 1.", XMode::Move},
+            {ICON_FA_ROTATE, "Turn", "Rings turn it about X, Y or Z in 15 degree steps (Alt: free). Key 2.", XMode::Rotate},
+            {ICON_FA_UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, "Stretch", "Squares stretch it along an axis, the far side stays put (Ctrl: about the middle). The middle square stretches all of it. Key 3.", XMode::Scale}};
+        float w = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+        for (int i = 0; i < 3; i++) {
+            if (i) ImGui::SameLine();
+            std::string l = std::string(modes[i].icon) + "  " + modes[i].label;
+            if (accentButton(l.c_str(), ME.xmode == modes[i].m, {w, 0})) { ME.xmode = modes[i].m; ME.tool = MTool::Select; }
+            if (tipHover()) ImGui::SetTooltip("%s", modes[i].tip);
+        }
+    }
+    ImGui::Checkbox("Snap to other things", &ME.snapObjects);
+    if (tipHover()) ImGui::SetTooltip("Land a corner, edge middle or face middle on another brush (or thing) when you drag.\nHold Alt while dragging to leave it off for that move.");
+    if (sel.empty()) { ImGui::TextDisabled("Pick something to move, turn or stretch it."); }
+    else {
+        gmap::V3 mn, mx; gmap::selectionBounds(ME.map, sel, mn, mx);
+        gmap::V3 c = (mn + mx) * 0.5, size = mx - mn, out;
+        prop("Position", "The middle of what's picked. Drag a number or double-click to type (units follow the switch at the top).");
+        if (vec3Field("##pos", c, out)) meSetCentre(out);
+        if (!sel.brushes.empty()) {
+            prop("Size", "Width, height and depth of what's picked, stretched about its middle.");
+            if (vec3Field("##size", size, out)) meSetSize(out);
+        }
+        prop("Turn by");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::DragScalar("##turnby", ImGuiDataType_Double, &ME.turnBy, 1.0f, nullptr, nullptr, "%.0f degrees");
+        ME.turnBy = std::clamp(ME.turnBy, 1.0, 180.0);
+        const char* ax[3] = {"X", "Y", "Z"};
+        float w = (ImGui::GetContentRegionAvail().x - 5 * ImGui::GetStyle().ItemSpacing.x) / 6;
+        for (int sgn = 1; sgn >= -1; sgn -= 2) for (int a = 0; a < 3; a++) {
+            ImGui::PushID(a * 2 + (sgn > 0));
+            char l[8]; std::snprintf(l, sizeof l, "%s%s", sgn > 0 ? "+" : "-", ax[a]);
+            if (ImGui::Button(l, {w, 0})) meTurnAbout(a, sgn * ME.turnBy);
+            if (tipHover()) ImGui::SetTooltip("Turn about %s by the amount above (the right-hand way for +).", ax[a]);
+            ImGui::PopID();
+            if (!(sgn < 0 && a == 2)) ImGui::SameLine();
+        }
+        ImGui::NewLine();
+        prop("Mirror", "Flip across the middle of what's picked.");
+        float mw = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+        for (int a = 0; a < 3; a++) { if (a) ImGui::SameLine(); char l[24]; std::snprintf(l, sizeof l, "%s##mir%d", ax[a], a); if (ImGui::Button(l, {mw, 0})) meMirror(a); }
+    }
+    if (meCanVertex()) {
+        if (accentButton(ICON_FA_DRAW_POLYGON "  Edit corners (C)", ME.vertexMode, {-1, 0})) { ME.vertexMode = !ME.vertexMode; ME.vertSel.clear(); }
+        if (tipHover()) ImGui::SetTooltip("Show the picked brush's corners (squares) and edge middles (circles). Drag them: the brush stays solid and convex.\nShift adds corners. Shift-drag a face's square to pull a new piece out of it.");
+    }
+    if (section("Line up and space out", false)) {
+        const char* ax[3] = {"X", "Y", "Z"};
+        const char* to[3] = {"Low", "Middle", "High"};
+        ImGui::TextDisabled("Pick two or more things. Low and High line them up on their lowest or highest edge.");
+        for (int a = 0; a < 3; a++) {
+            for (int k = 0; k < 3; k++) {
+                if (k) ImGui::SameLine();
+                char l[24]; std::snprintf(l, sizeof l, "%s %s##al%d%d", ax[a], to[k], a, k);
+                if (ImGui::Button(l, {(ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / (3 - k), 0})) meAlign(a, (gmap::AlignTo)k);
+            }
+        }
+        prop("Space out", "Even gaps between the first and last of three or more.");
+        float w = (ImGui::GetContentRegionAvail().x - 2 * ImGui::GetStyle().ItemSpacing.x) / 3;
+        for (int a = 0; a < 3; a++) { if (a) ImGui::SameLine(); char l[24]; std::snprintf(l, sizeof l, "Along %s##dist%d", ax[a], a); if (ImGui::Button(l, {w, 0})) meDistribute(a); }
+    }
+    if (section("Copies and arrays", false)) {
+        ImGui::TextDisabled("Copy and paste (Ctrl+C, Ctrl+V) work between maps too.");
+        if (ImGui::Button(ICON_FA_COPY "  Copy", {(ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2, 0})) meCopy(false);
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_PASTE "  Paste", {-1, 0})) mePaste();
+        prop("A row of copies", "Each copy steps further along by the amount below.");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::SliderInt("##arrn", &ME.arrCount, 1, 50, "%d copies"); typeable();
+        gmap::V3 st = ME.arrStep, so;
+        if (vec3Field("##arrstep", st, so)) ME.arrStep = so;
+        if (ImGui::Button("Make the row", {-1, 0})) meArrayLinear();
+        prop("A ring of copies", "Copies spread round the middle of what's picked. 360 degrees puts them evenly all the way round.");
+        ImGui::SetNextItemWidth(-1);
+        ImGui::SliderInt("##radn", &ME.radCount, 1, 50, "%d copies"); typeable();
+        float tot = (float)ME.radTotal;
+        ImGui::SetNextItemWidth(-1);
+        if (ImGui::SliderFloat("##radtot", &tot, 10, 360, "%.0f degrees round")) ME.radTotal = tot;
+        typeable();
+        ImGui::SetNextItemWidth(-1);
+        ImGui::Combo("##radaxis", &ME.radAxis, "Round the upright axis (Y)\0Round X\0Round Z\0");
+        ImGui::Checkbox("Turn the copies as they go round", &ME.radTurn);
+        if (ImGui::Button("Make the ring", {-1, 0})) {
+            int ax = ME.radAxis == 0 ? 1 : ME.radAxis == 1 ? 0 : 2;
+            int keep = ME.radAxis; ME.radAxis = ax; meArrayRadial(); ME.radAxis = keep;
+        }
+    }
+    if (section("Hide, freeze, group", false)) {
+        float w = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        if (ImGui::Button(ICON_FA_EYE_SLASH "  Hide (Ctrl+H)", {w, 0})) meHide(true);
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_EYE "  Show all", {-1, 0})) meHide(false);
+        if (ImGui::Button(ICON_FA_LOCK "  Freeze (Ctrl+L)", {w, 0})) meFreeze(true);
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_LOCK_OPEN "  Unfreeze all", {-1, 0})) meFreeze(false);
+        if (ImGui::Button(ICON_FA_OBJECT_GROUP "  Group (Ctrl+G)", {w, 0})) meGroup(true);
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_OBJECT_UNGROUP "  Ungroup", {-1, 0})) meGroup(false);
+        ImGui::TextDisabled("Hidden things are out of the way while you build (they're there when you play). Frozen things can't be picked. A group is picked together.");
+    }
+}
+
+// ---------------------------------------------------------------- the list of everything
+static std::string brushLabel(int i) {
+    const auto& b = ME.map.brushes[i];
+    gmap::V3 mn, mx; gmap::brushBounds(b, mn, mx);
+    std::string mat = b.faces.empty() ? "" : gmap::materialNames()[std::clamp(b.faces[0].mat, 0, (int)gmap::materialNames().size() - 1)];
+    std::string n = b.name.empty() ? "Brush " + std::to_string(i + 1) : b.name;
+    return n + "   " + meLen(mx.x - mn.x) + " x " + meLen(mx.y - mn.y) + " x " + meLen(mx.z - mn.z) + "   " + mat + (b.group ? "   [group " + std::to_string(b.group) + "]" : "");
+}
+static void objectsTab() {
+    heading("Everything in the map");
+    ImGui::TextDisabled("Click to pick (Ctrl adds). The eye hides, the lock freezes. Double-click a name to rename it.");
+    static char filter[64] = "";
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##objfilter", "Filter by name or material", filter, sizeof filter);
+    std::string f = filter;
+    for (auto& ch : f) ch = (char)std::tolower((unsigned char)ch);
+    auto match = [&](const std::string& s) { if (f.empty()) return true; std::string l = s; for (auto& ch : l) ch = (char)std::tolower((unsigned char)ch); return l.find(f) != std::string::npos; };
+    gmap::Selection cur = meSelection();
+    static int renaming = -1; static bool renamingEnt = false; static char rbuf[64];
+    bool ctrl = ImGui::GetIO().KeyCtrl;
+    if (section("Things", true)) {
+        for (int i = 0; i < (int)ME.map.ents.size(); i++) {
+            auto& e = ME.map.ents[i];
+            std::string label = e.name.empty() ? e.type : e.name + "  (" + e.type + ")";
+            if (!match(label)) continue;
+            ImGui::PushID(100000 + i);
+            bool selected = std::find(cur.ents.begin(), cur.ents.end(), i) != cur.ents.end();
+            if (ImGui::SmallButton(e.hidden ? ICON_FA_EYE_SLASH : ICON_FA_EYE)) { meSnapshot(); e.hidden = !e.hidden; meChanged(); }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(e.frozen ? ICON_FA_LOCK : ICON_FA_LOCK_OPEN)) { meSnapshot(); e.frozen = !e.frozen; meChanged(); }
+            ImGui::SameLine();
+            if (renaming == i && renamingEnt) {
+                ImGui::SetNextItemWidth(-1);
+                ImGui::SetKeyboardFocusHere();
+                if (ImGui::InputText("##rn", rbuf, sizeof rbuf, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) { meSnapshot(); e.name = rbuf; meChanged(); renaming = -1; }
+                if (ImGui::IsItemDeactivated() && renaming == i) renaming = -1;
+            } else {
+                if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
+                    if (ImGui::IsMouseDoubleClicked(0)) { renaming = i; renamingEnt = true; std::snprintf(rbuf, sizeof rbuf, "%s", e.name.c_str()); }
+                    else if (ctrl) { gmap::Selection s = cur; auto it = std::find(s.ents.begin(), s.ents.end(), i); if (it == s.ents.end()) s.ents.push_back(i); else s.ents.erase(it); meSetSelection(s); }
+                    else meSetSelection({{}, {i}});
+                }
+            }
+            ImGui::PopID();
+        }
+    }
+    if (section("Brushes", true)) {
+        std::vector<int> shown;
+        for (int i = 0; i < (int)ME.map.brushes.size(); i++) if (f.empty() || match(brushLabel(i))) shown.push_back(i);
+        ImGuiListClipper clip;
+        clip.Begin((int)shown.size());
+        while (clip.Step()) for (int k = clip.DisplayStart; k < clip.DisplayEnd; k++) {
+            int i = shown[k];
+            auto& b = ME.map.brushes[i];
+            ImGui::PushID(i);
+            bool selected = std::find(cur.brushes.begin(), cur.brushes.end(), i) != cur.brushes.end();
+            if (ImGui::SmallButton(b.hidden ? ICON_FA_EYE_SLASH : ICON_FA_EYE)) { meSnapshot(); b.hidden = !b.hidden; meChanged(); }
+            ImGui::SameLine();
+            if (ImGui::SmallButton(b.frozen ? ICON_FA_LOCK : ICON_FA_LOCK_OPEN)) { meSnapshot(); b.frozen = !b.frozen; meChanged(); }
+            ImGui::SameLine();
+            if (renaming == i && !renamingEnt) {
+                ImGui::SetNextItemWidth(-1);
+                ImGui::SetKeyboardFocusHere();
+                if (ImGui::InputText("##rn", rbuf, sizeof rbuf, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll)) { meSnapshot(); b.name = rbuf; meChanged(); renaming = -1; }
+                if (ImGui::IsItemDeactivated() && renaming == i) renaming = -1;
+            } else {
+                std::string label = brushLabel(i);
+                if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
+                    if (ImGui::IsMouseDoubleClicked(0)) { renaming = i; renamingEnt = false; std::snprintf(rbuf, sizeof rbuf, "%s", b.name.c_str()); }
+                    else if (ctrl) { gmap::Selection s = cur; auto it = std::find(s.brushes.begin(), s.brushes.end(), i); if (it == s.brushes.end()) s.brushes.push_back(i); else s.brushes.erase(it); meSetSelection(s); }
+                    else if (!b.locked) { meSetSelection({{i}, {}}); }
+                }
+            }
+            ImGui::PopID();
+        }
+    }
+}
+
 static void groupTools() {   // groups of objects: save the selection as one, place it again
     heading("Groups");
     static char gname[64] = "My group";
@@ -454,6 +711,31 @@ static void toolOptions() {
         }
     }
     if (ME.tool == MTool::Cylinder) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); typeable(); }
+    if (ME.tool == MTool::Cone || ME.tool == MTool::Sphere || ME.tool == MTool::Round || ME.tool == MTool::Pipe) {
+        prop(ME.tool == MTool::Round ? "Steps in the curve" : "Sides");
+        ImGui::SliderInt("##shsides", &ME.shapeSides, ME.tool == MTool::Cone ? 3 : 4, 32); typeable();
+        if (ME.tool == MTool::Cone) ImGui::TextDisabled("4 sides makes a pyramid.");
+    }
+    if (ME.tool == MTool::Arch) {
+        prop("Blocks in the curve"); ImGui::SliderInt("##archsegs", &ME.archSegs, 3, 24); typeable();
+        prop("Wall thickness"); lenDrag("##archwall", ME.archWall, 0.05); ME.archWall = std::clamp(ME.archWall, 0.05, 2.0);
+        ImGui::TextDisabled("Its opening runs the way you're looking along; the height is the top bar's.");
+    }
+    if (ME.tool == MTool::Pipe) { prop("Wall thickness"); lenDrag("##pipewall", ME.pipeWall, 0.02); ME.pipeWall = std::clamp(ME.pipeWall, 0.02, 2.0); }
+    if (ME.tool == MTool::Prop) {
+        const auto& kinds = gmap::propKinds();
+        ME.propKind = std::clamp(ME.propKind, 0, (int)kinds.size() - 1);
+        prop("Which");
+        if (ImGui::BeginCombo("##propkind", kinds[ME.propKind].c_str())) {
+            for (int i = 0; i < (int)kinds.size(); i++) if (ImGui::Selectable(kinds[i].c_str(), ME.propKind == i)) ME.propKind = i;
+            ImGui::EndCombo();
+        }
+        ImGui::TextDisabled("Built from brushes, picked as one, so it blocks like a wall. Click where it stands; it faces you.");
+    }
+    if (ME.tool == MTool::Measure) {
+        ImGui::TextDisabled("Click two points. They snap to corners and middles (Alt: not).");
+        if (ImGui::Button("Clear", {-1, 0})) ME.measurePts.clear();
+    }
     if (ME.tool == MTool::Stairs) { prop("Steps"); ImGui::SliderInt("##steps", &ME.stairSteps, 2, 32); typeable(); }
 }
 
@@ -623,6 +905,11 @@ static void fileTab() {
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {-1, 30 * S()})) meSave();
     if (ME.dirty) ImGui::TextColored(colWarn(), "Unsaved changes (an autosave is kept).");
     ImGui::Dummy({0, 6 * S()});
+    heading("Share");
+    ImGui::TextDisabled("A map code is the whole map as one line of text: paste it in a message, or into another copy of the game.");
+    if (ImGui::Button(ICON_FA_SHARE_NODES "  Copy a code for this map", {-1, 0})) meCopyMapCode();
+    if (ImGui::Button(ICON_FA_PASTE "  Open a map from a code on the clipboard", {-1, 0})) mePasteMapCode();
+    ImGui::Dummy({0, 6 * S()});
     heading("Start from");
     if (ImGui::Button("Practice range (built in)", {-1, 0})) meLoadBuiltin();
     if (ImGui::Button("Empty map", {-1, 0})) meNew();
@@ -645,10 +932,10 @@ void mapPanel() {
     ImGui::TextUnformatted(ME.map.name.c_str());
     ImGui::PopFont();
     if (ImGui::BeginTabBar("##maptabs")) {
-        const char* names[] = {"Edit", "Textures", "Map", "File"};
+        const char* names[] = {"Edit", "Objects", "Textures", "Map", "File"};
         static int forced = -2;
         if (forced == -2) { const char* e = std::getenv("GUNSMITH_MAPTAB"); forced = e ? std::atoi(e) : -1; }
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             ImGuiTabItemFlags fl = (forced == i) ? ImGuiTabItemFlags_SetSelected : 0;
             bool tabOpen = ImGui::BeginTabItem(names[i], nullptr, fl);
             tutAnchor((std::string("map:") + names[i]).c_str());
@@ -659,10 +946,11 @@ void mapPanel() {
     }
     ImGui::BeginChild("##mapbody");
     switch (tab) {
-    case 0: if (!ME.careerFile.empty()) shopChecklist(); editTab(); toolOptions(); ImGui::Dummy({0, 6 * S()}); groupTools(); break;
-    case 1: texturesTab(); break;
-    case 2: mapTab(); break;
-    case 3: fileTab(); break;
+    case 0: if (!ME.careerFile.empty()) shopChecklist(); editTab(); toolOptions(); ImGui::Dummy({0, 6 * S()}); transformTools(); ImGui::Dummy({0, 6 * S()}); groupTools(); break;
+    case 1: objectsTab(); break;
+    case 2: texturesTab(); break;
+    case 3: mapTab(); break;
+    case 4: fileTab(); break;
     }
     if (!ME.status.empty()) { ImGui::Dummy({0, 8 * S()}); ImGui::TextDisabled("%s", ME.status.c_str()); }
     ImGui::EndChild();

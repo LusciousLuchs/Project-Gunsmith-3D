@@ -180,7 +180,8 @@ void snapCandidates(const Brush& b, V3 p, double radius, std::vector<V3>& out) {
 bool inSel(const std::vector<int>& v, int i) { return std::find(v.begin(), v.end(), i) != v.end(); }
 }  // namespace
 
-SnapHit snapPoint(const Map& m, const Selection& skip, V3 p, double radius) {
+SnapHit snapPoint(const Map& m, const Selection& skip, V3 p, double radius, V3 axes) {
+    auto flat = [&](V3 v) { return V3{v.x * axes.x, v.y * axes.y, v.z * axes.z}; };
     SnapHit h;
     double best = radius;
     std::vector<V3> c;
@@ -188,18 +189,18 @@ SnapHit snapPoint(const Map& m, const Selection& skip, V3 p, double radius) {
         if (inSel(skip.brushes, (int)i) || !visibleBrush(m.brushes[i])) continue;
         c.clear();
         snapCandidates(m.brushes[i], p, radius, c);
-        for (auto& q : c) { double d = len(q - p); if (d < best) { best = d; h.hit = true; h.to = q; } }
+        for (auto& q : c) { double d = len(flat(q - p)); if (d < best) { best = d; h.hit = true; h.to = q; } }
     }
     for (size_t i = 0; i < m.ents.size(); i++) {
         if (inSel(skip.ents, (int)i) || m.ents[i].hidden) continue;
-        double d = len(m.ents[i].pos - p);
+        double d = len(flat(m.ents[i].pos - p));
         if (d < best) { best = d; h.hit = true; h.to = m.ents[i].pos; }
     }
     h.from = p;
-    h.delta = h.hit ? h.to - p : V3{};
+    h.delta = h.hit ? flat(h.to - p) : V3{};
     return h;
 }
-SnapHit snapMove(const Map& m, const Selection& s, V3 delta, double radius) {
+SnapHit snapMove(const Map& m, const Selection& s, V3 delta, double radius, V3 axes) {
     SnapHit best;
     best.delta = delta;
     double bd = radius;
@@ -210,10 +211,10 @@ SnapHit snapMove(const Map& m, const Selection& s, V3 delta, double radius) {
     for (int i : s.brushes) if (i >= 0 && i < (int)m.brushes.size() && pts.size() < 300) for (auto& v : brushVertices(m.brushes[i])) pts.push_back(v);
     for (int i : s.ents) if (i >= 0 && i < (int)m.ents.size()) pts.push_back(m.ents[i].pos);
     for (auto& p : pts) {
-        SnapHit h = snapPoint(m, s, p + delta, bd);
+        SnapHit h = snapPoint(m, s, p + delta, bd, axes);
         if (!h.hit) continue;
-        double d = len(h.to - (p + delta));
-        if (d < bd) { bd = d; best.hit = true; best.from = p + delta; best.to = h.to; best.delta = delta + (h.to - (p + delta)); }
+        double d = len(h.delta);
+        if (d < bd) { bd = d; best.hit = true; best.from = p + delta; best.to = h.to; best.delta = delta + h.delta; }
     }
     return best;
 }

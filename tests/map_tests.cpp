@@ -258,6 +258,10 @@ static void mapOpsTests(int& failures) {
         CHECK(mid.hit && near(mid.to.x, 1) && near(mid.to.y, 0.5) && near(mid.to.z, 0.5), "face middles snap too");
         SnapHit edge = snapPoint(m, s, {0.5, 1.03, 0.02}, 0.2);
         CHECK(edge.hit && near(edge.to.z, 0) && near(edge.to.x, 0.5) && near(edge.to.y, 1), "and edge middles");
+        SnapHit ground = snapMove(m, s, {-3.9, 0, -3.9}, 0.3, {1, 0, 1});
+        CHECK(ground.hit && near(ground.delta.y, 0) && near(ground.delta.x, -4, 1e-6), "a snap that may not go up or down leaves the height alone");
+        SnapHit alongX = snapMove(m, s, {-3.9, 0, -3.5}, 0.3, {1, 0, 0});
+        CHECK(!alongX.hit || (near(alongX.delta.z, -3.5) && near(alongX.delta.y, 0)), "a snap along one axis moves only along it");
         m.brushes[0].hidden = true;
         CHECK(!snapPoint(m, s, {1, 0, 1}, 0.2).hit, "a hidden brush isn't snapped to");
     }

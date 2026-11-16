@@ -73,7 +73,7 @@ is up to them, and the game's own examples stay original.
 - [ ] **Hands and held guns for NPCs:** a hand on any bone, holding a blueprint the way the player's pose holds it.
 - [ ] **Level logic:** waves (rounds of spawns that grow), triggers (walk into an area, open a door), doors, pickups
   (ammo, guns, health), objectives, a score.
-- [ ] **Level editor additions:** props and lights, more brush shapes, sounds, sharing maps and NPCs as files.
+- [x] **Level editor additions (0.8.28):** props, more brush shapes, sharing maps as a code, handles, corner editing, snapping, align, arrays, measuring, hide/freeze/group, an Objects list. Still to do: ambient sounds; sharing NPCs on their own (a map file already carries its NPCs); the editor has not been run by hand since it hangs under this sandbox's software graphics.
 - [ ] **NPC editor additions:** textures on bones (the same pictures as parts), bones shaped like parts (draw an outline,
   like the gun designer), eyes and glows, sounds.
 

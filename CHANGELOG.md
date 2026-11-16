@@ -8,6 +8,23 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.28-alpha (not released yet)
+
+The level editor gets the gun designer's kind of editing.
+
+- **Handles on what you pick.** Arrows move along one axis, rings turn about X, Y or Z in 15 degree steps, squares stretch (keys 1, 2, 3, or the buttons in the top bar). Entities move and turn with them. Alt leaves snapping off for that move.
+- **Snap to other things.** Drag a brush and its corners, edge middles and face middles land on other brushes' (and things') corners and middles, with a guide where it caught.
+- **Edit corners (C).** Drag a brush's corners or edge middles; it stays solid. Shift-drag a face's square to pull a new piece out of it.
+- **Type exact values.** Position and size of what's picked, in the units you've chosen, plus Turn by a number of degrees about X, Y or Z, and Mirror across X, Y or Z.
+- **Line up and space out.** Align on lowest, middle or highest; even gaps between the first and last.
+- **Copies.** Ctrl+C, Ctrl+X and Ctrl+V work between maps. Make a row of copies, or a ring of copies round an axis. Duplicate now copies things as well as brushes.
+- **Measure tool.** Two points: distance, run, rise and slope.
+- **Hide, freeze and group.** Hide things while you work, freeze them so they can't be picked by accident, group them so one click picks them all.
+- **Objects tab.** A list of everything in the map with eye and lock buttons, a filter, rename on double-click.
+- **New shapes and props.** Cone or pyramid, ball, rounded corner, arch (a doorway with a curved top), pipe, and props (crate, barrel, table, chair, shelf, pillar, bench, counter, sandbags, locker) built from brushes so they block like walls.
+- **Share a map as one line of text.** File tab: copy a code, paste a code.
+- The top bar now keeps the shapes and the placeable things in two menus, so it fits a small window.
+
 ## 0.8.27-alpha
 
 - **Hollow parts.** Any part can now be a shell: tick *Hollow* in its panel and set the wall thickness. Pick two neighbouring corners to give that edge its own wall, or leave that side open (a slide's underside, the ends of a tube). *Side walls* sets the walls on the gun's left and right; 0 opens it right through. The physics treats the inside as real empty space: parts sit and slide inside it, and the part weighs only its walls. One setting instead of dozens of cuts, so it's quick for the physics too. (Not yet for round or leaned parts.)

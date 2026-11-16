@@ -45,9 +45,9 @@ bool extrudeFace(const Brush& b, int face, double amount, Brush& out);
 struct SnapHit { bool hit = false; V3 delta; V3 from, to; };   // `delta` moves `from` onto `to`
 // Where moving the selection by `delta` would put it, nudged so one of its corners (or middle) lands on a nearby point
 // of something else, if one is within `radius` metres. `delta` returned is the nudged move.
-SnapHit snapMove(const Map& m, const Selection& s, V3 delta, double radius);
+SnapHit snapMove(const Map& m, const Selection& s, V3 delta, double radius, V3 axes = {1, 1, 1});   // axes: 0 on an axis = it can't change (a move along one axis, or on the ground)
 // the nearest snap point to p (corners, edge middles, face middles, things), skipping the selection; hit = false if none
-SnapHit snapPoint(const Map& m, const Selection& skip, V3 p, double radius);
+SnapHit snapPoint(const Map& m, const Selection& skip, V3 p, double radius, V3 axes = {1, 1, 1});
 
 // ---- aligning and spacing
 enum class AlignTo { Low, Middle, High };
