@@ -88,4 +88,6 @@ std::vector<std::string> meMapFiles();
 void meWalk(bool fromCamera);
 void meStopWalking();                      // back to the editor (the mouse freed)
 void meFocus();
-std::string meLen(double metres);          // in the player's units
+std::string meLen(double metres);          // in the Level editor's unit (CFG.mapUnit: m, cm, ft and in, in, yd)
+const char* meUnitName();                  // "m", "cm", "ft", "in", "yd"
+double meUnitPerMetre();                   // how many of that unit in a metre

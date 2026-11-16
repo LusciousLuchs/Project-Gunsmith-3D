@@ -40,15 +40,24 @@ static Vector3 rv(V3 v) { return {(float)v.x, (float)v.y, (float)v.z}; }
 static double snapG(double v) { return ME.grid > 0 ? std::round(v / ME.grid) * ME.grid : v; }
 static V3 snap3(V3 p) { return {snapG(p.x), snapG(p.y), snapG(p.z)}; }
 
+const char* meUnitName() { static const char* n[] = {"m", "cm", "ft", "in", "yd"}; return n[std::clamp(CFG.mapUnit, 0, 4)]; }
+double meUnitPerMetre() { static const double k[] = {1, 100, 1 / 0.3048, 1 / 0.0254, 1 / 0.9144}; return k[std::clamp(CFG.mapUnit, 0, 4)]; }
 std::string meLen(double m) {
-    char b[48];
-    if (CFG.units == Units::Imperial) {
-        double in = m / 0.0254;
-        if (std::fabs(in) < 12 - 1e-6) std::snprintf(b, sizeof b, "%g in", std::round(in * 100) / 100);
-        else std::snprintf(b, sizeof b, "%g ft", std::round(in / 12 * 100) / 100);
-    } else {
-        if (std::fabs(m) < 1 - 1e-9) std::snprintf(b, sizeof b, "%g cm", std::round(m * 1000) / 10);
-        else std::snprintf(b, sizeof b, "%g m", std::round(m * 1000) / 1000);
+    char b[64];
+    auto ftIn = [&](double metres) {   // 5 ft 3 1/4 in: feet, then inches to the quarter
+        double in = std::round(std::fabs(metres) / 0.0254 * 4) / 4;
+        int ft = (int)(in / 12); double rest = in - ft * 12;
+        const char* sg = metres < 0 ? "-" : "";
+        if (ft == 0) std::snprintf(b, sizeof b, "%s%g in", sg, rest);
+        else if (rest < 1e-9) std::snprintf(b, sizeof b, "%s%d ft", sg, ft);
+        else std::snprintf(b, sizeof b, "%s%d ft %g in", sg, ft, rest);
+    };
+    switch (std::clamp(CFG.mapUnit, 0, 4)) {
+    case 1: std::snprintf(b, sizeof b, "%g cm", std::round(m * 1000) / 10); break;
+    case 2: ftIn(m); break;
+    case 3: std::snprintf(b, sizeof b, "%g in", std::round(m / 0.0254 * 100) / 100); break;
+    case 4: if (std::fabs(m) < 0.9144) ftIn(m); else std::snprintf(b, sizeof b, "%g yd", std::round(m / 0.9144 * 100) / 100); break;
+    default: std::snprintf(b, sizeof b, "%g m", std::round(m * 1000) / 1000); break;
     }
     return b;
 }

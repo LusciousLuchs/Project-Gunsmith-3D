@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.33-alpha
+
+- **Level editor units.** The toolbar has a units list: metres, centimetres, feet (with inches), inches or yards. Every length in the Level editor uses it: sizes, positions, the new-block height, wall thickness, door widths, light reach, moving targets, fog and texture shifts. The grid steps change with it (1/2 in to 4 ft, or 1 cm to 2 m), and your choice is remembered.
+
 ## 0.8.32-alpha
 
 - **Sun shadows.** In sunlight, walls, roofs, furniture and things you can pick up now cast shadows on maps, in the Level editor (as played) and on the range. Shade under a roof is properly darker and the sun is stronger, so maps look crisper in daytime.

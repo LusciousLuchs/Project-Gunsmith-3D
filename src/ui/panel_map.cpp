@@ -42,17 +42,41 @@ static void gap(float px = 12) { ImGui::SameLine(0, px * S()); }
 // grid steps: metric, or imperial in inches and feet
 static const double GRID_M[] = {0.01, 0.05, 0.1, 0.25, 0.5, 1, 2};
 static const double GRID_I[] = {0.0127, 0.0254, 0.0508, 0.1524, 0.3048, 0.6096, 1.2192};
-static const char* GRID_ML[] = {"Grid 1 cm", "Grid 5 cm", "Grid 10 cm", "Grid 25 cm", "Grid 50 cm", "Grid 1 m", "Grid 2 m"};
-static const char* GRID_IL[] = {"Grid 1/2 in", "Grid 1 in", "Grid 2 in", "Grid 6 in", "Grid 1 ft", "Grid 2 ft", "Grid 4 ft"};
 
 // a length typed and shown in the player's units (metres or feet), stored in metres
+// a length in metres, shown and dragged in the Level editor's unit (Ctrl+click to type a number in that unit)
 static bool lenDrag(const char* id, double& m, double speedM = 0.01) {
-    bool imp = CFG.units == Units::Imperial;
-    double k = imp ? 1 / 0.3048 : 1.0, v = m * k;
-    float sp = (float)(speedM * k);
-    bool r = ImGui::DragScalar(id, ImGuiDataType_Double, &v, sp, nullptr, nullptr, imp ? "%.3f ft" : "%.3f m");
+    double k = meUnitPerMetre(), v = m * k;
+    static const int dec[] = {3, 1, 2, 2, 3};
+    char fmt[16]; std::snprintf(fmt, sizeof fmt, "%%.%df %s", dec[std::clamp(CFG.mapUnit, 0, 4)], meUnitName());
+    bool r = ImGui::DragScalar(id, ImGuiDataType_Double, &v, (float)(speedM * k), nullptr, nullptr, fmt);
     if (r) m = v / k;
     return r;
+}
+static bool lenSlider(const char* id, double& m, double lo, double hi, bool logScale = false) {
+    double k = meUnitPerMetre();
+    float v = (float)(m * k);
+    char fmt[16]; std::snprintf(fmt, sizeof fmt, "%%.%df %s", CFG.mapUnit == 1 || CFG.mapUnit == 3 ? 0 : 1, meUnitName());
+    bool r = ImGui::SliderFloat(id, &v, (float)(lo * k), (float)(hi * k), fmt, logScale ? ImGuiSliderFlags_Logarithmic : 0);
+    if (r) m = v / k;
+    return r;
+}
+// the Level editor's unit, on its toolbar: metres, centimetres, feet (and inches), inches, yards
+static void mapUnitPicker(float h) {
+    static const char* names[] = {"m", "cm", "ft", "in", "yd"};
+    ImGui::SetNextItemWidth(58 * S());
+    int u = std::clamp(CFG.mapUnit, 0, 4);
+    if (ImGui::Combo("##mapunit", &u, names, 5)) {
+        CFG.mapUnit = u;
+        CFG.units = u >= 2 ? Units::Imperial : Units::Metric;   // (the rest of the game follows: metric or imperial)
+        saveSettings();
+        // the grid moves to the nearest step of the new system
+        const double* st = u >= 2 ? GRID_I : GRID_M; int best = 0;
+        for (int k = 0; k < 7; k++) if (std::fabs(std::log(st[k] / ME.grid)) < std::fabs(std::log(st[best] / ME.grid))) best = k;
+        ME.grid = st[best];
+    }
+    if (tipHover()) ImGui::SetTooltip("Units for lengths in the Level editor: metres, centimetres, feet and inches, inches or yards.\nThe grid steps change with them.");
+    (void)h;
 }
 
 void mapToolbar() {
@@ -101,13 +125,21 @@ void mapToolbar() {
     gap(3);
     if (iconBtn(ICON_FA_ROTATE_RIGHT, "Redo (Ctrl+Y)")) meRedo();
     gap(18);
-    bool imp = CFG.units == Units::Imperial;
+    bool imp = CFG.mapUnit >= 2;
     const double* steps = imp ? GRID_I : GRID_M;
-    int gi = 3;
+    int gi = -1;
     for (int k = 0; k < 7; k++) if (std::fabs(ME.grid - steps[k]) < 1e-6) gi = k;
-    ImGui::SetNextItemWidth(118 * S());
+    if (gi < 0) {   // (a step from the other system: the nearest of this one's)
+        gi = 0;
+        for (int k = 0; k < 7; k++) if (std::fabs(std::log(steps[k] / ME.grid)) < std::fabs(std::log(steps[gi] / ME.grid))) gi = k;
+        ME.grid = steps[gi];
+    }
+    ImGui::SetNextItemWidth(130 * S());
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
-    if (ImGui::Combo("##grid", &gi, imp ? GRID_IL : GRID_ML, 7)) ME.grid = steps[gi];
+    if (ImGui::BeginCombo("##grid", ("Grid " + meLen(ME.grid)).c_str())) {
+        for (int k = 0; k < 7; k++) if (ImGui::Selectable(("Grid " + meLen(steps[k])).c_str(), k == gi)) ME.grid = steps[k];
+        ImGui::EndCombo();
+    }
     gap(8);
     ImGui::SetNextItemWidth(120 * S());
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
@@ -116,7 +148,7 @@ void mapToolbar() {
     if (tipHover()) ImGui::SetTooltip("Height of new brushes");
     gap(8);
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
-    unitsSwitch(ImGui::GetFrameHeight());
+    mapUnitPicker(ImGui::GetFrameHeight());
     // right side
     float right = 5 * (sz + 4 * S()) + 110 * S() + 10 * S();
     ImGui::SameLine(GetScreenWidth() - right);
@@ -195,7 +227,7 @@ static void editTab() {
             if (ImGui::SliderFloat("##lpow", &pw, 0, 200, "%.1f", ImGuiSliderFlags_Logarithmic)) { e.power = pw; tr(true); } else tr(false);
             typeable();
             prop("Reach", "Nothing past this distance gets its light.");
-            if (ImGui::SliderFloat("##lrange", &rg, 1, 150, "%.1f m", ImGuiSliderFlags_Logarithmic)) { e.range = rg; tr(true); } else tr(false);
+            { double rgm = rg; if (lenSlider("##lrange", rgm, 1, 150, true)) { e.range = rgm; tr(true); } else tr(false); }
             typeable();
             bool spot = e.cone > 0;
             prop("Spotlight", "A cone of light, aimed (a floodlight, a ceiling spot). Off: it shines all round.");
@@ -258,8 +290,8 @@ static void editTab() {
             if (ImGui::Checkbox("Moves side to side", &moving)) { meSnapshot(); e.ref = moving ? "moving" : ""; if (e.width < 0.2) e.width = 3; if (e.range < 0.05) e.range = 1.2; meChanged(); }
             if (moving) {
                 float tr = (float)e.width, sp = (float)e.range;
-                if (ImGui::SliderFloat("How far (m)", &tr, 0.5f, 20.f, "%.1f")) { e.width = tr; meChanged(); }
-                if (ImGui::SliderFloat("How fast (m/s)", &sp, 0.2f, 8.f, "%.1f")) { e.range = sp; meChanged(); }
+                { double trm = tr; prop("How far"); if (lenSlider("##mvfar", trm, 0.5, 20)) { e.width = trm; meChanged(); } }
+                { double spm = sp; prop("How fast (per second)"); if (lenSlider("##mvfast", spm, 0.2, 8)) { e.range = spm; meChanged(); } }
                 ImGui::TextDisabled("It slides along its face, slowing at each end. A walk is about 1.4 m/s, a run 4.");
             }
         } else if (e.type == "ammo_box") {

@@ -148,6 +148,7 @@ int main(int argc, char** argv) {
     setupUserFolders();  // (and files moved over from where older versions kept them)
     scanUserTextures();
     if (frames && !useSettings) CFG = Settings();  // automated screenshots use the defaults unless told otherwise
+    if (const char* u = std::getenv("GUNSMITH_MAPUNIT")) CFG.mapUnit = std::clamp(std::atoi(u), 0, 4);   // (screenshots) the Level editor's unit
     unsigned flags = FLAG_WINDOW_RESIZABLE | (CFG.msaa ? FLAG_MSAA_4X_HINT : 0) | (CFG.vsync ? FLAG_VSYNC_HINT : 0);
     SetConfigFlags(flags);
     if (perfArg) CFG.perfOverlay = 2;

@@ -21,6 +21,7 @@ struct Settings {
     int perfOverlay = 0;
     int lastFullMode = 1;
     std::string userDir;                 // where your files are kept ("": the default, Documents/OAB Foundry/Gunsmith/User on Windows)                // what F11 goes to from a window: 1 borderless, 2 fullscreen (the last one used)
+    int mapUnit = 0;                     // the Level editor's lengths: 0 m, 1 cm, 2 ft (and inches), 3 in, 4 yd
     bool shadows = true;                 // sun shadows on maps (Settings > Display)
     bool fpArms = true;                  // the range: your arms and hands on the gun
     bool cheatAutoFeed = false;          // cheats (Settings > Cheats): sim::cheats() follows these
