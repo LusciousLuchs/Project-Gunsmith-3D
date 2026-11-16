@@ -14,6 +14,11 @@ void mapRestoreLook();                          // back to the workshop lighting
 void mapSetLamps(const gmap::Map& m, gmap::V3 eye, const std::vector<Lamp>& extra = {});
 void mapWorkLight(int mode);                    // the level editor: 0 as players see it, 1 a work light (dark maps still show), 2 fullbright
 void mapDrawWorld();
+// Sun shadows: the map (and `extra` casters) drawn from the sun into a depth picture round `focus` (an area about 90 m
+// across); the lit shader then shades whatever's behind something. Off at night, and when Settings has them off.
+void mapShadowPass(const gmap::Look& L, Vector3 focus, void (*extra)() = nullptr);
+void mapShadowsOff();
+void mapShadowDebugDraw();   // (GUNSMITH_SHADOWDBG) the sun's depth picture, top left
 // blocks given round their own origin (a prop, a furniture's piece), drawn under M (cached by their shape)
 void mapDrawBrushes(const std::vector<gmap::Brush>& local, Matrix M, Color tint = WHITE);                            // the meshes built last
 void mapDrawSky(const gmap::Look& L, float x, float y, float w, float h, float pitch, float fovY);  // screen space, before 3D

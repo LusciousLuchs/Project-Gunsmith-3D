@@ -1328,6 +1328,12 @@ void mapEditorRender() {
     mapBeginViewport(cam, v.x, v.y, v.w, v.h);
     if (ME.top && !ME.walking) { look.fogStart = 1e6; look.fogEnd = 2e6; }  // the top-view camera sits far above the map
     mapWorkLight(ME.walking ? 0 : ME.lightMode);
+    if (!(ME.top && !ME.walking)) {   // sun shadows round the camera (none in the top view or under the work light)
+        V3 at = ME.walking ? gmap::playerEye(ME.pl, ME.map) : ME.cam;
+        CamB cb = camBasis();
+        V3 ahead = ME.walking ? gmap::norm(V3{std::cos(ME.pl.yaw), 0, std::sin(ME.pl.yaw)}) : gmap::norm(V3{cb.fwd.x, 0, cb.fwd.z});
+        mapShadowPass(look, rv(at + ahead * 25));
+    } else mapShadowsOff();
     mapApplyLook(look);
     mapSetLamps(ME.map, ME.walking ? gmap::playerEye(ME.pl, ME.map) : ME.cam);
     mapDrawWorld();
@@ -1348,4 +1354,5 @@ void mapEditorRender() {
     mapRestoreLook();
     if (ME.walking) { if (shopActive()) shopHud(); else drawWalkHud(); }
     else drawEditorOverlay();
+    mapShadowsOff();
 }

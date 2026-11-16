@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.32-alpha
+
+- **Sun shadows.** In sunlight, walls, roofs, furniture and things you can pick up now cast shadows on maps, in the Level editor (as played) and on the range. Shade under a roof is properly darker and the sun is stronger, so maps look crisper in daytime.
+  - Shadows follow the time of day: long and low in the evening, and none at night (only the moon then).
+  - They cover about 90 m around you, looking ahead.
+  - Settings > Display > Sun shadows switches them off if a slow computer struggles.
+  - Not yet: lamps cast no shadows (they still shine through walls), and people and guns don't throw shadows.
+
 ## 0.8.31-alpha
 
 - **Day and night.** Maps can now have a time of day (Level editor, Map tab > Light > Time of day). The sun rises at 6, is high at noon and sets at 18. Dawn and dusk glow orange, and nights are dark blue, lit by a faint moon and your lamps.

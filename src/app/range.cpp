@@ -1813,6 +1813,10 @@ void rangeRender() {
     R.lagPitch += std::sin(R.t * 1.7 + 1) * sway * 0.015;
     Camera3D cam{};
     cam.position = rv(eye); cam.target = rv(eye + f); cam.up = rv(up); cam.fovy = CFG.fov - 12 * R.aim; cam.projection = CAMERA_PERSPECTIVE;
+    {   // sun shadows round where you are, reaching out ahead of you
+        V3 ahead = gmap::norm(V3{f.x, 0, f.z});
+        mapShadowPass(R.map.look, rv(eye + ahead * 25), drawProps);
+    }
     renderScopePicture(up);   // (with last frame's gun: before this frame's view)
     A.cam = cam;
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
@@ -1864,9 +1868,11 @@ void rangeRender() {
     EndMode3D();
     mapEndViewport();
     mapRestoreLook();
+    mapShadowsOff();   // (the bench and other screens have no sun shadows)
 }
 
 void rangeHud() {
+    mapShadowDebugDraw();
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight(), cx = W / 2, cy = H / 2;
     if (R.optic && R.cur >= 0 && R.aim > 0.3f) {   // looking through an optic: where its sight line points, a long way out
         double dx = R.optFront.x - R.optRear.x, dy = R.optFront.y - R.optRear.y, dz = R.optFront.z - R.optRear.z, L = std::sqrt(dx * dx + dy * dy + dz * dz);

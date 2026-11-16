@@ -5,6 +5,8 @@
 #include "app/usertex.hpp"
 #include "app/gfx.hpp"
 #include "rlgl.h"
+#include "raymath.h"
+#include "app/settings.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -426,6 +428,50 @@ void mapDrawBrushes(const std::vector<gmap::Brush>& local, Matrix M, Color tint)
     setSpecular(0.3f);
 }
 
+static int gWorkLight = 0;
+static RenderTexture2D gShadowRT{};
+static const int SHADOW_SIZE = 2048;
+static const float SHADOW_SPAN = 90;   // metres across the shadowed area
+void mapShadowsOff() { setShadow(false); }
+void mapShadowDebugDraw() { if (gShadowRT.depth.id && std::getenv("GUNSMITH_SHADOWDBG")) { Texture2D t = gShadowRT.depth; DrawTextureEx(t, {0, 0}, 0, 200.0f / t.width, WHITE); } }
+void mapShadowPass(const gmap::Look& L, Vector3 focus, void (*extra)()) {
+    const double day = std::clamp(L.daylight, 0.0, 1.0);
+    if (!CFG.shadows || day < 0.12 || gWorkLight) { setShadow(false); return; }
+    if (gShadowRT.id == 0) {   // a framebuffer with only a depth texture
+        gShadowRT.id = rlLoadFramebuffer();
+        gShadowRT.texture.width = gShadowRT.texture.height = SHADOW_SIZE;
+        rlEnableFramebuffer(gShadowRT.id);
+        gShadowRT.depth.id = rlLoadTextureDepth(SHADOW_SIZE, SHADOW_SIZE, false);
+        gShadowRT.depth.width = gShadowRT.depth.height = SHADOW_SIZE;
+        gShadowRT.depth.format = 19; gShadowRT.depth.mipmaps = 1;
+        rlFramebufferAttach(gShadowRT.id, gShadowRT.depth.id, RL_ATTACHMENT_DEPTH, RL_ATTACHMENT_TEXTURE2D, 0);
+        if (!rlFramebufferComplete(gShadowRT.id)) TraceLog(LOG_WARNING, "SHADOWS: the depth framebuffer isn't complete");
+        rlDisableFramebuffer();
+    }
+    double yw = L.sunYaw * DEG2RAD, pt = L.sunPitch * DEG2RAD;
+    Vector3 dir{(float)(std::cos(pt) * std::cos(yw)), (float)std::sin(pt), (float)(std::cos(pt) * std::sin(yw))};   // toward the sun
+    float texel = SHADOW_SPAN / SHADOW_SIZE * 2;   // (snapped to steps of two texels: the edges don't crawl as you walk)
+    focus.x = std::round(focus.x / texel) * texel; focus.z = std::round(focus.z / texel) * texel; focus.y = std::round(focus.y / texel) * texel;
+    Camera3D cam{};
+    cam.position = {focus.x + dir.x * 200, focus.y + dir.y * 200, focus.z + dir.z * 200};
+    cam.target = focus;
+    cam.up = std::fabs(dir.y) > 0.98f ? Vector3{1, 0, 0} : Vector3{0, 1, 0};
+    cam.fovy = SHADOW_SPAN;
+    cam.projection = CAMERA_ORTHOGRAPHIC;
+    setShadow(false);
+    rlDrawRenderBatchActive();
+    BeginTextureMode(gShadowRT);
+    rlClearColor(255, 255, 255, 255);
+    rlClearScreenBuffers();
+    BeginMode3D(cam);
+    Matrix vp = MatrixMultiply(rlGetMatrixModelview(), rlGetMatrixProjection());
+    mapDrawWorld();
+    if (extra) extra();
+    EndMode3D();
+    EndTextureMode();
+    setShadow(true, vp, gShadowRT.depth.id, 1.0f / SHADOW_SIZE);
+}
+
 void mapDrawWorld() {
     ensureUserMaterials();
     setSpecular(0.1f);
@@ -438,7 +484,6 @@ static Color c3(const double* c, double k = 1) { return Color{(unsigned char)std
 static double skyK(const gmap::Look& L) { double d = std::clamp(L.daylight, 0.0, 1.0); return 0.05 + 0.95 * std::pow(d, 0.8); }   // the sky darkens with the day
 Color mapSkyHorizon(const gmap::Look& L) { return c3(L.skyHorizon, skyK(L)); }
 
-static int gWorkLight = 0;
 void mapWorkLight(int mode) { gWorkLight = mode; }
 void mapApplyLook(const gmap::Look& L) {
     Lighting g;

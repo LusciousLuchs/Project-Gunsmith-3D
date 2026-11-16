@@ -33,6 +33,7 @@ void loadSettings() {
         CFG.userDir = g("userDir", d.userDir);
         CFG.poseCharacter = g("poseCharacter", d.poseCharacter);
         CFG.fpArms = g("fpArms", d.fpArms);
+        CFG.shadows = g("shadows", d.shadows);
         CFG.cheatAutoFeed = g("cheatAutoFeed", d.cheatAutoFeed);
         CFG.cheatBruteForce = g("cheatBruteForce", d.cheatBruteForce);
         sim::cheats().autoFeed = CFG.cheatAutoFeed; sim::cheats().bruteForce = CFG.cheatBruteForce;
@@ -81,7 +82,7 @@ void loadSettings() {
 void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
-        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
+        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"shadows", CFG.shadows}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused}, {"autoUpdate", CFG.autoUpdate},

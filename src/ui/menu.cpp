@@ -526,6 +526,8 @@ void displayPage() {
     int ci = 1;
     for (int i = 0; i < 7; i++) if (CFG.fpsCap == caps[i]) ci = i;
     if (ImGui::Combo("##fps", &ci, "30\0" "60\0" "120\0" "144\0" "165\0" "240\0" "Unlimited\0")) { CFG.fpsCap = caps[ci]; SetTargetFPS(CFG.fpsCap); dirty = true; }
+    row("Sun shadows", "Walls, roofs and furniture cast shadows in sunlight on maps. Off: a little faster on slow computers.");
+    if (ImGui::Checkbox("##shadows", &CFG.shadows)) dirty = true;
     row("Anti-aliasing", "Smooths edges. Takes effect the next time you start the game.");
     if (ImGui::Checkbox("##aa", &CFG.msaa)) dirty = true;
     ImGui::SeparatorText("Workspace");

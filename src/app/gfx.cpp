@@ -1,6 +1,7 @@
 // Gunsmith3D - Graphics kit: lit shader, primitive meshes, extruding outlines into meshes.
 #include "app/app.hpp"
 #include "app/gfx.hpp"
+#include "rlgl.h"
 #include "csg.hpp"
 #include "raymath.h"
 
@@ -22,15 +23,23 @@ uniform sampler2D texture0; uniform vec4 colDiffuse; uniform vec3 viewPos; unifo
 uniform vec3 lightDir; uniform vec3 lightCol; uniform vec3 fillDir; uniform vec3 fillCol;
 uniform vec3 ambSky; uniform vec3 ambGround; uniform vec3 fogColor; uniform vec3 fogParam;
 uniform int nLamps; uniform vec4 lampPos[16]; uniform vec4 lampCol[16]; uniform vec4 lampDir[16];
+uniform int shadowOn; uniform mat4 lightVP; uniform sampler2D shadowMap; uniform float shadowTexel;
 out vec4 finalColor;
 void main(){ vec4 tex=texture(texture0,fragTexCoord); vec3 n=normalize(fragNormal);
  vec3 V=normalize(viewPos-fragPos);
  if(dot(n,V)<0.0) n=-n;
  vec3 L=normalize(lightDir); vec3 F=normalize(fillDir);
  float d=max(dot(n,L),0.0), fill=max(dot(n,F),0.0);
+ float sh=1.0;   // in the sun's shadow: something between here and the sun (3x3 soft edge)
+ if(shadowOn==1 && d>0.0){ vec4 lp=lightVP*vec4(fragPos+n*0.03,1.0); vec3 pc=lp.xyz/lp.w*0.5+0.5;   // (lifted 3 cm off the face: no speckles)
+  if(pc.x>0.0&&pc.x<1.0&&pc.y>0.0&&pc.y<1.0&&pc.z<1.0){ float bias=0.00004+0.0001*(1.0-d); float sum=0.0;   // (depth 0..1 is 1000 m: 4-14 cm)
+   for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++){ float dd=texture(shadowMap,pc.xy+vec2(x,y)*shadowTexel).r; sum+=(pc.z-bias>dd)?0.0:1.0; }
+   sh=sum/9.0; } }
+ d*=sh;
  float hemi=0.5+0.5*n.y; vec3 amb=mix(ambGround,ambSky,hemi);
  vec3 base=tex.rgb*colDiffuse.rgb;
- vec3 c=base*(amb*0.70+lightCol*d*0.58+fillCol*fill*0.16);
+ vec3 c=shadowOn==1 ? base*(amb*(0.52+0.10*sh)+lightCol*d*0.85+fillCol*fill*0.12)   // (with sun shadows: stronger sun, deeper shade)
+                    : base*(amb*0.70+lightCol*d*0.58+fillCol*fill*0.16);
  vec3 H=normalize(L+V);
  float s=pow(max(dot(n,H),0.0),mix(24.0,64.0,spec))*spec*(0.25+0.75*d);
  float rim=pow(1.0-max(dot(n,V),0.0),3.0)*0.14;
@@ -52,6 +61,20 @@ void main(){ vec4 tex=texture(texture0,fragTexCoord); vec3 n=normalize(fragNorma
 
 Gfx G;
 
+void setShadow(bool on, const Matrix& lightVP, unsigned depthTex, float texel) {
+    int o = on && depthTex ? 1 : 0;
+    SetShaderValue(G.lit, G.locShadowOn, &o, SHADER_UNIFORM_INT);
+    if (!o) return;
+    SetShaderValueMatrix(G.lit, G.locLightVP, lightVP);
+    // depth range in the shader is 0..1 of the light's clip space: the bias is given in that, about a texel's worth
+    float t = texel;
+    SetShaderValue(G.lit, G.locShadowTexel, &t, SHADER_UNIFORM_FLOAT);
+    int unit = 7;   // (a unit nothing else uses: meshes bind their own maps from 0 up)
+    SetShaderValue(G.lit, G.locShadowMap, &unit, SHADER_UNIFORM_INT);
+    rlActiveTextureSlot(unit);
+    rlEnableTexture(depthTex);
+    rlActiveTextureSlot(0);
+}
 void setSpecular(float s) { SetShaderValue(G.lit, G.locSpec, &s, SHADER_UNIFORM_FLOAT); }
 void setLighting(const Lighting& L) {
     SetShaderValue(G.lit, G.locLight, L.dir, SHADER_UNIFORM_VEC3);
@@ -392,6 +415,9 @@ void initGfx() {
     G.locAmbSky = GetShaderLocation(G.lit, "ambSky"); G.locAmbGround = GetShaderLocation(G.lit, "ambGround");
     G.locFogParam = GetShaderLocation(G.lit, "fogParam");
     G.locNLamps = GetShaderLocation(G.lit, "nLamps");
+    G.locShadowOn = GetShaderLocation(G.lit, "shadowOn"); G.locLightVP = GetShaderLocation(G.lit, "lightVP");
+    G.locShadowMap = GetShaderLocation(G.lit, "shadowMap"); G.locShadowTexel = GetShaderLocation(G.lit, "shadowTexel");
+    setShadow(false);
     G.locLampPos = GetShaderLocation(G.lit, "lampPos"); G.locLampCol = GetShaderLocation(G.lit, "lampCol"); G.locLampDir = GetShaderLocation(G.lit, "lampDir");
     setLamps({});
     setLighting(Lighting{});

@@ -7,6 +7,7 @@ struct Gfx {
     Shader lit{};
     int locView = -1, locFog = -1, locSpec = -1;
     int locLight = -1, locLightCol = -1, locFill = -1, locFillCol = -1, locAmbSky = -1, locAmbGround = -1, locFogParam = -1, locNLamps = -1, locLampPos = -1, locLampCol = -1, locLampDir = -1;
+    int locShadowOn = -1, locLightVP = -1, locShadowMap = -1, locShadowTexel = -1;
     Material mat{};
     Mesh cube{}, cyl{}, cone{}, sphere{}, plate{};
     Texture2D plateTex{};
@@ -26,6 +27,8 @@ void setLighting(const Lighting& L);
 constexpr int MAX_LAMPS = 16;
 struct Lamp { float pos[3] = {0, 0, 0}, dir[3] = {0, -1, 0}, col[3] = {1, 1, 1}; float power = 1, range = 10, cosCone = -2; };
 void setLamps(const std::vector<Lamp>& lamps);   // (the nearest MAX_LAMPS; empty: none)
+// sun shadows: the depth picture seen from the sun (a depth texture) and its view-projection; off: no shadows
+void setShadow(bool on, const Matrix& lightVP = Matrix{}, unsigned depthTex = 0, float texel = 0);
 void setSpecular(float s);          // 0 matte .. 1 polished, for the following draws
 void setFog(Color c);               // far things fade to this colour
 void drawMesh(const Mesh& m, Matrix M, Color c, float alpha = 1.f);
