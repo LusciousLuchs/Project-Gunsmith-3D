@@ -2236,8 +2236,23 @@ void fileButtons() {
         ImGui::Separator();
         ImGui::TextDisabled("Action kits: a working action, dropped into your gun");
         for (auto& k : actionKits()) {
-            if (ImGui::Selectable((std::string(k.label) + "##kit").c_str())) insertActionKit(k.key);
-            if (tipHover()) ImGui::SetTooltip("%s\n\nIts breech, barrel, feeding, extraction, fire control and frame, as in the example.\nIt goes where your gun's breech face is, and becomes your gun's breech. Undo takes it out.", k.blurb);
+            if (ImGui::BeginMenu((std::string(k.label) + "##kit").c_str())) {
+                Design kd = kitDesign(k.key);
+                const std::string own = kd.breech.cart.name;
+                ImGui::TextDisabled("%s", k.blurb);
+                if (ImGui::Selectable(("As it comes (" + own + ")").c_str())) insertActionKit(k.key);
+                if (tipHover()) ImGui::SetTooltip("Its breech, barrel, feeding, extraction, fire control and frame, as in the example.\nIt goes where your gun's breech face is, and becomes your gun's breech. Undo takes it out.");
+                ImGui::SeparatorText("Fitted to another round");
+                auto item = [&](const Cartridge& c, const char* tag) {
+                    if (c.name == own) return;
+                    if (ImGui::Selectable((c.name + tag).c_str())) insertActionKit(k.key, &c);
+                    if (tipHover()) ImGui::SetTooltip("The kit resized for %s (%.0f%% as long), with its springs and magazine refitted.\n"
+                                                      "Not every kit works with every round: test it on the bench (Reliability).", c.name.c_str(), 100 * kitScale(kd, c));
+                };
+                for (auto& c : cartridgePresets()) item(c, "##kc");
+                for (auto& c : A.userCarts) item(c, "##ukc");
+                ImGui::EndMenu();
+            }
         }
         ImGui::Separator();
         if (ImGui::Selectable("Paste (Ctrl+V)")) pasteClipboard();

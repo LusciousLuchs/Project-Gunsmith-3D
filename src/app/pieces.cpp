@@ -121,9 +121,11 @@ bool insertLibraryPart(const std::string& name) {
 
 // An action kit into the gun: at its breech face if it has one (else where the kit's example has it). The gun's own
 // barrel parts stop being barrels (the kit brings its own chamber and bore); everything of the player's stays.
-bool insertActionKit(const std::string& key) {
+bool insertActionKit(const std::string& key, const Cartridge* fitTo) {
     Design kit = kitDesign(key);
     if (kit.bodies.empty()) return false;
+    std::string ownRound = kit.breech.cart.name;
+    if (fitTo && fitTo->name != kit.breech.cart.name) kit = fitKitTo(kit, *fitTo);   // resized and re-sprung for that round
     Design& D = A.design;
     V2 at = D.breech.on && D.breech.hasFace ? D.breech.face : kit.breech.face;
     if (untouchedBlank(D)) D.bodies.clear();   // a new gun that's still just the starting bar: the kit takes its place
@@ -136,7 +138,7 @@ bool insertActionKit(const std::string& key) {
     fitView();   // (the whole gun in view, kit and all)
     std::string label;
     for (auto& k : actionKits()) if (key == k.key) label = k.label;
-    toast("Added the " + label + " action: " + std::to_string(kit.bodies.size()) + " parts, and the gun's breech is now the kit's."
+    toast("Added the " + label + " action" + (fitTo && fitTo->name != ownRound ? " fitted to " + fitTo->name : std::string()) + ": " + std::to_string(kit.bodies.size()) + " parts, and the gun's breech is now the kit's."
           + (unbarrelled ? " Your barrel part is an ordinary part now (the kit has its own)." : "")
           + " Move or reshape anything of yours in its way. Undo takes it out.");
     return true;

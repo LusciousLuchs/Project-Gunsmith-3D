@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.30-alpha
+
+- **Action kits fitted to other rounds.** In Parts > Action kits, each kit now opens a list: drop it in as it comes, or fitted to another round. A fitted kit is resized for that round (longer for a longer round, taller and wider for a fatter one), with its springs and magazine refitted.
+  - Tested, 10 of 10 rounds with no jams: the blowback and belt-fed pistols on 9 mm and .45; the bolt action and single shot on 7.62x39 and 7.62x54R; the long-recoil gun on 5.56 and 7.62x39; the pump on 9 mm and .380; the revolver on 9 mm, .380 and .45; the gas pistol on 9 mm; the derringer on .38 Special.
+  - Not working yet: the tilting-barrel pistol on other rounds, .38 Special in the self-loading pistols, the gas pistol on .45, and the derringer on smaller rounds. They go in, but they jam. Test a fitted kit on the bench before you rely on it.
+
 ## 0.8.29-alpha
 
 - **Bolt checkbox.** Every part now has a *Bolt* box under *Fixed*. Tick it and the part becomes your gun's bolt (it closes the breech), and its bolt settings appear right there:

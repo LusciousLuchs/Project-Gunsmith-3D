@@ -2844,6 +2844,27 @@ static void furnitureTest() {
     CHECK(gmap::entityFromJson(gmap::entityToJson(p), q) && q.parts.size() == 1 && q.type == "prop" && q.ref == "Box", "a prop saved on its own and read back");
     CHECK(std::fabs(gmap::propMass(q) - 37.5) < 0.1, "its weight from its size: a 0.5 m box, 37.5 kg (mostly air)");
 }
+// Action kits fitted to other rounds (core fitKitTo): resized along the bore by the round's length, up and across by
+// the bigger of that and its thickness; recoil springs only on guns a spring closes; small springs push sqrt(s) harder
+static void kitFittingTest() {
+    std::printf("\n== kit fitting\n");
+    auto cart = [](const char* n) { for (auto& c : cartridgePresets()) if (c.name == n) return c; return Cartridge(); };
+    struct Case { const char* kit; const char* round; } cases[] = {{"blowback", ".45 ACP"}, {"blowback", "9x19mm"}, {"boltaction", "7.62x39mm"},
+                                                                  {"boltaction", "7.62x54mmR"}, {"revolver", "9x19mm"}, {"pump", "9x19mm"}};
+    for (auto& c : cases) {
+        Design k = kitDesign(c.kit);
+        Design f = fitKitTo(k, cart(c.round));
+        sim::ReliabilityOptions o; o.rounds = 8; o.stallSeconds = 20;
+        auto r = sim::runReliability(f, o);
+        char b[200]; std::snprintf(b, sizeof b, "the %s kit fitted to %s (%.0f%% as long): %d/8 fired, %d jams", c.kit, c.round, 100 * kitScale(k, cart(c.round)), r.fired, r.jams);
+        CHECK(r.fired == 8 && r.jams == 0 && f.breech.cart.name == c.round, b);
+    }
+    Design k = kitDesign("blowback");
+    Design same = fitKitTo(k, k.breech.cart);
+    sim::ReliabilityOptions o; o.rounds = 8; o.stallSeconds = 20;
+    auto a = sim::runReliability(k, o), b = sim::runReliability(same, o);
+    CHECK(a.fired == b.fired && a.jams == b.jams, "fitted to its own round: it fires exactly as it came");
+}
 static void actionKitsTest() {
     std::printf("actionKits\n");
     for (auto& k : ::actionKits()) {
@@ -3098,6 +3119,7 @@ int main() {
         else if (o == "doors") doorsBlock();
         else if (o == "pose") grips();
         else if (o == "kits") actionKitsTest();
+        else if (o == "kitfit") kitFittingTest();
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
@@ -3170,6 +3192,7 @@ int main() {
     gasPistol();
     handLoadedReliability();
     actionKitsTest();
+    kitFittingTest();
     hollowParts();
     cheatsTest();
     furnitureTest();

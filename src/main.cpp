@@ -223,7 +223,11 @@ int main(int argc, char** argv) {
         A.tool = Tool::Track; A.draftHasF = true; A.drafting = true; A.draftA = b.id;
         A.draftF = sim::polyCentroid(b.pts); A.draft = {A.draftF};
     }
-    if (const char* k = std::getenv("GUNSMITH_KIT")) insertActionKit(k);
+    if (const char* k = std::getenv("GUNSMITH_KIT")) {   // (screenshots) an action kit into the gun; GUNSMITH_KITFIT=<round> fits it to that round
+        const Cartridge* fit = nullptr;
+        if (const char* r = std::getenv("GUNSMITH_KITFIT")) for (auto& c : cartridgePresets()) if (c.name == r) fit = &c;
+        insertActionKit(k, fit);
+    }
     if (const char* h = std::getenv("GUNSMITH_HOLLOW")) {   // (screenshots, tests) "part,wall,sides,open edge,open edge..." made hollow
         char id[64] = {0}; double w = 2, sd = -1;
         std::string spec = h;

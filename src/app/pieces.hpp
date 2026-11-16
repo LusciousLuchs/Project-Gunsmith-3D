@@ -2,6 +2,7 @@
 // Ctrl+V, through the system clipboard, so between guns and between copies of the game), and the parts library
 // (user/parts): your own parts and assemblies, saved once and dropped into any gun.
 #pragma once
+#include "design.hpp"
 #include <string>
 #include <vector>
 
@@ -12,4 +13,4 @@ void pasteClipboard();
 bool savePieceToLibrary(int bodyIndex, const std::string& name);
 std::vector<std::string> libraryParts();              // names in user/parts
 bool insertLibraryPart(const std::string& name);
-bool insertActionKit(const std::string& key);         // a working action (core/kits.hpp) into the gun, at its breech face
+bool insertActionKit(const std::string& key, const Cartridge* fitTo = nullptr);   // fitTo: resized for that round (core fitKitTo)         // a working action (core/kits.hpp) into the gun, at its breech face

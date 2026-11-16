@@ -1,5 +1,7 @@
 // Gunsmith3D - action kits (see kits.hpp).
 #include "kits.hpp"
+#include "solver.hpp"
+#include <cstdlib>
 #include "carve.hpp"
 #include "scale.hpp"
 #include "mounts.hpp"
@@ -120,6 +122,16 @@ double kitSpringScale(const Design& kit, const Cartridge& c) {
     // with the energy rule alone stopped 2 mm short of closing)
     return std::max(s, r * r / std::pow(s, 5));
 }
+double kitAcrossScale(const Design& kit, const Cartridge& c) {   // 0: the same as along
+    int mode = 2; if (const char* e = std::getenv("GUNSMITH_KITACROSS")) mode = std::atoi(e);   // (measured best: 2, the bigger of the two)
+    double s = kitScale(kit, c), h0 = kit.breech.cart.headDia(), h1 = c.headDia();
+    if (mode == 0 || h0 <= 0 || h1 <= 0) return 0;
+    double hr = h1 / h0;
+    return mode == 1 ? hr : std::max(s, hr);
+}
+double kitAcrossOr(const Design& kit, const Cartridge& c, double s) { double a = kitAcrossScale(kit, c); return a > 0 ? a : s; }
+double kitSmallSpringPow() { if (const char* e = std::getenv("GUNSMITH_KITSMALL")) return std::atof(e); return 0.5; }   // (measured: 1 jams strikers and trigger bars scaled up)
+double kitMagBack() { if (const char* e = std::getenv("GUNSMITH_KITBACK")) return std::atof(e); return 0.75; }   // mm, at the kit's own size
 Design fitKitTo(const Design& kitIn, const Cartridge& c, double springK) {
     Design d = kitIn;
     double s = kitScale(d, c), ks = kitSpringScale(d, c) * springK;
@@ -127,9 +139,24 @@ Design fitKitTo(const Design& kitIn, const Cartridge& c, double springK) {
     std::vector<bool> fitted(d.bodies.size(), false);
     std::vector<int> all;
     for (size_t i = 0; i < d.bodies.size(); i++) { all.push_back((int)i); fitted[i] = d.bodies[i].magazine && d.bodies[i].gen.on && !d.bodies[i].gen.byHand; }
+    // A fitted magazine is refitted round the new round. Its top goes where the old one's went (scaled), but moved along
+    // the bore so the new round's FRONT sits where the old round's front did, and a little back from it: measured on the
+    // turn-bolt kit with 7.62x39, a round whose nose sits 0.75 mm further forward than the original's stops feeding,
+    // while anywhere from there to 1.5 mm back feeds every time.
+    V2 u{1, 0};
+    if (d.breech.on && d.breech.hasMuzzle) { double dx = d.breech.muzzle.x - at.x, dy = d.breech.muzzle.y - at.y, l = std::hypot(dx, dy); if (l > 1) u = {dx / l, dy / l}; }
+    const double oal0 = d.breech.cart.oal, back = kitMagBack() * s;
     std::vector<V2> tops(d.bodies.size());
-    for (size_t i = 0; i < d.bodies.size(); i++) tops[i] = {at.x + (d.bodies[i].gen.top.x - at.x) * s, at.y + (d.bodies[i].gen.top.y - at.y) * s};
-    scaleParts(d, all, at, s, s, s);
+    for (size_t i = 0; i < d.bodies.size(); i++) {
+        double along = (oal0 * s - c.oal) / 2 - back;
+        tops[i] = {at.x + (d.bodies[i].gen.top.x - at.x) * s + u.x * along, at.y + (d.bodies[i].gen.top.y - at.y) * kitAcrossOr(d, c, s) + u.y * along};
+    }
+    // along the bore by the round's length; up and across by its thickness when the new round is relatively fatter
+    // (measured: the turn-bolt kit fitted to 7.62x39 by length alone was 2% smaller while the case is 18% fatter, and
+    // the extracted case jammed in the receiver after 12 mm)
+    double hr = kitAcrossScale(d, c), sy = s, sz = s;
+    if (hr > 0) { sy = hr; sz = hr; }
+    scaleParts(d, all, at, s, sy, sz);
     // which springs take the recoil: between the breech's assembly (it and the parts welded to it) and the frame or the
     // barrel. The rest (strikers, sears, triggers, catches) only move their own small parts: they're kept moving them as
     // fast as before (k x s: the part weighs s^3 more, the spring is compressed s times further)
@@ -139,13 +166,25 @@ Design fitKitTo(const Design& kitIn, const Cartridge& c, double springK) {
     auto group = [&](const std::string& id) { auto it = weldOf.find(id); return it == weldOf.end() ? id : it->second; };
     auto fixedPart = [&](const std::string& id) { if (id == "world") return true; int i = d.bodyIndex(id); return i >= 0 && d.bodies[i].fixed; };
     std::string bg = group(d.breech.breech), cg = group(d.breech.chamber);
+    // only a gun whose breech a spring closes has recoil springs; a bolt or pump worked by hand doesn't (measured: the
+    // turn-bolt kit's springs made 2.7x stiffer for 7.62x39's kick left its bolt opening 12 mm instead of 77)
+    bool sprung = false;
+    if (auto S0 = sim::build(kitIn)) sprung = S0->breechSprung;
     for (auto& j : d.joints) {
         if (j.type == "spring") {
             std::string ga = group(j.a), gb = group(j.b);
-            bool recoil = (ga == bg && (fixedPart(j.b) || gb == cg) && gb != bg) || (gb == bg && (fixedPart(j.a) || ga == cg) && ga != bg)
-                       || (cg != bg && ((ga == cg && fixedPart(j.b)) || (gb == cg && fixedPart(j.a))));   // (a recoiling barrel's own spring)
-            j.rest *= s; j.coilDia *= s; j.wire *= s; j.preload *= s;
-            j.k *= recoil ? ks : s;
+            bool recoil = sprung && ((ga == bg && (fixedPart(j.b) || gb == cg) && gb != bg) || (gb == bg && (fixedPart(j.a) || ga == cg) && ga != bg)
+                       || (cg != bg && ((ga == cg && fixedPart(j.b)) || (gb == cg && fixedPart(j.a)))));   // (a recoiling barrel's own spring)
+            j.coilDia *= s; j.wire *= s;
+            if (recoil) { j.rest *= s; j.preload *= s; j.k *= ks; }
+            else {   // a small part's spring: squeezed the same millimetres as before (so it pushes s times harder, not s^2):
+                     // measured, a trigger bar's spring scaled the full s^2 pressed the bar so hard it caught on the sear
+                double len0 = std::hypot(j.pb.x - j.pa.x, j.pb.y - j.pa.y) / s;   // (the anchors are already scaled)
+                double m = std::pow(s, kitSmallSpringPow());   // how much harder it pushes at rest
+                if (j.kind != "leaf" && j.rest > 0) j.rest = len0 * s + (j.rest - len0) * m / s;
+                else if (j.kind == "leaf") j.preload *= m / s;
+                j.k *= s;
+            }
         }
         if (j.type == "latch") { j.catchAt *= s; j.releaseAt *= s; }
         if (j.type == "magwell") j.releaseAt *= s;
