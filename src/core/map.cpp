@@ -409,6 +409,10 @@ std::string mapToJson(const Map& m) {
         }
         json jb = {{"faces", fs}};
         if (b.locked) jb["locked"] = true;
+        if (!b.name.empty()) jb["name"] = b.name;
+        if (b.hidden) jb["hidden"] = true;
+        if (b.frozen) jb["frozen"] = true;
+        if (b.group) jb["group"] = b.group;
         bs.push_back(jb);
     }
     j["brushes"] = bs;
@@ -420,6 +424,10 @@ std::string mapToJson(const Map& m) {
     for (auto& e : m.ents) {
         json je = {{"type", e.type}, {"pos", v3j(e.pos)}, {"yaw", e.yaw}};
         if (!e.ref.empty()) je["ref"] = e.ref;
+        if (!e.name.empty()) je["name"] = e.name;
+        if (e.hidden) je["hidden"] = true;
+        if (e.frozen) je["frozen"] = true;
+        if (e.group) je["group"] = e.group;
         if (e.count != 1) je["count"] = e.count;
         if (e.respawn > 0) je["respawn"] = e.respawn;
         if (e.type == "door") je["width"] = e.width;
@@ -469,6 +477,10 @@ bool mapFromJson(const std::string& s, Map& out) {
                 b.faces.push_back(f);
             }
             b.locked = jb.value("locked", false);
+            b.name = jb.value("name", std::string());
+            b.hidden = jb.value("hidden", false);
+            b.frozen = jb.value("frozen", false);
+            b.group = jb.value("group", 0);
             if (brushValid(b)) m.brushes.push_back(b);
         }
         if (j.contains("career") && j["career"].is_object()) {
@@ -483,6 +495,10 @@ bool mapFromJson(const std::string& s, Map& out) {
             e.pos = jv3(je.at("pos"));
             e.yaw = je.value("yaw", 0.0);
             e.ref = je.value("ref", "");
+            e.name = je.value("name", std::string());
+            e.hidden = je.value("hidden", false);
+            e.frozen = je.value("frozen", false);
+            e.group = je.value("group", 0);
             e.count = std::max(1, je.value("count", 1));
             e.respawn = std::max(0.0, je.value("respawn", 0.0));
             e.width = std::clamp(je.value("width", 0.9), 0.4, 4.0);

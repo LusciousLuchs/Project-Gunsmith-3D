@@ -50,6 +50,11 @@ struct Brush {
     mutable double boundsCache[6] = {0, 0, 0, 0, 0, 0};
     mutable unsigned long long boundsKey = 0;
     bool locked = false;   // part of a building that comes with a career property (its walls): can't be changed
+    // the editor's own bookkeeping (saved only when set)
+    std::string name;      // what you called it in the outliner
+    bool hidden = false;   // out of the way while you work (still there when you play)
+    bool frozen = false;   // can't be picked or moved by accident
+    int group = 0;         // things with the same non-zero number are picked together
 };
 struct Entity {
     std::string type = "player_start";   // player_start, target_paper, npc_spawn (an NPC stands here), gun_spawner
@@ -65,6 +70,9 @@ struct Entity {
     double range = 10;    // metres: nothing past this
     double cone = 0;      // degrees edge to edge: 0 shines all round; a spot (a floodlight, a ceiling spot) otherwise
     double pitch = -90;   // a spot's aim: up (+) or down from level, toward `yaw`
+    std::string name;      // the editor's: what you called it
+    bool hidden = false, frozen = false;
+    int group = 0;
     double width = 0.9;   // door: how wide the doorway is (m); its style is `ref`: wood, metal, glass. It stands at `pos`
                           // (the middle of the doorway's floor), facing along `yaw` when shut
 };
