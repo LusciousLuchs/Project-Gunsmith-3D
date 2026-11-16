@@ -35,6 +35,8 @@ What's there already is noted; the rest is new work.
 
 ## Shelved
 
+- **Better humanoid character models** (the player character, NPCs, shop people): shelved, the owner has a modeller making them. When they arrive the game will need a way to load them (likely a model file with a skeleton, mapped onto the existing bones and poses).
+
 - **Signing the Windows build** (so it runs without the blue SmartScreen prompt): not for now. Options when wanted: Microsoft Trusted Signing (about $10 a month, identity checks, US/Canada so far) or a code-signing certificate ($100-400 a year).
 
 ## Map editing tools: levels and NPCs (the owner's plan, 0.3.9)
