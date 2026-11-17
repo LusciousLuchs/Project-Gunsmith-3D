@@ -2816,6 +2816,29 @@ static void fireControlTest() {
     Design blank = loadPreset("blank");
     CHECK(blank.fcgRequired, "a new gun needs a fire control group");
 }
+// Editor layers (0.8.40): parts grouped to hide or lock while editing; saved; the physics ignores them
+static void layersTest() {
+    std::printf("\n== editor layers\n");
+    Design d = loadPreset("blowback");
+    d.layers = {EdLayer(), EdLayer{1, "Internals", false, true}};
+    for (auto& b : d.bodies) b.edLayer = b.fixed ? 0 : 1;
+    const BodyDef* inner = nullptr; const BodyDef* outer = nullptr;
+    for (auto& b : d.bodies) { if (b.edLayer == 1 && !inner) inner = &b; if (b.edLayer == 0 && !outer) outer = &b; }
+    CHECK(inner && outer && !partShown(d, *inner) && partLocked(d, *inner) && partShown(d, *outer) && !partLocked(d, *outer),
+          "a hidden, locked layer's parts are hidden and locked; Main's aren't");
+    Design back;
+    CHECK(designFromJson(designToJson(d), back) && back.layers.size() == 2 && back.layers[1].name == "Internals" && !back.layers[1].visible && back.layers[1].locked &&
+          std::count_if(back.bodies.begin(), back.bodies.end(), [](const BodyDef& b) { return b.edLayer == 1; }) == std::count_if(d.bodies.begin(), d.bodies.end(), [](const BodyDef& b) { return b.edLayer == 1; }),
+          "saved and loaded: the layers and which part is in which");
+    BodyDef stray; stray.edLayer = 7;   // (a layer that's gone: Main)
+    CHECK(layerOf(d, 7).id == 0 && partShown(d, stray), "a part in a layer that's gone counts as Main");
+    Design older = loadPreset("blowback");
+    CHECK(older.layers.empty() && std::all_of(older.bodies.begin(), older.bodies.end(), [&](const BodyDef& b) { return partShown(older, b) && !partLocked(older, b); }),
+          "an older blueprint: no layers, everything shown");
+    sim::ReliabilityOptions o; o.rounds = 6; o.stallSeconds = 5;
+    auto r0 = sim::runReliability(older, o), r1 = sim::runReliability(d, o);
+    CHECK(r0.fired == r1.fired && r0.jams == r1.jams, ("the test bench uses every part, hidden or not (" + std::to_string(r1.fired) + " fired either way)").c_str());
+}
 static void cheatsTest() {
     std::printf("\n== cheats\n");
     sim::ReliabilityOptions o; o.rounds = 10; o.stallSeconds = 20;
@@ -3219,6 +3242,7 @@ int main() {
         else if (o == "roundturn") roundTurnTest();
         else if (o == "radio") radioTest();
         else if (o == "fcg") fireControlTest();
+        else if (o == "layers") layersTest();
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
@@ -3296,6 +3320,7 @@ int main() {
     roundTurnTest();
     radioTest();
     fireControlTest();
+    layersTest();
     hollowParts();
     cheatsTest();
     furnitureTest();

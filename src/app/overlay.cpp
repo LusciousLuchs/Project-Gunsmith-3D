@@ -58,6 +58,11 @@ void drawOverlay() {
     auto label = [](Vector2 s, const char* t, Color c) { viewText(t, s.x + 9, s.y - 17 * CFG.uiScale, 11, c); };
     for (size_t ji = 0; ji < D.joints.size(); ji++) {
         auto& j = D.joints[ji];
+        {   // (hidden or locked editor layers: no handles on their joints)
+            int ia = D.bodyIndex(j.a), ib = D.bodyIndex(j.b);
+            auto off = [&](int i) { return i >= 0 && (!partShown(D, D.bodies[i]) || partLocked(D, D.bodies[i])); };
+            if (off(ia) || off(ib)) continue;
+        }
         float z = std::max(frontZ(j.a), frontZ(j.b)) + 0.25f;
         if (j.type == "pin" || j.type == "weld" || j.type == "track") A.handles.push_back({toScreen(W3(j.p, z)), 1, (int)ji, -1});
         if (j.type == "track") for (size_t k = 0; k < j.path.size(); k++) A.handles.push_back({toScreen(W3(j.path[k], frontZ(j.b))), 2, (int)ji, (int)k});

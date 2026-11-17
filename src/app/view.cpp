@@ -86,6 +86,7 @@ std::vector<Hit> bodiesUnderMouse() {  // Build mode: design parts
     Ray r = mouseRay();
     for (int i = 0; i < (int)A.design.bodies.size(); i++) {
         const BodyDef& d = A.design.bodies[i];
+        if (!partShown(A.design, d) || partLocked(A.design, d)) continue;   // (hidden or locked editor layers can't be picked)
         const auto& sl = slicesOf(d);
         if (sl.empty() || std::fabs(r.direction.z) < 0.02f) {   // a plain slab (or seen edge on): its front face
             float z = bodyFront(i), t;

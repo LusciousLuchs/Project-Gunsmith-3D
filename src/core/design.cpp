@@ -1002,6 +1002,11 @@ std::string designToJson(const Design& d, bool pretty) {
     o["name"] = d.name;
     o["speed"] = d.speed;
     if (d.fcgRequired) o["fcgRequired"] = true;
+    if (!d.layers.empty()) {
+        json ls = json::array();
+        for (auto& l : d.layers) { json jl = {{"id", l.id}, {"name", l.name}}; if (!l.visible) jl["hidden"] = true; if (l.locked) jl["locked"] = true; ls.push_back(jl); }
+        o["layers"] = ls;
+    }
     o["friction"] = d.friction;
     o["bodies"] = json::array();
     for (auto& b : d.bodies) {
@@ -1010,6 +1015,7 @@ std::string designToJson(const Design& d, bool pretty) {
         if (b.smooth > 0) jb["smooth"] = b.smooth;
         if (b.bolt) jb["bolt"] = true;
         if (b.fcg) jb["fcg"] = true;
+        if (b.edLayer > 0) jb["edLayer"] = b.edLayer;
         if (!b.weld.empty()) jb["weld"] = b.weld;
         if (depthShaped(b)) {
             json a = json::array();
@@ -1271,6 +1277,13 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
     d.name = opt<std::string>(o, "name", "Untitled action");
     d.speed = opt<double>(o, "speed", 0.02);
     d.fcgRequired = opt<bool>(o, "fcgRequired", false);
+    d.layers.clear();
+    if (o.contains("layers") && o["layers"].is_array())
+        for (auto& jl : o["layers"]) {
+            if (!jl.is_object()) continue;
+            EdLayer l; l.id = std::max(0, jl.value("id", 0)); l.name = jl.value("name", std::string("Layer")); l.visible = !jl.value("hidden", false); l.locked = jl.value("locked", false);
+            d.layers.push_back(l);
+        }
     d.friction = opt<double>(o, "friction", 0.12);
     int n = 0;
     for (auto& jb : o["bodies"]) {
@@ -1290,6 +1303,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
         b.bolt = opt<bool>(jb, "bolt", false);
         b.fcg = opt<bool>(jb, "fcg", false);
+        b.edLayer = std::max(0, opt<int>(jb, "edLayer", 0));
         b.weld = opt<std::string>(jb, "weld", "");
         b.mirror = opt<std::string>(jb, "mirror", "");
         b.mirrorKind = opt<std::string>(jb, "mirrorKind", "depth");
@@ -1827,3 +1841,11 @@ std::string nextSelector(const BreechDef& b) {
     if (it == b.selector.end() || ++it == b.selector.end()) return b.selector.front();
     return *it;
 }
+
+EdLayer layerOf(const Design& d, int id) {
+    for (auto& l : d.layers) if (l.id == id) return l;
+    if (id != 0) for (auto& l : d.layers) if (l.id == 0) return l;   // (a layer that's gone: its parts count as Main)
+    return EdLayer();
+}
+bool partShown(const Design& d, const BodyDef& b) { return d.layers.empty() || layerOf(d, std::max(0, b.edLayer)).visible; }
+bool partLocked(const Design& d, const BodyDef& b) { return !d.layers.empty() && layerOf(d, std::max(0, b.edLayer)).locked; }

@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
         sim::cheats().autoFeed = CFG.cheatAutoFeed; sim::cheats().bruteForce = CFG.cheatBruteForce;
     }
     update::cleanup();   // the program file the last update moved aside
-    if (CFG.autoUpdate && ((frames == 0 && shotPath.empty()) || std::getenv("GUNSMITH_UPDATE_API"))) update::start();   // (not for screenshot runs, unless testing it)
+    if ((frames == 0 && shotPath.empty()) || std::getenv("GUNSMITH_UPDATE_API")) update::start();   // (always: updates aren't optional; not for screenshot runs, unless testing it)
     setUserFolder(CFG.userDir.empty() ? defaultUserFolder() : CFG.userDir);   // your files: Blueprints, Levels, Rounds, ...
     setupUserFolders();  // (and files moved over from where older versions kept them)
     scanUserTextures();

@@ -170,6 +170,8 @@ struct BodyDef {
                                          // gun's length, + top toward you; Y: about the upright, + front toward you)
     double smooth = 0;                   // 0..1: rounds the front and back edges (grips, dehorned slides). Looks only.
     bool bolt = false;                   // marked as a bolt (the panel's Bolt section): it closes the breech
+    int edLayer = -1;                    // the editor layer it's in (Design::layers id; 0 = Main). -1: new, not placed yet
+                                         // (the designer puts it in the layer you're working on). Editing only: no physics
     bool fcg = false;                    // marked as the fire control group: the built-in trigger, sear and hammer/striker
                                          // live here (with the selector's positions in the breech's settings)
     bool rollOn = false;                 // rotates about the bore (rotating bolt)
@@ -486,6 +488,9 @@ struct NpcGunDef {
     double spread = 2;     // degrees: how wide its shots go (NPC guns are meant to be a bit bad)
     double damage = 0;     // to the player per hit (0: from its bullet's energy, 1 point per 60 J)
 };
+// An editor layer: parts grouped so you can hide or lock some while you work on others (the internals while you shape
+// the receiver round them). Layers are only for editing: the bench, the physics and the range always use every part.
+struct EdLayer { int id = 0; std::string name = "Main"; bool visible = true, locked = false; };
 struct Design {
     std::string name = "Untitled action";
     double speed = 0.02;                 // slow-motion speed for shots
@@ -495,6 +500,7 @@ struct Design {
     BreechDef breech;
     Pose pose;                           // how it's held (nothing placed in older blueprints)
     NpcGunDef npcGun;                    // made for NPCs only (off in older blueprints)
+    std::vector<EdLayer> layers;         // editor layers (none in older blueprints: everything in Main)
     bool fcgRequired = false;            // built-in fire control needs a part marked as the fire control group (new guns
                                          // since 0.8.39; older blueprints fire as they always did)
     AttachDef attach;                    // this is an attachment, not a gun (the attachment designer)
@@ -512,6 +518,10 @@ struct Design {
 // Can it fire at all: drawn fire control (a striker part), or a part marked as the fire control group, or an older
 // design that doesn't need one. `why` says what's missing.
 bool hasFireControl(const Design& d, std::string* why = nullptr);
+// editor layers: the one with this id (Main if there's none), whether a part is shown / can be picked
+EdLayer layerOf(const Design& d, int id);
+bool partShown(const Design& d, const BodyDef& b);
+bool partLocked(const Design& d, const BodyDef& b);
 
 // Shape helpers: the outline actually used for physics and drawing.
 void fixShape(BodyDef& b);                                     // keep rad/bulge sized to pts

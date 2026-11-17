@@ -232,7 +232,52 @@ void aboutWindow() {
 }
 
 // ---------------------------------------------------------------- main menu
+// Updates aren't optional (the owner's choice): while a newer version is being checked for or fetched, the main menu
+// waits behind this screen, and once it's installed the game restarts into it. Offline (or the check fails, or takes
+// more than 8 seconds), you can play the version you have.
+static bool forcedUpdateScreen() {
+#ifdef _WIN32
+    update::Status u = update::status();
+    static double since = -1;
+    if (u.state == update::State::Checking && since < 0) since = GetTime();
+    bool checking = u.state == update::State::Checking && GetTime() - since < 8;
+    bool fetching = u.state == update::State::Downloading || u.state == update::State::Installing || u.state == update::State::Installed;
+    if (!checking && !fetching) return false;
+    if (u.state == update::State::Installed) {   // restart into the new version (once)
+        static bool asked = false;
+        if (!asked) { asked = true; if (update::restart()) A.quit = true; }
+    }
+    float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+    ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, {W, H}, IM_COL32(12, 14, 18, 245));
+    ImGui::SetNextWindowPos({W / 2, H / 2}, ImGuiCond_Always, {0.5f, 0.5f});
+    ImGui::SetNextWindowSize({460 * S(), 0});
+    ImGui::Begin("##forcedupdate", nullptr, PLAIN | ImGuiWindowFlags_AlwaysAutoResize);
+    ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
+    ImGui::GetWindowDrawList()->AddRectFilled(wp, {wp.x + 4 * S(), wp.y + ws.y}, IM_COL32(238, 122, 32, 255));
+    ImGui::PushFont(gFontBold, 20.0f);
+    ImGui::TextUnformatted(checking ? "Checking for updates" : "Updating Gunsmith 3D");
+    ImGui::PopFont();
+    if (checking) ImGui::TextDisabled("One moment...");
+    else if (u.state == update::State::Downloading) ImGui::Text("Downloading %s...", u.latest.c_str());
+    else if (u.state == update::State::Installing) ImGui::Text("Installing %s...", u.latest.c_str());
+    else ImGui::Text("%s is installed. Restarting...", u.latest.c_str());
+    float t = (float)GetTime(), bw = ImGui::GetContentRegionAvail().x;   // a bar sliding back and forth
+    ImVec2 p = ImGui::GetCursorScreenPos();
+    auto* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(p, {p.x + bw, p.y + 4 * S()}, IM_COL32(255, 255, 255, 25));
+    float f = 0.5f + 0.5f * std::sin(t * 2.5f), seg = bw * 0.25f;
+    dl->AddRectFilled({p.x + f * (bw - seg), p.y}, {p.x + f * (bw - seg) + seg, p.y + 4 * S()}, IM_COL32(238, 122, 32, 255));
+    ImGui::Dummy({bw, 10 * S()});
+    ImGui::TextDisabled("Your designs, maps and settings aren't touched.");
+    ImGui::End();
+    return true;
+#else
+    return false;   // (Linux: the gunsmith3d command updates the game before it starts it)
+#endif
+}
+
 void mainMenu() {
+    if (forcedUpdateScreen()) return;
     if (A.showSettings) { settingsWindow(); return; }
     if (A.showBenchPicker) { benchPicker(); return; }
     if (A.showTutorials) { tutorialsWindow(); return; }
@@ -292,28 +337,13 @@ void mainMenu() {
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, H - 34 * S()});
     ImGui::TextDisabled("Gunsmith 3D  v%s", version::text());
-#ifndef _WIN32
-    ImGui::SameLine(0, 14 * S());
-    ImGui::TextDisabled(CFG.autoUpdate ? "Updates itself each time it starts" : "Updates: gunsmith3d --update");   // (Linux: the launcher does it)
-#else
-    {   // updates: fetched from GitHub and installed in the background
+#ifdef _WIN32
+    {   // only when an update couldn't be fetched (offline): say so, and offer another go
         update::Status u = update::status();
-        ImGui::SameLine(0, 14 * S());
-        switch (u.state) {
-            case update::State::Checking: ImGui::TextDisabled("Checking for updates..."); break;
-            case update::State::UpToDate: ImGui::TextDisabled("Up to date"); ImGui::SameLine(); if (ImGui::SmallButton("Check again")) update::checkNow(); break;
-            case update::State::Downloading: ImGui::TextDisabled("Downloading %s...", u.latest.c_str()); break;
-            case update::State::Installing: ImGui::TextDisabled("Installing %s...", u.latest.c_str()); break;
-            case update::State::Installed:
-                ImGui::TextColored({0.55f, 0.85f, 0.55f, 1}, "Updated to %s: it starts next time.", u.latest.c_str());
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Restart now") && update::restart()) A.quit = true;
-                break;
-            case update::State::Failed:
-                ImGui::TextDisabled("Update: %s", u.note.c_str());
-                ImGui::SameLine(); if (ImGui::SmallButton("Try again")) update::checkNow();
-                break;
-            default: if (ImGui::SmallButton("Check for updates")) update::checkNow(); break;
+        if (u.state == update::State::Failed) {
+            ImGui::SameLine(0, 14 * S());
+            ImGui::TextDisabled("Update: %s", u.note.c_str());
+            ImGui::SameLine(); if (ImGui::SmallButton("Try again")) update::checkNow();
         }
     }
 #endif
@@ -617,16 +647,11 @@ void interfacePage() {
         if (ImGui::Combo("##menupic", &k, "The workshop\0Your gun in 3D\0")) { CFG.menuPicture = k == 0; saveSettings(); }
     }
     ImGui::SeparatorText("Updates");
-    row("Update automatically", "When the game starts it looks for a new version on GitHub, downloads it and installs it in the\n"
-                                "background. It runs the next time you start the game (or at once with Restart now, on the main menu).\n"
-                                "Your designs, maps and settings are never touched.");
-    if (ImGui::Checkbox("##autoupd", &CFG.autoUpdate)) { saveSettings(); if (CFG.autoUpdate) update::start(); }
 #ifndef _WIN32
-    ImGui::TextDisabled("On Linux the gunsmith3d command updates the game as it starts it (or run: gunsmith3d --update).");
     if (false)
 #endif
     {
-    row("Check for updates", "Looks for a new version right now (and installs it, as above).");
+    row("Check for updates", "The game always updates itself when it starts. This looks for a new version right now.");
     if (ImGui::Button("Check now##updnow")) update::checkNow();
     }
     {

@@ -12,8 +12,8 @@
 #   the menu entry  ~/.local/share/applications/gunsmith3d.desktop (and its icon)
 #   your files      Documents/OAB Foundry/Gunsmith  (designs, maps, settings: never touched by any of this)
 #
-# Each time you start it, it looks for a newer version first (a few seconds at most; Settings > Interface > update the
-# game automatically turns that off) and updates itself, like the Windows version.
+# Each time you start it, it looks for a newer version first (a few seconds at most) and updates itself, like the
+# Windows version. Updates aren't optional; offline, the version you have starts.
 set -euo pipefail
 
 REPOS="LusciousLuchs/Gunsmith3D-Releases LusciousLuchs/Project-Gunsmith-3D"   # (the downloads page, then the code's own)
@@ -86,16 +86,11 @@ EOF
     command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APPS" >/dev/null 2>&1 || true
 }
 
-autoUpdateOff() {   # the game's own setting (Settings > Interface), in its settings file in Documents
-    local docs="$HOME/Documents" cfg="${XDG_CONFIG_HOME:-$HOME/.config}/user-dirs.dirs" line
-    if [ -f "$cfg" ]; then line=$(grep '^XDG_DOCUMENTS_DIR=' "$cfg" | head -n1 | cut -d= -f2- | tr -d '"'); [ -n "$line" ] && docs="${line/\$HOME/$HOME}"; fi
-    grep -Eq '"autoUpdate"[[:space:]]*:[[:space:]]*false' "$docs/OAB Foundry/Gunsmith/settings.json" 2>/dev/null
-}
 
 case "${1:-}" in
 --launch)
     shift
-    if ! autoUpdateOff && command -v curl >/dev/null 2>&1; then
+    if command -v curl >/dev/null 2>&1; then   # (updates aren't optional: always the newest)
         if found=$(latest 4) && [ -n "$found" ]; then
             repo=${found% *}; tag=${found#* }
             if newer "${tag#v}" "$(installed)"; then

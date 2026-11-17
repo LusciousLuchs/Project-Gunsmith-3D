@@ -71,6 +71,7 @@ std::vector<RB> renderList() {
     std::vector<RB> out;
     if (!A.S) {
         for (size_t i = 0; i < A.design.bodies.size(); i++) {
+            if (A.screen == Screen::Workshop && !partShown(A.design, A.design.bodies[i])) continue;   // (a hidden editor layer)
             V2 c = centroidOf(A.design.bodies[i]);
             out.push_back({(int)i, poseMatrix((int)i, c.x, c.y, 0, 0), 0, nullptr});
         }
@@ -1016,8 +1017,10 @@ static void drawSceneImpl(bool gunOnly) {
         drawMagRounds(r, r.sb ? r.sb->rounds : D.bodies[r.tmpl].magCap, r.sb && r.sb->top ? 1 : 0);
     }
     // joints
+    auto hiddenPart = [&](const std::string& id) { int i = D.bodyIndex(id); return building && i >= 0 && !partShown(D, D.bodies[i]); };
     for (size_t ji = 0; ji < D.joints.size(); ji++) {
         auto& j = D.joints[ji];
+        if (hiddenPart(j.a) || hiddenPart(j.b)) continue;   // (a hidden editor layer: its springs and pins too)
         bool selJ = building && A.sel.kind == 2 && A.sel.idx == (int)ji;
         Color steel = selJ ? Color{255, 200, 60, 255} : Color{196, 202, 212, 255};
         if (j.type == "pin" || j.type == "weld") {

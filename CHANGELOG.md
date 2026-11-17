@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.40-alpha
+
+- **Layers in the gun designer.** A new Layers tab: put parts in layers (say Internals and Receiver), then hide or lock a whole layer while you work on another. Hidden parts aren't drawn and can't be clicked; locked parts show but can't be picked or changed, so you can shape a receiver round your internals without knocking them. New parts go into the layer you've picked (the orange one), "Selected part here" moves a part (and what's welded to it) into it, and each part's panel shows its layer. Layers are only for editing: the test bench and the range always use every part.
+- **Updates are required.** The game always updates itself when it starts; while it's fetching a new version the main menu waits, then the game restarts into it. Offline, you can still play the version you have.
+
 ## 0.8.39-alpha
 
 - **Fire control groups and selectors.** A gun now needs fire control to fire, not just a bolt. Either tick **Fire control group** on a part (the trigger, say: the trigger, sear and hammer or striker live there, nothing to draw), or draw them as real parts if you're brave. Its **Selector** has the positions you tick (Safe, Semi, Burst, Auto), and **J** turns it on the bench and the range (the range shows SAFE / SEMI / BURST / AUTO). A drawn selector lever can be a control pressed by Selector. Guns saved before this keep firing as they did; the examples have their trigger set up as one.

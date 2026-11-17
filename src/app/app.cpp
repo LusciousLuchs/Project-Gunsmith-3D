@@ -53,6 +53,11 @@ void autosaveTick() {
     if (CFG.autosave == AutosaveEvery::Change || (every > 0 && GetTime() - A.lastSave >= every)) save();
 }
 void commit() {
+    {   // new parts go into the layer you're working on (if it's still there and not locked)
+        EdLayer al = layerOf(A.design, A.activeLayer);
+        int into = al.id == A.activeLayer && !al.locked ? A.activeLayer : 0;
+        for (auto& b : A.design.bodies) if (b.edLayer < 0) b.edLayer = into;
+    }
     for (auto& b : A.design.bodies) normalizeDepth(b);
     for (auto& b : A.design.bodies) meshSync(b);   // free 3D meshes: the outline follows the mesh
     for (auto& b : A.design.bodies) followMarks(b);   // engravings go with a part that moved as a whole   // shaped in depth: follow added or removed corners

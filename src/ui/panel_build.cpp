@@ -530,6 +530,13 @@ static void inspectPart(BodyDef& b) {
         }
     }
     if (section("Part", true)) {
+        if (!D.layers.empty()) {   // which editor layer it's in
+            prop("Layer", "The editor layer it's in (the Layers tab hides or locks whole layers).");
+            if (ImGui::BeginCombo("##edlayer", layerOf(D, std::max(0, b.edLayer)).name.c_str())) {
+                for (auto& l : D.layers) if (ImGui::Selectable(l.name.c_str(), std::max(0, b.edLayer) == l.id)) { b.edLayer = l.id; editedAny = true; }
+                ImGui::EndCombo();
+            }
+        }
         pCheck("Fixed", b.fixed, "Fixed parts are the frame: they don't move.");
         if (!b.magazine) {   // a bolt: a checkbox, and only then its settings
             bool was = b.bolt;
@@ -2330,6 +2337,95 @@ void fileButtons() {
     if (A.showOpenWindow) blueprintWindow();
 }
 
+// Editor layers: groups of parts to show, hide or lock while you work (the internals hidden or locked while you shape
+// the receiver round them). Only for editing: the bench and the physics always use every part.
+static void layersTab() {
+    auto& D = A.design;
+    if (std::getenv("GUNSMITH_LAYERDEMO") && D.layers.empty()) {   // (screenshots) the moving parts in Internals, hidden
+        D.layers = {EdLayer(), EdLayer{1, "Internals", false, false}};
+        for (auto& b : D.bodies) b.edLayer = b.fixed ? 0 : 1;
+        A.activeLayer = 0;
+    }
+    if (D.layers.empty()) D.layers.push_back(EdLayer());   // (Main, holding everything so far)
+    bool hasMain = false; for (auto& l : D.layers) hasMain |= l.id == 0;
+    if (!hasMain) D.layers.insert(D.layers.begin(), EdLayer());
+    if (std::none_of(D.layers.begin(), D.layers.end(), [](const EdLayer& l) { return l.id == A.activeLayer; })) A.activeLayer = 0;
+    muted("Put parts in layers to work on one group without touching another: hide or lock the internals while you shape the receiver round them. "
+          "New parts go into the layer you've picked (the orange one). Layers are only for editing: the test bench always uses every part.");
+    ImGui::Dummy({0, 4 * S()});
+    bool changed = false;
+    static int renaming = -1;
+    static char nameBuf[64] = "";
+    for (size_t i = 0; i < D.layers.size(); i++) {
+        EdLayer& l = D.layers[i];
+        ImGui::PushID((int)l.id);
+        int n = 0; for (auto& b : D.bodies) if (layerOf(D, std::max(0, b.edLayer)).id == l.id) n++;
+        if (ImGui::SmallButton(l.visible ? ICON_FA_EYE : ICON_FA_EYE_SLASH)) { l.visible = !l.visible; changed = true; }
+        if (tipHover()) ImGui::SetTooltip(l.visible ? "Hide this layer's parts" : "Show this layer's parts");
+        ImGui::SameLine();
+        if (ImGui::SmallButton(l.locked ? ICON_FA_LOCK : ICON_FA_LOCK_OPEN)) { l.locked = !l.locked; changed = true; }
+        if (tipHover()) ImGui::SetTooltip(l.locked ? "Unlock: its parts can be picked and edited again" : "Lock: its parts show but can't be picked or changed");
+        ImGui::SameLine();
+        bool active = A.activeLayer == l.id;
+        if (renaming == (int)l.id) {
+            ImGui::SetNextItemWidth(-60 * S());
+            if (ImGui::InputText("##rn", nameBuf, sizeof nameBuf, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll) || ImGui::IsItemDeactivated()) {
+                if (nameBuf[0]) { l.name = nameBuf; changed = true; }
+                renaming = -1;
+            }
+            if (renaming == (int)l.id && !ImGui::IsItemActive()) ImGui::SetKeyboardFocusHere(-1);
+        } else {
+            if (active) ImGui::PushStyleColor(ImGuiCol_Text, colAccent());
+            std::string label = l.name + (l.visible ? "" : "  (hidden)") + (l.locked ? "  (locked)" : "");
+            if (ImGui::Selectable(label.c_str(), active, ImGuiSelectableFlags_AllowDoubleClick, {ImGui::GetContentRegionAvail().x - 50 * S(), 0})) {
+                A.activeLayer = l.id;
+                if (ImGui::IsMouseDoubleClicked(0)) { renaming = l.id; std::snprintf(nameBuf, sizeof nameBuf, "%s", l.name.c_str()); }
+            }
+            if (active) ImGui::PopStyleColor();
+            if (tipHover()) ImGui::SetTooltip("Click: new parts go here.  Double-click: rename it.");
+        }
+        ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 40 * S());
+        ImGui::TextDisabled("%d", n);
+        ImGui::PopID();
+    }
+    ImGui::Dummy({0, 6 * S()});
+    float half = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+    if (ImGui::Button(ICON_FA_PLUS "  New layer", {half, 0})) {
+        int id = 1; for (auto& l : D.layers) id = std::max(id, l.id + 1);
+        EdLayer l; l.id = id; l.name = D.layers.size() == 1 ? "Internals" : D.layers.size() == 2 ? "Receiver" : "Layer " + std::to_string(id);
+        D.layers.push_back(l);
+        A.activeLayer = id; changed = true;
+    }
+    ImGui::SameLine();
+    {
+        bool can = A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size();
+        ImGui::BeginDisabled(!can);
+        if (ImGui::Button("Selected part here", {half, 0})) {
+            // the selected part and everything welded to it move to this layer
+            std::string w = D.bodies[A.sel.idx].weld;
+            for (auto& b : D.bodies) if (&b == &D.bodies[A.sel.idx] || (!w.empty() && b.weld == w)) b.edLayer = A.activeLayer;
+            changed = true;
+        }
+        ImGui::EndDisabled();
+        if (tipHover()) ImGui::SetTooltip("Moves the selected part (and the parts welded to it) into the orange layer.");
+    }
+    if (ImGui::Button("Show everything", {half, 0})) { for (auto& l : D.layers) { l.visible = true; l.locked = false; } changed = true; }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(A.activeLayer == 0);
+    if (ImGui::Button("Delete layer", {half, 0})) {   // its parts go to Main
+        int id = A.activeLayer;
+        for (auto& b : D.bodies) if (b.edLayer == id) b.edLayer = 0;
+        D.layers.erase(std::remove_if(D.layers.begin(), D.layers.end(), [&](const EdLayer& l) { return l.id == id; }), D.layers.end());
+        A.activeLayer = 0; changed = true;
+    }
+    ImGui::EndDisabled();
+    if (tipHover()) ImGui::SetTooltip("Removes the orange layer; its parts go back to Main (nothing is deleted).");
+    if (changed) {
+        if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && (!partShown(D, D.bodies[A.sel.idx]) || partLocked(D, D.bodies[A.sel.idx]))) A.sel = {};
+        commit();
+    }
+}
+
 void buildPanel() {
     panelHeader();
     auto& D = A.design;
@@ -2367,6 +2463,7 @@ void buildPanel() {
         }
         bool outOpen = ImGui::BeginTabItem("Outline", nullptr, tabFlag(1)); tutAnchor("tab:Outline");
         if (outOpen) { outlineTab(); ImGui::EndTabItem(); }
+        if (ImGui::BeginTabItem("Layers", nullptr, tabFlag(3))) { ImGui::BeginChild("##layers", {0, 0}); layersTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
         if (D.attach.on) {   // an attachment: what it is and how it mounts, instead of a firing system
             bool attOpen = ImGui::BeginTabItem("Attachment", nullptr, tabFlag(2));
             if (attOpen) { ImGui::BeginChild("##attach", {0, 0}); attachmentTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
