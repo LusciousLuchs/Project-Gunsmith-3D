@@ -1,4 +1,5 @@
 // Gunsmith3D - Map editor: the top bar (tools, grid, walk) and the panel (edit, textures, map settings, files).
+#include "app/radio.hpp"
 #include "app/usertex.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
@@ -114,7 +115,8 @@ void mapToolbar() {
         {ICON_FA_DOOR_OPEN, "Door: click a floor in a doorway. F opens and shuts it on foot (it swings away from you)", MTool::Door},
         {ICON_FA_BULLSEYE, "Paper target: click the floor (it stands at chest height) or a wall. Pick it to make it move side to side", MTool::Target},
         {ICON_FA_COUCH, "Furniture: shelves, tables, racks, or your own pieces (make them from blocks in the Select panel)", MTool::Furniture},
-        {ICON_FA_HAND_HOLDING, "Things to pick up: crates, cans, bottles, your own props, and guns. Put them on shelves and tables", MTool::Prop}};
+        {ICON_FA_HAND_HOLDING, "Things to pick up: crates, cans, bottles, your own props, and guns. Put them on shelves and tables", MTool::Prop},
+        {ICON_FA_RADIO, "Radio: plays an internet station from where it stands. On foot, F at it to tune it", MTool::Radio}};
     // the career shop is for building your business: no combat things (start, NPCs, gun spawners, armour, attachment
     // and weapon crates, ammo, targets); the sandbox has no workstations (they only mean something in career mode)
     const bool shop = !ME.careerFile.empty();
@@ -251,6 +253,10 @@ static void editTab() {
                 if (ImGui::SliderFloat("##lpitch", &pt, -90, 90, "%.0f deg")) { e.pitch = pt; tr(true); } else tr(false);
                 typeable();
             }
+        } else if (e.type == "radio") {
+            heading("Radio");
+            gmap::Entity t = e;
+            if (radioControls(t)) { meSnapshot(); ME.map.ents[ME.ent] = t; meChanged(); }
         } else if (e.type == "door") {
             heading("Door");
             static const char* styles[][2] = {{"wood", "Wood, panelled"}, {"metal", "Steel, with a window"}, {"glass", "Glass"}};

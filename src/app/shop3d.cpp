@@ -1,6 +1,7 @@
 // Gunsmith3D - career mode on foot (see shop3d.hpp).
 #include "app/shop3d.hpp"
 #include "app/mapgfx.hpp"
+#include "app/radio.hpp"
 #include "app/app.hpp"
 #include "app/careermode.hpp"
 #include "app/mapedit.hpp"
@@ -364,6 +365,8 @@ bool shopWalkUpdate(float dt) {
     if (IsKeyPressed(KEY_ESCAPE)) { A.showPause = true; EnableCursor(); return true; }
     if (IsKeyPressed(KEY_B)) { shopBuildMode(); return true; }
     if (actPressed(Act::Use)) {
+        int r = radioFacing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
+        if (r >= 0) { radioOpen(&ME.map, r); return true; }
         int i = facing();
         if (i >= 0) { openThing(thingOf(ME.map.ents[i].type)); return true; }
         int d = doors::facing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
@@ -588,7 +591,8 @@ void cursorGuard() {
     bool walkingMap = A.screen == Screen::MapEditor && ME.walking;
     if (A.screen == Screen::Range) return;   // (the range keeps its own: Alt frees it)
     bool want = walkingMap;
-    if (walkingMap && shopActive()) want = gOpen < 0 && !gAskMissing && !A.showPause && !A.showSettings && !A.showTutorials;
+    if (walkingMap && radioWindowOpen()) want = false;
+    else if (walkingMap && shopActive()) want = gOpen < 0 && !gAskMissing && !A.showPause && !A.showSettings && !A.showTutorials;
     else if (walkingMap) want = !A.showPause && !A.showSettings && !A.showTutorials;
     if (want != IsCursorHidden()) { if (want) DisableCursor(); else EnableCursor(); }
 }

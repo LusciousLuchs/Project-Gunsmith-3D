@@ -1,4 +1,5 @@
 // Gunsmith3D - Gunsmith3D entry point: command line, window, main loop.
+#include "app/radio.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/pieces.hpp"
@@ -330,6 +331,7 @@ int main(int argc, char** argv) {
     while (!WindowShouldClose() && !A.quit) {
         perf::frameStart();
         cursorGuard();
+        radioTick();
         if (actPressed(Act::PerfOverlay)) perf::toggle();
         if (actPressed(Act::Fullscreen)) toggleFullscreenKey();
         if (CFG.uiScaleAuto && IsWindowResized()) setUiScale(autoUiScale(), false);   // (auto size follows the window)   // F3: the frame rate and what's slowing the game down
@@ -364,7 +366,7 @@ int main(int argc, char** argv) {
             rlImGuiBegin();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
-            else { rangeSpawnerWindow(); rangeGadgetWindow(); }
+            else { rangeSpawnerWindow(); rangeGadgetWindow(); radioWindow(); }
             toastOverlay();
             perf::overlay();
             rlImGuiEnd();
@@ -383,6 +385,7 @@ int main(int argc, char** argv) {
             rlImGuiBegin();
             if (!ME.walking) { mapToolbar(); mapPanel(); }
             if (shopActive()) shopWindows();   // (on foot: what you're using; building: the shop's checks)
+            if (ME.walking && !modal) radioWindow();
             tutorialPanel();
             if (A.showTutorials) tutorialsWindow();
             else if (modal) pauseMenu();
@@ -555,6 +558,7 @@ int main(int argc, char** argv) {
     if (A.saveDue && CFG.autosave != AutosaveEvery::Off) save();
     saveSettings();
     rlImGuiShutdown();
+    radioShutdown();
     if (SFX.ok) { UnloadSound(SFX.bang); UnloadSound(SFX.clack); UnloadSound(SFX.click); CloseAudioDevice(); }
     CloseWindow();
     return 0;

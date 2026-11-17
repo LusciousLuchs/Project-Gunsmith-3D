@@ -5,6 +5,7 @@
 // and leaves a mark where it lands. Recoil kicks the view by the cartridge's push against the gun's weight, a heavy gun
 // swings more slowly, and one held in one hand kicks more than one in the shoulder.
 #include "app/range.hpp"
+#include "app/radio.hpp"
 #include "app/doors.hpp"
 #include "app/furnish.hpp"
 #include "core/penetrate.hpp"
@@ -1133,6 +1134,19 @@ void rangeUpdate(float dt, bool modal) {
         holdFire = true; skipLook = true;
         return;
     }
+    radioListen(R.map, gmap::playerEye(R.pl, R.map), gmap::playerForward(R.pl));   // (radios on the range: heard from where you stand)
+    if (const char* e = std::getenv("GUNSMITH_RANGERADIO")) {   // (screenshots) the first radio's window open; its state printed
+        static int fr = 0;
+        int ri = -1; for (int i = 0; i < (int)R.map.ents.size(); i++) if (R.map.ents[i].type == "radio") { ri = i; break; }
+        if (ri >= 0 && ++fr == 2 && std::atoi(e) == 1) radioOpen(&R.map, ri);
+        if (ri >= 0 && fr % 60 == 0) { double l, r; radioLevels(l, r); std::printf("RADIO %s | %s | ears L %.4f R %.4f | yaw %.0f\n", radioState(R.map.ents[ri]).c_str(), radioSong(R.map.ents[ri]).c_str(), l, r, R.pl.yaw * 57.3); }
+    }
+    if (radioWindowOpen()) {   // tuning a radio: the mouse is for its window
+        if (IsCursorHidden()) EnableCursor();
+        if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); }
+        holdFire = true; skipLook = true;
+        return;
+    }
     if (R.spawnerOpen) {   // choosing a gun at a spawner: the mouse is for the list
         if (IsCursorHidden()) EnableCursor();
         if (A.S) { A.S->trigger = false; sim::setKey(*A.S, "fire", false); }
@@ -1255,7 +1269,12 @@ void rangeUpdate(float dt, bool modal) {
             }
             propUse = true;
         }
-        int door = (!propUse && ground < 0 && ammo < 0 && spawner < 0 && crate < 0) ? doors::facing(R.map, gmap::playerEye(R.pl, R.map), gmap::playerForward(R.pl)) : -1;
+        int radio = (!propUse && R.carry < 0 && lookProp < 0 && ground < 0 && ammo < 0 && spawner < 0 && crate < 0) ? radioFacing(R.map, gmap::playerEye(R.pl, R.map), gmap::playerForward(R.pl)) : -1;
+        if (radio >= 0) {
+            R.prompt = std::string(keyName(keyOf(Act::Use))) + ": the radio";
+            if (actPressed(Act::Use)) { radioOpen(&R.map, radio); EnableCursor(); return; }
+        }
+        int door = (!propUse && radio < 0 && ground < 0 && ammo < 0 && spawner < 0 && crate < 0) ? doors::facing(R.map, gmap::playerEye(R.pl, R.map), gmap::playerForward(R.pl)) : -1;
         if (door >= 0) R.prompt = std::string(keyName(keyOf(Act::Use))) + (doors::isOpen(R.map, door) ? ": shut the door" : ": open the door");
         if (door >= 0 && actPressed(Act::Use)) doors::toggle(R.map, door, R.pl.feet);
         else if (actPressed(Act::Use) && !propUse) {
@@ -1664,6 +1683,7 @@ static void drawRangeThings() {
     for (auto& e : R.map.ents) if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
     for (auto& e : R.map.ents) if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw);
     for (auto& e : R.map.ents) if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
+    for (auto& e : R.map.ents) if (e.type == "radio") drawRadio(rv(e.pos), (float)e.yaw, Color{0, 0, 0, 0}, e.playing);
     for (size_t i = 0; i < R.ground.size(); i++)   // guns lying on the floor, a shelf, a table
         drawDesignModel("ground:" + std::to_string(i), R.ground[i].d, gunItemMatrix(R.ground[i].d, R.ground[i].pos, R.ground[i].yaw));
     drawProps();

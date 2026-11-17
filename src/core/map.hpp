@@ -72,6 +72,10 @@ struct Entity {
     std::vector<Brush> parts;
     std::vector<Entity> items;
     double mass = 0;      // prop: kg (0: worked out from its size, as wood)
+    // radio (type "radio"): plays the internet station at `ref` (its link) out of where it stands; `label` is the
+    // station's name, `power` its volume (0..1), `range` how far it carries (m), `playing` on or off
+    std::string label;
+    bool playing = true;
     double width = 0.9;   // door: how wide the doorway is (m); its style is `ref`: wood, metal, glass. It stands at `pos`
                           // (the middle of the doorway's floor), facing along `yaw` when shut
 };

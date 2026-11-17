@@ -35,7 +35,7 @@ struct Settings {
     bool grid = true;                    // drafting grid behind the parts in the designer
     bool workbench = true;               // a bench, a few tools and a ruler under the gun in the designer, for scale
     // audio (0..1)
-    float volMaster = 0.8f, volGunfire = 1.0f, volMechanical = 1.0f, volInterface = 0.7f;
+    float volMaster = 0.8f, volGunfire = 1.0f, volMechanical = 1.0f, volInterface = 0.7f, volRadio = 0.8f;
     bool muteUnfocused = true;
     bool autoUpdate = true;              // fetch and install new versions from GitHub at start (Windows)
     // interface

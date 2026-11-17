@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station, Door, Target, Furniture, Prop };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station, Door, Target, Furniture, Prop, Radio };
 
 struct MapEd {
     std::string doorStyle = "wood";       // the Door tool: wood, metal, glass

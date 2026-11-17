@@ -48,6 +48,7 @@ void loadSettings() {
         CFG.volMaster = std::clamp(g("volMaster", d.volMaster), 0.f, 1.f);
         CFG.volGunfire = std::clamp(g("volGunfire", d.volGunfire), 0.f, 1.f);
         CFG.volMechanical = std::clamp(g("volMechanical", d.volMechanical), 0.f, 1.f);
+        CFG.volRadio = std::clamp(g("volRadio", d.volRadio), 0.f, 1.f);
         CFG.volInterface = std::clamp(g("volInterface", d.volInterface), 0.f, 1.f);
         CFG.muteUnfocused = g("muteUnfocused", d.muteUnfocused);
         CFG.autoUpdate = g("autoUpdate", d.autoUpdate);
@@ -85,7 +86,7 @@ void saveSettings() {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
         {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"shadows", CFG.shadows}, {"mapUnit", CFG.mapUnit}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
-        {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical},
+        {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical}, {"volRadio", CFG.volRadio},
         {"volInterface", CFG.volInterface}, {"muteUnfocused", CFG.muteUnfocused}, {"autoUpdate", CFG.autoUpdate},
         {"units", (int)CFG.units}, {"stats", (int)CFG.stats}, {"tooltips", CFG.tooltips}, {"hints", CFG.hints},
         {"colorblind", CFG.colorblind}, {"snap", CFG.snap}, {"snapOn", CFG.snapOn}, {"autosave", (int)CFG.autosave},

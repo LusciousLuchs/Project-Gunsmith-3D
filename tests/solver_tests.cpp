@@ -15,6 +15,7 @@
 #include "fitting.hpp"
 #include "hand.hpp"
 #include "kits.hpp"
+#include "netradio.hpp"
 #include "json.hpp"
 #include <algorithm>
 #include <array>
@@ -2882,6 +2883,34 @@ static void dayNightTest() {
 }
 // A round part rotated in the side view keeps its shape: its turning axis goes round with it (it used to stay level and
 // spin the turned outline into an hourglass)
+static void radioTest() {
+    std::printf("\n== radios\n");
+    CHECK(netradio::icyTitle("StreamTitle='Test Band - Song';StreamUrl='';") == "Test Band - Song", "the song title out of the station's note");
+    CHECK(netradio::icyTitle("nothing here").empty(), "no title when the note has none");
+    CHECK(netradio::playlistUrl("[playlist]\nNumberOfEntries=1\nFile1=https://ice1.example/stream\nTitle1=X\n") == "https://ice1.example/stream", "a .pls playlist's stream link");
+    CHECK(netradio::playlistUrl("#EXTM3U\n#EXTINF:-1,X\nhttp://a.example:8000/live\n") == "http://a.example:8000/live", "an .m3u playlist's stream link");
+    auto st = netradio::parseStations(R"([{"name":"A","url_resolved":"http://a/1","codec":"MP3","bitrate":128},
+        {"name":"B","url_resolved":"http://b/1","codec":"AAC"},{"name":"A again","url_resolved":"http://a/1","codec":"MP3"}])");
+    CHECK(st.size() == 1 && st[0].name == "A", "station search keeps MP3 stations, once each");
+    // where it's heard from
+    auto sp = [](double side, double front, double d, bool blocked = false) { return netradio::spatial(side, front, d, 1, 20, blocked); };
+    auto r = sp(5, 0, 5), l = sp(-5, 0, 5), c = sp(0, 1, 1);
+    CHECK(r.right > 2 * r.left && l.left > 2 * l.right, "a radio on your right is louder in the right ear (and left on the left)");
+    CHECK(std::fabs(c.left - c.right) < 1e-9 && c.left > 0.95, "straight ahead and close: both ears, full");
+    CHECK(sp(0, 8, 8).left < 0.6 * sp(0, 4, 4).left, "twice as far is about half as loud");
+    CHECK(sp(0, 25, 25).left == 0, "out of its reach: silent");
+    auto b = sp(0, 5, 5, true), o = sp(0, 5, 5);
+    CHECK(b.left < 0.5 * o.left && b.cutoff < 1000, "through a wall: quieter and muffled");
+    CHECK(sp(0, -5, 5).cutoff < 0.5 * o.cutoff, "from behind: duller");
+    // saved with the map
+    gmap::Map m; gmap::Entity e; e.type = "radio"; e.ref = "https://x.example/s"; e.label = "X"; e.power = 0.3; e.range = 12; e.playing = false;
+    m.ents.push_back(e);
+    gmap::Map m2;
+    CHECK(gmap::mapFromJson(gmap::mapToJson(m), m2) && m2.ents.size() == 1 && m2.ents[0].ref == e.ref && m2.ents[0].label == "X" &&
+          std::fabs(m2.ents[0].power - 0.3) < 1e-9 && std::fabs(m2.ents[0].range - 12) < 1e-9 && !m2.ents[0].playing, "a radio saves its station, volume, reach and on/off");
+    int radios = 0; for (auto& x : gmap::builtinRange().ents) if (x.type == "radio") radios++;
+    CHECK(radios == 1, "the practice range has a radio");
+}
 static void roundTurnTest() {
     std::printf("\n== round parts turned\n");
     BodyDef b; b.id = "bar"; b.round = true; b.thick = 10;
@@ -3160,6 +3189,7 @@ int main() {
         else if (o == "kitfit") kitFittingTest();
         else if (o == "daynight") dayNightTest();
         else if (o == "roundturn") roundTurnTest();
+        else if (o == "radio") radioTest();
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
@@ -3235,6 +3265,7 @@ int main() {
     kitFittingTest();
     dayNightTest();
     roundTurnTest();
+    radioTest();
     hollowParts();
     cheatsTest();
     furnitureTest();

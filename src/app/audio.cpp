@@ -1,4 +1,5 @@
 // Gunsmith3D - Sound effects: the owner's recordings (built in, from assets/sounds) and a few synthesised clicks.
+#include "app/radio.hpp"
 #include "app/app.hpp"
 #include "app/audio.hpp"
 
@@ -119,13 +120,14 @@ void playAction(double massKg, double speed, float vol) {
 
 void initSfx() {
     InitAudioDevice();
-    if (!IsAudioDeviceReady()) return;
+    if (!IsAudioDeviceReady()) { radioInit(); return; }   // (no sound card: radios say so; tests can still run their mix)
     SFX.bang = synth(0.45f, 9.f, 0.35f, 1.6f, 0);
     SFX.clack = synth(0.09f, 55.f, 0.8f, 0.7f, 1800);
     SFX.click = synth(0.05f, 90.f, 0.9f, 0.5f, 2600);
     SFX.tick = synth(0.03f, 160.f, 0.5f, 0.25f, 1200);
     SFX.ok = true;
     loadRecordings();
+    radioInit();
 }
 void uiTick() { if (SFX.ok && A.sound) PlaySound(SFX.tick); }
 // The action's sounds, chosen by how it moves, not by what kind of gun it is. Driven by the shot (a slide, a carrier:

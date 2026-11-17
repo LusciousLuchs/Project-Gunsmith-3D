@@ -543,6 +543,7 @@ void audioPage() {
     row("Master"); dirty |= pctSlider("##vm", CFG.volMaster);
     row("Gunfire"); dirty |= pctSlider("##vg", CFG.volGunfire);
     row("Mechanical", "Clicks and clacks of the action: slides, bolts, magazines, cases."); dirty |= pctSlider("##vk", CFG.volMechanical);
+    row("Radios", "Radios placed on maps and in your shop (internet stations)."); dirty |= pctSlider("##vr", CFG.volRadio);
     row("Interface"); dirty |= pctSlider("##vi", CFG.volInterface);
     ImGui::SeparatorText("Behaviour");
     row("Mute when in background"); dirty |= ImGui::Checkbox("##mu", &CFG.muteUnfocused);

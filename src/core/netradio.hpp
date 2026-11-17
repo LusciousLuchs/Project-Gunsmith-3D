@@ -30,6 +30,12 @@ private:
     std::shared_ptr<Impl> p_;
 };
 
+// How loud a radio is in each ear and how muffled. `side` (+ to the listener's right) and `front` (+ ahead) say where
+// it is (any length), `dist` how far (m); `blocked`: a wall or a shut door between. Gains are 0..1 per ear (equal-power
+// panning, 1 at the middle up close), `cutoff` the low-pass in Hz (20 kHz: clear).
+struct Spatial { double left = 0, right = 0, cutoff = 20000; };
+Spatial spatial(double side, double front, double dist, double volume, double reach, bool blocked);
+
 struct StationInfo { std::string name, url, tags, country, codec; int bitrate = 0; };
 // Fetches a whole small page (station search). Blocking: call it off the main thread.
 bool httpGet(const std::string& url, std::string& body, std::string* err = nullptr);

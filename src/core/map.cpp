@@ -1,5 +1,6 @@
 // Gunsmith3D - Maps (see map.hpp).
 #include "map.hpp"
+#include "netradio.hpp"
 #include "json.hpp"
 
 #include <algorithm>
@@ -424,6 +425,7 @@ static json entJ(const Entity& e) {
     if (e.type == "door") je["width"] = e.width;
     if (e.type == "target_paper" && e.ref == "moving") { je["travel"] = e.width; je["speed"] = e.range; }
     if (e.type == "light") je["light"] = {{"color", c3j(e.color)}, {"power", e.power}, {"range", e.range}, {"cone", e.cone}, {"pitch", e.pitch}};
+    if (e.type == "radio") je["radio"] = {{"label", e.label}, {"volume", e.power}, {"reach", e.range}, {"on", e.playing}};
     if (!e.parts.empty()) { json ps = json::array(); for (auto& b : e.parts) ps.push_back(brushJ(b)); je["parts"] = ps; }
     if (!e.items.empty()) { json is = json::array(); for (auto& k : e.items) is.push_back(entJ(k)); je["items"] = is; }
     if (e.mass > 0) je["mass"] = e.mass;
@@ -447,6 +449,13 @@ static Entity entFromJ(const json& je) {
         e.range = std::clamp(jl.value("range", 10.0), 0.5, 500.0);
         e.cone = std::clamp(jl.value("cone", 0.0), 0.0, 179.0);
         e.pitch = std::clamp(jl.value("pitch", -90.0), -90.0, 90.0);
+    }
+    if (je.contains("radio") && je["radio"].is_object()) {
+        auto& jr = je["radio"];
+        e.label = jr.value("label", "");
+        e.power = std::clamp(jr.value("volume", 0.6), 0.0, 1.0);
+        e.range = std::clamp(jr.value("reach", 20.0), 2.0, 200.0);
+        e.playing = jr.value("on", true);
     }
     if (je.contains("parts") && je["parts"].is_array())
         for (auto& jb : je["parts"]) { Brush b; if (brushFromJ(jb, b)) e.parts.push_back(b); }
@@ -892,6 +901,11 @@ Map builtinRange() {
         shelf.items.push_back(item("box", {0, 0.08, 0.1}, 0));
         shelf.items.push_back(item("bucket", {0, 1.34, 0.22}, 0));
         m.ents.push_back(shelf);
+        Entity radio;   // on top of the shelf: a radio playing an internet station (F at it to tune it or switch it off)
+        radio.type = "radio"; radio.pos = {-7.6, 1.78, -7.2}; radio.yaw = 0;
+        radio.ref = netradio::builtinStations()[0].url; radio.label = netradio::builtinStations()[0].name;
+        radio.power = 0.45; radio.range = 18; radio.playing = true;
+        m.ents.push_back(radio);
         Entity table = piece(builtinFurniture(), "table");
         table.pos = {-6.9, 0, -9.6}; table.yaw = 0;
         Entity g; g.type = "gun_item"; g.ref = "preset:tilting"; g.pos = {0.15, 0.9, -0.5}; g.yaw = 90; table.items.push_back(g);

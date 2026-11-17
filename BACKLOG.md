@@ -105,6 +105,12 @@ is up to them, and the game's own examples stay original.
 - [ ] **Port to the Foundry Engine** (the owner chose: later; graphics improve in the current game for now) (the owner's engine: LusciousLuchs/Foundry-Engine, C++20, Vulkan first, OpenGL fallback, Windows, Linux through Wine). Goal: better graphics and Vulkan. Its plan already includes a raylib-style compat layer so the game ports in steps. As of its first commit it has: a Win32 window and input with raylib's key codes, a Vulkan 1.3 device and swapchain drawing a triangle, and raylib's maths. Still to build before the game can run on it: meshes, textures and shaders through the RHI, the raylib drawing calls the game uses (DrawMesh, lines, spheres, 2D shapes, text), the lighting and shadows, and a Dear ImGui backend. The game's core (physics, designs, career, maps) moves across unchanged.
 - [ ] **Day and night on maps.** Each map chooses: a fixed time of day (for its mood) or a real cycle. Career: the clock runs through the business day and stops at 12 when the day is over.
 
+## Radio and browser (the owner's request, 0.8.36)
+
+- [x] **Radios on maps** with spatial sound playing internet radio (MP3 streams; search; paste a link) (0.8.36).
+- [ ] **AAC and Ogg stations** (a decoder for each).
+- [ ] **In-game browser** for Spotify / YouTube Music logins: Microsoft Edge's engine (WebView2, already on Windows 10/11) as a window over the game. Its sound comes out normally, not from a spot in the world; routing it through a radio needs capturing that window's sound (Windows' per-app loopback) and is untested.
+
 ## Next
 
 - **Firing range**: first person, walking the range with your gun, using its poses; weighty handling (inertia, sway, time to aim), holstering, recoil from the bench, live-fire jams from the measured jam rate.

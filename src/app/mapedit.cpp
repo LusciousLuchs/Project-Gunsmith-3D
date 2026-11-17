@@ -11,6 +11,7 @@
 #include "app/gfx.hpp"
 #include "app/keys.hpp"
 #include "app/mapgfx.hpp"
+#include "app/radio.hpp"
 #include "app/npcedit.hpp"
 #include "app/scene.hpp"
 #include "app/settings.hpp"
@@ -926,6 +927,18 @@ static void toolInput() {
             meChanged();
             break;
         }
+        case MTool::Radio: {   // a radio standing on the floor or a shelf, facing you
+            V3 p, n; int b, f;
+            if (!surfaceUnderMouse(p, n, b, f)) break;
+            meSnapshot();
+            gmap::Entity e = newRadio();
+            e.pos = {std::round(p.x * 100) / 100, floorBelow(p, n), std::round(p.z * 100) / 100};
+            e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
+            ME.map.ents.push_back(e);
+            ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
+            meChanged();
+            break;
+        }
         case MTool::Start: {
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
@@ -1114,6 +1127,7 @@ static void walkUpdate(float dt) {
         if (gWalkHour < 0) gWalkHour = ME.map.look.time;
         gWalkHour = std::fmod(gWalkHour + dt * 24.0 / (ME.map.look.dayMinutes * 60), 24.0);
     }
+    if (radioWindowOpen()) return;   // (tuning a radio: its window has the mouse; Esc closes it)
     if (shopActive() && shopWalkUpdate(dt)) return;   // (your shop in career mode: F uses things, B builds, Esc is the menu)
     if (IsKeyPressed(KEY_ESCAPE)) { stopWalking(); return; }
     Vector2 md = GetMouseDelta();
@@ -1132,7 +1146,12 @@ static void walkUpdate(float dt) {
     in.lean = (actDown(Act::LeanRight) ? 1 : 0) - (actDown(Act::LeanLeft) ? 1 : 0);
     gmap::playerStep(ME.pl, ME.map, in, dt);
     doors::step(ME.map, ME.pl, dt);
-    if (actPressed(Act::Use)) { int d = doors::facing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl)); if (d >= 0) doors::toggle(ME.map, d, ME.pl.feet); }
+    if (actPressed(Act::Use)) {
+        int r = radioFacing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
+        if (r >= 0) { radioOpen(&ME.map, r); return; }
+        int d = doors::facing(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
+        if (d >= 0) doors::toggle(ME.map, d, ME.pl.feet);
+    }
 }
 
 // ---------------------------------------------------------------- drawing
@@ -1240,8 +1259,9 @@ static const char* HINT[] = {
     "Click the floor (it stands at chest height) or a wall to place a paper target.",
     "Click the floor to place the furniture chosen in the panel, facing you. Click a wall to stand it with its back to the wall.",
     "Click any surface (a shelf, a table, the floor) to place the thing chosen in the panel. Players pick it up with F.",
+    "Click a floor, a shelf or a table to place a radio. Pick its station in the panel; on foot, F at it tunes it.",
 };
-static_assert(sizeof(HINT) / sizeof(HINT[0]) == (int)MTool::Prop + 1, "a hint for every tool");
+static_assert(sizeof(HINT) / sizeof(HINT[0]) == (int)MTool::Radio + 1, "a hint for every tool");
 
 static void drawEditor3D() {
     CamB b = camBasis();
@@ -1281,7 +1301,7 @@ static void drawEditor3D() {
                 bool wall = std::fabs(n.y) <= 0.7;
                 V3 at = ME.tool == MTool::Light ? p + n * (n.y > 0.7 ? 2.4 : 0.15)
                       : ME.tool == MTool::Target ? (n.y > 0.7 ? V3{snapG(p.x), p.y + 1.45, snapG(p.z)} : p + n * 0.01)
-                      : ME.tool == MTool::Prop ? V3{std::round(p.x * 100) / 100, floorBelow(p, n), std::round(p.z * 100) / 100}
+                      : ME.tool == MTool::Prop || ME.tool == MTool::Radio ? V3{std::round(p.x * 100) / 100, floorBelow(p, n), std::round(p.z * 100) / 100}
                       : V3{snapG(p.x), floorBelow(p, n), snapG(p.z)};
                 Color gc{120, 230, 200, 220};
                 double yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
@@ -1338,6 +1358,7 @@ static void drawEditor3D() {
         else if (e.type == "light") drawLampMarker(e, (int)i == ME.ent);
         else if (e.type.rfind("station_", 0) == 0 || e.type.rfind("shop_", 0) == 0 || gmap::isDisplay(e.type) || gmap::isDecor(e.type)) drawStation(e.type, rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
+        else if (e.type == "radio") drawRadio(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0}, e.playing);
         else if (e.type == "target_paper") drawPaperTargetMarker(e, (int)i == ME.ent);
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw, (int)i == ME.ent ? Color{255, 205, 60, 255} : Color{0, 0, 0, 0});
@@ -1428,6 +1449,8 @@ void mapEditorUpdate(float dt, bool modal) {
     if (careerZoned() && !(ME.face >= 0 && ME.sel.size() == 1))   // (the building's own walls can't be picked, only one face to paint)
         ME.sel.erase(std::remove_if(ME.sel.begin(), ME.sel.end(), [](int b) { return b < 0 || b >= (int)ME.map.brushes.size() || ME.map.brushes[b].locked; }), ME.sel.end());
     if (!modal) {
+        if (ME.walking) radioListen(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
+        else { CamB cb = camBasis(); radioListen(ME.map, ME.top ? ME.topC + V3{0, 1.6, 0} : ME.cam, cb.fwd); }
         if (ME.walking) walkUpdate(dt);
         else {
             if (shopActive() && IsKeyPressed(KEY_B) && !ImGui::GetIO().WantCaptureKeyboard) { shopWalk(); return; }   // (career: back on foot)
@@ -1486,6 +1509,7 @@ void mapEditorRender() {
         else if (e.type == "attachment_crate") drawAttachmentCrate(rv(e.pos), (float)e.yaw);
         else if (e.type == "ammo_box") drawAmmoBox(rv(e.pos), (float)e.yaw);
         else if (e.type == "weapon_crate") drawWeaponCrate(rv(e.pos), (float)e.yaw);
+        else if (e.type == "radio") drawRadio(rv(e.pos), (float)e.yaw, Color{0, 0, 0, 0}, e.playing);
         else if (e.type == "armor_plate") for (int k = 0; k < std::max(1, e.count); k++) drawArmorPlate(rv(e.pos + V3{0, 0.03 * k, 0}), (float)(e.yaw + 9 * k));
     }
     if (ME.walking) drawMapThings(ME.map, -1);

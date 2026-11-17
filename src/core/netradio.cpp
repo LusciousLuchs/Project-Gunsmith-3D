@@ -539,6 +539,28 @@ std::string Player::station() const { std::lock_guard<std::mutex> l(p_->m); retu
 bool Player::failed() const { std::lock_guard<std::mutex> l(p_->m); return p_->failed; }
 double Player::buffered() const { std::lock_guard<std::mutex> l(p_->m); return (double)p_->count / (2.0 * RATE); }
 
+// ---------------------------------------------------------------- where it's heard from
+Spatial spatial(double side, double front, double dist, double volume, double reach, bool blocked) {
+    Spatial s;
+    const double ref = 1.5;                                   // full loudness inside this
+    double g = dist <= ref ? 1.0 : ref / dist;                // falls off as 1/distance (6 dB each time it doubles)
+    g *= std::clamp((reach - dist) / (0.35 * reach), 0.0, 1.0);   // and fades out over the last third of its reach
+    g *= std::clamp(volume, 0.0, 1.0);
+    double l = std::hypot(side, front);
+    double pan = l > 1e-6 ? std::clamp(side / l, -1.0, 1.0) : 0.0;
+    pan *= std::clamp(dist / 1.0, 0.0, 1.0) * 0.85;          // (right on top of it: from both sides; never fully one ear)
+    double a = (pan + 1) * 0.7853981633974483;                // 0..pi/2
+    double behind = l > 1e-6 ? std::clamp(-front / l, 0.0, 1.0) : 0.0;
+    s.cutoff = 20000 - 13000 * behind;                        // from behind: duller (the head shades the highs)
+    g *= 1 - 0.15 * behind;
+    s.cutoff = std::min(s.cutoff, 20000.0 / (1 + dist / 60));   // far away: the air takes the highs
+    if (blocked) { g *= 0.4; s.cutoff = std::min(s.cutoff, 700.0); }   // through a wall: quieter and muffled
+    s.left = g * std::cos(a) * 1.41421356;
+    s.right = g * std::sin(a) * 1.41421356;
+    s.left = std::min(s.left, 1.0); s.right = std::min(s.right, 1.0);
+    return s;
+}
+
 // ---------------------------------------------------------------- stations
 const std::vector<StationInfo>& builtinStations() {
     static const std::vector<StationInfo> list = {

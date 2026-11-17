@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.36-alpha
+
+- **Radios.** Place a radio on any map or in your shop (the new Radio tool) and it plays an internet radio station out of where it stands. It's louder up close, comes from the side it's on as you turn, sounds duller from behind and muffled through walls and shut doors. Walk up and press F to tune it: a few built-in stations, a search of thousands of public stations by name or genre, or paste any stream link. It shows the song playing. Volume and how far it carries are per radio; there's also a Radios volume in Settings > Sound.
+- There's one playing on top of the shelf on the practice range.
+- MP3 stations only for now (most stations have one); AAC/Ogg stations say so. Spotify and YouTube Music will come with the in-game browser, next.
+
 ## 0.8.35-alpha
 
 - **Shop build mode only has shop tools.** Building your career shop no longer offers armour, ammo, NPCs, gun spawners, crates, targets or a player start. The Level editor no longer offers workstations (they only mean something in career mode).
