@@ -254,6 +254,7 @@ std::unique_ptr<Sim> build(const Design& design) {
     if (S->cheatForce) S->handStrength = 3000;   // (the unseen hand doesn't give up)
     S->design = design;
     syncBarrels(S->design);  // barrels drawn with the Barrel tool set the chambers and muzzles
+    S->fcgOk = hasFireControl(S->design);
     Sim& s = *S;
     s.world.id = "world";
     s.bodies.reserve(s.design.bodies.size() + MAX_SPAWNED);  // body pointers must stay valid as magazines and rounds spawn
@@ -1547,7 +1548,7 @@ void substep(Sim& S) {
             // An open bolt: the trigger lets the bolt off the sear; it fires the round it closes on.
             bool burst = br.fireMode == "burst", full = br.fullAuto();
             double at = searPoint(br);
-            if (!S.trigger) S.pressed = false;   // (a pull is kept until it's acted on, or the trigger is let go)
+            if (!S.trigger || !S.fcgOk || br.fireMode == "safe") S.pressed = false;   // (a pull is kept until it's acted on, or let go; on safe or with no fire control it does nothing)
             bool fresh = S.pressed;
             bool pulled = true;
             for (auto& p : S.pushers) {  // a trigger part bound to FIRE has to be pulled 2 mm first
@@ -1556,7 +1557,7 @@ void substep(Sim& S) {
                 pulled = (w.x - w0.x) * p.dx + (w.y - w0.y) * p.dy >= 0.002;
                 break;
             }
-            if (S.searHeld && pulled && (fresh || (S.trigger && full)) && S.t > S.fireT + dur * 2) {
+            if (S.searHeld && pulled && S.fcgOk && br.fireMode != "safe" && (fresh || (S.trigger && full)) && S.t > S.fireT + dur * 2) {
                 S.searHeld = false; S.boltFree = true; S.searUp = false; S.homeT = -1; S.pressed = false;
                 if (burst) S.burstLeft = std::max(1, br.burst);
             }
@@ -1609,6 +1610,7 @@ void substep(Sim& S) {
             };
             if (S.igniteAt >= 0 && S.t >= S.igniteAt) ignite();
             bool burst = br.fireMode == "burst", full = br.fullAuto();
+            if (!S.fcgOk || br.fireMode == "safe") { S.pressed = false; S.burstLeft = 0; full = burst = false; }   // (no fire control group, or on safe: the trigger does nothing)
             // a held trigger keeps firing in full-auto, and until the burst is spent; a fresh pull is needed otherwise
             bool want = S.pressed || (S.trigger && (chamberCount(S) == 1 ? S.chambered : anyChambered(S)) && (full || (burst && S.burstLeft > 0)));
             if (want && S.igniteAt < 0 && S.t > S.fireT + dur * 2) {

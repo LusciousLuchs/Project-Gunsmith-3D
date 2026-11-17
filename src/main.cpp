@@ -160,6 +160,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     SetWindowMinSize(960, 600);
+    setGameIcon();
     SetExitKey(KEY_NULL);
     if (!frames && (CFG.windowMode != WindowMode::Windowed || CFG.monitor != 0)) applyDisplay();
     SetTargetFPS(CFG.fpsCap);
@@ -447,10 +448,10 @@ int main(int argc, char** argv) {
         if (menu) {
             BeginDrawing();
             ClearBackground(Color{14, 16, 19, 255});
-            DrawRectangleGradientV(0, 0, GetScreenWidth(), A.vh, Color{40, 46, 56, 255}, Color{16, 18, 22, 255});
-            { perf::Scope t(perf::Scene); beginViewport3D(); drawScene(); endViewport3D(); }
-            // darken the left, where the menu sits, more than the right
-            DrawRectangleGradientH(0, 0, GetScreenWidth(), A.vh, Color{10, 11, 13, 240}, Color{10, 11, 13, 40});
+            if (!CFG.menuPicture) {   // (with the workshop picture, the menu draws that instead)
+                DrawRectangleGradientV(0, 0, GetScreenWidth(), A.vh, Color{40, 46, 56, 255}, Color{16, 18, 22, 255});
+                { perf::Scope t(perf::Scene); beginViewport3D(); drawScene(); endViewport3D(); }
+            }
             rlImGuiBegin();
             mainMenu();
             toastOverlay();
@@ -500,7 +501,7 @@ int main(int argc, char** argv) {
         endViewport3D();
         }
         if (A.posing) drawPoseOverlay(); else { drawOverlay(); drawFitOverlay(); }
-        if (A.mode == Mode::Test) DrawRectangleLinesEx({0, TOOLBAR_H, (float)A.vw, (float)A.vh}, 2, Color{232, 161, 58, 90});
+        if (A.mode == Mode::Test) DrawRectangleLinesEx({0, TOOLBAR_H, (float)A.vw, (float)A.vh}, 2, Color{238, 122, 32, 90});
 
         rlImGuiBegin();
         editedAny = false;

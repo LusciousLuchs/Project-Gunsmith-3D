@@ -19,6 +19,7 @@ enum class Act {
     Gadgets, Melee,
     SlideRelease,
     Ready, PointShoot, Holster,
+    Selector,
     Count
 };
 

@@ -6,7 +6,11 @@ A gunsmithing sandbox. Design firearm actions part by part, join them with pins,
 
 A desktop app in C++ with raylib (3D) and Dear ImGui (editor panels). It is built for Windows (an installer, or a zip with the single .exe) and Linux (a native build with a one-line installer).
 
-## Run it
+## Install and run
+
+**Windows:** download `Gunsmith3D-Setup.exe` from the [latest release](https://github.com/LusciousLuchs/Project-Gunsmith-3D/releases/latest) and run it.
+**Linux:** `curl -fsSL https://github.com/LusciousLuchs/Project-Gunsmith-3D/releases/latest/download/install-linux.sh | bash`.
+Either way the game keeps itself up to date. Details:
 
 - **Windows 10/11, the installer:** download `Gunsmith3D-Setup.exe` from the Releases page and run it. It installs for your Windows account only (into `AppData\Local\Programs\Gunsmith3D`, no administrator prompt), adds a Start menu entry (and a desktop shortcut if you leave it ticked) and an entry in Settings > Apps for uninstalling. After that the game updates itself. It is unsigned, so SmartScreen may ask you to confirm ("More info" > "Run anyway").
 - **Windows 10/11, the zip:** unzip it anywhere you can write to and run `gunsmith3d.exe`. It updates itself the same way.

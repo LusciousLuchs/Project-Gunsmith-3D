@@ -61,6 +61,7 @@ static const ActInfo ACTS[(int)Act::Count] = {
     {"ready", "Carry the gun: high ready / low ready / back", "First person", KEY_X, false},
     {"pointshoot", "Point shooting (hold; the middle mouse button does it too)", "First person", 0, false},
     {"holster", "Holster / draw the gun", "First person", KEY_H, false},
+    {"selector", "Turn the selector (safe / semi / burst / auto)", "Test bench", KEY_J, false},
 };
 
 const ActInfo& actInfo(Act a) { return ACTS[(int)a]; }

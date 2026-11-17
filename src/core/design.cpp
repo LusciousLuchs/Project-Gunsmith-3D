@@ -1001,6 +1001,7 @@ std::string designToJson(const Design& d, bool pretty) {
     o["savedWith"] = std::string("Gunsmith3D ") + version::text();
     o["name"] = d.name;
     o["speed"] = d.speed;
+    if (d.fcgRequired) o["fcgRequired"] = true;
     o["friction"] = d.friction;
     o["bodies"] = json::array();
     for (auto& b : d.bodies) {
@@ -1008,6 +1009,7 @@ std::string designToJson(const Design& d, bool pretty) {
                    {"thick", b.thick}, {"z", b.z}, {"color", b.color}, {"damp", b.damp}, {"ghost", b.ghost}};
         if (b.smooth > 0) jb["smooth"] = b.smooth;
         if (b.bolt) jb["bolt"] = true;
+        if (b.fcg) jb["fcg"] = true;
         if (!b.weld.empty()) jb["weld"] = b.weld;
         if (depthShaped(b)) {
             json a = json::array();
@@ -1141,6 +1143,7 @@ std::string designToJson(const Design& d, bool pretty) {
                    {"hammer", r.hammer}, {"cockAt", r.cockAt}, {"fireMode", r.fireMode}, {"burst", r.burst},
                    {"doubleAction", r.doubleAction}, {"lockTime", r.lockTime}};
         jb["auto"] = r.fullAuto();
+        if (!r.selector.empty()) jb["selector"] = r.selector;
         jb["face"] = r.hasFace ? v2j(r.face) : json(nullptr);
         jb["muzzle"] = r.hasMuzzle ? v2j(r.muzzle) : json(nullptr);
         if (!r.more.empty()) {
@@ -1267,6 +1270,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
     d.savedWith = opt<std::string>(o, "savedWith", "");
     d.name = opt<std::string>(o, "name", "Untitled action");
     d.speed = opt<double>(o, "speed", 0.02);
+    d.fcgRequired = opt<bool>(o, "fcgRequired", false);
     d.friction = opt<double>(o, "friction", 0.12);
     int n = 0;
     for (auto& jb : o["bodies"]) {
@@ -1285,6 +1289,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.ghost = opt<bool>(jb, "ghost", b.fixed);
         b.smooth = std::clamp(opt<double>(jb, "smooth", 0.0), 0.0, 1.0);
         b.bolt = opt<bool>(jb, "bolt", false);
+        b.fcg = opt<bool>(jb, "fcg", false);
         b.weld = opt<std::string>(jb, "weld", "");
         b.mirror = opt<std::string>(jb, "mirror", "");
         b.mirrorKind = opt<std::string>(jb, "mirrorKind", "depth");
@@ -1509,7 +1514,10 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         r.hammer = opt<std::string>(jb, "hammer", "striker");
         r.cockAt = opt<double>(jb, "cockAt", 0);   // older blueprints: always cocked, as before
         r.fireMode = opt<std::string>(jb, "fireMode", r.autoFire ? "auto" : "semi");
-        if (r.fireMode != "semi" && r.fireMode != "auto" && r.fireMode != "burst") r.fireMode = "semi";
+        if (r.fireMode != "semi" && r.fireMode != "auto" && r.fireMode != "burst" && r.fireMode != "safe") r.fireMode = "semi";
+        r.selector.clear();
+        if (jb.contains("selector") && jb["selector"].is_array())
+            for (auto& s : jb["selector"]) if (s.is_string()) { std::string m = s.get<std::string>(); if (m == "safe" || m == "semi" || m == "burst" || m == "auto") r.selector.push_back(m); }
         r.autoFire = r.fireMode == "auto";
         r.burst = std::max(2, opt<int>(jb, "burst", 3));
         r.doubleAction = opt<bool>(jb, "doubleAction", false);
@@ -1806,3 +1814,16 @@ const MaterialInfo& materialOf(const std::string& id) {
 double densityOf(const BodyDef& b) { return materialOf(b.material).density * 1e-6; }
 
 int magStackOf(const BodyDef& b) { return b.magStack ? b.magStack : (b.gen.on ? b.gen.stack : 1); }
+
+bool hasFireControl(const Design& d, std::string* why) {
+    if (!d.breech.on || !d.fcgRequired || d.breech.ignition == "striker") return true;
+    for (auto& b : d.bodies) if (b.fcg) return true;
+    if (why) *why = "No fire control group: tick Fire control group on a part (the trigger, say), or draw the trigger, sear and hammer.";
+    return false;
+}
+std::string nextSelector(const BreechDef& b) {
+    if (b.selector.empty()) return "";
+    auto it = std::find(b.selector.begin(), b.selector.end(), b.fireMode);
+    if (it == b.selector.end() || ++it == b.selector.end()) return b.selector.front();
+    return *it;
+}

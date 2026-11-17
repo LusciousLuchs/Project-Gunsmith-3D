@@ -39,7 +39,7 @@ struct TutState {
     int tubeRounds = 0;                  // rounds in built-in magazines (a tube)
     int carves = 0, carvesAcross = 0, carvesThrough = 0;  // cuts; cuts not made from the near or far side; right-through cuts
     bool carveTool = false;
-    bool breechOn = false, hasFace = false, hasMuzzle = false, chamberOk = false, handFeed = false;
+    bool breechOn = false, hasFace = false, hasMuzzle = false, chamberOk = false, handFeed = false, fireControl = false;
     // the building tools
     int tool = 0, barrels = 0, mirrors = 0, marks = 0, shapedDepth = 0, textured = 0;
     bool measured = false;
@@ -76,6 +76,7 @@ static TutState snapshot() {
         int ci = D.bodyIndex(br.chamber);
         t.chamberOk = br.on && ci >= 0 && D.bodies[ci].fixed && br.chamber != "frame";
         t.handFeed = br.on && br.feedMode == "single" && br.physicalFeed;
+        t.fireControl = br.on && hasFireControl(D);
     }
     for (auto& j : D.joints) {
         if (j.type == "pin") t.pins++;
@@ -205,6 +206,7 @@ static bool muzzleSet(const TutState&, const TutState& n) { return n.hasMuzzle; 
 static bool chamberSet(const TutState&, const TutState& n) { return n.chamberOk; }
 static bool handFed(const TutState&, const TutState& n) { return n.handFeed; }
 static bool reloaded(const TutState&, const TutState& n) { return n.mode == Mode::Test && n.chambered; }
+static bool fcgSet(const TutState&, const TutState& n) { return n.fireControl; }
 
 // "Do it for me": each makes its piece where it fits whatever is already there (the player's own parts, if drawn)
 struct Box { double x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; double cx() const { return (x0 + x1) / 2; } double cy() const { return (y0 + y1) / 2; } };
@@ -254,6 +256,12 @@ static void helpFace() {
 static void helpMuzzle() { auto& br = A.design.breech; if (!br.on) helpFace(); Box bb = barrelBox(); br.muzzle = {bb.x1, bb.cy()}; br.hasMuzzle = true; if (A.tool == Tool::Muzzle) A.tool = Tool::Select; commit(); }
 static void helpChamber() { auto& br = A.design.breech; if (!br.on) helpFace(); int b = barrelPart(); if (b >= 0) br.chamber = A.design.bodies[b].id; commit(); }
 static void helpFeed() { auto& br = A.design.breech; if (!br.on) helpFace(); br.feedMode = "single"; br.physicalFeed = true; br.loaded = true; commit(); }
+static void helpFcg() {   // the frame carries the fire control group (the trigger, sear and hammer, nothing drawn)
+    for (auto& b : A.design.bodies) b.fcg = b.id == "frame";
+    bool any = false; for (auto& b : A.design.bodies) any |= b.fcg;
+    if (!any) for (auto& b : A.design.bodies) if (b.fixed) { b.fcg = true; break; }
+    A.design.breech.ignition = "button";
+}
 static void helpEjector() {
     int i = boltPart();
     if (i < 0) return;
@@ -368,6 +376,7 @@ static const std::vector<Lesson>& lessons() {
         Step("The chamber", "Set Chamber to your barrel, so the round goes into the barrel and not the frame.").check(chamberSet, "Choose the barrel as the chamber").at("firing:chamber").onTab(2).doIt(helpChamber),
         Step("Loaded by hand", "Set Feeds from to Loaded by hand, and tick Physical rounds so the round and its empty case are real objects.").check(handFed, "Loaded by hand, physical rounds").at("firing:feeding|firing:physical").onTab(2).doIt(helpFeed),
         Step("The ejector", "Draw a small block just under the bolt's bottom edge, near the back end of its travel, and tick Fixed. As the bolt flies back, the bottom of the case's rim hits it and the case flips out.").check(newFixed, "Draw the ejector and tick Fixed").at("tool:Rectangle|part:fixed").onTab(0).doIt(helpEjector),
+        Step("The trigger", "A gun needs fire control: a trigger, a sear and a hammer or striker. You can draw them all, or let a part carry them. Click the frame and tick Fire control group (in the Part section).").check(fcgSet, "Tick Fire control group on the frame").at("part:fixed").onTab(0).doIt(helpFcg),
         Step("Fire!", "Go to the test bench and press Space. Watch the bolt blow open and the empty case fly out (the shot is slowed down for you).").check(fired, "Press Space on the test bench").at("mode:test|fire"),
         Step("Load the next round", "Grab one of the rounds lying on the bench (L adds more). Drag it into the open action, just in front of the bolt and in line with the barrel: it snaps into place. Then drag the bolt forward to close it.").check(reloaded, "Load a round and close the bolt").bench(),
         Step("Fire again", "You built a working gun. Fire it again!\n\nIdeas for next time: a spring to close the bolt by itself (then you'll need a catch to hold it open while you load), a magazine, or a trigger you draw.").check(fired, "Fire").at("fire"),
@@ -640,7 +649,7 @@ void tutorialPanel() {
     if (A.tutStep > 0) { if (ImGui::Button(ICON_FA_ARROW_LEFT)) { uiTick(); enterStep(A.tutStep - 1); } ImGui::SameLine(); }
     bool next = false;
     bool primary = !st.tryIt || gStepDone;   // a step that only explains: Next is the thing to press
-    if (primary) { ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.91f, 0.63f, 0.23f, 0.85f)); ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 0.07f, 0.02f, 1)); }
+    if (primary) { ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.93f, 0.48f, 0.13f, 0.85f)); ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 0.07f, 0.02f, 1)); }
     if (ImGui::Button(last ? "Finish  " ICON_FA_CHECK : (primary ? "Next  " ICON_FA_ARROW_RIGHT : "Skip  " ICON_FA_ARROW_RIGHT))) next = true;
     if (primary) ImGui::PopStyleColor(2);
     ImGui::SameLine(w - 16 * s - ImGui::CalcTextSize("Lessons").x - ImGui::CalcTextSize(ICON_FA_XMARK).x - 4 * ImGui::GetStyle().FramePadding.x - ImGui::GetStyle().ItemSpacing.x);

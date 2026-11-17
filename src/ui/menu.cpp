@@ -1,5 +1,6 @@
 // Gunsmith3D - Main menu, pause menu, settings, and choosing a gun for the test bench.
 #include "app/paths.hpp"
+#include "extras/IconsFontAwesome6.h"
 #include "app/app.hpp"
 #include "app/npcedit.hpp"
 #include "app/careermode.hpp"
@@ -32,24 +33,47 @@ namespace fs = std::filesystem;
 static float S() { return CFG.uiScale; }
 static const char* DISCORD_URL = "https://discord.gg/nHpYEKRjdn";   // the community server (a permanent invite)
 
-// A big text-only menu entry: dim until hovered, then bright with a short amber bar beside it.
-static bool menuItem(const char* label, bool enabled = true, const char* note = nullptr) {
+// A main menu entry, in the style of the owner's mockup: an icon and the name in capitals; hovered, an orange bar with a
+// slanted end behind it. A small note can follow the name.
+static bool menuItem(const char* icon, const char* label, bool enabled = true, const char* note = nullptr, bool open = false, const char* after = nullptr) {
     ImGui::PushID(label);
-    float h = 40 * S(), w = 360 * S();
+    float h = 50 * S(), w = 420 * S();
     ImVec2 p = ImGui::GetCursorScreenPos();
     bool clicked = ImGui::InvisibleButton("##m", {w, h}) && enabled;
     bool hov = ImGui::IsItemHovered() && enabled;
     auto* dl = ImGui::GetWindowDrawList();
-    if (hov) dl->AddRectFilled({p.x, p.y + 10 * S()}, {p.x + 3 * S(), p.y + h - 10 * S()}, ImGui::GetColorU32(colAccent()));
-    ImGui::PushFont(gFontBold, 22.0f);
-    ImU32 col = !enabled ? IM_COL32(110, 115, 125, 255) : hov ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 204, 212, 255);
-    float fs = ImGui::GetFontSize();
-    dl->AddText({p.x + 16 * S(), p.y + (h - fs) / 2}, col, label);
-    float lw = ImGui::CalcTextSize(label).x;
+    if (hov || open) {   // the bar: square on the left, cut at a slant on the right
+        float sl = h * 0.75f;
+        ImU32 c0 = IM_COL32(238, 122, 32, hov ? 235 : 120), c1 = IM_COL32(200, 92, 18, hov ? 235 : 120);
+        dl->AddRectFilledMultiColor({p.x, p.y + 3 * S()}, {p.x + w - sl, p.y + h - 3 * S()}, c0, c1, c1, c0);
+        dl->AddTriangleFilled({p.x + w - sl, p.y + 3 * S()}, {p.x + w, p.y + 3 * S()}, {p.x + w - sl, p.y + h - 3 * S()}, c1);
+    }
+    ImU32 col = !enabled ? IM_COL32(110, 115, 125, 255) : hov ? IM_COL32(255, 255, 255, 255) : IM_COL32(214, 218, 226, 255);
+    ImU32 icol = !enabled ? IM_COL32(90, 95, 105, 255) : hov ? IM_COL32(255, 255, 255, 255) : IM_COL32(176, 182, 192, 255);
+    ImGui::PushFont(nullptr, 22.0f);
+    float ifs = ImGui::GetFontSize();
+    float iw = ImGui::CalcTextSize(icon).x;
+    dl->AddText({p.x + 30 * S() + (28 * S() - iw) / 2, p.y + (h - ifs) / 2}, icol, icon);
     ImGui::PopFont();
-    if (note) {
+    std::string up = label;
+    for (auto& ch : up) ch = (char)std::toupper((unsigned char)ch);
+    ImGui::PushFont(gFontBold, 21.0f);
+    float fs = ImGui::GetFontSize(), x = p.x + 82 * S();
+    for (const char* c = up.c_str(); *c; c++) {   // (a little letter-spacing, like the logo's lettering)
+        dl->AddText({x, p.y + (h - fs) / 2}, col, c, c + 1);
+        x += ImGui::CalcTextSize(c, c + 1).x + 1.2f * S();
+    }
+    ImGui::PopFont();
+    if (after) {   // (an icon after the name: a submenu's arrow)
+        ImGui::PushFont(nullptr, 18.0f);
+        float afs = ImGui::GetFontSize();
+        dl->AddText({x + 10 * S(), p.y + (h - afs) / 2}, col, after);
+        ImGui::PopFont();
+        x += 30 * S();
+    }
+    if (note && !hov) {
         float nfs = ImGui::GetFontSize();
-        dl->AddText({p.x + 16 * S() + lw + 12 * S(), p.y + (h - nfs) / 2 + 2 * S()}, IM_COL32(120, 126, 136, 255), note);
+        dl->AddText({x + 12 * S(), p.y + (h - nfs) / 2 + 2 * S()}, IM_COL32(150, 156, 166, 220), note);
     }
     if (clicked) uiTick();
     ImGui::PopID();
@@ -117,14 +141,27 @@ void whatsNew() {
     if (R.empty()) return;
     float w = std::min(440 * S(), GetScreenWidth() * 0.36f), m = 24 * S();
     static bool older = false;
+    static int open = -1;   // (shut, open; first time: open if this version's notes haven't been seen)
+    if (open < 0) open = CFG.seenVersion != version::text() ? 1 : 0;
     ImGui::SetNextWindowPos({GetScreenWidth() - w - m, m});
     ImGui::SetNextWindowSize({w, older ? GetScreenHeight() - 2 * m : 0});
     ImGui::SetNextWindowSizeConstraints({w, 0}, {w, GetScreenHeight() * (older ? 1.0f : 0.62f) - 2 * m});
-    ImGui::SetNextWindowBgAlpha(0.82f);
+    ImGui::SetNextWindowBgAlpha(0.88f);
     ImGui::Begin("##whatsnew", nullptr, PLAIN | (older ? 0 : ImGuiWindowFlags_AlwaysAutoResize));
-    ImGui::PushFont(gFontBold, 18.0f);
-    ImGui::Text("What's new in %s", R[0].title.c_str());
-    ImGui::PopFont();
+    {   // the card's head: the version and "What's new", an orange edge down its left
+        ImVec2 wp = ImGui::GetWindowPos(), ws = ImGui::GetWindowSize();
+        ImGui::GetWindowDrawList()->AddRectFilled(wp, {wp.x + 4 * S(), wp.y + ws.y}, IM_COL32(238, 122, 32, 255));
+        ImGui::PushFont(gFontBold, 19.0f);
+        ImGui::Text("v%s", R[0].title.c_str());
+        ImGui::PopFont();
+        ImGui::TextDisabled("What's new");
+        ImGui::SameLine(w - 52 * S());
+        if (ImGui::SmallButton(open ? ICON_FA_CHEVRON_UP : ICON_FA_CHEVRON_DOWN)) {
+            open = !open;
+            if (!open) { older = false; CFG.seenVersion = version::text(); saveSettings(); }
+        }
+        if (!open) { ImGui::End(); return; }
+    }
     ImGui::Separator();
     releaseText(R[0]);
     ImGui::Dummy({0, 6 * S()});
@@ -202,43 +239,59 @@ void mainMenu() {
     if (A.showRangePicker) { rangePicker(); return; }
     if (A.showAbout) { aboutWindow(); return; }
     if (A.showCareerPicker) { careerPicker(); return; }
+    float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+    ImDrawList* bg = ImGui::GetBackgroundDrawList();
+    float panelW = std::min(520 * S(), W * 0.42f);
+    if (CFG.menuPicture) {   // the workshop picture on the right, the menu's dark panel fading into it on the left
+        Texture2D pic = artTexture(Art::MenuBackground);
+        drawCover(bg, pic, {panelW * 0.55f, 0}, {W, H}, 0.35f);
+    }
+    bg->AddRectFilled({0, 0}, {panelW * 0.62f, H}, IM_COL32(17, 20, 25, CFG.menuPicture ? 250 : 200));
+    bg->AddRectFilledMultiColor({panelW * 0.62f, 0}, {panelW * 1.35f, H}, IM_COL32(17, 20, 25, CFG.menuPicture ? 250 : 200), IM_COL32(17, 20, 25, 0),
+                                IM_COL32(17, 20, 25, 0), IM_COL32(17, 20, 25, CFG.menuPicture ? 250 : 200));
     ImGui::SetNextWindowPos({0, 0});
-    ImGui::SetNextWindowSize({(float)GetScreenWidth(), (float)GetScreenHeight()});
+    ImGui::SetNextWindowSize({W, H});
     ImGui::SetNextWindowBgAlpha(0);
     ImGui::Begin("##menu", nullptr, PLAIN | ImGuiWindowFlags_NoBringToFrontOnFocus);
-    float x = 72 * S(), y = GetScreenHeight() * 0.22f;   // (high enough that the whole list clears the version line)
-    ImGui::SetCursorPos({x, y});
-    ImGui::PushFont(gFontBold, 46.0f);
-    ImGui::TextUnformatted("GUNSMITH3D");
-    ImGui::PopFont();
-    ImGui::SetCursorPosX(x + 2 * S());
-    ImGui::TextDisabled("Firearm design workshop");
-    ImGui::Dummy({0, 30 * S()});
-    ImGui::SetCursorPosX(x - 16 * S());
+    float x = 44 * S();
+    {   // the logo
+        Texture2D logo = artTexture(Art::MenuLogo);
+        float lw = 400 * S(), lh = logo.id ? lw * logo.height / logo.width : 0;
+        float ly = std::max(16 * S(), std::min(H * 0.05f, H - (lh + 14 * 50 * S() + 90 * S())));
+        if (logo.id) ImGui::GetWindowDrawList()->AddImage((ImTextureID)(intptr_t)logo.id, {x, ly}, {x + lw, ly + lh});
+        else {
+            ImGui::SetCursorPos({x, ly});
+            ImGui::PushFont(gFontBold, 46.0f); ImGui::TextUnformatted("GUNSMITH 3D"); ImGui::PopFont();
+            lh = 60 * S();
+        }
+        float sy = ly + lh + 10 * S();
+        ImGui::GetWindowDrawList()->AddLine({x + 20 * S(), sy}, {x + 380 * S(), sy}, IM_COL32(255, 255, 255, 40), 1.0f);
+        ImGui::SetCursorPos({0, sy + 12 * S()});
+    }
     ImGui::BeginGroup();
-    if (menuItem("Tutorials", true, tutorialsDoneCount() == 0 ? "start here" : nullptr)) A.showTutorials = true;
-    if (menuItem("Career", true, careerExists() ? "carry on, or start another" : "start your gun business")) A.showCareerPicker = true;
-    if (menuItem("Sandbox")) enterWorkshop(false);
-    if (menuItem("Firing range")) A.showRangePicker = true;
-    if (menuItem("Your character", true, "who holds your guns")) enterCharacterEditor();
+    if (menuItem(ICON_FA_GRADUATION_CAP, "Tutorials", true, tutorialsDoneCount() == 0 ? "start here" : nullptr)) A.showTutorials = true;
+    if (menuItem(ICON_FA_BRIEFCASE, "Career", true, careerExists() ? "carry on" : "start your business")) A.showCareerPicker = true;
+    if (menuItem(ICON_FA_CUBE, "Sandbox")) enterWorkshop(false);
+    if (menuItem(ICON_FA_CROSSHAIRS, "Firing range")) A.showRangePicker = true;
+    if (menuItem(ICON_FA_USERS, "Your character")) enterCharacterEditor();
     {   // the tools for making places to shoot and things to shoot at
         static bool mapTools = false;
-        if (menuItem(mapTools ? "Map editing tools  -" : "Map editing tools  +")) mapTools = !mapTools;
+        if (menuItem(ICON_FA_SCREWDRIVER_WRENCH, "Tools", true, mapTools ? nullptr : "level editor, NPCs, test bench", mapTools, mapTools ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT)) mapTools = !mapTools;
         if (mapTools) {
-            ImGui::Indent(22 * S());
-            if (menuItem("Level editor", true, "build maps")) enterMapEditor();
-            if (menuItem("NPC editor", true, "build enemies")) enterNpcEditor();
-            ImGui::Unindent(22 * S());
+            ImGui::Indent(40 * S());
+            if (menuItem(ICON_FA_MAP, "Level editor", true, "build maps")) enterMapEditor();
+            if (menuItem(ICON_FA_GHOST, "NPC editor", true, "build enemies")) enterNpcEditor();
+            if (menuItem(ICON_FA_FLASK, "Test bench", true, "any gun")) A.showBenchPicker = true;
+            ImGui::Unindent(40 * S());
         }
     }
-    if (menuItem("Test bench")) A.showBenchPicker = true;
-    if (menuItem("Settings")) A.showSettings = true;
-    if (menuItem("Discord", true, "join the community")) OpenURL(DISCORD_URL);
-    if (menuItem("About", true, "version, graphics")) A.showAbout = true;
-    if (menuItem("Quit")) A.quit = true;
+    if (menuItem(ICON_FA_GEAR, "Settings")) A.showSettings = true;
+    if (menuItem(ICON_FA_COMMENTS, "Discord", true, "join the community")) OpenURL(DISCORD_URL);
+    if (menuItem(ICON_FA_CIRCLE_INFO, "About")) A.showAbout = true;
+    if (menuItem(ICON_FA_POWER_OFF, "Quit")) A.quit = true;
     ImGui::EndGroup();
-    ImGui::SetCursorPos({x, GetScreenHeight() - 34 * S()});
-    ImGui::TextDisabled("%s", version::text());
+    ImGui::SetCursorPos({x, H - 34 * S()});
+    ImGui::TextDisabled("Gunsmith 3D  v%s", version::text());
 #ifndef _WIN32
     ImGui::SameLine(0, 14 * S());
     ImGui::TextDisabled(CFG.autoUpdate ? "Updates itself each time it starts" : "Updates: gunsmith3d --update");   // (Linux: the launcher does it)
@@ -555,6 +608,14 @@ void audioPage() {
 }
 
 void interfacePage() {
+    ImGui::SeparatorText("Look");
+    row("Title splash", "The Gunsmith 3D picture when the game starts (after the studio's). A key or a click skips it.");
+    if (ImGui::Checkbox("##titlesplash", &CFG.titleSplash)) saveSettings();
+    row("Main menu background", "The workshop picture, or your last gun turning in 3D.");
+    {
+        int k = CFG.menuPicture ? 0 : 1;
+        if (ImGui::Combo("##menupic", &k, "The workshop\0Your gun in 3D\0")) { CFG.menuPicture = k == 0; saveSettings(); }
+    }
     ImGui::SeparatorText("Updates");
     row("Update automatically", "When the game starts it looks for a new version on GitHub, downloads it and installs it in the\n"
                                 "background. It runs the next time you start the game (or at once with Restart now, on the main menu).\n"

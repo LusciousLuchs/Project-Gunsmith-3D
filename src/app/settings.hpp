@@ -36,6 +36,9 @@ struct Settings {
     bool workbench = true;               // a bench, a few tools and a ruler under the gun in the designer, for scale
     // audio (0..1)
     float volMaster = 0.8f, volGunfire = 1.0f, volMechanical = 1.0f, volInterface = 0.7f, volRadio = 0.8f;
+    bool titleSplash = true;       // the game's title splash at start (after the studio's)
+    bool menuPicture = true;       // the main menu over the workshop picture (off: your last gun turning in 3D)
+    std::string seenVersion;       // the version whose "What's new" was last looked at (a new one opens it)
     bool muteUnfocused = true;
     bool autoUpdate = true;              // fetch and install new versions from GitHub at start (Windows)
     // interface

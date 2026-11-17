@@ -1406,6 +1406,7 @@ void rangeUpdate(float dt, bool modal) {
             if (sim::hasControl(S, "sliderelease")) { sim::setKey(S, "sliderelease", sr); S.slideRelease = false; }
             else S.slideRelease = sr;
         }
+        turnSelector(S, actDown(Act::Selector), actPressed(Act::Selector));
         sim::setKey(S, "k1", held[1]); sim::setKey(S, "k2", held[2]); sim::setKey(S, "k3", held[3]); sim::setKey(S, "k4", held[4]);
         { perf::Scope t(perf::Physics); perf::substeps(sim::run(S, dt, 1200)); }
         if (std::getenv("GUNSMITH_RANGECHDBG")) for (auto& p : S.pushers) if (p.key == "fire") { V2 w = sim::wpt(*p.b, p.l); std::printf("  trigger part moved %.2f mm (on %d)\n", ((w.x - (p.b->x0 + p.l.x)) * p.dx + (w.y - (p.b->y0 + p.l.y)) * p.dy) * 1000, p.on); }
@@ -2036,6 +2037,11 @@ void rangeHud() {
     viewText(b, W - w - 36, H - 70, fs, Color{240, 242, 245, 240});
     const char* mag = cyl ? (sim::cylinderLive(S) > 0 ? "in the cylinder" : "empty: R to reload")
                     : M || S.chambered ? (M ? "in the magazine, + in the chamber" : "in the chamber") : "empty: R to reload";
+    if (!S.design.breech.selector.empty()) {   // the selector's position (J turns it)
+        const std::string& m = S.design.breech.fireMode;
+        std::string t = m == "safe" ? "SAFE" : m == "semi" ? "SEMI" : m == "burst" ? TextFormat("BURST %d", S.design.breech.burst) : "AUTO";
+        viewText(t.c_str(), W - viewTextWidth(t.c_str(), 15) - 36, H - 116, 15, m == "safe" ? Color{120, 200, 120, 230} : Color{245, 140, 50, 235});
+    } else if (!S.fcgOk) viewText("NO FIRE CONTROL", W - viewTextWidth("NO FIRE CONTROL", 15) - 36, H - 116, 15, Color{255, 120, 100, 235});
     {   // what you carry besides
         std::string rs = TextFormat("%d spare", R.reserve);
         Color rc = R.reserve == 0 ? Color{255, 120, 100, 240} : R.reserve < R.reserveMax / 5 ? Color{255, 200, 90, 230} : Color{200, 204, 212, 200};

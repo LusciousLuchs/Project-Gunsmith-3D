@@ -562,6 +562,53 @@ static void inspectPart(BodyDef& b) {
                     }
                 }
             }
+            // the fire control group: the built-in trigger, sear and hammer or striker live in this part (new guns need
+            // one, or drawn fire control), and its selector's positions
+            bool wasFcg = b.fcg;
+            if (pCheck("Fire control group", b.fcg, "Mark this part as the fire control group: the trigger, sear and hammer or striker, without drawing them.\n"
+                                                    "A gun needs one to fire (or its trigger, sear and hammer drawn as real parts).\n"
+                                                    "Its selector sets safe, semi, burst or full auto.")) {
+                if (b.fcg && !wasFcg) for (auto& o : D.bodies) if (&o != &b) o.fcg = false;   // (one per gun)
+                if (b.fcg && D.breech.ignition == "striker") D.breech.ignition = "button";       // (the built-in hammer fires it now)
+                editedAny = true;
+            }
+            if (b.fcg) {
+                auto& br = D.breech;
+                if (!br.on) muted("Set up the Firing panel (the breech and chamber) for it to fire.");
+                prop("Selector", "The positions the selector goes through (the selector key turns it). None ticked: it always fires as below.");
+                static const char* modes[][2] = {{"safe", "Safe"}, {"semi", "Semi"}, {"burst", "Burst"}, {"auto", "Auto"}};
+                float x0 = ImGui::GetCursorPosX(), colW = 90 * CFG.uiScale;
+                for (int i = 0; i < 4; i++) {   // (two to a row)
+                    bool has = std::find(br.selector.begin(), br.selector.end(), modes[i][0]) != br.selector.end();
+                    if (i % 2) ImGui::SameLine(x0 + colW);
+                    else if (i) ImGui::SetCursorPosX(x0);
+                    if (ImGui::Checkbox(modes[i][1], &has)) {
+                        std::vector<std::string> keep;
+                        for (int k = 0; k < 4; k++) {   // (always in this order)
+                            bool on = k == i ? has : std::find(br.selector.begin(), br.selector.end(), modes[k][0]) != br.selector.end();
+                            if (on) keep.push_back(modes[k][0]);
+                        }
+                        br.selector = keep;
+                        if (!keep.empty() && std::find(keep.begin(), keep.end(), br.fireMode) == keep.end()) br.fireMode = keep.size() > 1 && keep[0] == "safe" ? keep[1] : keep[0];
+                        br.autoFire = br.fireMode == "auto";
+                        editedAny = true;
+                    }
+                }
+                int cur = 1;
+                for (int i = 0; i < 4; i++) if (br.fireMode == modes[i][0]) cur = i;
+                prop("Set to", "Where the selector is now (and how it fires).");
+                if (ImGui::Combo("##fcgmode", &cur, "Safe\0Semi\0Burst\0Auto\0")) { br.fireMode = modes[cur][0]; br.autoFire = br.fireMode == "auto"; editedAny = true; }
+                if (br.fireMode == "burst" || std::find(br.selector.begin(), br.selector.end(), "burst") != br.selector.end()) {
+                    int n = br.burst;
+                    prop("Shots per burst");
+                    if (ImGui::SliderInt("##fcgburst", &n, 2, 10)) { br.burst = n; editedAny = true; }
+                }
+                muted((std::string("On the bench and range, ") + keyName(keyOf(Act::Selector)) + " turns the selector. To draw a real selector lever instead, make it a control pressed by Selector.").c_str());
+            }
+        }
+        {
+            std::string why;
+            if (!hasFireControl(D, &why)) ImGui::TextColored(colWarn(), "%s", why.c_str());
         }
         tutAnchor("part:fixed");
         pCheck("See-through", b.ghost, "Drawn as a ghost while X-ray is on (the eye button, or X), so you can see what's inside it.\nOnly parts you tick (and magazines, so their rounds show) are see-through.");
@@ -1018,10 +1065,10 @@ static void inspectPart(BodyDef& b) {
             ImGui::TextColored(colWarn(), "This part is Fixed, so it can't move when pressed. Untick Fixed and join it with a track or pin.");
         if (b.ctrl == "handle") muted("Drag it on the bench to work the action. The reliability test pulls it all the way back along its track and pushes it home.");
         if (b.ctrl != "none" && b.ctrl != "handle") {
-            const char* keys[] = {"none", "fire", "magrelease", "sliderelease", "empty", "k1", "k2", "k3", "k4"};
-            Act acts[] = {Act::Count, Act::Fire, Act::MagRelease, Act::SlideRelease, Act::Count, Act::Control1, Act::Control2, Act::Control3, Act::Control4};
-            const char* names[] = {"Hand only", "Fire", "Magazine release", "Slide release", "The empty magazine's follower", "Your control 1", "Your control 2", "Your control 3", "Your control 4"};
-            const int NK = 9;
+            const char* keys[] = {"none", "fire", "magrelease", "sliderelease", "empty", "k1", "k2", "k3", "k4", "selector"};
+            Act acts[] = {Act::Count, Act::Fire, Act::MagRelease, Act::SlideRelease, Act::Count, Act::Control1, Act::Control2, Act::Control3, Act::Control4, Act::Selector};
+            const char* names[] = {"Hand only", "Fire", "Magazine release", "Slide release", "The empty magazine's follower", "Your control 1", "Your control 2", "Your control 3", "Your control 4", "Selector"};
+            const int NK = 10;
             int kk = 0;
             for (int i = 0; i < NK; i++) if (b.key == keys[i]) kk = i;
             prop("Pressed by", "What pushes it. The empty magazine's follower: it's pushed whenever the seated magazine is empty,\n"

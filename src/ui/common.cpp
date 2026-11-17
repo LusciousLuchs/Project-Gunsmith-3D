@@ -123,10 +123,10 @@ bool tipHover() { return CFG.tooltips && ImGui::IsItemHovered(ImGuiHoveredFlags_
 ImVec4 colGood() { return CFG.colorblind ? ImVec4(0.45f, 0.68f, 1.0f, 1) : ImVec4(0.47f, 0.84f, 0.65f, 1); }
 ImVec4 colBad() { return CFG.colorblind ? ImVec4(1.0f, 0.62f, 0.2f, 1) : ImVec4(1.0f, 0.5f, 0.4f, 1); }
 ImVec4 colWarn() { return CFG.colorblind ? ImVec4(0.95f, 0.85f, 0.4f, 1) : ImVec4(1.0f, 0.82f, 0.45f, 1); }
-ImVec4 colAccent() { return ImVec4(0.91f, 0.63f, 0.23f, 1); }
+ImVec4 colAccent() { return ImVec4(0.93f, 0.48f, 0.13f, 1); }
 void check(const char* label, bool& v) { ImGui::Checkbox(label, &v); markEdit(); }
 bool accentButton(const char* label, bool on, ImVec2 size) {
-    if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.94f, 0.64f, 0.23f, 1)), ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.1f, 0.07f, 0.02f, 1));
+    if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.93f, 0.48f, 0.13f, 1)), ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
     bool r = ImGui::Button(label, size);
     if (on) ImGui::PopStyleColor(2);
     return r;
@@ -329,10 +329,10 @@ void styleUI() {
     s.IndentSpacing = 14; s.ScrollbarSize = 10; s.GrabMinSize = 10; s.SeparatorTextBorderSize = 1; s.SeparatorTextPadding = {0, 4};
     ImVec4* c = s.Colors;
     auto rgb = [](int r, int g, int b, float a = 1) { return ImVec4(r / 255.f, g / 255.f, b / 255.f, a); };
-    ImVec4 acc = rgb(232, 161, 58);
+    ImVec4 acc = rgb(238, 122, 32);
     c[ImGuiCol_Text] = rgb(228, 230, 234);
     c[ImGuiCol_TextDisabled] = rgb(128, 134, 145);
-    c[ImGuiCol_WindowBg] = rgb(22, 24, 28, 0.97f);
+    c[ImGuiCol_WindowBg] = rgb(20, 23, 28, 0.97f);
     c[ImGuiCol_ChildBg] = rgb(0, 0, 0, 0);
     c[ImGuiCol_PopupBg] = rgb(28, 31, 36, 0.99f);
     c[ImGuiCol_Border] = rgb(255, 255, 255, 0.06f);
@@ -347,12 +347,12 @@ void styleUI() {
     c[ImGuiCol_HeaderActive] = rgb(58, 64, 74);
     c[ImGuiCol_CheckMark] = acc;
     c[ImGuiCol_CheckboxSelectedBg] = rgb(48, 53, 61);
-    c[ImGuiCol_TextSelectedBg] = rgb(232, 161, 58, 0.30f);
+    c[ImGuiCol_TextSelectedBg] = rgb(238, 122, 32, 0.30f);
     c[ImGuiCol_TextLink] = acc;
     c[ImGuiCol_InputTextCursor] = rgb(228, 230, 234);
     c[ImGuiCol_TabSelectedOverline] = acc;
     c[ImGuiCol_ResizeGrip] = rgb(0, 0, 0, 0);
-    c[ImGuiCol_ResizeGripHovered] = rgb(232, 161, 58, 0.4f);
+    c[ImGuiCol_ResizeGripHovered] = rgb(238, 122, 32, 0.4f);
     c[ImGuiCol_ResizeGripActive] = acc;
     c[ImGuiCol_DragDropTarget] = acc;
     c[ImGuiCol_SeparatorActive] = acc;
@@ -363,7 +363,7 @@ void styleUI() {
     c[ImGuiCol_TitleBg] = rgb(18, 20, 23);
     c[ImGuiCol_TitleBgActive] = rgb(24, 27, 31);
     c[ImGuiCol_Separator] = rgb(255, 255, 255, 0.08f);
-    c[ImGuiCol_SeparatorHovered] = rgb(232, 161, 58, 0.5f);
+    c[ImGuiCol_SeparatorHovered] = rgb(238, 122, 32, 0.5f);
     c[ImGuiCol_ScrollbarBg] = rgb(0, 0, 0, 0);
     c[ImGuiCol_ScrollbarGrab] = rgb(60, 65, 74);
     c[ImGuiCol_ScrollbarGrabHovered] = rgb(75, 81, 92);

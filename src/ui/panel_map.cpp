@@ -30,7 +30,7 @@ static float S() { return CFG.uiScale; }
 
 static bool iconBtn(const char* icon, const char* tip, bool on = false) {
     float sz = TOOLBAR_H - 14 * S();
-    if (on) { ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.91f, 0.63f, 0.23f, 0.22f)); ImGui::PushStyleColor(ImGuiCol_Text, colAccent()); }
+    if (on) { ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.93f, 0.48f, 0.13f, 0.22f)); ImGui::PushStyleColor(ImGuiCol_Text, colAccent()); }
     ImGui::PushID(tip);   // (two buttons can share an icon: the light tool and the fullbright view are both a bulb)
     bool r = ImGui::Button(icon, {sz, sz});
     ImGui::PopID();

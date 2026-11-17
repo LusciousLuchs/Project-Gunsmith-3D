@@ -214,6 +214,7 @@ struct Sim {
     // whatever the magazine and feed path are like) and brute force (an action that didn't cycle, or jammed, is
     // worked by an unseen strong hand straight away)
     bool cheatFeed = false, cheatForce = false;
+    bool fcgOk = true;                   // it has fire control (hasFireControl): without, the trigger does nothing
     double cheatShot = -1e9, cheatOpen = 0, cheatT = -1e9;
     bool cheatDone = true;
     std::vector<double> chamberR;        // chamber radius every 0.5 mm from the chamber face (m)

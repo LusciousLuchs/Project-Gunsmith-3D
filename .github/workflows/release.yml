@@ -98,6 +98,17 @@ jobs:
           tools/make_installer.sh build-win/gunsmith3d.exe .
           # the release notes: the changelog's newest section
           awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2 > notes.md
+          # and how to install it, under every release
+          cat >> notes.md <<'EOF'
+
+          ### Install
+          - **Windows 10/11:** download **Gunsmith3D-Setup.exe** below and run it. No administrator rights needed; it adds a Start menu entry, and the game updates itself from then on. (Windows may warn that it's unsigned: More info > Run anyway.) Prefer no installer? Take the zip, unzip it anywhere and run gunsmith3d.exe.
+          - **Linux (64-bit):** open a terminal and run
+            `curl -fsSL https://github.com/LusciousLuchs/Project-Gunsmith-3D/releases/latest/download/install-linux.sh | bash`
+            It adds Gunsmith3D to your app menu and a `gunsmith3d` command, and updates itself each time you start it. `gunsmith3d --uninstall` removes it.
+          - **Already playing?** The game updates itself; nothing to download.
+          - Your designs, maps and settings live in Documents/OAB Foundry/Gunsmith and are never touched by installing, updating or uninstalling.
+          EOF
 
       - uses: actions/download-artifact@v4
         if: steps.v.outputs.skip != '1'

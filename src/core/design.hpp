@@ -170,6 +170,8 @@ struct BodyDef {
                                          // gun's length, + top toward you; Y: about the upright, + front toward you)
     double smooth = 0;                   // 0..1: rounds the front and back edges (grips, dehorned slides). Looks only.
     bool bolt = false;                   // marked as a bolt (the panel's Bolt section): it closes the breech
+    bool fcg = false;                    // marked as the fire control group: the built-in trigger, sear and hammer/striker
+                                         // live here (with the selector's positions in the breech's settings)
     bool rollOn = false;                 // rotates about the bore (rotating bolt)
     double rollMin = 0, rollMax = 90;    // degrees
     double handle = 0;                   // bolt handle length, mm
@@ -334,7 +336,8 @@ struct BreechDef {
     // Feeding, the bolt and extraction are always real parts; the fire control can be these settings or drawn parts.
     std::string hammer = "striker";      // what to call it: "hammer" or "striker" (wording only)
     double cockAt = 8;                   // mm the breech must open to cock it again; 0 = always cocked (older blueprints load as 0)
-    std::string fireMode = "semi";       // semi, auto, burst. Drawn parts (ignition "striker") decide this for themselves.
+    std::string fireMode = "semi";       // safe, semi, auto, burst. Drawn parts (ignition "striker") decide this for themselves.
+    std::vector<std::string> selector;   // the selector's positions in order (safe/semi/burst/auto); empty: no selector
     int burst = 3;                       // shots per pull in burst
     bool doubleAction = false;           // pulling the trigger cocks and drops it, so it fires even when not cocked
     double lockTime = 0;                 // ms from the trigger breaking to the shot
@@ -356,6 +359,8 @@ struct BreechDef {
     bool fullAuto() const { return fireMode == "auto" || (autoFire && fireMode != "burst"); }
 };
 void applyCartridge(BreechDef& b);      // copy round size and impulse from the cartridge
+// the selector's next position (wraps round); "" if it has none
+std::string nextSelector(const BreechDef& b);
 
 // How the shooter holds the gun, posed on the bench (Test bench > Pose). The hands and the stock's butt are points on
 // parts (they move with them); each hold (aim, hip, lowered) places the body against the gun. Older blueprints with grip
@@ -490,6 +495,8 @@ struct Design {
     BreechDef breech;
     Pose pose;                           // how it's held (nothing placed in older blueprints)
     NpcGunDef npcGun;                    // made for NPCs only (off in older blueprints)
+    bool fcgRequired = false;            // built-in fire control needs a part marked as the fire control group (new guns
+                                         // since 0.8.39; older blueprints fire as they always did)
     AttachDef attach;                    // this is an attachment, not a gun (the attachment designer)
     std::vector<std::pair<std::string, double>> addMass;   // (not saved) attachments fitted on: grams on the part they ride on
     std::map<std::string, Animation> anims;   // by slot: "work_action", "inspect", "reload", "reload_empty", "clear_jam", "control:<part id>"
@@ -502,6 +509,9 @@ struct Design {
         return -1;
     }
 };
+// Can it fire at all: drawn fire control (a striker part), or a part marked as the fire control group, or an older
+// design that doesn't need one. `why` says what's missing.
+bool hasFireControl(const Design& d, std::string* why = nullptr);
 
 // Shape helpers: the outline actually used for physics and drawing.
 void fixShape(BodyDef& b);                                     // keep rad/bulge sized to pts

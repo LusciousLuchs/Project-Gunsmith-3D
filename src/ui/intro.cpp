@@ -15,7 +15,7 @@ namespace {
 const char* EULA_TEXT =
 #include "eula.inc"
     ;
-enum class Phase { Off, Splash, Eula };
+enum class Phase { Off, Splash, Title, Eula };
 Phase phase = Phase::Off;
 float t = 0;
 bool ticked = false;
@@ -77,7 +77,29 @@ void splash(float dt) {
         dl->AddRectFilled({cx - lw / 2, cy + big * 0.28f}, {cx + lw / 2, cy + big * 0.28f + std::fmax(2.f, 2 * S())}, gold);
         spaced(dl, gFontBold, small, cx, cy + big * 0.45f, "FOUNDRY", small * 0.9f, dim);
     }
-    if (t >= FADE_IN + HOLD + FADE_OUT) { t = 0; phase = agreed() ? Phase::Off : Phase::Eula; }
+    if (t >= FADE_IN + HOLD + FADE_OUT) { t = 0; phase = CFG.titleSplash ? Phase::Title : agreed() ? Phase::Off : Phase::Eula; }
+}
+// The game's own title splash (the owner's art) after the studio's: the whole picture, covering the screen, slowly
+// drawing closer. Off in Settings > Interface.
+void title(float dt) {
+    t += dt;
+    bool skip = GetKeyPressed() != 0 || IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsMouseButtonPressed(MOUSE_BUTTON_RIGHT);
+    if (skip && t < FADE_IN + HOLD) t = FADE_IN + HOLD;
+    float a = t < FADE_IN ? t / FADE_IN : t < FADE_IN + HOLD ? 1.f : 1.f - (t - FADE_IN - HOLD) / FADE_OUT;
+    a = std::fmax(0.f, std::fmin(1.f, a));
+    a = a * a * (3 - 2 * a);
+    float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
+    ImDrawList* dl = ImGui::GetBackgroundDrawList();
+    dl->AddRectFilled({0, 0}, {W, H}, IM_COL32(0, 0, 0, 255));
+    dl->AddRectFilled({0, 0}, {W, H}, IM_COL32(14, 21, 27, (int)(255 * a)));   // (the picture's own blueprint blue round it)
+    Texture2D tex = artTexture(Art::TitleSplash);
+    if (tex.id) {   // the whole picture, as big as fits
+        float grow = 1.0f + 0.04f * std::fmin(1.f, t / (FADE_IN + HOLD + FADE_OUT));   // (drawn closer, from the middle)
+        float k = std::fmin(W / tex.width, H / tex.height) * grow;
+        float gw = tex.width * k, gh = tex.height * k;
+        dl->AddImage((ImTextureID)(intptr_t)tex.id, {(W - gw) / 2, (H - gh) / 2}, {(W + gw) / 2, (H + gh) / 2}, {0, 0}, {1, 1}, IM_COL32(255, 255, 255, (int)(255 * a)));
+    }
+    if (t >= FADE_IN + HOLD + FADE_OUT || !tex.id) { t = 0; phase = agreed() ? Phase::Off : Phase::Eula; }
 }
 
 bool heading(const std::string& l, bool first) {   // the title, and short numbered lines with no full stop ("4.2 Sharing")
@@ -145,5 +167,6 @@ void introForceEula() { t = 0; phase = Phase::Eula; }
 bool introActive() { return phase != Phase::Off; }
 void introFrame(float dt) {
     if (phase == Phase::Splash) splash(dt);
+    else if (phase == Phase::Title) title(dt);
     else if (phase == Phase::Eula) eula();
 }

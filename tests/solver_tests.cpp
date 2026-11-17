@@ -833,6 +833,7 @@ static Design firstGun() {
     auto& br = d.breech; br = BreechDef(); br.on = true; br.breech = "bolt"; br.chamber = "barrel";
     br.hasFace = true; br.face = {120, 30}; br.hasMuzzle = true; br.muzzle = {300, 30};
     br.feedMode = "single"; br.physicalFeed = true; br.loaded = true;
+    for (auto& b : d.bodies) b.fcg = b.id == "frame";   // (the tutorial's "The trigger" step)
     return d;
 }
 static void tutorialGun() {
@@ -1764,6 +1765,7 @@ static void poseAndGunMoves() {
 static double gasShot(const char* cart, double barrel, double at, double port, double pdia, double stroke, double mass) {
     Design d = loadPreset("blank");
     d.bodies.clear(); d.joints.clear();
+    d.fcgRequired = false;   // (gas measurements, not fire control)
     auto rect = [](std::string id, double x0, double y0, double x1, double y1, bool fixed, double m) {
         BodyDef b; b.id = id; b.name = id; b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}}; b.fixed = fixed; b.mass = m; b.thick = 10; b.layer = "ABC"; fixShape(b); return b; };
     d.bodies.push_back(rect("barrel", 0, -6, barrel, 6, true, 0));
@@ -2788,6 +2790,32 @@ static void hollowParts() {
 
 // Cheats: auto feed makes a gun with a bad feed path feed; brute force keeps a self-loader that can't run itself going,
 // and works a bolt action by itself. Reports say they were on. (Switched off again after.)
+// Fire control groups (0.8.39): new guns need one (a part marked, or drawn fire control); the selector picks the mode
+static void fireControlTest() {
+    std::printf("\n== fire control groups\n");
+    sim::ReliabilityOptions o; o.rounds = 6; o.stallSeconds = 3;
+    Design rv = loadPreset("revolver");
+    std::string why;
+    CHECK(rv.fcgRequired && hasFireControl(rv), "the revolver example needs a fire control group, and its trigger is one");
+    auto r0 = sim::runReliability(rv, o);
+    Design none = rv; for (auto& b : none.bodies) b.fcg = false;
+    auto r1 = sim::runReliability(none, o);
+    Design old = none; old.fcgRequired = false;   // (a blueprint from before: it never needed one)
+    auto r2 = sim::runReliability(old, o);
+    CHECK(r0.fired == 6 && r1.fired == 0 && r2.fired == 6 && !hasFireControl(none, &why) && !why.empty(),
+          ("with its fire control group it fires (" + std::to_string(r0.fired) + "/6), without it doesn't (" + std::to_string(r1.fired) + "), an older blueprint still does (" + std::to_string(r2.fired) + ")").c_str());
+    Design safe = rv; safe.breech.selector = {"safe", "semi"}; safe.breech.fireMode = "safe";
+    CHECK(sim::runReliability(safe, o).fired == 0, "on safe the trigger does nothing");
+    CHECK(nextSelector(safe.breech) == "semi" && (safe.breech.fireMode = "semi", nextSelector(safe.breech)) == "safe" && nextSelector(BreechDef()).empty(),
+          "the selector goes round its positions (and a gun without one has none)");
+    Design back;
+    CHECK(designFromJson(designToJson(safe), back) && back.fcgRequired && back.breech.selector.size() == 2 && back.breech.fireMode == "semi" &&
+          std::any_of(back.bodies.begin(), back.bodies.end(), [](const BodyDef& b) { return b.fcg; }), "saved and loaded: the fire control group, the selector and its position");
+    Design drawn = loadPreset("blowback"); for (auto& b : drawn.bodies) b.fcg = false;   // (its hammer and sear are drawn parts)
+    CHECK(drawn.breech.ignition == "striker" && hasFireControl(drawn), "drawn fire control needs no marked group");
+    Design blank = loadPreset("blank");
+    CHECK(blank.fcgRequired, "a new gun needs a fire control group");
+}
 static void cheatsTest() {
     std::printf("\n== cheats\n");
     sim::ReliabilityOptions o; o.rounds = 10; o.stallSeconds = 20;
@@ -3190,6 +3218,7 @@ int main() {
         else if (o == "daynight") dayNightTest();
         else if (o == "roundturn") roundTurnTest();
         else if (o == "radio") radioTest();
+        else if (o == "fcg") fireControlTest();
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
@@ -3266,6 +3295,7 @@ int main() {
     dayNightTest();
     roundTurnTest();
     radioTest();
+    fireControlTest();
     hollowParts();
     cheatsTest();
     furnitureTest();

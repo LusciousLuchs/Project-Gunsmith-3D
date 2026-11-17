@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.39-alpha
+
+- **Fire control groups and selectors.** A gun now needs fire control to fire, not just a bolt. Either tick **Fire control group** on a part (the trigger, say: the trigger, sear and hammer or striker live there, nothing to draw), or draw them as real parts if you're brave. Its **Selector** has the positions you tick (Safe, Semi, Burst, Auto), and **J** turns it on the bench and the range (the range shows SAFE / SEMI / BURST / AUTO). A drawn selector lever can be a control pressed by Selector. Guns saved before this keep firing as they did; the examples have their trigger set up as one.
+- **A new look.** The game's own icon, a title splash when it starts (Settings > Interface > Title splash turns it off), and a new main menu in the workshop: the logo, icons, orange highlights. Settings > Interface > Main menu background switches back to your gun turning in 3D. Orange is the game's accent colour everywhere now.
+- The GitHub release page now says how to install on Windows and Linux.
+
 ## 0.8.38-alpha
 
 - **Linux version.** Gunsmith3D now runs natively on Linux. Install it with one line in a terminal: `curl -fsSL https://github.com/LusciousLuchs/Project-Gunsmith-3D/releases/latest/download/install-linux.sh | bash`. It puts the game in your app menu and a `gunsmith3d` command, updates itself each time you start it, and `gunsmith3d --uninstall` removes it. Your designs and settings go in Documents/OAB Foundry/Gunsmith, as on Windows.

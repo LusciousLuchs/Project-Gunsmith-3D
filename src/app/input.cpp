@@ -8,6 +8,7 @@
 #include "app/paths.hpp"
 #include "app/bench.hpp"
 #include "app/input.hpp"
+#include "app/audio.hpp"
 #include "app/keys.hpp"
 #include "app/settings.hpp"
 #include "imgui.h"
@@ -117,6 +118,7 @@ void handleKeys() {
             if (sim::hasControl(*A.S, "sliderelease")) { sim::setKey(*A.S, "sliderelease", sr); A.S->slideRelease = false; }
             else A.S->slideRelease = sr;
         }
+        turnSelector(*A.S, kb && actDown(Act::Selector), kb && actPressed(Act::Selector));
         sim::setKey(*A.S, "k1", held[1]);
         sim::setKey(*A.S, "k2", held[2]);
         sim::setKey(*A.S, "k3", held[3]);
@@ -196,4 +198,16 @@ void handleKeys() {
         else if (A.tool == Tool::Track) finishTrack();
         else if (A.tool == Tool::RoundPath) finishRoundPath();
     }
+}
+
+void turnSelector(sim::Sim& S, bool held, bool pressed) {
+    if (sim::hasControl(S, "selector")) { sim::setKey(S, "selector", held); return; }   // (the masochist's drawn lever)
+    if (!pressed) return;
+    std::string m = nextSelector(S.design.breech);
+    if (m.empty()) { toast(hasFireControl(S.design) ? "This gun has no selector (tick its positions on the fire control group part)." : "This gun has no fire control group."); return; }
+    S.design.breech.fireMode = m; S.design.breech.autoFire = m == "auto";
+    A.design.breech.fireMode = m; A.design.breech.autoFire = m == "auto";   // (it stays where you put it)
+    uiTick();
+    std::string name = m == "safe" ? "Safe" : m == "semi" ? "Semi" : m == "burst" ? "Burst" : "Auto";
+    toast("Selector: " + name);
 }

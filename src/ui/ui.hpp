@@ -8,6 +8,11 @@ extern bool editedAny;  // set when a panel widget changed the design this frame
 
 // common.cpp
 void markEdit();
+// the owner's artwork (ui/art.cpp)
+enum class Art { TitleSplash, MenuBackground, MenuLogo };
+Texture2D artTexture(Art a);
+void setGameIcon();
+void drawCover(ImDrawList* dl, Texture2D t, ImVec2 a, ImVec2 b, float alignX, ImU32 tint = IM_COL32_WHITE);
 bool inputText(const char* label, std::string& s);
 bool bodyCombo(const char* label, std::string& id, bool withWorld);
 void numField(const char* label, double& v, double step, const char* fmt = "%.1f");

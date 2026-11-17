@@ -89,6 +89,7 @@ int insertKit(Design& D, const Design& kitIn, V2 at) {
     for (auto& g : br.gas) ren(g.piston);
     ren(br.cylinder.indexBy);
     D.breech = br;
+    if (!kit.fcgRequired) D.fcgRequired = false;   // (a kit from an older example fires as it comes, with its built-in fire control)
     if (!D.pose.firing.on) {   // a gun with no hands yet: hold it the way the kit's example is held
         Pose P = kit.pose;
         for (HandHold* h : {&P.firing, &P.support, &P.butt}) ren(h->part);
