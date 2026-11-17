@@ -67,6 +67,9 @@ void meReplaceMap(const gmap::Map& m);   // the whole map swapped for another (u
 void meRedo();
 void meDelete();
 void meDuplicate();
+void meSelectAll();   // Ctrl+A: every block you can edit
+void meCopy();        // Ctrl+C: the selected blocks or thing
+void mePaste();       // Ctrl+V: a copy where the mouse points
 void meRotate(double degrees);
 void meMirror(int axis);
 void meHollow();

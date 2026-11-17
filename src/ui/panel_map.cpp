@@ -115,10 +115,20 @@ void mapToolbar() {
         {ICON_FA_BULLSEYE, "Paper target: click the floor (it stands at chest height) or a wall. Pick it to make it move side to side", MTool::Target},
         {ICON_FA_COUCH, "Furniture: shelves, tables, racks, or your own pieces (make them from blocks in the Select panel)", MTool::Furniture},
         {ICON_FA_HAND_HOLDING, "Things to pick up: crates, cans, bottles, your own props, and guns. Put them on shelves and tables", MTool::Prop}};
+    // the career shop is for building your business: no combat things (start, NPCs, gun spawners, armour, attachment
+    // and weapon crates, ammo, targets); the sandbox has no workstations (they only mean something in career mode)
+    const bool shop = !ME.careerFile.empty();
+    auto shown = [&](MTool t) {
+        if (shop) return !(t == MTool::Start || t == MTool::Npc || t == MTool::Spawner || t == MTool::Armor || t == MTool::Crate
+                           || t == MTool::Ammo || t == MTool::Weapons || t == MTool::Target);
+        return t != MTool::Station;
+    };
+    if (!shown(ME.tool)) ME.tool = MTool::Select;
     int i = 0;
     for (auto& t : tools) {
+        if (!shown(t.t)) continue;
         if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
-        gap(i == 0 || i == 4 || i == 5 ? 12 : 3);
+        gap(t.t == MTool::Select || t.t == MTool::Clip ? 12 : 3);
         i++;
     }
     if (iconBtn(ICON_FA_ROTATE_LEFT, "Undo (Ctrl+Z)")) meUndo();
@@ -384,6 +394,8 @@ static void editTab() {
     if (ME.sel.empty()) {
         heading("Nothing selected");
         ImGui::TextWrapped("Pick a tool in the top bar and drag in the view to build. Click a brush to select it, or Ctrl+click to pick one of its faces.");
+        ImGui::Dummy({0, 4 * S()});
+        ImGui::TextDisabled("Arrows nudge (Shift: x4), Page Up/Down lift\nR turns 90 (Alt: 15), H hollows\nCtrl+C / Ctrl+V copy and paste at the mouse\nCtrl+D duplicates, Ctrl+A selects all\nF focuses, V top view, F5 walks");
         ImGui::Dummy({0, 6 * S()});
         ImGui::TextDisabled("%zu brushes in this map", M.brushes.size());
         return;

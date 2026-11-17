@@ -394,9 +394,14 @@ void meLoadBuiltin() {
 }
 
 // ---------------------------------------------------------------- operations
+// a career property's own walls can be painted but not moved, turned, copied or removed
+static bool selLocked() {
+    for (int i : ME.sel) if (i >= 0 && i < (int)ME.map.brushes.size() && ME.map.brushes[i].locked) { toast("Your property's walls stay put (you can paint them: Ctrl+click a face)."); return true; }
+    return false;
+}
 void meDelete() {
     if (ME.ent >= 0) { meSnapshot(); ME.map.ents.erase(ME.map.ents.begin() + ME.ent); ME.ent = -1; meChanged(); return; }
-    if (ME.sel.empty()) return;
+    if (ME.sel.empty() || selLocked()) return;
     meSnapshot();
     std::vector<int> s = ME.sel;
     std::sort(s.rbegin(), s.rend());
@@ -405,7 +410,18 @@ void meDelete() {
     meChanged();
 }
 void meDuplicate() {
-    if (ME.sel.empty()) return;
+    if (ME.ent >= 0 && ME.sel.empty()) {   // a thing: a copy beside it
+        if (ME.map.ents[ME.ent].type == "player_start") { toast("A map has one player start."); return; }
+        meSnapshot();
+        gmap::Entity e = ME.map.ents[ME.ent];
+        double off = std::max(ME.grid, 0.25);
+        e.pos += V3{off, 0, off};
+        ME.map.ents.push_back(e);
+        ME.ent = (int)ME.map.ents.size() - 1;
+        meChanged();
+        return;
+    }
+    if (ME.sel.empty() || selLocked()) return;
     meSnapshot();
     std::vector<int> ns;
     double off = std::max(ME.grid, 0.05);
@@ -429,7 +445,7 @@ static V3 selCentre() {
 }
 void meRotate(double deg) {
     if (ME.ent >= 0) { meSnapshot(); ME.map.ents[ME.ent].yaw = std::fmod(ME.map.ents[ME.ent].yaw + deg + 360, 360); meChanged(); return; }
-    if (ME.sel.empty()) return;
+    if (ME.sel.empty() || selLocked()) return;
     meSnapshot();
     V3 c = selCentre();
     c.x = snapG(c.x); c.z = snapG(c.z);
@@ -437,14 +453,14 @@ void meRotate(double deg) {
     meChanged();
 }
 void meMirror(int axis) {
-    if (ME.sel.empty()) return;
+    if (ME.sel.empty() || selLocked()) return;
     meSnapshot();
     V3 c = selCentre();
     for (int i : ME.sel) gmap::mirror(ME.map.brushes[i], axis, c);
     meChanged();
 }
 void meHollow() {
-    if (ME.sel.empty()) return;
+    if (ME.sel.empty() || selLocked()) return;
     meSnapshot();
     std::vector<int> s = ME.sel;
     std::sort(s.rbegin(), s.rend());
@@ -677,6 +693,12 @@ static bool surfaceUnderMouse(V3& p, V3& n, int& brush, int& face) {
     return rayPlaneY(o, d, 0, p);
 }
 
+// where a thing placed at p (on a surface with normal n) stands: on that floor, or the floor below a wall clicked
+static double floorBelow(V3 p, V3 n) {
+    if (n.y > 0.7) return p.y;
+    gmap::Hit h = gmap::rayMap(ME.map, p + V3{n.x, 0, n.z} * 0.3 + V3{0, 0.05, 0}, {0, -1, 0}, 200);
+    return h.brush >= 0 ? p.y + 0.05 - h.t : 0;
+}
 static int entityUnderMouse(double* tOut) {
     V3 o, d; mouseRay(o, d);
     int best = -1; double bt = 1e30;
@@ -808,7 +830,7 @@ static void toolInput() {
             gmap::Entity e;
             if (ME.stationKind.rfind("display_", 0) == 0 || ME.stationKind.rfind("decor_", 0) == 0) e.type = ME.stationKind;
             else e.type = (ME.stationKind == "counter" || ME.stationKind == "computer" || ME.stationKind == "door" ? "shop_" : "station_") + ME.stationKind;
-            e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            e.pos = {snapG(p.x), floorBelow(p, n), snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
             ME.map.ents.push_back(e);
             ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
@@ -821,7 +843,7 @@ static void toolInput() {
             meSnapshot();
             gmap::Entity e;
             e.type = "door"; e.ref = ME.doorStyle; e.width = ME.doorWidth;
-            e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            e.pos = {snapG(p.x), floorBelow(p, n), snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 90) * 90 + 720, 360);
             ME.map.ents.push_back(e);
             ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
@@ -844,7 +866,7 @@ static void toolInput() {
                 e.yaw = std::atan2(n.z, n.x) * RAD2DEG;
             } else {
                 bool fine = ME.tool == MTool::Prop;   // (on a shelf: to the centimetre, not the grid)
-                e.pos = fine ? V3{std::round(p.x * 100) / 100, n.y > 0.7 ? p.y : 0, std::round(p.z * 100) / 100} : V3{snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+                e.pos = fine ? V3{std::round(p.x * 100) / 100, floorBelow(p, n), std::round(p.z * 100) / 100} : V3{snapG(p.x), floorBelow(p, n), snapG(p.z)};
                 e.yaw = facing;
                 if (e.type == "gun_item") e.yaw = std::fmod(facing + 90, 360);   // (lying across in front of you)
             }
@@ -863,7 +885,7 @@ static void toolInput() {
             e.type = ME.tool == MTool::Npc ? "npc_spawn" : ME.tool == MTool::Armor ? "armor_plate" : ME.tool == MTool::Crate ? "attachment_crate"
                    : ME.tool == MTool::Ammo ? "ammo_box" : ME.tool == MTool::Weapons ? "weapon_crate" : "gun_spawner";
             e.ref = ME.tool == MTool::Npc ? ME.npcPick : "";
-            e.pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            e.pos = {snapG(p.x), floorBelow(p, n), snapG(p.z)};
             e.yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);   // facing you
             ME.map.ents.push_back(e);
             ME.ent = (int)ME.map.ents.size() - 1; ME.sel.clear();
@@ -910,7 +932,7 @@ static void toolInput() {
             meSnapshot();
             int e = startEntity();
             if (e < 0) { ME.map.ents.push_back(gmap::Entity()); e = (int)ME.map.ents.size() - 1; }
-            ME.map.ents[e].pos = {snapG(p.x), n.y > 0.7 ? p.y : 0, snapG(p.z)};
+            ME.map.ents[e].pos = {snapG(p.x), floorBelow(p, n), snapG(p.z)};
             ME.map.ents[e].yaw = ME.top ? ME.map.ents[e].yaw : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 720, 360);
             ME.ent = e; ME.sel.clear();
             meChanged();
@@ -934,7 +956,24 @@ static void toolInput() {
                 V3 dl = p - dragHit;
                 dl = {snapG(dl.x), snapG(dl.y), snapG(dl.z)};
                 if (drag == Drag::Move) for (size_t k = 0; k < ME.sel.size() && k < dragOrig.size(); k++) { ME.map.brushes[ME.sel[k]] = dragOrig[k]; gmap::translate(ME.map.brushes[ME.sel[k]], dl); }
-                else if (ME.ent >= 0) { ME.map.ents[ME.ent].pos = dragEntOrig + dl; if (ME.map.ents[ME.ent].type == "furniture") rebake(); }
+                else if (ME.ent >= 0) {
+                    gmap::Entity& en = ME.map.ents[ME.ent];
+                    V3 np = dragEntOrig + dl;
+                    bool onSurface = !dragVertical && !ME.top && en.type != "light" && en.type != "target_paper";
+                    if (onSurface) {   // stand it on whatever is under the mouse (skipping its own blocks and anything it carries)
+                        V3 so = o; double gone = 0;
+                        for (int k = 0; k < 6; k++) {
+                            gmap::Hit sh = gmap::rayMap(ME.map, so, d, 5000);
+                            if (sh.brush < 0) break;
+                            if (ME.map.brushes[sh.brush].furn == ME.ent + 1) { so = so + d * (sh.t + 0.002); gone += sh.t + 0.002; continue; }
+                            if (sh.n.y > 0.7) { V3 q = so + d * sh.t; np = {dragEntOrig.x + snapG(q.x - dragHit.x), q.y, dragEntOrig.z + snapG(q.z - dragHit.z)}; }
+                            break;
+                        }
+                        (void)gone;
+                    }
+                    en.pos = np;
+                    if (en.type == "furniture") rebake();
+                }
                 if (gmap::len(dl) > 0) { dragChanged = true; ME.version++; }
             }
         } else if (drag == Drag::Face && !dragOrig.empty()) {
@@ -979,6 +1018,42 @@ static void toolInput() {
     }
 }
 
+// ---------------------------------------------------------------- select all, copy and paste
+static struct { std::vector<gmap::Brush> brushes; std::vector<gmap::Entity> ents; V3 base; bool any = false; } gClip;
+void meSelectAll() {
+    ME.sel.clear(); ME.ent = -1; ME.face = -1;
+    for (size_t i = 0; i < ME.map.brushes.size(); i++) if (!ME.map.brushes[i].furn && !ME.map.brushes[i].locked) ME.sel.push_back((int)i);
+    ME.status = std::to_string(ME.sel.size()) + " blocks selected.";
+}
+void meCopy() {
+    if (ME.sel.empty() && ME.ent < 0) return;
+    gClip = {};
+    V3 mn{1e30, 1e30, 1e30}, mx{-1e30, -1e30, -1e30};
+    auto grow = [&](V3 a, V3 c) { mn = {std::min(mn.x, a.x), std::min(mn.y, a.y), std::min(mn.z, a.z)}; mx = {std::max(mx.x, c.x), std::max(mx.y, c.y), std::max(mx.z, c.z)}; };
+    for (int i : ME.sel) { const auto& b = ME.map.brushes[i]; if (b.locked || b.furn) continue; gClip.brushes.push_back(b); V3 a, c; gmap::brushBounds(b, a, c); grow(a, c); }
+    if (ME.ent >= 0 && ME.map.ents[ME.ent].type != "player_start") { gClip.ents.push_back(ME.map.ents[ME.ent]); grow(ME.map.ents[ME.ent].pos, ME.map.ents[ME.ent].pos); }
+    if (gClip.brushes.empty() && gClip.ents.empty()) return;
+    gClip.base = {(mn.x + mx.x) / 2, mn.y, (mn.z + mx.z) / 2};   // (pasted standing where you point)
+    gClip.any = true;
+    ME.status = "Copied. Ctrl+V puts a copy where the mouse points.";
+}
+static bool surfaceUnderMouse(V3& p, V3& n, int& brush, int& face);
+static bool mouseInView();
+void mePaste() {
+    if (!gClip.any) return;
+    V3 at = gClip.base + V3{std::max(ME.grid, 0.25), 0, std::max(ME.grid, 0.25)};
+    V3 p, n; int b, f;
+    if (mouseInView() && surfaceUnderMouse(p, n, b, f)) at = {snapG(p.x), floorBelow(p, n), snapG(p.z)};
+    V3 dl = at - gClip.base;
+    meSnapshot();
+    ME.sel.clear(); ME.ent = -1; ME.face = -1;
+    for (auto bb : gClip.brushes) { gmap::translate(bb, dl); bb.locked = false; ME.map.brushes.push_back(bb); ME.sel.push_back((int)ME.map.brushes.size() - 1); }
+    // (blocks first, then rebake moves furniture blocks after them: keep the selection by pasting before the baked ones)
+    for (auto e : gClip.ents) { e.pos += dl; ME.map.ents.push_back(e); ME.ent = (int)ME.map.ents.size() - 1; }
+    if (!ME.sel.empty()) ME.ent = -1;
+    meChanged();
+}
+
 static void keyInput() {
     if (ImGui::GetIO().WantCaptureKeyboard || IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) return;
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT), ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
@@ -987,7 +1062,10 @@ static void keyInput() {
     if (actPressed(Act::Delete) || (IsKeyPressed(KEY_BACKSPACE) && !ctrl)) meDelete();
     if (actPressed(Act::Duplicate)) meDuplicate();
     if (ctrl && IsKeyPressed(KEY_S)) meSave();
-    if (actPressed(Act::MapRotate)) meRotate(shift ? -90 : 90);
+    if (actPressed(Act::MapRotate)) { double a = IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT) ? 15 : 90; meRotate(shift ? -a : a); }
+    if (ctrl && IsKeyPressed(KEY_A)) meSelectAll();
+    if (ctrl && IsKeyPressed(KEY_C)) meCopy();
+    if (ctrl && IsKeyPressed(KEY_V)) mePaste();
     if (actPressed(Act::MapHollow)) meHollow();
     if (actPressed(Act::MapTopView)) { if (!ME.top) { ME.topC = {ME.cam.x, 0, ME.cam.z}; } ME.top = !ME.top; }
     if (actPressed(Act::MapFocus)) meFocus();
@@ -999,7 +1077,7 @@ static void keyInput() {
     }
     // nudge with the arrow keys, by one grid step, relative to the view
     V3 nud;
-    double g = std::max(ME.grid, 0.01);
+    double g = std::max(ME.grid, 0.01) * (shift ? 4 : 1);
     V3 fx, rx;
     if (ME.top) { fx = {0, 0, -1}; rx = {1, 0, 0}; }
     else {
@@ -1013,7 +1091,7 @@ static void keyInput() {
     if (IsKeyPressed(KEY_LEFT)) nud -= rx * g;
     if (IsKeyPressed(KEY_PAGE_UP)) nud.y += g;
     if (IsKeyPressed(KEY_PAGE_DOWN)) nud.y -= g;
-    if (gmap::len(nud) > 0 && (!ME.sel.empty() || ME.ent >= 0)) {
+    if (gmap::len(nud) > 0 && (!ME.sel.empty() || ME.ent >= 0) && !(ME.ent < 0 && selLocked())) {
         meSnapshot();
         for (int i : ME.sel) gmap::translate(ME.map.brushes[i], nud);
         if (ME.ent >= 0) ME.map.ents[ME.ent].pos += nud;
@@ -1143,7 +1221,7 @@ static void drawStart(const gmap::Entity& e, bool sel) {
 }
 
 static const char* HINT[] = {
-    "Click a brush to select (Shift adds, Ctrl picks one face). Drag to move, Alt+drag up and down. Drag the squares to resize. Right mouse: look and fly with WASD.",
+    "Click to select (Shift adds, Ctrl picks a face to paint). Drag to move, Alt+drag up/down, squares resize. Arrows nudge (Shift x4), R turns (Alt 15 deg), Ctrl+C/V copy and paste, Ctrl+D duplicates, Ctrl+A all. Right mouse flies.",
     "Drag on the ground, or on top of a brush, to draw a box. Its height is set in the top bar.",
     "Drag to draw a ramp. It rises away from where you're looking.",
     "Drag to draw a cylinder. Its number of sides is in the panel.",
@@ -1157,7 +1235,7 @@ static const char* HINT[] = {
     "Click a ceiling, a wall or the floor to place a light. Its colour, brightness and reach are in the panel.",
     "Click to place an ammo box: press F by it on the map to fill up every gun you carry.",
     "Click to place a weapon crate: press F by it on the map to take any of your guns.",
-    "Click to place the workstation chosen in the panel (career mode).",
+    "Click to place what's chosen in the panel: a workstation, the counter, a display or decoration. It faces you.",
     "Click a floor in a doorway to place a door. F opens and shuts it on foot.",
     "Click the floor (it stands at chest height) or a wall to place a paper target.",
     "Click the floor to place the furniture chosen in the panel, facing you. Click a wall to stand it with its back to the wall.",
@@ -1185,6 +1263,39 @@ static void drawEditor3D() {
     for (int i : ME.sel) drawBrushEdges(ME.map.brushes[i], Color{255, 205, 60, 70});  // hidden edges, faintly
     rlDrawRenderBatchActive();
     rlEnableDepthTest();
+    // what a click would pick (Select) or where a placed thing would land (the placing tools)
+    if (drag == Drag::None && mouseInView() && !ImGui::GetIO().WantCaptureMouse) {
+        V3 o, d; mouseRay(o, d);
+        if (ME.tool == MTool::Select) {
+            double te; int e = entityUnderMouse(&te);
+            gmap::Hit h = gmap::rayMap(ME.map, o, d, 5000);
+            if (h.brush >= 0 && (e < 0 || h.t < te)) {
+                const auto& hb = ME.map.brushes[h.brush];
+                bool locked = careerZoned() && hb.locked;
+                if (hb.furn) { for (auto& fb : ME.map.brushes) if (fb.furn == hb.furn) drawBrushEdges(fb, Color{255, 255, 255, 110}); }
+                else if (!locked && !isSel(h.brush)) drawBrushEdges(hb, Color{255, 255, 255, 110});
+            }
+        } else if (ME.tool != MTool::Box && ME.tool != MTool::Wedge && ME.tool != MTool::Cylinder && ME.tool != MTool::Stairs && ME.tool != MTool::Clip) {
+            V3 p, n; int bh, fh;
+            if (surfaceUnderMouse(p, n, bh, fh)) {
+                bool wall = std::fabs(n.y) <= 0.7;
+                V3 at = ME.tool == MTool::Light ? p + n * (n.y > 0.7 ? 2.4 : 0.15)
+                      : ME.tool == MTool::Target ? (n.y > 0.7 ? V3{snapG(p.x), p.y + 1.45, snapG(p.z)} : p + n * 0.01)
+                      : ME.tool == MTool::Prop ? V3{std::round(p.x * 100) / 100, floorBelow(p, n), std::round(p.z * 100) / 100}
+                      : V3{snapG(p.x), floorBelow(p, n), snapG(p.z)};
+                Color gc{120, 230, 200, 220};
+                double yaw = ME.top ? 0 : std::fmod(std::round(ME.yaw * RAD2DEG / 45) * 45 + 180 + 720, 360);
+                if (wall && (ME.tool == MTool::Furniture || ME.tool == MTool::Light || ME.tool == MTool::Target)) yaw = std::atan2(n.z, n.x) * RAD2DEG;
+                V3 f{std::cos(yaw * DEG2RAD), 0, std::sin(yaw * DEG2RAD)};
+                if (ME.tool == MTool::Light || ME.tool == MTool::Target) { DrawSphereWires(rv(at), 0.12f, 6, 8, gc); DrawLine3D(rv(p), rv(at), gc); }
+                else {
+                    DrawCircle3D(rv(at + V3{0, 0.01, 0}), 0.3f, {1, 0, 0}, 90, gc);
+                    DrawLine3D(rv(at + V3{0, 0.01, 0}), rv(at + V3{0, 0.01, 0} + f * 0.45), gc);
+                    DrawLine3D(rv(at), rv(at + V3{0, 1.0, 0}), Color{gc.r, gc.g, gc.b, 90});
+                }
+            }
+        }
+    }
     // brush being drawn
     if (drag == Drag::Create) {
         V3 mn{std::min(createA.x, createB.x), createY, std::min(createA.z, createB.z)};
@@ -1299,7 +1410,22 @@ static void drawWalkHud() {
 
 // ---------------------------------------------------------------- the frame
 void mapEditorUpdate(float dt, bool modal) {
-    if (careerZoned())   // (the building's own walls can't be picked: they come with the property)
+    if (std::getenv("GUNSMITH_MECLIPTEST")) {   // (test) select all, copy, paste, duplicate a thing: counts before and after
+        static int fr = 0;
+        if (++fr == 20) {
+            meSnapshot(); ME.map.brushes.push_back(gmap::makeBox({-3, 0, 0}, {-2.5, 0.5, 0.5}, ME.mat)); meChanged();
+            size_t b0 = ME.map.brushes.size(), e0 = ME.map.ents.size();
+            meSelectAll(); size_t picked = ME.sel.size(); meCopy(); mePaste();
+            size_t b1 = ME.map.brushes.size();
+            int lockedSel = 0; for (int i : ME.sel) if (ME.map.brushes[i].locked) lockedSel++;
+            int ent = -1; for (size_t i = 0; i < ME.map.ents.size(); i++) if (ME.map.ents[i].type.rfind("station_", 0) == 0) ent = (int)i;
+            ME.sel.clear(); ME.ent = ent; meDuplicate();
+            std::printf("MECLIP brushes %zu -> %zu (picked %zu, pasted selected %zu, locked in it %d) ents %zu -> %zu undo %zu\n", b0, b1, picked, ME.sel.size(), lockedSel, e0, ME.map.ents.size(), ME.undo.size());
+            meUndo(); meUndo();
+            std::printf("MECLIP after two undos: brushes %zu ents %zu\n", ME.map.brushes.size(), ME.map.ents.size());
+        }
+    }
+    if (careerZoned() && !(ME.face >= 0 && ME.sel.size() == 1))   // (the building's own walls can't be picked, only one face to paint)
         ME.sel.erase(std::remove_if(ME.sel.begin(), ME.sel.end(), [](int b) { return b < 0 || b >= (int)ME.map.brushes.size() || ME.map.brushes[b].locked; }), ME.sel.end());
     if (!modal) {
         if (ME.walking) walkUpdate(dt);

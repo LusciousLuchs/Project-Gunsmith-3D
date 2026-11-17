@@ -8,6 +8,20 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.35-alpha
+
+- **Shop build mode only has shop tools.** Building your career shop no longer offers armour, ammo, NPCs, gun spawners, crates, targets or a player start. The Level editor no longer offers workstations (they only mean something in career mode).
+- **Level editor quality of life:**
+  - The block under the mouse is outlined before you click, so you know what you'll pick.
+  - Placing things shows a marker where they'll land and which way they'll face.
+  - Ctrl+C / Ctrl+V copy and paste blocks or a thing to where the mouse points; Ctrl+A selects every block.
+  - Ctrl+D duplicates things too (lights, furniture, props...), not just blocks.
+  - Shift+arrows nudge 4 grid steps; Alt+R turns 15 degrees instead of 90.
+  - Dragging a thing stands it on whatever is under the mouse: tables, shelves, upstairs.
+  - The shortcuts are listed in the panel when nothing is selected.
+- Fixed: things placed by clicking a wall dropped to ground level even upstairs; they now stand on the floor below.
+- Fixed: in your shop you can now paint the property's own walls (Ctrl+click a face). They still can't be moved, copied or deleted.
+
 ## 0.8.34-alpha
 
 - **Turning round parts no longer breaks them.** Rotating a round part (a cylinder, a barrel) at an angle used to turn its outline but not the axis it's spun about, so it came out as an hourglass or worse. Its axis now turns with it (new Axis setting "Turned with the part", with an Axis angle). Mirroring and scaling keep it right too.
