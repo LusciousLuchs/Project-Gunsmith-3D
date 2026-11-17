@@ -76,6 +76,9 @@ find_package(Threads REQUIRED)   # the reliability test runs on a worker thread
 add_library(gunsmith_core STATIC ${CORE_SRC})
 target_include_directories(gunsmith_core PUBLIC src/core ${TP}/json ${CMAKE_CURRENT_BINARY_DIR}/generated)
 target_link_libraries(gunsmith_core PUBLIC Threads::Threads)
+if(WIN32)
+  target_link_libraries(gunsmith_core PUBLIC ws2_32 winhttp)   # internet radio (netradio.cpp)
+endif()
 
 if(GUNSMITH_BUILD_APP)
 # ---- Dear ImGui + rlImGui
