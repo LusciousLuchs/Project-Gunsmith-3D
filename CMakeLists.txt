@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- version: the one place to change it. See CHANGELOG.md.
 #   0.1.0-dev: the editor and test bench worked out (dev1 to dev25).
 #   0.2.x-alpha: barrels, posing, and first-person shooting.
-project(Gunsmith3D VERSION 0.8.36 LANGUAGES C CXX)
+project(Gunsmith3D VERSION 0.8.37 LANGUAGES C CXX)
 set(GUNSMITH_STAGE "alpha" CACHE STRING "Release stage: dev, alpha, beta, rc, or empty for a release")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -107,6 +107,7 @@ if(WIN32)  # version and description shown in the .exe's Properties > Details
   if(GUNSMITH_STAGE)
     set(GUNSMITH_RC_FLAGS 0x2L)  # VS_FF_PRERELEASE
   endif()
+  set(GUNSMITH_ICON ${CMAKE_CURRENT_SOURCE_DIR}/assets/logo/gunsmith3d.ico)
   configure_file(src/gunsmith3d.rc.in ${CMAKE_CURRENT_BINARY_DIR}/generated/gunsmith3d.rc @ONLY)
   set(GUNSMITH_EXTRA_SRC ${CMAKE_CURRENT_BINARY_DIR}/generated/gunsmith3d.rc)
 endif()

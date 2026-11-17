@@ -1,5 +1,6 @@
 # Publishes a downloadable Windows build whenever the game's version goes up.
-# Bump the version in CMakeLists.txt (project(... VERSION x.y.z)) and push: this builds the Windows zip, checks the
+# Bump the version in CMakeLists.txt (project(... VERSION x.y.z)) and push: this builds the Windows installer and zip
+# (the zip is what the game's updater downloads; the installer is for new players), checks the
 # tests pass, and puts it on the repository's Releases page as "Gunsmith3D x.y.z-stage", with the newest section of
 # CHANGELOG.md as its notes. A version that already has a release is skipped, so ordinary pushes do nothing.
 # Where it's published: the public repository PUBLIC_REPO below (the code stays private here), using the secret
@@ -61,7 +62,7 @@ jobs:
         if: steps.v.outputs.skip != '1'
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y -q g++-mingw-w64-x86-64-posix
+          sudo apt-get install -y -q g++-mingw-w64-x86-64-posix nsis
           cmake -S . -B build-win -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-gcc.cmake -DCMAKE_BUILD_TYPE=Release
           cmake --build build-win -j --target gunsmith3d
 
@@ -70,9 +71,11 @@ jobs:
         run: |
           d="Gunsmith3D-${{ steps.v.outputs.full }}"
           mkdir "$d"
-          cp build-win/gunsmith3d.exe README.md CHANGELOG.md BACKLOG.md "$d"/
+          cp build-win/gunsmith3d.exe README.md CHANGELOG.md BACKLOG.md assets/logo/gunsmith3d.ico "$d"/
           cp -r licenses dist/user "$d"/
           zip -qr "$d.zip" "$d"
+          # the installer (installer/gunsmith3d.nsi): the same files, installed for the player with Start menu entries
+          tools/make_installer.sh build-win/gunsmith3d.exe .
           # the release notes: the changelog's newest section
           awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2 > notes.md
 
@@ -81,7 +84,7 @@ jobs:
         run: |
           target=""
           [ "${{ steps.v.outputs.repo }}" = "$GITHUB_REPOSITORY" ] && target="--target $GITHUB_SHA"
-          gh release create "v${{ steps.v.outputs.full }}" "Gunsmith3D-${{ steps.v.outputs.full }}.zip" \
+          gh release create "v${{ steps.v.outputs.full }}" "Gunsmith3D-${{ steps.v.outputs.full }}-setup.exe" "Gunsmith3D-${{ steps.v.outputs.full }}.zip" \
             --repo "${{ steps.v.outputs.repo }}" $target --title "Gunsmith3D ${{ steps.v.outputs.full }}" --notes-file notes.md --latest
 
       # Posts the release to a Discord channel. Needs the repository secret DISCORD_WEBHOOK (a channel's webhook link,
@@ -95,7 +98,7 @@ jobs:
           if [ -z "$DISCORD_WEBHOOK" ]; then echo "No DISCORD_WEBHOOK secret: not posting."; exit 0; fi
           full="${{ steps.v.outputs.full }}"
           link="https://github.com/${{ steps.v.outputs.repo }}/releases/tag/v$full"
-          head="**Gunsmith3D $full is out!** The game updates itself, or download it here: <$link>"
+          head="**Gunsmith3D $full is out!** The game updates itself, or get the installer (Gunsmith3D-$full-setup.exe) here: <$link>"
           body=$(awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2)
           room=$((1900 - ${#head}))
           if [ ${#body} -gt $room ]; then body="${body:0:$room}"; body="${body%$'\n'*}"$'\n'"...and more in the full notes."; fi

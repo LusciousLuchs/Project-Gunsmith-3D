@@ -4,11 +4,13 @@ Version 0.1.0-dev (working towards 0.1 alpha). See [CHANGELOG.md](CHANGELOG.md).
 
 A gunsmithing sandbox. Design firearm actions part by part, join them with pins, tracks, springs and welds, then fire and watch the mechanism cycle in slow motion. Nothing is animated by hand: every part, every round and every empty case is a physical object, so the action works, or jams, because of the geometry you draw. It's the groundwork for a shooter where the guns you design are only as reliable as your design.
 
-A desktop app in C++ with raylib (3D) and Dear ImGui (editor panels). It is built for Windows as a single .exe with no installer. On Linux, run that same .exe with Wine-GE or Proton-GE.
+A desktop app in C++ with raylib (3D) and Dear ImGui (editor panels). It is built for Windows: an installer, or a zip with the single .exe. On Linux, run that same .exe with Wine-GE or Proton-GE.
 
 ## Run it
 
-- **Windows 10/11:** run `gunsmith3d.exe`. It is unsigned, so SmartScreen may ask you to confirm the first time.
+- **Windows 10/11, the installer:** download `Gunsmith3D-<version>-setup.exe` from the Releases page and run it. It installs for your Windows account only (into `AppData\Local\Programs\Gunsmith3D`, no administrator prompt), adds a Start menu entry (and a desktop shortcut if you leave it ticked) and an entry in Settings > Apps for uninstalling. After that the game updates itself. It is unsigned, so SmartScreen may ask you to confirm ("More info" > "Run anyway").
+- **Windows 10/11, the zip:** unzip it anywhere you can write to and run `gunsmith3d.exe`. It updates itself the same way.
+- Your designs, maps and settings live in `Documents\OAB Foundry\Gunsmith`: installing, updating or uninstalling never touches them.
 - **Linux (Wine-GE or Proton-GE):** there is no separate Linux build; the Windows .exe runs under Wine.
   - *Proton-GE through Steam:* Add a Game > Add a Non-Steam Game > browse to `gunsmith3d.exe`. Then Properties > Compatibility > force *GE-Proton* (install it with ProtonUp-Qt if it isn't listed).
   - *Wine-GE directly, or through Lutris or Bottles:* `wine gunsmith3d.exe` from the folder it's in. Point Lutris or Bottles at the .exe with a Wine-GE runner.

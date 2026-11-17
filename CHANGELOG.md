@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.37-alpha
+
+- **An installer.** New players can download `Gunsmith3D-0.8.37-alpha-setup.exe` and run it: it installs for your Windows account (no administrator prompt), adds a Start menu entry, a desktop shortcut if you want one, and an entry in Settings > Apps to uninstall it. The game still updates itself afterwards, and Windows' Apps list shows the new version. Your designs, maps and settings (in Documents) are never touched by installing or uninstalling.
+- The game has an icon now (the window, the taskbar, the Start menu).
+- The zip is still there for anyone who prefers it.
+
 ## 0.8.36-alpha
 
 - **Radios.** Place a radio on any map or in your shop (the new Radio tool) and it plays an internet radio station out of where it stands. It's louder up close, comes from the side it's on as you turn, sounds duller from behind and muffled through walls and shut doors. Walk up and press F to tune it: a few built-in stations, a search of thousands of public stations by name or genre, or paste any stream link. It shows the song playing. Volume and how far it carries are per radio; there's also a Radios volume in Settings > Sound.

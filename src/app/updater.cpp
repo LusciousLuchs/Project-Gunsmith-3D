@@ -223,6 +223,14 @@ void work() {
         fs::copy_file(it->path(), dst, fs::copy_options::overwrite_existing, ec);
     }
     fs::remove_all(tmp, ec);
+    {   // installed with the installer: Windows' Apps list shows the new version too (the key is only there if it was)
+        HKEY k;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Gunsmith3D", 0, KEY_SET_VALUE, &k) == ERROR_SUCCESS) {
+            std::wstring wv(latest.begin(), latest.end());
+            RegSetValueExW(k, L"DisplayVersion", 0, REG_SZ, (const BYTE*)wv.c_str(), (DWORD)((wv.size() + 1) * sizeof(wchar_t)));
+            RegCloseKey(k);
+        }
+    }
     set(State::Installed);
 }
 }  // namespace

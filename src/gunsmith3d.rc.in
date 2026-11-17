@@ -1,5 +1,7 @@
 // Windows version resource. GENERATED values come from CMakeLists.txt.
 #include <winver.h>
+// the program's icon: Explorer, the taskbar and the window (GLFW takes the icon named GLFW_ICON for its windows)
+GLFW_ICON ICON "@GUNSMITH_ICON@"
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION     @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
 PRODUCTVERSION  @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
