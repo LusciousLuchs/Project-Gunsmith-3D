@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Builds the Windows installer (installer/gunsmith3d.nsi, NSIS) from a Windows build of the game.
 #   tools/make_installer.sh <path to gunsmith3d.exe> [output folder]
-# Needs makensis (apt install nsis). Writes Gunsmith3D-<version>-setup.exe.
+# Needs makensis (apt install nsis). Writes Gunsmith3D-Setup.exe (no version in the name: one link always gets the
+# newest; the version it installs is in Windows' Apps list).
 set -euo pipefail
 exe="$1"; out="${2:-.}"
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,6 +19,6 @@ cp -r "$root/dist/user" "$st/user"
 ( cd "$st/user" && find . -type f | sed 's|^\./||' | while read -r f; do printf '  Delete "$INSTDIR\\user\\%s"\n' "${f//\//\\}"; done
   find . -mindepth 1 -type d | sort -r | sed 's|^\./||' | while read -r d; do printf '  RMDir "$INSTDIR\\user\\%s"\n' "${d//\//\\}"; done ) > "$st/uninstall_samples.nsh"
 mkdir -p "$out"
-outabs="$(cd "$out" && pwd)/Gunsmith3D-$full-setup.exe"
+outabs="$(cd "$out" && pwd)/Gunsmith3D-Setup.exe"
 makensis -V2 -DVERSION="$full" -DVERNUM="$v.0" -DSTAGE="$st" -DOUT="$outabs" "$root/installer/gunsmith3d.nsi"
 echo "$outabs"

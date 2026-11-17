@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.38-alpha
+
+- **Linux version.** Gunsmith3D now runs natively on Linux. Install it with one line in a terminal: `curl -fsSL https://github.com/LusciousLuchs/Project-Gunsmith-3D/releases/latest/download/install-linux.sh | bash`. It puts the game in your app menu and a `gunsmith3d` command, updates itself each time you start it, and `gunsmith3d --uninstall` removes it. Your designs and settings go in Documents/OAB Foundry/Gunsmith, as on Windows.
+- The Windows installer is now always called `Gunsmith3D-Setup.exe` (no version in the name, so one link always gets the newest). Windows' Apps list shows which version you have.
+
 ## 0.8.37-alpha
 
 - **An installer.** New players can download `Gunsmith3D-0.8.37-alpha-setup.exe` and run it: it installs for your Windows account (no administrator prompt), adds a Start menu entry, a desktop shortcut if you want one, and an entry in Settings > Apps to uninstall it. The game still updates itself afterwards, and Windows' Apps list shows the new version. Your designs, maps and settings (in Documents) are never touched by installing or uninstalling.

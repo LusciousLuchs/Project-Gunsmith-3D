@@ -3,7 +3,7 @@
 ; needed and the game's self-updater can replace its files later. Players' own files (designs, maps, settings) live in
 ; Documents\OAB Foundry\Gunsmith and are never touched by installing, updating or uninstalling.
 ;
-;   makensis -DVERSION=0.8.37-alpha -DVERNUM=0.8.37.0 -DSTAGE=<folder with the game files> -DOUT=<setup.exe> gunsmith3d.nsi
+;   makensis -DVERSION=0.8.38-alpha -DVERNUM=0.8.38.0 -DSTAGE=<folder with the game files> -DOUT=Gunsmith3D-Setup.exe gunsmith3d.nsi
 
 Target amd64-unicode   ; (the game is 64-bit only)
 !include "MUI2.nsh"
@@ -15,7 +15,7 @@ Target amd64-unicode   ; (the game is 64-bit only)
   !error "STAGE (the folder of game files) is required"
 !endif
 !ifndef OUT
-  !define OUT "Gunsmith3D-${VERSION}-setup.exe"
+  !define OUT "Gunsmith3D-Setup.exe"
 !endif
 
 !define APP "Gunsmith3D"

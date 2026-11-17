@@ -1,6 +1,7 @@
 # Publishes a downloadable Windows build whenever the game's version goes up.
 # Bump the version in CMakeLists.txt (project(... VERSION x.y.z)) and push: this builds the Windows installer and zip
-# (the zip is what the game's updater downloads; the installer is for new players), checks the
+# (the zip is what the game's updater downloads; the installer is for new players) and the Linux package with its
+# install script, checks the
 # tests pass, and puts it on the repository's Releases page as "Gunsmith3D x.y.z-stage", with the newest section of
 # CHANGELOG.md as its notes. A version that already has a release is skipped, so ordinary pushes do nothing.
 # Where it's published: the public repository PUBLIC_REPO below (the code stays private here), using the secret
@@ -26,7 +27,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The native Linux build, on an older Ubuntu so it runs on older distributions too (it needs the C library of the
+  # system it was built on, or newer). Packed as Gunsmith3D-Linux.tar.gz for installer/install-linux.sh.
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Linux build
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q cmake g++ libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libgl1-mesa-dev
+          cmake -S . -B build-linux -DGUNSMITH_NATIVE_APP=ON -DGUNSMITH_LINUX_RELEASE=ON -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-linux -j --target gunsmith3d
+          tools/make_linux_package.sh build-linux/gunsmith3d .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: Gunsmith3D-Linux.tar.gz
+
   windows-zip:
+    needs: linux
     runs-on: ubuntu-24.04
     env:
       PUBLIC_REPO: LusciousLuchs/Gunsmith3D-Releases
@@ -79,12 +99,18 @@ jobs:
           # the release notes: the changelog's newest section
           awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2 > notes.md
 
+      - uses: actions/download-artifact@v4
+        if: steps.v.outputs.skip != '1'
+        with:
+          name: linux
+
       - name: Publish the release
         if: steps.v.outputs.skip != '1'
         run: |
           target=""
           [ "${{ steps.v.outputs.repo }}" = "$GITHUB_REPOSITORY" ] && target="--target $GITHUB_SHA"
-          gh release create "v${{ steps.v.outputs.full }}" "Gunsmith3D-${{ steps.v.outputs.full }}-setup.exe" "Gunsmith3D-${{ steps.v.outputs.full }}.zip" \
+          cp installer/install-linux.sh install-linux.sh
+          gh release create "v${{ steps.v.outputs.full }}" Gunsmith3D-Setup.exe "Gunsmith3D-${{ steps.v.outputs.full }}.zip" Gunsmith3D-Linux.tar.gz install-linux.sh \
             --repo "${{ steps.v.outputs.repo }}" $target --title "Gunsmith3D ${{ steps.v.outputs.full }}" --notes-file notes.md --latest
 
       # Posts the release to a Discord channel. Needs the repository secret DISCORD_WEBHOOK (a channel's webhook link,
@@ -98,7 +124,7 @@ jobs:
           if [ -z "$DISCORD_WEBHOOK" ]; then echo "No DISCORD_WEBHOOK secret: not posting."; exit 0; fi
           full="${{ steps.v.outputs.full }}"
           link="https://github.com/${{ steps.v.outputs.repo }}/releases/tag/v$full"
-          head="**Gunsmith3D $full is out!** The game updates itself, or get the installer (Gunsmith3D-$full-setup.exe) here: <$link>"
+          head="**Gunsmith3D $full is out!** The game updates itself, or get it here (Windows: Gunsmith3D-Setup.exe; Linux: install-linux.sh): <$link>"
           body=$(awk '/^## /{n++} n==1' CHANGELOG.md | tail -n +2)
           room=$((1900 - ${#head}))
           if [ ${#body} -gt $room ]; then body="${body:0:$room}"; body="${body%$'\n'*}"$'\n'"...and more in the full notes."; fi

@@ -239,6 +239,10 @@ void mainMenu() {
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, GetScreenHeight() - 34 * S()});
     ImGui::TextDisabled("%s", version::text());
+#ifndef _WIN32
+    ImGui::SameLine(0, 14 * S());
+    ImGui::TextDisabled(CFG.autoUpdate ? "Updates itself each time it starts" : "Updates: gunsmith3d --update");   // (Linux: the launcher does it)
+#else
     {   // updates: fetched from GitHub and installed in the background
         update::Status u = update::status();
         ImGui::SameLine(0, 14 * S());
@@ -259,6 +263,7 @@ void mainMenu() {
             default: if (ImGui::SmallButton("Check for updates")) update::checkNow(); break;
         }
     }
+#endif
     ImGui::End();
     whatsNew();
 }
@@ -555,8 +560,14 @@ void interfacePage() {
                                 "background. It runs the next time you start the game (or at once with Restart now, on the main menu).\n"
                                 "Your designs, maps and settings are never touched.");
     if (ImGui::Checkbox("##autoupd", &CFG.autoUpdate)) { saveSettings(); if (CFG.autoUpdate) update::start(); }
+#ifndef _WIN32
+    ImGui::TextDisabled("On Linux the gunsmith3d command updates the game as it starts it (or run: gunsmith3d --update).");
+    if (false)
+#endif
+    {
     row("Check for updates", "Looks for a new version right now (and installs it, as above).");
     if (ImGui::Button("Check now##updnow")) update::checkNow();
+    }
     {
         update::Status u = update::status();
         ImGui::SameLine();

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- version: the one place to change it. See CHANGELOG.md.
 #   0.1.0-dev: the editor and test bench worked out (dev1 to dev25).
 #   0.2.x-alpha: barrels, posing, and first-person shooting.
-project(Gunsmith3D VERSION 0.8.37 LANGUAGES C CXX)
+project(Gunsmith3D VERSION 0.8.38 LANGUAGES C CXX)
 set(GUNSMITH_STAGE "alpha" CACHE STRING "Release stage: dev, alpha, beta, rc, or empty for a release")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -15,13 +15,15 @@ set(TP ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 set(RL ${TP}/raylib/src)
 
 # ---- platform
-# Gunsmith3D ships for Windows only. On Linux it runs through Wine-GE or Proton-GE, so there is no Linux build of
-# the game. Building on Linux gives the headless core library and its tests (the physics needs no graphics);
-# GUNSMITH_NATIVE_APP=ON also builds the app natively (X11), a developer convenience for automated screenshots.
+# Gunsmith3D ships for Windows (an installer and a zip) and Linux (a native build with an install script, from the
+# release workflow). Building on Linux gives the headless core library and its tests by default (the physics needs no
+# graphics); GUNSMITH_NATIVE_APP=ON also builds the app natively (X11): the Linux release, and automated screenshots.
+# GUNSMITH_LINUX_RELEASE=ON links the C++ runtime in, so one build runs on older and newer distributions alike.
 if(WIN32)
   set(GUNSMITH_BUILD_APP ON)
 else()
-  option(GUNSMITH_NATIVE_APP "Developer only: also build the app natively (X11)" OFF)
+  option(GUNSMITH_NATIVE_APP "Also build the app natively (X11)" OFF)
+  option(GUNSMITH_LINUX_RELEASE "The Linux release build (the C++ runtime linked in)" OFF)
   set(GUNSMITH_BUILD_APP ${GUNSMITH_NATIVE_APP})
 endif()
 
@@ -112,6 +114,9 @@ if(WIN32)  # version and description shown in the .exe's Properties > Details
   set(GUNSMITH_EXTRA_SRC ${CMAKE_CURRENT_BINARY_DIR}/generated/gunsmith3d.rc)
 endif()
 add_executable(gunsmith3d src/main.cpp ${GUNSMITH_EXTRA_SRC})
+if(NOT WIN32 AND GUNSMITH_LINUX_RELEASE)
+  target_link_options(gunsmith3d PRIVATE -static-libstdc++ -static-libgcc)
+endif()
 target_link_libraries(gunsmith3d PRIVATE gunsmith_ui gunsmith_app gunsmith_core imgui raylib)
 if(WIN32)
   set_target_properties(gunsmith3d PROPERTIES WIN32_EXECUTABLE ON)

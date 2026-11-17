@@ -118,8 +118,27 @@ void installCrashHandler() { SetUnhandledExceptionFilter(onCrash); }
 void openFolder(const std::string& p) { CreateDirectoryA(p.c_str(), nullptr); ShellExecuteA(nullptr, "open", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
 #else
 #include <cstdlib>
+#include <fstream>
 bool pickImageFile(std::string&) { return false; }  // (the game ships for Windows; on Linux, drop files on the window)
-std::string documentsFolder() { return ""; }        // (elsewhere the player's files stay in the game folder)
+// Linux: the desktop's Documents folder (XDG_DOCUMENTS_DIR from ~/.config/user-dirs.dirs, else ~/Documents), so the
+// player's files sit in Documents/OAB Foundry/Gunsmith as on Windows. GUNSMITH_PORTABLE keeps them in the game folder.
+std::string documentsFolder() {
+    if (std::getenv("GUNSMITH_PORTABLE")) return "";
+    const char* home = std::getenv("HOME");
+    if (!home || !*home) return "";
+    std::string h = home;
+    const char* cfg = std::getenv("XDG_CONFIG_HOME");
+    std::ifstream in((cfg && *cfg ? std::string(cfg) : h + "/.config") + "/user-dirs.dirs");
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("XDG_DOCUMENTS_DIR=", 0) != 0) continue;
+        std::string v = line.substr(18);
+        if (v.size() >= 2 && v.front() == '"' && v.back() == '"') v = v.substr(1, v.size() - 2);
+        if (v.rfind("$HOME", 0) == 0) v = h + v.substr(5);
+        if (!v.empty() && v != h && v != h + "/") return v;   // (a desktop with no Documents folder points it at home)
+    }
+    return h + "/Documents";
+}
 bool pickFolder(std::string&, const char*) { return false; }
 void setCrashFolder(const std::string&) {}
 void installCrashHandler() {}
