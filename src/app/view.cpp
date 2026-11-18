@@ -81,33 +81,67 @@ bool solidAt(int i, V2 mm, double zmm) {
     }
     return false;
 }
-std::vector<Hit> bodiesUnderMouse() {  // Build mode: design parts
+int gBlocked = -1; float gBlockedT = -1;   // the nearest part under the mouse that its layer keeps from being picked
+std::vector<Hit> bodiesUnderMouse() {  // Build mode: design parts, from any angle
     std::vector<Hit> hits;
+    gBlocked = -1; gBlockedT = -1;
     Ray r = mouseRay();
+    // the ray in design mm (y up; t along the world ray, as rayZ's): x = ox + t vx, y = oy + t vy
+    const double ox = r.position.x / U, oy = -r.position.y / U, vx = r.direction.x / U, vy = -r.direction.y / U;
     for (int i = 0; i < (int)A.design.bodies.size(); i++) {
         const BodyDef& d = A.design.bodies[i];
-        if (!partShown(A.design, d) || partLocked(A.design, d)) continue;   // (hidden or locked editor layers can't be picked)
-        const auto& sl = slicesOf(d);
-        if (sl.empty() || std::fabs(r.direction.z) < 0.02f) {   // a plain slab (or seen edge on): its front face
-            float z = bodyFront(i), t;
-            Vector3 w;
-            if (!rayZ(r, z, w, &t)) continue;
-            V2 mm = toMM(w);
-            if (sim::inPoly(mm.x, mm.y, outlineOf(d))) hits.push_back({i, t, mm});
+        if (!partPickable(A.design, d)) {   // (hidden, locked or faint editor layers can't be picked: noted, so a click can say why)
+            if (partShown(A.design, d)) { Vector3 w; float t; if (rayZ(r, bodyZ(i), w, &t)) { V2 mm = toMM(w); if (sim::inPoly(mm.x, mm.y, outlineOf(d)) && (gBlockedT < 0 || t < gBlockedT)) { gBlockedT = t; gBlocked = i; } } }
             continue;
         }
-        // cut, turned or shaped in depth: walk the ray through the depth it spans and take the first point with
-        // material there, so a hole shows (and picks) whatever is behind it
+        const auto& sl = slicesOf(d);
+        const auto& P = outlineOf(d);
+        if (sl.empty()) {
+            // a plain slab: its outline pushed through its thickness. The nearest of its two faces and its side walls
+            const float c = bodyZ(i), h = bodyDepth(d) / 2;
+            float best = 1e30f; V2 at{0, 0};
+            for (float z : {c - h, c + h}) {
+                Vector3 w; float t;
+                if (!rayZ(r, z, w, &t) || t <= 0 || t >= best) continue;
+                V2 mm = toMM(w);
+                if (sim::inPoly(mm.x, mm.y, P)) { best = t; at = mm; }
+            }
+            for (size_t k = 0; k < P.size(); k++) {
+                V2 pa = P[k], pb = P[(k + 1) % P.size()];
+                double ex = pb.x - pa.x, ey = pb.y - pa.y, den = vx * ey - vy * ex;
+                if (std::fabs(den) < 1e-12) continue;
+                double t = ((pa.x - ox) * ey - (pa.y - oy) * ex) / den, sg = ((pa.x - ox) * vy - (pa.y - oy) * vx) / den;
+                if (t <= 0 || sg < 0 || sg > 1 || t >= best) continue;
+                float z = r.position.z + (float)t * r.direction.z;
+                if (z < c - h || z > c + h) continue;
+                best = (float)t; at = {ox + t * vx, oy + t * vy};
+            }
+            if (best < 1e29f) hits.push_back({i, best, at});
+            continue;
+        }
+        // cut, turned or shaped in depth: the ray clipped to the part's box and walked through it, taking the first point
+        // with material there (so a hole shows, and picks, whatever is behind it)
         double z0 = sl.front().z0, z1 = sl.front().z1;
         for (auto& s : sl) { z0 = std::min(z0, s.z0); z1 = std::max(z1, s.z1); }
-        float bias = bodyZ(i) - (float)d.z * U;
-        float ta = ((float)z0 * U + bias - r.position.z) / r.direction.z, tb = ((float)z1 * U + bias - r.position.z) / r.direction.z;
-        if (ta > tb) std::swap(ta, tb);
-        if (tb <= 0) continue;
-        ta = std::max(ta, 0.f);
-        const int N = 48;
+        double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+        for (auto& s : sl) for (auto& loop : s.outlines) for (auto& q : loop) { x0 = std::min(x0, q.x); x1 = std::max(x1, q.x); y0 = std::min(y0, q.y); y1 = std::max(y1, q.y); }
+        for (auto& q : P) { x0 = std::min(x0, q.x); x1 = std::max(x1, q.x); y0 = std::min(y0, q.y); y1 = std::max(y1, q.y); }
+        const float bias = bodyZ(i) - (float)d.z * U;
+        double lo[3] = {x0 - 1, y0 - 1, z0 * U + bias}, hi[3] = {x1 + 1, y1 + 1, z1 * U + bias};
+        double o3[3] = {ox, oy, r.position.z}, v3[3] = {vx, vy, r.direction.z};
+        double ta = 0, tb = 1e30;
+        bool miss = false;
+        for (int a = 0; a < 3 && !miss; a++) {
+            if (std::fabs(v3[a]) < 1e-12) { if (o3[a] < lo[a] || o3[a] > hi[a]) miss = true; continue; }
+            double t1 = (lo[a] - o3[a]) / v3[a], t2 = (hi[a] - o3[a]) / v3[a];
+            if (t1 > t2) std::swap(t1, t2);
+            ta = std::max(ta, t1); tb = std::min(tb, t2);
+            if (ta > tb) miss = true;
+        }
+        if (miss || tb <= 0) continue;
+        const int N = 96;
         for (int k = 0; k <= N; k++) {
-            float t = ta + (tb - ta) * (k + 0.5f) / (N + 1);
+            float t = (float)(ta + (tb - ta) * (k + 0.5) / (N + 1));
             Vector3 w = Vector3Add(r.position, Vector3Scale(r.direction, t));
             V2 mm = toMM(w);
             if (solidAt(i, mm, depthMM(i, w.z))) { hits.push_back({i, t, mm}); break; }

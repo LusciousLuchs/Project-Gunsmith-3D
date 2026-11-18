@@ -490,7 +490,7 @@ struct NpcGunDef {
 };
 // An editor layer: parts grouped so you can hide or lock some while you work on others (the internals while you shape
 // the receiver round them). Layers are only for editing: the bench, the physics and the range always use every part.
-struct EdLayer { int id = 0; std::string name = "Main"; bool visible = true, locked = false; };
+struct EdLayer { int id = 0; std::string name = "Main"; bool visible = true, locked = false, faint = false; };   // (faint: shown see-through, can't be picked)
 struct Design {
     std::string name = "Untitled action";
     double speed = 0.02;                 // slow-motion speed for shots
@@ -522,6 +522,8 @@ bool hasFireControl(const Design& d, std::string* why = nullptr);
 EdLayer layerOf(const Design& d, int id);
 bool partShown(const Design& d, const BodyDef& b);
 bool partLocked(const Design& d, const BodyDef& b);
+bool partFaint(const Design& d, const BodyDef& b);      // its layer is shown faint (see-through, not pickable)
+bool partPickable(const Design& d, const BodyDef& b);   // shown, not locked, not faint: the editor's tools can pick it
 
 // Shape helpers: the outline actually used for physics and drawing.
 void fixShape(BodyDef& b);                                     // keep rad/bulge sized to pts

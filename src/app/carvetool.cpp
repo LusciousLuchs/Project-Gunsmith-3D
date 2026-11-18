@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include "app/app.hpp"
 #include "app/carvetool.hpp"
+#include "app/render.hpp"
 #include "mounts.hpp"
 #include "app/view.hpp"
 #include "app/fonts.hpp"
@@ -26,7 +27,8 @@ bool carvePick(int& body, Vector3& p, Vector3& n) {
     for (size_t i = 0; i < A.design.bodies.size() && i < A.meshes.size(); i++) {
         if (!A.meshes[i].ok) continue;
         const BodyDef& d = A.design.bodies[i];
-        if (A.cutaway && d.z - d.thick / 2 > 0.5) continue;      // cut away: not there to point at
+        if (A.cutaway && cutAwayPart(A.design, (int)i)) continue;      // cut away: not there to point at
+        if (!partPickable(A.design, d)) continue;                      // (a hidden, locked or faint layer: not to be cut)
         if (pass == 0 && A.xray && d.ghost) continue;
         V2 c = centroidOf(A.design.bodies[i]);
         Matrix M = MatrixTranslate((float)c.x * U, -(float)c.y * U, bodyZ((int)i));

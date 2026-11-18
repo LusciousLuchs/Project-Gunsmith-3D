@@ -335,6 +335,16 @@ void mainMenu() {
             ImGui::Unindent(40 * S());
         }
     }
+#ifdef _WIN32
+    {   // ask for a new version now (one found downloads and installs behind the Updating card, then restarts)
+        update::Status u = update::status();
+        const char* note = u.state == update::State::Checking ? "looking..." : u.state == update::State::UpToDate ? "you have the newest"
+                         : u.state == update::State::Downloading || u.state == update::State::Installing ? "updating..."
+                         : u.state == update::State::Failed ? "couldn't reach the server" : "look for a new version";
+        if (menuItem(ICON_FA_ROTATE, "Check for updates", u.state != update::State::Checking && u.state != update::State::Downloading && u.state != update::State::Installing, note))
+            update::checkNow();
+    }
+#endif
     if (menuItem(ICON_FA_GEAR, "Settings")) A.showSettings = true;
     if (menuItem(ICON_FA_COMMENTS, "Discord", true, "join the community")) OpenURL(DISCORD_URL);
     if (menuItem(ICON_FA_CIRCLE_INFO, "About")) A.showAbout = true;

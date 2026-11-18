@@ -60,7 +60,7 @@ void drawOverlay() {
         auto& j = D.joints[ji];
         {   // (hidden or locked editor layers: no handles on their joints)
             int ia = D.bodyIndex(j.a), ib = D.bodyIndex(j.b);
-            auto off = [&](int i) { return i >= 0 && (!partShown(D, D.bodies[i]) || partLocked(D, D.bodies[i])); };
+            auto off = [&](int i) { return i >= 0 && !partPickable(D, D.bodies[i]); };
             if (off(ia) || off(ib)) continue;
         }
         float z = std::max(frontZ(j.a), frontZ(j.b)) + 0.25f;

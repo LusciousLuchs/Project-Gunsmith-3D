@@ -8,6 +8,21 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.43-alpha
+
+Fixes.
+
+- Parts can be clicked and picked from any angle in the designer: from above, the front, or anywhere in between, not only the side.
+- Cutaway (C) only cuts away the near outer skin of the gun now: small parts inside on the near side, like an ejector, stay solid instead of turning see-through.
+- Check for updates is back on the main menu.
+- Layers are easier to work with:
+  - The eye now cycles shown, faint (see-through and can't be picked: shape a receiver round the internals) and hidden.
+  - The new "work on this layer only" button makes every other layer faint.
+  - Each layer lists its parts, and a button on each row moves the selected part into that layer.
+  - A strip in the corner of the view shows your layers without opening the tab.
+  - Clicking a part in a locked or faint layer tells you why it didn't pick.
+- The Faces, Carve and Measure tools no longer reach parts in hidden, locked or faint layers.
+
 ## 0.8.42-alpha
 
 Better people.

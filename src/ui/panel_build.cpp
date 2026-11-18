@@ -20,6 +20,7 @@
 #include "extras/IconsFontAwesome6.h"
 
 #include <algorithm>
+#include <set>
 #include <cmath>
 #include <cstdarg>
 #include <cstdio>
@@ -1505,7 +1506,7 @@ static void outlineTab() {
                 ImGui::PopID();
                 continue;
             }
-            bool off = !partShown(D, b) || partLocked(D, b);   // (in a hidden or locked editor layer: listed, not pickable)
+            bool off = !partPickable(D, b);   // (in a hidden, locked or faint editor layer: listed, not pickable)
             if (ImGui::Selectable("##row", sel, ImGuiSelectableFlags_AllowDoubleClick, {0, h + 4 * S()})) {
               if (off) toast("That part's layer is hidden or locked: show or unlock it in the Layers tab.");
               else {
@@ -2346,6 +2347,44 @@ void fileButtons() {
 
 // Editor layers: groups of parts to show, hide or lock while you work (the internals hidden or locked while you shape
 // the receiver round them). Only for editing: the bench and the physics always use every part.
+// The layers at a glance in the view (top right), once a gun has more than one: click a name to draw into it, the
+// eye to cycle shown / faint / hidden. The Layers tab has the rest.
+void layerStrip() {
+    auto& D = A.design;
+    if (A.mode != Mode::Build || A.screen != Screen::Workshop || A.showcase || D.layers.size() < 2) return;
+    ImGui::SetNextWindowPos({(float)A.vw - 12 * S(), TOOLBAR_H + 12 * S()}, ImGuiCond_Always, {1, 0});
+    ImGui::SetNextWindowBgAlpha(0.8f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6 * S());
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8 * S(), 6 * S()});
+    ImGui::Begin("##layerstrip", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_AlwaysAutoResize);
+    bool changed = false;
+    ImGui::TextDisabled(ICON_FA_LAYER_GROUP);
+    for (auto& l : D.layers) {
+        ImGui::PushID(l.id);
+        ImGui::SameLine(0, 10 * S());
+        const char* eye = !l.visible ? ICON_FA_EYE_SLASH : l.faint ? ICON_FA_EYE_LOW_VISION : ICON_FA_EYE;
+        if (ImGui::SmallButton(eye)) {
+            if (l.visible && !l.faint) l.faint = true; else if (l.visible) { l.faint = false; l.visible = false; } else l.visible = true;
+            changed = true;
+        }
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip(!l.visible ? "%s: hidden" : l.faint ? "%s: faint" : "%s: shown", l.name.c_str());
+        ImGui::SameLine(0, 3 * S());
+        bool active = A.activeLayer == l.id;
+        if (active) ImGui::PushStyleColor(ImGuiCol_Text, colAccent());
+        std::string label = l.name + (l.locked ? " " ICON_FA_LOCK : "");
+        if (ImGui::Selectable(label.c_str(), active, 0, ImGui::CalcTextSize(label.c_str()))) A.activeLayer = l.id;
+        if (active) ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip(active ? "New parts go into %s" : "Click: new parts go into %s", l.name.c_str());
+        ImGui::PopID();
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
+    if (changed) {
+        if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && !partPickable(D, D.bodies[A.sel.idx])) A.sel = {};
+        commit();
+    }
+}
+
 static void layersTab() {
     auto& D = A.design;
     if (std::getenv("GUNSMITH_LAYERDEMO") && D.layers.empty()) {   // (screenshots) the moving parts in Internals, hidden
@@ -2357,25 +2396,40 @@ static void layersTab() {
     bool hasMain = false; for (auto& l : D.layers) hasMain |= l.id == 0;
     if (!hasMain) D.layers.insert(D.layers.begin(), EdLayer());
     if (std::none_of(D.layers.begin(), D.layers.end(), [](const EdLayer& l) { return l.id == A.activeLayer; })) A.activeLayer = 0;
-    muted("Put parts in layers to work on one group without touching another: hide or lock the internals while you shape the receiver round them. "
-          "New parts go into the layer you've picked (the orange one). Layers are only for editing: the test bench always uses every part.");
+    muted("Layers split a gun into groups you can work on apart: put the internals in one and the receiver in another, then make one "
+          "faint or hide it while you shape the other. New parts go into the orange layer. Layers are only for editing: the test bench always uses every part.");
     ImGui::Dummy({0, 4 * S()});
     bool changed = false;
     static int renaming = -1;
     static char nameBuf[64] = "";
+    static std::set<int> open;
+    const bool haveSel = A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size();
+    const int selLayer = haveSel ? layerOf(D, std::max(0, D.bodies[A.sel.idx].edLayer)).id : -1;
     for (size_t i = 0; i < D.layers.size(); i++) {
         EdLayer& l = D.layers[i];
         ImGui::PushID((int)l.id);
-        int n = 0; for (auto& b : D.bodies) if (layerOf(D, std::max(0, b.edLayer)).id == l.id) n++;
-        if (ImGui::SmallButton(l.visible ? ICON_FA_EYE : ICON_FA_EYE_SLASH)) { l.visible = !l.visible; changed = true; }
-        if (tipHover()) ImGui::SetTooltip(l.visible ? "Hide this layer's parts" : "Show this layer's parts");
+        std::vector<int> parts; for (int k = 0; k < (int)D.bodies.size(); k++) if (layerOf(D, std::max(0, D.bodies[k].edLayer)).id == l.id) parts.push_back(k);
+        bool isOpen = open.count(l.id) > 0;
+        if (ImGui::SmallButton(isOpen ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT)) { if (isOpen) open.erase(l.id); else open.insert(l.id); }
+        if (tipHover()) ImGui::SetTooltip("Its parts");
+        ImGui::SameLine();
+        // the eye: shown, faint (see-through, can't be picked), hidden
+        const char* eye = !l.visible ? ICON_FA_EYE_SLASH : l.faint ? ICON_FA_EYE_LOW_VISION : ICON_FA_EYE;
+        if (ImGui::SmallButton(eye)) {
+            if (l.visible && !l.faint) l.faint = true;
+            else if (l.visible) { l.faint = false; l.visible = false; }
+            else l.visible = true;
+            changed = true;
+        }
+        if (tipHover()) ImGui::SetTooltip(!l.visible ? "Hidden. Click: shown" : l.faint ? "Faint: see-through, can't be picked. Click: hidden" : "Shown. Click: faint (see-through, can't be picked)");
         ImGui::SameLine();
         if (ImGui::SmallButton(l.locked ? ICON_FA_LOCK : ICON_FA_LOCK_OPEN)) { l.locked = !l.locked; changed = true; }
-        if (tipHover()) ImGui::SetTooltip(l.locked ? "Unlock: its parts can be picked and edited again" : "Lock: its parts show but can't be picked or changed");
+        if (tipHover()) ImGui::SetTooltip(l.locked ? "Locked: shows but can't be picked or changed. Click: unlock" : "Click: lock (shows, but can't be picked or changed)");
         ImGui::SameLine();
         bool active = A.activeLayer == l.id;
+        float nameW = ImGui::GetContentRegionAvail().x - 86 * S();
         if (renaming == (int)l.id) {
-            ImGui::SetNextItemWidth(-60 * S());
+            ImGui::SetNextItemWidth(nameW);
             if (ImGui::InputText("##rn", nameBuf, sizeof nameBuf, ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll) || ImGui::IsItemDeactivated()) {
                 if (nameBuf[0]) { l.name = nameBuf; changed = true; }
                 renaming = -1;
@@ -2383,16 +2437,45 @@ static void layersTab() {
             if (renaming == (int)l.id && !ImGui::IsItemActive()) ImGui::SetKeyboardFocusHere(-1);
         } else {
             if (active) ImGui::PushStyleColor(ImGuiCol_Text, colAccent());
-            std::string label = l.name + (l.visible ? "" : "  (hidden)") + (l.locked ? "  (locked)" : "");
-            if (ImGui::Selectable(label.c_str(), active, ImGuiSelectableFlags_AllowDoubleClick, {ImGui::GetContentRegionAvail().x - 50 * S(), 0})) {
+            std::string label = l.name + "  (" + std::to_string(parts.size()) + ")" + (active ? "  " ICON_FA_PEN : "");
+            if (ImGui::Selectable(label.c_str(), active, ImGuiSelectableFlags_AllowDoubleClick, {nameW, 0})) {
                 A.activeLayer = l.id;
                 if (ImGui::IsMouseDoubleClicked(0)) { renaming = l.id; std::snprintf(nameBuf, sizeof nameBuf, "%s", l.name.c_str()); }
             }
             if (active) ImGui::PopStyleColor();
-            if (tipHover()) ImGui::SetTooltip("Click: new parts go here.  Double-click: rename it.");
+            if (tipHover()) ImGui::SetTooltip(active ? "New parts go into this layer.  Double-click: rename it." : "Click: new parts go here.  Double-click: rename it.");
         }
-        ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 40 * S());
-        ImGui::TextDisabled("%d", n);
+        ImGui::SameLine();
+        if (ImGui::SmallButton(ICON_FA_CROSSHAIRS)) {   // work on this one: it's shown and unlocked, the rest faint
+            for (auto& o : D.layers) { bool me = o.id == l.id; o.visible = true; o.faint = !me; if (me) o.locked = false; }
+            A.activeLayer = l.id; changed = true;
+        }
+        if (tipHover()) ImGui::SetTooltip("Work on this layer only: the others go faint (see-through, can't be picked). Show everything brings them back.");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!haveSel || selLayer == l.id);
+        if (ImGui::SmallButton(ICON_FA_ARROW_RIGHT_TO_BRACKET)) {   // the selected part (and its welded piece) into this layer
+            std::string w = D.bodies[A.sel.idx].weld;
+            for (auto& b : D.bodies) if (&b == &D.bodies[A.sel.idx] || (!w.empty() && b.weld == w)) b.edLayer = l.id;
+            changed = true;
+        }
+        ImGui::EndDisabled();
+        if (tipHover()) ImGui::SetTooltip(haveSel ? ("Move " + D.bodies[A.sel.idx].name + " (and anything welded to it) into " + l.name).c_str() : "Select a part, then click here to move it into this layer");
+        if (isOpen) {
+            ImGui::Indent(22 * S());
+            if (parts.empty()) ImGui::TextDisabled("(no parts)");
+            for (int k : parts) {
+                ImGui::PushID(k);
+                bool pick = partPickable(D, D.bodies[k]);
+                if (!pick) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+                if (ImGui::Selectable(D.bodies[k].name.c_str(), haveSel && A.sel.idx == k)) {
+                    if (pick) { A.sel = {1, k, -1}; A.selVs.clear(); }
+                    else toast("That part's layer is hidden, faint or locked: show it or unlock it to pick it.");
+                }
+                if (!pick) ImGui::PopStyleColor();
+                ImGui::PopID();
+            }
+            ImGui::Unindent(22 * S());
+        }
         ImGui::PopID();
     }
     ImGui::Dummy({0, 6 * S()});
@@ -2402,24 +2485,13 @@ static void layersTab() {
         EdLayer l; l.id = id; l.name = D.layers.size() == 1 ? "Internals" : D.layers.size() == 2 ? "Receiver" : "Layer " + std::to_string(id);
         D.layers.push_back(l);
         A.activeLayer = id; changed = true;
+        if (haveSel) toast("New layer " + l.name + ". Use " ICON_FA_ARROW_RIGHT_TO_BRACKET " on its row to move the selected part into it.");
     }
     ImGui::SameLine();
-    {
-        bool can = A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size();
-        ImGui::BeginDisabled(!can);
-        if (ImGui::Button("Selected part here", {half, 0})) {
-            // the selected part and everything welded to it move to this layer
-            std::string w = D.bodies[A.sel.idx].weld;
-            for (auto& b : D.bodies) if (&b == &D.bodies[A.sel.idx] || (!w.empty() && b.weld == w)) b.edLayer = A.activeLayer;
-            changed = true;
-        }
-        ImGui::EndDisabled();
-        if (tipHover()) ImGui::SetTooltip("Moves the selected part (and the parts welded to it) into the orange layer.");
-    }
-    if (ImGui::Button("Show everything", {half, 0})) { for (auto& l : D.layers) { l.visible = true; l.locked = false; } changed = true; }
-    ImGui::SameLine();
+    if (ImGui::Button("Show everything", {half, 0})) { for (auto& l : D.layers) { l.visible = true; l.locked = false; l.faint = false; } changed = true; }
+    if (tipHover()) ImGui::SetTooltip("Every layer shown fully and unlocked");
     ImGui::BeginDisabled(A.activeLayer == 0);
-    if (ImGui::Button("Delete layer", {half, 0})) {   // its parts go to Main
+    if (ImGui::Button("Delete the orange layer", {-1, 0})) {   // its parts go to Main
         int id = A.activeLayer;
         for (auto& b : D.bodies) if (b.edLayer == id) b.edLayer = 0;
         D.layers.erase(std::remove_if(D.layers.begin(), D.layers.end(), [&](const EdLayer& l) { return l.id == id; }), D.layers.end());
@@ -2427,8 +2499,9 @@ static void layersTab() {
     }
     ImGui::EndDisabled();
     if (tipHover()) ImGui::SetTooltip("Removes the orange layer; its parts go back to Main (nothing is deleted).");
+    muted(ICON_FA_EYE " shown, " ICON_FA_EYE_LOW_VISION " faint, " ICON_FA_EYE_SLASH " hidden.  " ICON_FA_CROSSHAIRS " work on that layer only.  " ICON_FA_ARROW_RIGHT_TO_BRACKET " move the selected part there.");
     if (changed) {
-        if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && (!partShown(D, D.bodies[A.sel.idx]) || partLocked(D, D.bodies[A.sel.idx]))) A.sel = {};
+        if (A.sel.kind == 1 && A.sel.idx < (int)D.bodies.size() && !partPickable(D, D.bodies[A.sel.idx])) A.sel = {};
         commit();
     }
 }

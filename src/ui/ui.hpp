@@ -46,6 +46,7 @@ bool section(const char* name, bool open);   // a quiet fold-away heading
 void heading(const char* t);                 // a quiet fixed heading
 bool dangerButton(const char* label, ImVec2 size = {0, 0});
 void hintOverlay();
+void layerStrip();   // the design's layers at a glance, top right of the designer's view
 void toastOverlay();
 void npcToolbar();                // the NPC editor (panel_npc.cpp)
 void npcPanel();

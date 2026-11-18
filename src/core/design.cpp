@@ -1004,7 +1004,7 @@ std::string designToJson(const Design& d, bool pretty) {
     if (d.fcgRequired) o["fcgRequired"] = true;
     if (!d.layers.empty()) {
         json ls = json::array();
-        for (auto& l : d.layers) { json jl = {{"id", l.id}, {"name", l.name}}; if (!l.visible) jl["hidden"] = true; if (l.locked) jl["locked"] = true; ls.push_back(jl); }
+        for (auto& l : d.layers) { json jl = {{"id", l.id}, {"name", l.name}}; if (!l.visible) jl["hidden"] = true; if (l.locked) jl["locked"] = true; if (l.faint) jl["faint"] = true; ls.push_back(jl); }
         o["layers"] = ls;
     }
     o["friction"] = d.friction;
@@ -1281,7 +1281,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
     if (o.contains("layers") && o["layers"].is_array())
         for (auto& jl : o["layers"]) {
             if (!jl.is_object()) continue;
-            EdLayer l; l.id = std::max(0, jl.value("id", 0)); l.name = jl.value("name", std::string("Layer")); l.visible = !jl.value("hidden", false); l.locked = jl.value("locked", false);
+            EdLayer l; l.id = std::max(0, jl.value("id", 0)); l.name = jl.value("name", std::string("Layer")); l.visible = !jl.value("hidden", false); l.locked = jl.value("locked", false); l.faint = jl.value("faint", false);
             d.layers.push_back(l);
         }
     d.friction = opt<double>(o, "friction", 0.12);
@@ -1849,3 +1849,5 @@ EdLayer layerOf(const Design& d, int id) {
 }
 bool partShown(const Design& d, const BodyDef& b) { return d.layers.empty() || layerOf(d, std::max(0, b.edLayer)).visible; }
 bool partLocked(const Design& d, const BodyDef& b) { return !d.layers.empty() && layerOf(d, std::max(0, b.edLayer)).locked; }
+bool partFaint(const Design& d, const BodyDef& b) { if (d.layers.empty()) return false; const EdLayer& l = layerOf(d, std::max(0, b.edLayer)); return l.visible && l.faint; }
+bool partPickable(const Design& d, const BodyDef& b) { return partShown(d, b) && !partLocked(d, b) && !partFaint(d, b); }

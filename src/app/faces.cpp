@@ -51,7 +51,7 @@ App::FacePick pick(Ray r, int only = -1) {
     for (int i = 0; i < (int)A.design.bodies.size(); i++) {
         if (only >= 0 && i != only) continue;
         const BodyDef& d = A.design.bodies[i];
-        if (!editable(d)) continue;
+        if (!editable(d) || !partPickable(A.design, d)) continue;   // (a hidden, locked or faint layer's faces can't be pushed)
         if (depthShaped(d)) {   // its faces are pieces between the corners: test each triangle
             std::vector<P3d> v; std::vector<int> tri, tag;
             depthTriangles(d, v, tri, &tag);

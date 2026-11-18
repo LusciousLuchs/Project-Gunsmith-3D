@@ -967,10 +967,11 @@ static void drawSceneImpl(bool gunOnly) {
     auto list = renderList();
     auto isGhost = [&](const RB& r) {
         if (D.bodies[r.tmpl].opacity < 0.99) return true;   // clear: always drawn see-through
+        if (building && partFaint(D, D.bodies[r.tmpl])) return true;   // a faint editor layer: see-through, for working round it
         if (A.showcase || gunOnly) return false;  // on the menu it looks like a finished gun
         const BodyDef& d = D.bodies[r.tmpl];
         if (building && A.sel.kind == 1 && A.sel.idx == r.tmpl && !d.magazine) return false;   // a selected magazine stays see-through: its rounds show
-        if (A.cutaway && d.z - d.thick / 2 > 0.5) return true;  // wholly on the near side: cut away to show the inside
+        if (A.cutaway && cutAwayPart(D, r.tmpl)) return true;  // the near skin: cut away to show the inside
         return A.xray && d.ghost;
     };
     // opaque parts
@@ -1157,8 +1158,9 @@ static void drawSceneImpl(bool gunOnly) {
             Color gc = (!building && r.sb && r.sb == A.hover) ? shade(c, 1.4f) : c;
             float ga = r.sb && r.sb == A.hover ? 0.42f : 0.26f;
             double op = D.bodies[r.tmpl].opacity;
-            bool xr = !(A.showcase || gunOnly) && ((A.xray && D.bodies[r.tmpl].ghost) || (A.cutaway && D.bodies[r.tmpl].z - D.bodies[r.tmpl].thick / 2 > 0.5));
+            bool xr = !(A.showcase || gunOnly) && ((A.xray && D.bodies[r.tmpl].ghost) || (A.cutaway && cutAwayPart(D, r.tmpl)));
             if (op < 0.99) ga = xr ? std::min(ga, (float)op) : (float)op;   // (a clear part: its own opacity; x-rayed, whichever is clearer)
+            if (building && partFaint(D, D.bodies[r.tmpl])) ga = std::min(ga, 0.13f);
             if (!D.bodies[r.tmpl].texture.empty()) drawMeshTex(A.meshes[r.tmpl].mesh, r.M, gc, userTexture(D.bodies[r.tmpl].texture), ga);
             else drawMesh(A.meshes[r.tmpl].mesh, r.M, gc, ga);
         }
@@ -1185,4 +1187,13 @@ static void drawSceneImpl(bool gunOnly) {
         DrawSphere(Vector3Add(m, Vector3Scale(ax, 3.0f)), 1.0f * k + 0.3f, Color{255, 170, 60, 200});
         DrawSphere(Vector3Add(m, Vector3Scale(ax, 4.6f)), 0.6f * k + 0.2f, Color{255, 120, 40, 160});
     }
+}
+
+bool cutAwayPart(const Design& D, int i) {
+    if (i < 0 || i >= (int)D.bodies.size()) return false;
+    const BodyDef& d = D.bodies[i];
+    if (d.z - d.thick / 2 <= 0.5) return false;   // (not wholly on the near side)
+    double outer = -1e9;
+    for (auto& b : D.bodies) if (!b.magazine) outer = std::max(outer, b.z + b.thick / 2);
+    return d.z + d.thick / 2 >= outer - 3;        // (the near skin, not a small part inside it)
 }

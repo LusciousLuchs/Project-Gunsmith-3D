@@ -159,7 +159,8 @@ V2 measureSnap(V2 w) {
     Vector2 m = GetMousePosition();
     V2 best = w; float bd = 9;
     auto consider = [&](V2 p, float z) { float d = Vector2Distance(toScreen(W3(p, z)), m); if (d < bd) { bd = d; best = p; } };
-    for (size_t i = 0; i < A.design.bodies.size(); i++) for (auto& p : A.design.bodies[i].pts) consider(p, bodyFront((int)i));
+    for (size_t i = 0; i < A.design.bodies.size(); i++)
+        if (partShown(A.design, A.design.bodies[i])) for (auto& p : A.design.bodies[i].pts) consider(p, bodyFront((int)i));   // (not a hidden layer's corners)
     for (auto& j : A.design.joints) { consider(j.p, 0); for (auto& q : j.path) consider(q, 0); }
     return best;
 }
@@ -527,6 +528,10 @@ void buildInput(bool overUI) {
                 if (hits.size() > 1) toast("Selected " + A.design.bodies[hits[0].body].name + ". Alt-click it for the part behind it (" + std::to_string(hits.size()) + " here). Drag to move it.");
             }
             return;
+        }
+        if (gBlocked >= 0 && gBlocked < (int)A.design.bodies.size()) {   // a part was there, but its layer won't let it be picked: say so
+            const BodyDef& bd = A.design.bodies[gBlocked];
+            toast(bd.name + " is in the layer " + layerOf(A.design, std::max(0, bd.edLayer)).name + ", which is " + (partLocked(A.design, bd) ? "locked" : "faint") + ". Unlock it or show it fully in Layers to pick it.");
         }
         // empty space: box-select vertices of the selected part (a plain click deselects)
         A.boxing = true; A.boxStart = m; A.armedKind = -1;

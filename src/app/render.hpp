@@ -5,6 +5,9 @@
 struct RB { int tmpl; Matrix M; float roll; sim::Body* sb; };
 Mesh buildPartMesh(const BodyDef& d, bool rough);   // a part's solid (see render.cpp)
 void drawAttachments(const std::vector<RB>& list);
+// Cutaway view: part i is cut away (drawn see-through) when it lies wholly on the near side AND is part of the gun's
+// near skin (its near face within 3 mm of the outermost one), so small parts inside stay solid
+bool cutAwayPart(const Design& D, int i);
 // a whole design (a gun on a shop display), its meshes kept under `key`; M takes the design frame (mm x U) to the world
 void drawDesignModel(const std::string& key, const Design& d, Matrix M);
 void setOpticSeeThrough(float alpha);   // the range: an optic fades while you aim through it   // fitted attachments on the gun, riding on their parts  // one part to draw: template index, pose, live body (Test)

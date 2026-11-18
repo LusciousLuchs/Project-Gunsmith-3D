@@ -528,6 +528,7 @@ int main(int argc, char** argv) {
         handleKeys();
         if (!demo.empty() && A.S && demo == "reload") A.S->magRelease = frame >= 5 && frame < 40;
         hintOverlay();
+        layerStrip();
         if (A.mode == Mode::Test) traceWindow();
         if (editedAny) A.uiDirty = true;
         if (A.uiDirty && !ImGui::IsAnyItemActive()) { commit(); A.uiDirty = false; }
@@ -536,6 +537,11 @@ int main(int argc, char** argv) {
         EndDrawing();
 
         frame++;
+        if (frames && frame == frames - 2)
+            if (const char* e = std::getenv("GUNSMITH_PICKCAM")) {   // (tests) the designer's camera turned (yaw, pitch in radians) before picking
+                float y = 0, p = 0; std::sscanf(e, "%f,%f", &y, &p);
+                A.yaw = y; A.pitch = p; A.ortho = false;
+            }
         if (frames && frame == frames - 1)
             if (const char* e = std::getenv("GUNSMITH_PICKAT")) {   // (tests) which parts are under this design point (mm, x,y,z)
                 float x = 0, y = 0, z = 0; std::sscanf(e, "%f,%f,%f", &x, &y, &z);
