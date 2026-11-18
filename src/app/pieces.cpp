@@ -54,8 +54,11 @@ bool insertPiece(const std::string& text, double dx, double dy) {
         if (!b.weld.empty() && !ntag.count(b.weld)) ntag[b.weld] = "w-" + uid();
     }
     int first = (int)D.bodies.size();
+    bool hasFcg = std::any_of(D.bodies.begin(), D.bodies.end(), [](const BodyDef& x) { return x.fcg; });
     for (auto b : sub.bodies) {
         b.id = nid[b.id];
+        b.edLayer = -1;              // (into the layer you're working in, not the number it had in the gun it came from)
+        if (hasFcg) b.fcg = false;   // (one fire control group per gun: the one already here stays)
         if (!b.weld.empty()) b.weld = ntag[b.weld];
         if (!b.mirror.empty()) b.mirror = ntag["mirror:" + b.mirror];
         for (auto& p : b.pts) { p.x += dx; p.y += dy; }

@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.41-alpha
+
+Bug fixes.
+
+- Pasted parts and action kits now land in the layer you're working in, instead of wherever they were copied from.
+- Pasting or adding a kit no longer gives a gun a second fire control group.
+- Moving a part into a hidden or locked layer lets go of it, and the Outline list greys out those parts instead of letting you pick something you can't see.
+- Quitting while a radio station search is running no longer hangs the game.
+- If the game can't restart itself after updating, it tells you to start it again instead of sitting on "Restarting".
+
 ## 0.8.40-alpha
 
 - **Layers in the gun designer.** A new Layers tab: put parts in layers (say Internals and Receiver), then hide or lock a whole layer while you work on another. Hidden parts aren't drawn and can't be clicked; locked parts show but can't be picked or changed, so you can shape a receiver round your internals without knocking them. New parts go into the layer you've picked (the orange one), "Selected part here" moves a part (and what's welded to it) into it, and each part's panel shows its layer. Layers are only for editing: the test bench and the range always use every part.

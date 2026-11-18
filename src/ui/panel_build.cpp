@@ -533,7 +533,10 @@ static void inspectPart(BodyDef& b) {
         if (!D.layers.empty()) {   // which editor layer it's in
             prop("Layer", "The editor layer it's in (the Layers tab hides or locks whole layers).");
             if (ImGui::BeginCombo("##edlayer", layerOf(D, std::max(0, b.edLayer)).name.c_str())) {
-                for (auto& l : D.layers) if (ImGui::Selectable(l.name.c_str(), std::max(0, b.edLayer) == l.id)) { b.edLayer = l.id; editedAny = true; }
+                for (auto& l : D.layers) if (ImGui::Selectable(l.name.c_str(), std::max(0, b.edLayer) == l.id)) {
+                    b.edLayer = l.id; editedAny = true;
+                    if (!l.visible || l.locked) A.sel = {};   // (into a hidden or locked layer: it can't stay picked)
+                }
                 ImGui::EndCombo();
             }
         }
@@ -1502,16 +1505,20 @@ static void outlineTab() {
                 ImGui::PopID();
                 continue;
             }
+            bool off = !partShown(D, b) || partLocked(D, b);   // (in a hidden or locked editor layer: listed, not pickable)
             if (ImGui::Selectable("##row", sel, ImGuiSelectableFlags_AllowDoubleClick, {0, h + 4 * S()})) {
+              if (off) toast("That part's layer is hidden or locked: show or unlock it in the Layers tab.");
+              else {
                 A.sel = {1, (int)i, -1};
                 gPickedInOutline = true;
                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) { renaming = (int)i; std::snprintf(rbuf, sizeof rbuf, "%s", b.name.c_str()); }
+              }
             }
             if (tipHover()) ImGui::SetTooltip("Click to pick it out in the view. Double-click to rename it.");
             ImGui::PopID();
             auto* dl = ImGui::GetWindowDrawList();
             dl->AddCircleFilled({p.x + 6 * S(), p.y + (h + 4 * S()) / 2}, 4 * S(), IM_COL32(c.r, c.g, c.b, 255));
-            dl->AddText({p.x + 18 * S(), p.y + 2 * S()}, ImGui::GetColorU32(ImGuiCol_Text), b.name.c_str());
+            dl->AddText({p.x + 18 * S(), p.y + 2 * S()}, ImGui::GetColorU32(off ? ImGuiCol_TextDisabled : ImGuiCol_Text), b.name.c_str());
             const char* tag = b.fixed ? "frame" : b.magazine ? "magazine" : b.rollOn ? "turns" : !b.weld.empty() ? "welded" : b.layer == "none" ? "not solid" : "";
             if (*tag) {
                 float tw = ImGui::CalcTextSize(tag).x;

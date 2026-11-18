@@ -1,4 +1,5 @@
 // Gunsmith3D - action kits (see kits.hpp).
+#include <algorithm>
 #include "kits.hpp"
 #include "solver.hpp"
 #include <cstdlib>
@@ -74,7 +75,10 @@ int insertKit(Design& D, const Design& kitIn, V2 at) {
     std::string pre = "kit" + std::to_string(D.bodies.size()) + "-";
     auto retag = [&](std::string& t) { if (t.empty()) return; if (!tag.count(t)) tag[t] = pre + t; t = tag[t]; };
     int first = (int)D.bodies.size();
+    bool hasFcg = std::any_of(D.bodies.begin(), D.bodies.end(), [](const BodyDef& x) { return x.fcg; });
     for (auto b : kit.bodies) {
+        b.edLayer = -1;              // (into the layer you're working in)
+        if (hasFcg) b.fcg = false;   // (one fire control group per gun: the gun's own stays)
         ren(b.id); ren(b.feedPawl); ren(b.rail.base);
         retag(b.weld); retag(b.mirror);
         std::string base = b.name;

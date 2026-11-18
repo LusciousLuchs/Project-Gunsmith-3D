@@ -12,7 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <future>
+#include <thread>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -213,9 +213,14 @@ void drawRadio(Vector3 base, float yawDeg, Color tint, bool on) {
 
 // ---------------------------------------------------------------- controls
 namespace {
+struct SearchJob {   // a search on its own thread (a std::async future would hold up quitting until it finished)
+    std::mutex m;
+    bool done = false;
+    std::vector<netradio::StationInfo> result;
+};
 struct Search {
     char query[96] = "";
-    std::future<std::vector<netradio::StationInfo>> job;
+    std::shared_ptr<SearchJob> job;
     std::vector<netradio::StationInfo> found;
     std::string err;
     bool busy = false;
@@ -255,11 +260,18 @@ bool radioControls(gmap::Entity& e) {
     if (go && !gSearch.busy && gSearch.query[0]) {
         std::string q = gSearch.query;
         gSearch.busy = true; gSearch.err.clear();
-        gSearch.job = std::async(std::launch::async, [q] { std::string err; auto r = netradio::searchStations(q, 30, &err); if (r.empty() && !err.empty()) r.push_back({"(" + err + ")", "", "", "", "", 0}); return r; });
+        auto job = std::make_shared<SearchJob>();
+        gSearch.job = job;
+        std::thread([q, job] {
+            std::string err; auto r = netradio::searchStations(q, 30, &err);
+            if (r.empty() && !err.empty()) r.push_back({"(" + err + ")", "", "", "", "", 0});
+            std::lock_guard<std::mutex> l(job->m); job->result = std::move(r); job->done = true;
+        }).detach();
     }
-    if (gSearch.busy && gSearch.job.valid() && gSearch.job.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
-        gSearch.found = gSearch.job.get();
-        gSearch.busy = false;
+    bool ready = false;
+    if (gSearch.busy && gSearch.job) { std::lock_guard<std::mutex> l(gSearch.job->m); ready = gSearch.job->done; if (ready) gSearch.found = gSearch.job->result; }
+    if (ready) {
+        gSearch.busy = false; gSearch.job.reset();
         if (gSearch.found.empty()) gSearch.err = "Nothing found (MP3 stations only).";
     }
     if (!gSearch.err.empty()) ImGui::TextDisabled("%s", gSearch.err.c_str());

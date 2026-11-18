@@ -243,9 +243,10 @@ static bool forcedUpdateScreen() {
     bool checking = u.state == update::State::Checking && GetTime() - since < 8;
     bool fetching = u.state == update::State::Downloading || u.state == update::State::Installing || u.state == update::State::Installed;
     if (!checking && !fetching) return false;
+    static bool restartFailed = false;
     if (u.state == update::State::Installed) {   // restart into the new version (once)
         static bool asked = false;
-        if (!asked) { asked = true; if (update::restart()) A.quit = true; }
+        if (!asked) { asked = true; if (update::restart()) A.quit = true; else restartFailed = true; }
     }
     float W = (float)GetScreenWidth(), H = (float)GetScreenHeight();
     ImGui::GetBackgroundDrawList()->AddRectFilled({0, 0}, {W, H}, IM_COL32(12, 14, 18, 245));
@@ -260,7 +261,11 @@ static bool forcedUpdateScreen() {
     if (checking) ImGui::TextDisabled("One moment...");
     else if (u.state == update::State::Downloading) ImGui::Text("Downloading %s...", u.latest.c_str());
     else if (u.state == update::State::Installing) ImGui::Text("Installing %s...", u.latest.c_str());
-    else ImGui::Text("%s is installed. Restarting...", u.latest.c_str());
+    else if (!restartFailed) ImGui::Text("%s is installed. Restarting...", u.latest.c_str());
+    else {   // (it couldn't start the new version itself: the player does)
+        ImGui::Text("%s is installed. Close the game and start it again to play it.", u.latest.c_str());
+        if (ImGui::Button("Quit", {-1, 0})) A.quit = true;
+    }
     float t = (float)GetTime(), bw = ImGui::GetContentRegionAvail().x;   // a bar sliding back and forth
     ImVec2 p = ImGui::GetCursorScreenPos();
     auto* dl = ImGui::GetWindowDrawList();
