@@ -5,6 +5,8 @@
 #include "career.hpp"
 #include "places.hpp"
 #include "npcai.hpp"
+#include "rig.hpp"
+#include <array>
 #include "doors.hpp"
 #include "penetrate.hpp"
 #include "map.hpp"
@@ -2264,7 +2266,16 @@ static void mapsCarryNpcs() {
     CHECK(fingers == 30, "the maker's hands have five fingers of three pieces each");
     bool core = true; for (auto& b : npcPreset("human").bones) core &= has(ch, b.name);
     CHECK(core, "it keeps every bone a human has (the poser finds the arms and the head by name)");
-    CHECK(has(ch, "Eye (left)") && has(ch, "Nose") && has(ch, "Hair") && has(ch, "Belt") && has(ch, "Ear cup (right)") && !has(ch, "Cap"), "a face, hair and the chosen extras");
+    CHECK(has(ch, "Eye (left)") && has(ch, "Ear (left)") && has(ch, "Belt") && has(ch, "Ear cup (right)") && !has(ch, "Cap"), "a face, ears and the chosen extras");
+    {   // the sculpted head (its nose, sockets, chin and lips are its own shape; the hair a shell drawn over it)
+        const NpcBone* hd = nullptr; for (auto& b : ch.bones) if (b.name == "Head") hd = &b;
+        bool sculpted = hd && hd->body && !has(ch, "Nose") && !has(ch, "Hair");
+        double nose = hd ? npcHeadFront(*hd, 0.445, 0) : 0, cheek = hd ? npcHeadFront(*hd, 0.445, 30) : 0;
+        double socket = hd ? npcHeadFront(*hd, 0.565, 0.39 * hd->r0 * hd->width) : 0, brow = hd ? npcHeadFront(*hd, 0.645, 0.39 * hd->r0 * hd->width) : 0;
+        double back = 0, sideX = 0, frontZ = 0; if (hd) { npcHeadPoint(*hd, 0.5, 3.14159265, sideX, back); npcHeadPoint(*hd, 0.5, 0, sideX, frontZ); }
+        std::printf("  (head: nose tip %.0f mm forward, cheek beside it %.0f, eye socket %.0f under the brow %.0f, back of the head %.0f)\n", nose, cheek, socket, brow, back);
+        CHECK(sculpted && nose > cheek + 15 && socket < brow - 5 && back < 0 && frontZ > 0, "the head is sculpted: the nose stands out, the eyes sit in sockets under the brow");
+    }
     L.body = "female"; L.hair = "ponytail"; L.hat = true; L.glasses = true; L.top = "tank"; L.pants = "shorts";
     NpcDef fem = characterFromLook(L);
     CHECK(!has(fem, "Bust (left)") && fem.look.body == "female" && has(fem, "Ponytail") && has(fem, "Cap") && has(fem, "Lens (right)"), "a female body (the chest shaped in the one-piece body, not pieces), a ponytail, a cap and glasses");
@@ -2817,6 +2828,65 @@ static void fireControlTest() {
     CHECK(blank.fcgRequired, "a new gun needs a fire control group");
 }
 // Editor layers (0.8.40): parts grouped to hide or lock while editing; saved; the physics ignores them
+
+// A modelled character (as a 3D artist would make one: a T-pose, Mixamo's joint names) fitted onto a person's bones.
+static void rigTest() {
+    std::printf("\n== modelled characters on the bones\n");
+    std::vector<rig::Joint> J;
+    auto add = [&](const char* nm, const char* parent, double x, double y, double z) {
+        rig::Joint j; j.name = nm; j.bind.p[0] = x; j.bind.p[1] = y; j.bind.p[2] = z;
+        for (int i = 0; i < (int)J.size(); i++) if (J[i].name == parent) j.parent = i;
+        J.push_back(j);
+    };
+    add("Armature", "", 0, 0, 0);
+    add("mixamorig:Hips", "Armature", 0, 1.0, 0);
+    add("mixamorig:Spine", "mixamorig:Hips", 0, 1.1, 0); add("mixamorig:Spine1", "mixamorig:Spine", 0, 1.2, 0); add("mixamorig:Spine2", "mixamorig:Spine1", 0, 1.32, 0);
+    add("mixamorig:Neck", "mixamorig:Spine2", 0, 1.5, 0); add("mixamorig:Head", "mixamorig:Neck", 0, 1.6, 0); add("mixamorig:HeadTop_End", "mixamorig:Head", 0, 1.8, 0);
+    for (int sgn : {1, -1}) {   // (glTF: the model's left is +x)
+        std::string S = sgn > 0 ? "Left" : "Right";
+        auto N = [&](const char* w) { return "mixamorig:" + S + w; };
+        add(N("Shoulder").c_str(), "mixamorig:Spine2", sgn * 0.06, 1.45, 0);
+        add(N("Arm").c_str(), N("Shoulder").c_str(), sgn * 0.18, 1.45, 0);
+        add(N("ForeArm").c_str(), N("Arm").c_str(), sgn * 0.46, 1.45, 0);
+        add(N("Hand").c_str(), N("ForeArm").c_str(), sgn * 0.72, 1.45, 0);
+        add(N("HandMiddle1").c_str(), N("Hand").c_str(), sgn * 0.82, 1.45, 0);
+        add(N("UpLeg").c_str(), "mixamorig:Hips", sgn * 0.1, 0.95, 0);
+        add(N("Leg").c_str(), N("UpLeg").c_str(), sgn * 0.1, 0.52, 0);
+        add(N("Foot").c_str(), N("Leg").c_str(), sgn * 0.1, 0.08, 0);
+        add(N("ToeBase").c_str(), N("Foot").c_str(), sgn * 0.1, 0.0, 0.13);
+    }
+    CharLook L; L.on = true;
+    NpcDef n = characterFromLook(L);
+    auto map = rig::mapJoints(J, n);
+    std::string rep = rig::mapReport(J, map, n);
+    std::printf("  (%s)\n", rep.c_str());
+    auto idx = [&](const char* nm) { for (int i = 0; i < (int)J.size(); i++) if (J[i].name == nm) return i; return -1; };
+    auto boneOf = [&](const char* nm) { int j = idx(nm); return j >= 0 && map[j] >= 0 ? n.bones[map[j]].name : std::string("-"); };
+    CHECK(rep.rfind("16 of the 16", 0) == 0 && boneOf("mixamorig:LeftHandMiddle1") == "-" && boneOf("mixamorig:LeftShoulder") == "-",
+          "Mixamo's joints are found: hips, spine, neck, head, arms and legs; fingers and collarbones ride along");
+    auto P = npcPose(n);
+    int lArm = idx("mixamorig:LeftArm");
+    double npcSideOfThatArm = P[map[lArm]].a[0];
+    CHECK(npcSideOfThatArm > 0, "an arm follows the bone on the same side of the body, whatever the names say");
+    auto X = rig::poseJoints(J, map, n, P);
+    auto at = [&](const char* nm) { const double* p = X[idx(nm)].p; return std::array<double, 3>{p[0], p[1], p[2]}; };
+    auto sh = at("mixamorig:LeftArm"), el = at("mixamorig:LeftForeArm"), hd = at("mixamorig:LeftHand");
+    std::printf("  (standing: shoulder %.2f m up, elbow %.2f, hand %.2f; head %.2f; feet %.2f)\n", sh[1], el[1], hd[1], at("mixamorig:Head")[1], at("mixamorig:LeftFoot")[1]);
+    CHECK(el[1] < sh[1] - 0.2 && hd[1] < el[1] - 0.15, "the T-posed arms hang down at the sides, as the person stands");
+    CHECK(std::fabs(std::hypot(el[0] - sh[0], el[1] - sh[1], el[2] - sh[2]) - 0.28) < 0.002, "an arm keeps its own length (the model keeps its size)");
+    CHECK(at("mixamorig:Head")[1] > at("mixamorig:Neck")[1] && at("mixamorig:LeftFoot")[1] < 0.2 && at("mixamorig:LeftFoot")[1] > -0.05, "the head stays on top and the feet near the floor");
+    NpcDef w = npcai::walking(n, 0.25, 1.4);
+    auto Xw = rig::poseJoints(J, map, w, npcPose(w));
+    double lz = Xw[idx("mixamorig:LeftFoot")].p[2], rz = Xw[idx("mixamorig:RightFoot")].p[2];
+    std::printf("  (walking: one foot %.2f m forward, the other %.2f)\n", lz, rz);
+    CHECK(std::fabs(lz - rz) > 0.15, "walking: its legs stride as the person's do");
+    // the skinning matrix: a point on the bound joint moves with it
+    float m[16]; rig::skinMatrix(J[idx("mixamorig:LeftHand")].bind, X[idx("mixamorig:LeftHand")], m);
+    double px = 0.72, py = 1.45, pz = 0;
+    double qx = m[0] * px + m[4] * py + m[8] * pz + m[12], qy = m[1] * px + m[5] * py + m[9] * pz + m[13], qz = m[2] * px + m[6] * py + m[10] * pz + m[14];
+    CHECK(std::hypot(qx - hd[0], qy - hd[1], qz - hd[2]) < 1e-6, "the skin moves with its joints");
+}
+
 static void layersTest() {
     std::printf("\n== editor layers\n");
     Design d = loadPreset("blowback");
@@ -3243,6 +3313,7 @@ int main() {
         else if (o == "radio") radioTest();
         else if (o == "fcg") fireControlTest();
         else if (o == "layers") layersTest();
+        else if (o == "rig") rigTest();
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
@@ -3321,6 +3392,7 @@ int main() {
     radioTest();
     fireControlTest();
     layersTest();
+    rigTest();
     hollowParts();
     cheatsTest();
     furnitureTest();

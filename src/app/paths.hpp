@@ -20,7 +20,8 @@ inline const char* CHARACTER_FILE = "user/character.json";   // your player char
 inline const char* GROUPS_DIR = "user/groups";      // groups of map objects saved as one, to place again (app/mapedit.cpp)
 inline const char* ATTACH_DIR = "user/attachments";   // your attachments (the attachment designer): saved apart from guns
 inline const char* FURNITURE_DIR = "user/furniture";   // furniture and props made in the Level editor (one .json each)
-inline const char* LOADOUT_DIR = "user/loadouts";     // which attachments go where on a gun (the fitting bench)
+inline const char* LOADOUT_DIR = "user/loadouts";
+inline const char* MODELS_DIR = "user/models";       // modelled characters (.glb/.gltf with a skeleton); "Shop people" in it: the career's customers and staff     // which attachments go where on a gun (the fitting bench)
 
 void initAppFolder();                  // first thing: where the settings and autosave live (Documents/OAB Foundry/Gunsmith on Windows)
 std::string appFolder();               // that folder ("" = the game folder)

@@ -1,5 +1,9 @@
 // Gunsmith3D - the NPC editor's top bar and side panel (see app/npcedit.hpp).
 #include "app/npcedit.hpp"
+#include "app/charmodel.hpp"
+#include "app/paths.hpp"
+#include "app/usertex.hpp"
+#include <filesystem>
 #include "app/app.hpp"
 #include "app/fonts.hpp"
 #include "app/settings.hpp"
@@ -122,6 +126,40 @@ void gearEditor(NpcDef& n, NpcBone& b, bool& done) {
     pNum("Turn", b.turn, 1, "%.0f\xc2\xb0"); fin();
     pNum("Twist", b.twist, 1, "%.0f\xc2\xb0"); fin();
 }
+// A modelled character (a skinned .glb/.gltf from Blender or any 3D program) drawn over the bones instead of their shapes
+void modelSection(NpcDef& n, bool& done, bool player) {
+    if (!section("3D model", !n.model.empty())) return;
+    ImGui::PushTextWrapPos(0);
+    ImGui::TextDisabled(player ? "Use a modelled character instead of the one made here: a .glb or .gltf with its skeleton, in the Models folder. It moves with these bones."
+                               : "Draw this NPC as a modelled character: a .glb or .gltf with its skeleton, in the Models folder. Its joints follow the bones by name.");
+    ImGui::PopTextWrapPos();
+    auto files = charModelFiles();
+    prop("Model");
+    if (ImGui::BeginCombo("##model", n.model.empty() ? (player ? "None: the one made here" : "None: the bones' shapes") : n.model.c_str())) {
+        if (ImGui::Selectable(player ? "None: the one made here" : "None: the bones' shapes", n.model.empty())) { n.model.clear(); done = true; }
+        for (auto& f : files)
+            if (ImGui::Selectable(f.c_str(), f == n.model)) { n.model = f; done = true; }
+        ImGui::EndCombo();
+    }
+    if (!n.model.empty()) {
+        CharModelInfo I = charModelInfo(n.model, n);
+        ImGui::PushTextWrapPos(0);
+        if (!I.ok) ImGui::TextColored(ImVec4(1, 0.55f, 0.4f, 1), "Can't use it: %s", I.error.c_str());
+        else ImGui::TextDisabled("%d joints, %d triangles. %s.", I.joints, I.triangles, I.report.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+    if (ImGui::Button("Open the Models folder", {w2, 0})) { std::error_code ec; std::filesystem::create_directories(MODELS_DIR, ec); openFolder(std::filesystem::absolute(MODELS_DIR).string()); }
+    ImGui::SameLine();
+    if (ImGui::Button("Load again", {w2, 0})) charModelsForget();
+    if (tipHover()) ImGui::SetTooltip("After changing a model's file: reads it again.");
+    if (files.empty() && n.model.empty()) {
+        ImGui::PushTextWrapPos(0);
+        ImGui::TextDisabled("Export from Blender as glTF 2.0 (.glb) with its armature: standing on the ground, facing Blender's front view, "
+                            "up to 4 bone weights a vertex. Mixamo's names and Blender's (upper_arm.L...) are understood. Models in \"Shop people\" walk into your career shop.");
+        ImGui::PopTextWrapPos();
+    }
+}
 }  // namespace
 
 static void characterPanel() {
@@ -183,6 +221,7 @@ static void characterPanel() {
         NE.sel = keepSel;
         if (ImGui::IsMouseReleased(ImGuiMouseButton_Left) || !ImGui::IsMouseDown(ImGuiMouseButton_Left)) done = true;
     }
+    modelSection(n, done, true);
     if (section("Your own gear", true)) {
         ImGui::PushTextWrapPos(0);
         ImGui::TextDisabled("Anything else: a helmet, a vest, pouches. Click a part of your character in the view, then add gear to it.");
@@ -249,6 +288,7 @@ void npcPanel() {
     ImGui::TextDisabled("%d bones, %.2f m tall", (int)n.bones.size(), npcHeight(n) / 1000);
     ImGui::Dummy({0, 4 * CFG.uiScale});
 
+    modelSection(n, done, false);
     if (section("Body", true)) {
         ImGui::TextDisabled("Click a bone in the view, or here.");
         ImGui::BeginChild("##bones", {0, 150 * CFG.uiScale}, ImGuiChildFlags_Borders);

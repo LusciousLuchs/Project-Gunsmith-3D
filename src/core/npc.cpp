@@ -152,6 +152,58 @@ double npcBoneRadius(const NpcBone& b, double t) {
     double r = b.r0 + (b.r1 - b.r0) * t;
     return std::max(0.0, r * (1 + b.bulge * std::sin(3.14159265358979 * std::clamp(t, 0.0, 1.0))));
 }
+namespace {
+double sstep(double a, double b, double x) { double t = std::clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3 - 2 * t); }
+double gauss(double v) { return std::exp(-v * v); }
+}  // namespace
+
+void npcHeadPoint(const NpcBone& h, double t, double ang, double& x, double& z) {
+    const double PI_ = 3.14159265358979;
+    t = std::clamp(t, 0.0, 1.0);
+    const double R = (h.r0 + h.r1) / 2, cx = std::sin(ang), cz = std::cos(ang);
+    // a fuller egg than a ball: a round crown, the jaw narrowing to the chin
+    // round at the crown, squarer at the jaw
+    double u = 2 * t - 1, r = R * std::pow(std::max(0.0, 1 - u * u), t > 0.5 ? 0.5 : 0.42) * (1 + h.bulge * std::sin(PI_ * t));
+    double wx = h.width * (0.8 + 0.2 * sstep(0.08, 0.5, t));   // (the jaw a little narrower than the cheekbones)
+    double dz = h.depth;
+    double fz = cz;
+    if (cz < 0) dz *= (0.55 + 0.45 * sstep(0.1, 0.5, t)) * (1 + 0.08 * sstep(0.4, 0.7, t) * (1 - sstep(0.85, 1.0, t)));   // the skull's base tucks in above the neck, the back of the crown swells
+    else fz = std::pow(cz, 0.8);   // (the face flatter than the back)
+    x = cx * r * wx;
+    z = fz * r * dz;
+    if (cz <= 0) return;
+    const double ax = x / std::max(1e-6, R * h.width);   // across the face, -1..1
+    const double fade = sstep(0.0, 0.35, cz);             // (features only on the front)
+    double d = 0;
+    d += R * 0.05 * gauss((t - 0.11) / 0.07) * gauss(ax / 0.38);                         // the chin
+    d += R * 0.05 * gauss((t - 0.645) / 0.035) * gauss(ax / 0.6);                        // the brow
+    d += R * 0.035 * gauss((t - 0.48) / 0.06) * gauss((std::fabs(ax) - 0.55) / 0.15);    // cheekbones
+    d -= R * 0.09 * gauss((t - 0.565) / 0.05) * gauss((std::fabs(ax) - 0.4) / 0.16);     // eye sockets
+    d += R * 0.07 * gauss((t - 0.598) / 0.015) * gauss((std::fabs(ax) - 0.4) / 0.13);   // the upper lids (over the top of the eye)
+    d += R * 0.045 * gauss((t - 0.53) / 0.013) * gauss((std::fabs(ax) - 0.4) / 0.12);    // and the lower
+    const double tip = 0.445;   // the nose: a ridge from the brow to its tip, wider at the bottom, tucked in under
+    double nh = t >= tip ? R * (0.06 + 0.2 * std::pow(sstep(0.64, tip, t), 1.6)) * sstep(0.68, 0.62, t)
+                         : R * 0.26 * sstep(0.395, tip, t);
+    double nw = 0.085 + 0.1 * sstep(0.6, 0.41, t);
+    d += nh * gauss(ax / nw);
+    d += R * 0.05 * gauss((t - 0.31) / 0.1) * gauss(ax / 0.45);     // the mouth's fullness (the face isn't flat below the nose)
+    d += R * 0.03 * gauss((t - 0.37) / 0.03) * gauss(ax / 0.12);   // the groove under the nose, filled
+    d += R * 0.05 * gauss((t - 0.318) / 0.022) * gauss(ax / 0.32);   // the upper lip
+    d += R * 0.05 * gauss((t - 0.262) / 0.022) * gauss(ax / 0.28);   // the lower lip
+    d -= R * 0.025 * gauss((t - 0.29) / 0.01) * gauss(ax / 0.34);    // where they meet
+    z += d * fade;
+}
+double npcHeadFront(const NpcBone& h, double t, double x) {
+    double lo = -1.5707963, hi = 1.5707963, px = 0, pz = 0;   // (x grows with the angle on the front half)
+    for (int i = 0; i < 40; i++) {
+        double m = (lo + hi) / 2;
+        npcHeadPoint(h, t, m, px, pz);
+        if (px < x) lo = m; else hi = m;
+    }
+    npcHeadPoint(h, t, (lo + hi) / 2, px, pz);
+    return pz;
+}
+
 double npcBoneReach(const NpcBone& b) {
     double r = 0;
     for (int k = 0; k <= 8; k++) r = std::max(r, npcBoneRadius(b, k / 8.0));
@@ -255,6 +307,7 @@ std::string npcToJson(const NpcDef& n) {
     o["fight"] = {{"health", n.health}, {"speed", n.speed}, {"attack", n.attack}, {"damage", n.damage}, {"reach", n.reach},
                   {"gun", n.gun}, {"sight", n.sight}, {"behaviour", n.behaviour}, {"team", n.team}};
     if (n.armorBar > 0) o["fight"]["armor"] = n.armorBar;
+    if (!n.model.empty()) o["model"] = n.model;
     if (n.look.on) {
         const CharLook& L = n.look;
         o["look"] = {{"body", L.body}, {"height", L.height}, {"build", L.build}, {"skin", L.skin}, {"eyes", L.eyes}, {"hair", L.hair},
@@ -312,6 +365,7 @@ bool npcFromJson(const std::string& text, NpcDef& out, std::string* err) {
         L.beltColor = str(j, "beltColor", d.beltColor); L.hatColor = str(j, "hatColor", d.hatColor);
         L.headphonesColor = str(j, "headphonesColor", d.headphonesColor); L.glassesColor = str(j, "glassesColor", d.glassesColor);
     }
+    n.model = str(o, "model", "");
     out = n;
     return true;
 }
@@ -341,6 +395,7 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     auto I = [&](const char* nm) -> NpcBone& { return n.bones[find(nm)]; };
     I("Head").vital = true;   // (where a hit hurts most, as for any NPC)
     I("Neck").color = I("Head").color = L.skin;
+    I("Neck").r0 *= 1.22; I("Neck").r1 *= 1.18; I("Neck").len *= 0.8;   // (a neck as thick and short as a real one: a thin one reads as a stalk)
     I("Chest").color = L.topColor;
     I("Pelvis").color = L.pantsColor;
     if (fem) {
@@ -360,13 +415,14 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
         th.color = L.pantsColor;
         sh.color = L.pants == "shorts" ? L.skin : L.pantsColor;
         ft.color = L.shoes;
+        fa.r0 *= 1.12; fa.r1 *= 1.05;   // (fuller forearms: they read as sticks)
         hd.len = 88 * H;   // the palm: the fingers carry on from its end
         hd.twist = (std::string(sd) == "left" ? 1 : -1) * HAND_TWIST;   // the palm toward the thigh
     }
     for (auto& b : n.bones) {
         b.gen = true;
         // the torso, neck, arms and legs are one continuous skin over these bones (drawn by the app), not pieces
-        for (const char* nm : {"Pelvis", "Chest", "Neck", "Upper arm", "Forearm", "Thigh", "Shin"})
+        for (const char* nm : {"Pelvis", "Chest", "Neck", "Head", "Upper arm", "Forearm", "Thigh", "Shin"})
             if (b.name.rfind(nm, 0) == 0) b.body = true;
     }
     // more pieces: hang one off a bone by name
@@ -382,19 +438,20 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     const double hw = hr * head.width;               // ...and side to side
     // the face: eyes (white, then the coloured middle), a nose (narrow at the bridge, wide at the bottom), a mouth;
     // each on the head's surface: how far its front is from its middle line at t along it (before height)
-    auto front = [&](double t, double across) {
-        double ph = 3.14159265358979 * t, R = hr * std::sin(ph) * (1 + head.bulge * std::sin(ph));
-        double u = std::clamp(across / std::max(1.0, R * head.width), -0.95, 0.95);
-        return R * head.depth * std::sqrt(1 - u * u);
-    };
-    for (int s : {-1, 1}) {
-        double x = s * 0.36 * hw;
-        int e = add("Head", piece(s < 0 ? "Eye (left)" : "Eye (right)", 0.56, x, front(0.56, x) - 14, 16, 11, 11, 90, 0, "#eeeae4", "ball"));
-        NpcBone iris = piece(s < 0 ? "Iris (left)" : "Iris (right)", 0.72, 0, 0, 6, 5.5, 5.5, 0, 0, L.eyes, "ball");   // (just showing out of the white)
+    // (the head itself is sculpted: jaw, chin, cheekbones, brow, eye sockets, nose and lips; drawn by the app with
+    // the one-piece body, npcHeadPoint)
+    auto front = [&](double t, double across) { return npcHeadFront(head, t, across * H) / H; };
+    for (int s : {-1, 1}) {   // eyes set into their sockets
+        double x = s * 0.39 * hw;
+        int e = add("Head", piece(s < 0 ? "Eye (left)" : "Eye (right)", 0.565, x, front(0.565, x) - 7, 11, 9.5, 9.5, 90, 0, "#ddd6cc", "ball"));
+        NpcBone iris = piece(s < 0 ? "Iris (left)" : "Iris (right)", 0.62, 0, 0, 5, 5.2, 5.2, 0, 0, L.eyes, "ball");   // (just showing out of the white)
         iris.parent = e; iris.gen = true; n.bones.push_back(iris);
     }
-    add("Head", piece("Nose", 0.53, 0, front(0.45, 0) - 4, 46, 7, 13, 180, 0, L.skin, "box", 1.0, 1.6));
-    add("Head", piece("Mouth", 0.3, 0, front(0.3, 0) - 3, 6, 15, 15, 90, 0, "#9a5a52", "cylinder", 1.7, 0.3));
+    for (int s : {-1, 1}) {   // ears: flat, a little behind the middle, their tops level with the brow
+        double px = 0, pz = 0;
+        npcHeadPoint(head, 0.5, s * 1.5707963, px, pz);
+        add("Head", piece(s < 0 ? "Ear (left)" : "Ear (right)", 0.43, px / H - s * 3, -hr * 0.12, 62, 15, 18, -8, 0, L.skin, "capsule", 0.38, 0.75));
+    }
     // (a woman's chest is shaped in the one-piece body: drawCharacterBody in the app)
     // (sleeves, shorts and a tank top are colours on the one-piece body: see drawCharacterBody in the app)
     // fingers: three pieces each, from the end of the palm, a little curled; the thumb from the side of the palm
@@ -427,8 +484,8 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     const std::string& hc = L.hairColor;
     if (L.hair != "none") {
         double grow = L.hair == "buzz" ? 3 : 8;
-        add("Head", piece("Hair", 0.14, 0, -hr * 0.17, head.len / H * 0.9 + grow, hr + grow, hr + grow, 0, 0, hc, "ball", head.width * 1.04, 1.0));
-        if (L.hair == "long") add("Head", piece("Long hair", 0.78, 0, -hr * 0.62, 250, hr * 0.72, hr * 0.55, 180, 0, hc, "box", 1.25, 0.38));
+        (void)grow;   // (the hair on the head is a shell over the sculpted head, drawn by the app; these are what hangs from it)
+        // (long hair hangs from the head's shell down the back: drawn by the app with it)
         if (L.hair == "ponytail") add("Head", piece("Ponytail", 0.68, 0, -hr * 0.95, 190, 22, 12, 150, 0, hc, "capsule"));
         if (L.hair == "bun") add("Head", piece("Bun", 0.86, 0, -hr * 0.8, 70, 34, 34, -50, 0, hc, "ball"));
     }
@@ -506,6 +563,7 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
             n.bones.push_back(b);
         }
     n.name = keep ? keep->name : "My character";
+    if (keep) n.model = keep->model;
     return n;
 }
 

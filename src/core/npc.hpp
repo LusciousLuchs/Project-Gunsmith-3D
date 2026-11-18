@@ -64,6 +64,8 @@ struct NpcDef {
     std::string behaviour = "chase";   // stand, wander, chase, guard
     int team = 1;                 // who it fights (you are 0)
     CharLook look;                // the player character: built by the character maker
+    std::string model;            // a modelled character (a .glb/.gltf in the Models folder, as a path under it) drawn over the
+                                  // bones instead of their shapes; "" = the bones' own shapes (JSON "model" only when set)
 };
 // The character maker: a person built from the choices (hands with fingers, a face, hair, clothes, extras). Gear of
 // your own on `keep` (bones not made by the maker) is kept, on the bone of the same name.
@@ -90,4 +92,9 @@ void npcRemoveBone(NpcDef& n, int i);       // and everything below it (not the 
 double npcHeight(const NpcDef& n);          // mm, ground to the highest point
 // How thick a bone is at t (0 its start .. 1 its end), before width and depth: its taper and bulge (mm)
 double npcBoneRadius(const NpcBone& b, double t);
+// The character maker's sculpted head (jaw, chin, cheekbones, brow, eye sockets, nose, lips), in the head bone's own
+// frame, mm: the surface point at t along it (0 the chin's bottom, 1 the crown) and angle `ang` round it (0 straight
+// ahead, +pi/2 its +x side). npcHeadFront: how far forward the surface is at t, `x` across.
+void npcHeadPoint(const NpcBone& head, double t, double ang, double& x, double& z);
+double npcHeadFront(const NpcBone& head, double t, double x);
 double npcBoneReach(const NpcBone& b);      // the most it sticks out from its middle line anywhere (mm), for hits

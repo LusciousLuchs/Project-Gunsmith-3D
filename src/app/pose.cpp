@@ -1,5 +1,6 @@
 // Gunsmith3D - the pose editor (see pose.hpp).
 #include "app/pose.hpp"
+#include "app/charmodel.hpp"
 #include "app/app.hpp"
 #include "app/fonts.hpp"
 #include "app/gfx.hpp"
@@ -524,6 +525,7 @@ void drawPoseBody() {
     Matrix BM{F.f.x * U, F.u.x * U, F.r.x * U, F.o.x, F.f.y * U, F.u.y * U, F.r.y * U, F.o.y, F.f.z * U, F.u.z * U, F.r.z * U, F.o.z, 0, 0, 0, 1};
     auto at = [&](float f, float u, float r) { return MatrixMultiply(MatrixTranslate(f, u, r), BM); };
     CharFit CF = charFit();
+    const bool modelled = CF.ok && charModelUsable(*CF.n);   // (a modelled character: its skin over the bones instead of their shapes)
     // your character: its body as it stands (everything but its arms, which reach for the hands below)
     std::vector<int> armOf, anchor;      // which arm a bone belongs to (-1: none); the arm bone it rides with
     std::vector<Matrix> stand;           // each bone's standing frame, in the world
@@ -545,7 +547,7 @@ void drawPoseBody() {
         handed = Vector3DotProduct(X, Vector3CrossProduct(Y, Z)) >= 0 ? 1.f : -1.f;
         if (handed < 0) rlDisableBackfaceCulling();
         for (int i = 0; i < (int)n.bones.size(); i++)
-            if (armOf[i] < 0 && !npcBodyBone(n, i)) drawNpcBone(n.bones[i], stand[i], hexColor(n.bones[i].color));
+            if (armOf[i] < 0 && !npcBodyBone(n, i) && !modelled) drawNpcBone(n.bones[i], stand[i], hexColor(n.bones[i].color));
         if (handed < 0) rlEnableBackfaceCulling();
     } else {
     // torso in a shirt, the neck, the head (eyes, nose), ear defenders on a band over the top
@@ -613,7 +615,7 @@ void drawPoseBody() {
             bodyStrain |= strain;
             if (handed < 0) rlDisableBackfaceCulling();
             for (int i = 0; i < (int)n.bones.size(); i++) {
-                if (armOf[i] != side || onHand[i] || npcBodyBone(n, i)) continue;   // (the hand and its fingers: the posed finger skeleton, below)
+                if (armOf[i] != side || onHand[i] || npcBodyBone(n, i) || modelled) continue;   // (the hand and its fingers: the posed finger skeleton, below)
                 Color c = strain ? STRAIN : hexColor(n.bones[i].color);
                 if (i == CF.upper[side]) drawNpcBone(n.bones[i], now[0], c);
                 else if (i == CF.fore[side]) drawNpcBone(n.bones[i], now[1], c);
@@ -653,7 +655,8 @@ void drawPoseBody() {
             }
         } else drawSphereLit(a.w, 45 * U, SKIN);
     }
-    if (CF.ok && CF.n->look.on) { Color red = STRAIN; drawCharacterBody(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // the one-piece body, arms reaching
+    if (CF.ok && modelled) { Color red = STRAIN; drawCharModel(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // a modelled character, its arms reaching
+    else if (CF.ok && CF.n->look.on) { Color red = STRAIN; drawCharacterBody(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // the one-piece body, arms reaching
 }
 
 // First person (the range): your arms and hands on the gun, as posed (and as an animation moves them). Drawn in the

@@ -1,5 +1,6 @@
 // Gunsmith3D - Career mode in the app (see careermode.hpp).
 #include "app/careermode.hpp"
+#include "app/charmodel.hpp"
 #include <cstdlib>
 #include "app/app.hpp"
 #include "app/paths.hpp"
@@ -423,6 +424,7 @@ const NpcDef& careerPerson(int id, const std::string& name) {
     if (nm.empty()) for (auto& w : CAREER.walkins) if (w.id == id) nm = w.name;
     NpcDef p = characterFromLook(lookFor(id, nm));
     npcRelaxedStance(p, (unsigned)id);
+    p.model = shopPersonModel(id, p.look.body == "female");   // (modelled people in Models/Shop people, if there are any)
     return people[id] = p;
 }
 Texture2D careerPortrait(int id) { auto it = gPortraits.find(id); return it == gPortraits.end() ? Texture2D{} : it->second.texture; }

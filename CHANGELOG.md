@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.42-alpha
+
+Better people.
+
+- Customers, staff, NPCs and your own character have proper faces now: a jaw and chin, a real nose, eyes set under the brow with lids, lips, eyebrows and ears.
+- Hair sits on the head instead of a helmet, and long hair hangs down the back.
+- Bodies are smooth, with rounder shoulders, fuller arms and a proper neck.
+- Modelled characters: put a .glb or .gltf with a skeleton in the new Models folder and pick it under 3D model in the character maker or the NPC editor. It follows the bones as they stand, walk and fall.
+- Models in Models/Shop people walk into your career shop as customers and staff.
+
 ## 0.8.41-alpha
 
 Bug fixes.

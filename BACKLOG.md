@@ -37,7 +37,7 @@ What's there already is noted; the rest is new work.
 
 - **The SOG P300 example gun** (the owner's own design: 9 mm, striker fired, tilting barrel, 17-round double stack; a P365 Fuse crossed with a Glock 43): shelved for now, the owner says the design needs some work first.
 
-- **Better humanoid character models** (the player character, NPCs, shop people): shelved, the owner has a modeller making them. When they arrive the game will need a way to load them (likely a model file with a skeleton, mapped onto the existing bones and poses).
+- **Character models** (0.8.42): the built-in people were rebuilt (sculpted heads, smooth bodies), and modelled characters load from the Models folder (.glb/.gltf with an armature; Models/Shop people for the career's customers and staff). Still to do when the modeller's files arrive: try them (bone names, scale, facing), GPU skinning if crowds get heavy, the models' own animations (walking cycles), hit areas following the model.
 
 - **Signing the Windows build** (so it runs without the blue SmartScreen prompt): not for now. Options when wanted: Microsoft Trusted Signing (about $10 a month, identity checks, US/Canada so far) or a code-signing certificate ($100-400 a year).
 
