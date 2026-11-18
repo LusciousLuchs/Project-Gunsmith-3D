@@ -125,14 +125,16 @@ static void meshToolPanel() {
     if (!meshShaped(b)) {
         muted("This part is an outline pushed through its thickness. Make it a 3D mesh and every corner can go anywhere in 3D: cave its sides in, bulge them out, taper it, or pull faces out in any direction. Its shape stays as it is now.");
         if (b.round || carve::tilted(b)) { muted("Turned and leaned parts can't be made meshes yet."); return; }
-        if (ImGui::Button(ICON_FA_DICE_D6 "  Make a 3D mesh")) meshMakeFromSelected();
+        if (ImGui::Button(ICON_FA_DICE_D6 "  Make a 3D mesh (G)")) meshMakeFromSelected();
         return;
     }
     auto& sel = meshSel();
     const MeshDef& m = b.mesh;
     ImGui::Text("%d corners, %d faces", (int)m.v.size(), (int)m.f.size());
-    if (sel.empty()) muted("Click a corner to pick it (Shift: more), or a face to pick its corners. Drag to move them. Ctrl+A picks them all.");
-    else ImGui::Text("%d picked", (int)sel.size());
+    auto& faces = meshFaces();
+    if (sel.empty()) muted("Click a corner to pick it (Shift: more), or a face (Shift: more faces). Drag to move them. Ctrl+A picks every corner.");
+    else if (!faces.empty()) ImGui::Text("%d face%s picked (%d corners)", (int)faces.size(), faces.size() == 1 ? "" : "s", (int)sel.size());
+    else ImGui::Text("%d corner%s picked", (int)sel.size(), sel.size() == 1 ? "" : "s");
 
     ImGui::SeparatorText("Add a ring of corners");
     muted("Cuts round the whole part, adding a corner wherever the cut crosses an edge, and picks the new ring. Then make it smaller to cave the sides in, or bigger to bulge them out.");
@@ -173,17 +175,27 @@ static void meshToolPanel() {
         ImGui::SameLine();
         if (ImGui::Button("Apply##meshmove")) { meshMovePicked(mv[0], -mv[1], mv[2]); mv[0] = mv[1] = mv[2] = 0; }
         if (tipHover()) ImGui::SetTooltip("Forward, up, and toward you.");
+        ImGui::BeginDisabled(sel.size() < 2);
+        if (ImGui::Button("Join into one (M)")) meshJoinPicked();
+        ImGui::EndDisabled();
+        if (tipHover()) ImGui::SetTooltip("The picked corners become a single corner, half way between them.\nThe faces round them close up (a face left with fewer than three corners goes).");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(sel.size() != 2);
+        if (ImGui::Button("Connect (J)")) meshConnectPicked();
+        ImGui::EndDisabled();
+        if (tipHover()) ImGui::SetTooltip("Two picked corners on the same face: a new edge between them splits the face in two,\nso you can fold or shape each half on its own.");
         if (ImGui::Button("Remove them (Delete)")) meshRemovePicked();
         if (tipHover()) ImGui::SetTooltip("The faces round them close up.");
     }
     ImGui::EndDisabled();
-    ImGui::BeginDisabled(meshFace() < 0);
+    ImGui::SeparatorText("Picked faces");
+    ImGui::BeginDisabled(faces.empty());
     float ex = (float)meshExtrudeBy();
     ImGui::SetNextItemWidth(90 * S());
     if (ImGui::DragFloat("##extrudeby", &ex, 0.1f, -200, 200, "%.1f mm")) meshExtrudeBy() = ex;
     ImGui::SameLine();
-    if (ImGui::Button("Push the face out (E)")) meshExtrudePicked();
-    if (tipHover()) ImGui::SetTooltip("Pick a face (click it), then push it out this far: new faces join it to where it was.\nDrag it on from there.");
+    if (ImGui::Button(faces.size() > 1 ? "Push them out (E)" : "Push the face out (E)")) meshExtrudePicked();
+    if (tipHover()) ImGui::SetTooltip("Pushes the picked faces out this far, all together: faces next to each other stay joined,\nwith new side faces only round the outside. Shift-click faces to pick more. Drag them on from there.");
     ImGui::EndDisabled();
     ImGui::Spacing();
     if (ImGui::SmallButton("Back to a flat part")) meshFlatten();
@@ -924,6 +936,13 @@ static void inspectPart(BodyDef& b) {
             }
         } else if (A.selVs.empty() && !b.round && !carve::tilted(b) && b.pts.size() >= 3)
             muted("Pick a corner (or several) to give it its own thickness.");
+        if (!b.round && !carve::tilted(b)) {   // the free 3D tool, one click away
+            if (ImGui::Button(meshShaped(b) ? ICON_FA_DICE_D6 "  Shape in 3D (G)" : ICON_FA_DICE_D6 "  Shape it freely in 3D (G)", {-1, 0})) {
+                setTool(Tool::Mesh);
+                if (!meshShaped(b)) meshMakeFromSelected();
+            }
+            if (tipHover()) ImGui::SetTooltip("The 3D vertices tool on this part: drag any corner anywhere, pick faces (Shift: more) and push them out (E),\njoin corners (M), connect them (J). Back to a flat part undoes it.");
+        }
         if (depthShaped(b)) {   // corners placed on each face (the Faces tool)
             muted("Shaped in depth: its front and back faces have their own corners. Edges are straight and corners sharp (Chamfer softens them).");
             auto& cp = A.cornerDrag;

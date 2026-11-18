@@ -357,6 +357,92 @@ std::vector<int> meshExtrude(MeshDef& m, int face, double dist) {
     return top;
 }
 
+std::vector<int> meshExtrudeFaces(MeshDef& m, const std::vector<int>& facesIn, double dist) {
+    std::vector<int> faces;
+    for (int f : facesIn) if (f >= 0 && f < (int)m.f.size() && std::find(faces.begin(), faces.end(), f) == faces.end()) faces.push_back(f);
+    if (faces.empty()) return {};
+    if (faces.size() == 1) return meshExtrude(m, faces[0], dist);
+    // each corner of the picked faces: its outward direction (the picked faces round it, averaged) and its copy
+    std::map<int, P3d> dir;
+    for (int f : faces) { P3d n = meshFaceNormal(m, f); for (int v : m.f[f]) { P3d& d = dir[v]; d = add(d, n); } }
+    std::map<int, int> copy;
+    for (auto& [v, d] : dir) {
+        double l = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+        P3d n = l > 1e-12 ? mul(d, 1 / l) : P3d{0, 0, 0};
+        m.v.push_back(add(m.v[v], mul(n, dist)));
+        copy[v] = (int)m.v.size() - 1;
+    }
+    // the outside edges of the picked block: an edge whose other face isn't picked
+    std::set<std::pair<int, int>> inside;
+    for (int f : faces) { const auto& L = m.f[f]; for (size_t i = 0; i < L.size(); i++) inside.insert({L[i], L[(i + 1) % L.size()]}); }
+    std::vector<std::vector<int>> sides;
+    for (int f : faces) {
+        const auto& L = m.f[f];
+        for (size_t i = 0; i < L.size(); i++) {
+            int a = L[i], b = L[(i + 1) % L.size()];
+            if (inside.count({b, a})) continue;   // (shared with another picked face: no wall there)
+            sides.push_back({a, b, copy[b], copy[a]});
+        }
+    }
+    for (int f : faces) for (int& v : m.f[f]) v = copy[v];
+    for (auto& q : sides) m.f.push_back(q);
+    meshOrient(m);
+    std::vector<int> moved;
+    for (auto& [v, c] : copy) moved.push_back(c);
+    return moved;
+}
+
+int meshMergeVerts(MeshDef& m, const std::vector<int>& vertsIn, P3d at) {
+    std::set<int> join;
+    for (int v : vertsIn) if (v >= 0 && v < (int)m.v.size()) join.insert(v);
+    if (join.size() < 2) return -1;
+    const int keep = *join.begin();
+    MeshDef r;
+    std::vector<int> remap(m.v.size(), -1);
+    for (int i = 0; i < (int)m.v.size(); i++) {
+        if (join.count(i) && i != keep) continue;
+        remap[i] = (int)r.v.size();
+        r.v.push_back(i == keep ? at : m.v[i]);
+    }
+    for (int v : join) remap[v] = remap[keep];
+    for (auto& f : m.f) {
+        std::vector<int> L;
+        for (int v : f) { int w = remap[v]; if (L.empty() || L.back() != w) L.push_back(w); }
+        while (L.size() > 1 && L.front() == L.back()) L.pop_back();
+        if (L.size() >= 3) r.f.push_back(L);
+    }
+    // corners left on no face go
+    std::vector<char> used(r.v.size(), 0);
+    for (auto& f : r.f) for (int v : f) used[v] = 1;
+    MeshDef c; std::vector<int> re(r.v.size(), -1);
+    for (int i = 0; i < (int)r.v.size(); i++) if (used[i]) { re[i] = (int)c.v.size(); c.v.push_back(r.v[i]); }
+    for (auto& f : r.f) { std::vector<int> L; for (int v : f) L.push_back(re[v]); c.f.push_back(L); }
+    if (c.v.size() < 4 || c.f.size() < 4) return -1;
+    meshOrient(c);
+    int joined = re[remap[keep]];
+    m = c;
+    return joined;
+}
+
+bool meshConnect(MeshDef& m, int a, int b) {
+    if (a == b || a < 0 || b < 0 || a >= (int)m.v.size() || b >= (int)m.v.size()) return false;
+    for (size_t f = 0; f < m.f.size(); f++) {
+        const auto L = m.f[f];
+        int ia = -1, ib = -1;
+        for (int k = 0; k < (int)L.size(); k++) { if (L[k] == a) ia = k; if (L[k] == b) ib = k; }
+        if (ia < 0 || ib < 0) continue;
+        int n = (int)L.size();
+        if ((ia + 1) % n == ib || (ib + 1) % n == ia) return false;   // (already an edge)
+        std::vector<int> one, two;
+        for (int k = ia; ; k = (k + 1) % n) { one.push_back(L[k]); if (k == ib) break; }
+        for (int k = ib; ; k = (k + 1) % n) { two.push_back(L[k]); if (k == ia) break; }
+        m.f[f] = one;
+        m.f.push_back(two);
+        return true;
+    }
+    return false;
+}
+
 bool meshRemoveVerts(MeshDef& m, std::vector<int> verts) {
     std::set<int> gone(verts.begin(), verts.end());
     if (gone.empty() || m.v.size() - gone.size() < 4) return false;

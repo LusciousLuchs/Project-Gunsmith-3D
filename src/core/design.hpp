@@ -601,6 +601,15 @@ void meshOrient(MeshDef& m);                     // turn every face to wind outw
 // one corner to another. Remove corners (their faces close up; refused if it would leave fewer than 4).
 std::vector<int> meshCut(MeshDef& m, int axis, double at);
 std::vector<int> meshExtrude(MeshDef& m, int face, double dist);
+// Several faces pushed out together (each corner along the average outward direction of its picked faces), as one
+// block: faces that share an edge stay joined, side walls only round the outside edge. Returns the moved corners.
+std::vector<int> meshExtrudeFaces(MeshDef& m, const std::vector<int>& faces, double dist);
+// The corners joined into one at `at` (faces closing up round it; faces left with under 3 corners go). Returns the
+// joined corner's index, or -1 if it would leave too little of the part.
+int meshMergeVerts(MeshDef& m, const std::vector<int>& verts, P3d at);
+// A new edge between corners a and b across a face they share (it's split in two). False if no face has both, or
+// they're already neighbours.
+bool meshConnect(MeshDef& m, int a, int b);
 bool meshRemoveVerts(MeshDef& m, std::vector<int> verts);
 bool combineOutlines(const BodyDef& a, const BodyDef& b, int op, std::vector<V2>& out, std::string* why = nullptr,
                      std::vector<double>* rad = nullptr);   // given: rounded corners that survive keep their rounding

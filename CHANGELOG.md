@@ -8,6 +8,14 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.45-alpha
+
+3D vertices, easier and stronger.
+
+- Press G with a part selected to shape it freely in 3D, or use the new "Shape it freely in 3D" button in its panel. Clicking a part with the tool converts it straight away.
+- Shift-click to pick several faces, then E pushes them all out together: faces next to each other stay joined as one block.
+- M joins the picked corners into one. J connects two corners across a face with a new edge, splitting it in two.
+
 ## 0.8.44-alpha
 
 - A cleaner main menu: the small notes beside the menu items are gone.

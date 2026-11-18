@@ -38,6 +38,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <cstdlib>
 #include <string>
 #include <fstream>
@@ -211,7 +212,18 @@ int main(int argc, char** argv) {
         const BodyDef& b = A.design.bodies[A.sel.idx];
         meshAddRing(2, b.z);
         meshScalePicked(0.75, 0.75, 1);
-        if (std::getenv("GUNSMITH_MESHFACE")) { meshFace() = 0; meshExtrudeBy() = 8; }
+        if (const char* e = std::getenv("GUNSMITH_MESHFACE")) {   // (screenshots) "f,f,...": pick these faces and push them out 8 mm together
+            meshFaces().clear(); meshSel().clear();
+            for (std::string t; ; ) { const char* c = std::strchr(e, ','); t.assign(e, c ? c - e : std::strlen(e)); int f = std::atoi(t.c_str());
+                const auto& mm = A.design.bodies[A.sel.idx].mesh; if (f >= 0 && f < (int)mm.f.size()) { meshFaces().push_back(f); for (int v : mm.f[f]) meshSel().push_back(v); } if (!c) break; e = c + 1; }
+            meshExtrudeBy() = 8;
+            if (std::getenv("GUNSMITH_MESHPUSH")) meshExtrudePicked();
+        }
+        if (const char* e = std::getenv("GUNSMITH_MESHJOIN")) {   // (screenshots) "v,v,...": join these corners into one
+            meshSel().clear(); meshFaces().clear();
+            for (const char* c = e; c; c = std::strchr(c, ',')) { if (*c == ',') c++; meshSel().push_back(std::atoi(c)); }
+            meshJoinPicked();
+        }
     }
     if (solidArg) A.xray = false;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }

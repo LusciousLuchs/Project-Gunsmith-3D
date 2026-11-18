@@ -2,6 +2,7 @@
 #include "app/pieces.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
+#include "app/meshtool.hpp"
 #include "app/fitbench.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
@@ -175,6 +176,13 @@ void handleKeys() {
     if (ctrl && IsKeyPressed(KEY_C)) copySelection();
     if (ctrl && IsKeyPressed(KEY_V)) pasteClipboard();
     if (actPressed(Act::Knife)) setTool(Tool::Knife);
+    if (actPressed(Act::Shape3D)) {   // straight into 3D shaping on the selected part (G again: back to Select)
+        if (A.tool == Tool::Mesh) setTool(Tool::Select);
+        else {
+            setTool(Tool::Mesh);
+            if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size() && !meshShaped(A.design.bodies[A.sel.idx])) meshMakeFromSelected();
+        }
+    }
     if (A.sel.kind == 1 && A.sel.idx < (int)A.design.bodies.size()) {  // arrow keys nudge vertices or the whole part
         double st = std::max(0.1, gSnap > 0 ? gSnap : 0.5) * ((IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) ? 10 : 1);
         double dx = 0, dy = 0;

@@ -257,7 +257,7 @@ const char* TOOL_HINT[] = {
     "Scale: click a part, click a handle of its box, then drag it. Corners keep the proportions (Shift: free), edges stretch one way, Ctrl scales about the middle. Or type sizes in the panel.",
     "Rail: drag along the top (or bottom) of a part to lay a Picatinny rail on it, slotted to the standard. Put it on a side from its panel. Attachments clamp on anywhere along it.",
     "Attachment point: click a part's surface to put a mount there (a bayonet lug, a side rail, a muzzle thread, your own kind). Attachments fit points of the same kind. Its kind is set in the panel.",
-    "3D vertices: click a part, then Make a 3D mesh (panel). Click a corner to pick it (Shift adds), or a face to pick all its corners; drag to move them in the plane you look at (Z: in depth). E pushes the picked face out, Delete removes corners, Ctrl+A picks all. Add rings in the panel to cave the sides in or bulge them out."};
+    "3D vertices (G): click a part to shape it in 3D. Click corners or faces to pick them (Shift adds more) and drag (Z: in depth). E pushes the picked faces out together, M joins picked corners into one, J connects two across a face, Delete removes, Ctrl+A picks all."};
 static_assert(sizeof(TOOL_HINT) / sizeof(TOOL_HINT[0]) == (size_t)Tool::Count, "a hint for every tool");
 void setTool(Tool t) {
     if (A.mode == Mode::Test) setMode(Mode::Build);

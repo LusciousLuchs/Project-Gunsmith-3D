@@ -1,7 +1,8 @@
 // Gunsmith3D - the 3D vertices tool. A part made a free 3D mesh (MeshDef) shows all its corners and edges: click a
 // corner to pick it (Shift adds more), click a face to pick its corners; drag what's picked in the plane the view
 // faces most (from the side: up and along; from the top: along and in depth; from the front: up and in depth; hold Z
-// for depth from any view). E pushes the picked face out, Delete removes the picked corners, Ctrl+A picks them all.
+// for depth from any view). Shift-click picks more faces; E pushes the picked faces out together, M joins the picked
+// corners into one, J draws an edge across a face between two picked corners, Delete removes them, Ctrl+A picks all.
 // The panel adds rings of corners round the part (to cave in or bulge out its sides), scales and moves the picked ones.
 #include "app/meshtool.hpp"
 #include "app/app.hpp"
@@ -19,7 +20,7 @@ namespace {
 struct State {
     std::string part;          // the part the picks belong to (its id)
     std::vector<int> sel;      // picked corners
-    int face = -1;             // picked face
+    std::vector<int> faces;    // picked faces (Shift-click adds more)
     int hoverV = -1, hoverF = -1;
     bool dragging = false, live = false;
     Vector2 start{};
@@ -37,11 +38,12 @@ int selMesh() {
 Vector3 vw(int i, const P3d& p) { return W3({p.x, p.y}, (float)(p.z * U) + bodyBias(i)); }
 void keepValid(int i) {
     const std::string id = i >= 0 ? A.design.bodies[i].id : (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size() ? A.design.bodies[A.sel.idx].id : "");
-    if (id != M.part) { M.sel.clear(); M.face = -1; M.part = id; }
+    if (id != M.part) { M.sel.clear(); M.faces.clear(); M.part = id; }
     if (i < 0) return;
     int n = (int)A.design.bodies[i].mesh.v.size();
     M.sel.erase(std::remove_if(M.sel.begin(), M.sel.end(), [n](int v) { return v < 0 || v >= n; }), M.sel.end());
-    if (M.face >= (int)A.design.bodies[i].mesh.f.size()) M.face = -1;
+    int nf = (int)A.design.bodies[i].mesh.f.size();
+    M.faces.erase(std::remove_if(M.faces.begin(), M.faces.end(), [nf](int f) { return f < 0 || f >= nf; }), M.faces.end());
 }
 void hover(int i, bool overUI) {
     M.hoverV = M.hoverF = -1;
@@ -113,7 +115,7 @@ P3d middleOf(const MeshDef& m, const std::vector<int>& vs) {
 }  // namespace
 
 std::vector<int>& meshSel() { return M.sel; }
-int& meshFace() { return M.face; }
+std::vector<int>& meshFaces() { return M.faces; }
 double& meshExtrudeBy() { return M.extrude; }
 
 void meshMakeFromSelected() {
@@ -123,16 +125,17 @@ void meshMakeFromSelected() {
     fixShape(b);
     meshFromPart(b);
     if (!meshShaped(b)) { toast("This part couldn't be made a 3D mesh."); return; }
-    M.sel.clear(); M.face = -1; M.part = b.id;
+    M.sel.clear(); M.faces.clear(); M.part = b.id;
+    A.tool = Tool::Mesh;
     commit();
-    toast(TextFormat("A 3D mesh: %d corners, %d faces. Drag the corners anywhere.", (int)b.mesh.v.size(), (int)b.mesh.f.size()));
+    toast(TextFormat("%s is a 3D mesh now (%d corners): drag corners anywhere, Shift-click faces and press E to push them out. Back to a flat part in the panel undoes it.", b.name.c_str(), (int)b.mesh.v.size()));
 }
 void meshFlatten() {
     int i = selMesh();
     if (i < 0) return;
     BodyDef& b = A.design.bodies[i];
     b.mesh = {}; b.meshRef.clear();
-    M.sel.clear(); M.face = -1;
+    M.sel.clear(); M.faces.clear();
     commit();
 }
 void meshAddRing(int axis, double at) {
@@ -140,25 +143,43 @@ void meshAddRing(int axis, double at) {
     if (i < 0) return;
     std::vector<int> added = meshCut(A.design.bodies[i].mesh, axis, at);
     if (added.empty()) { toast("That plane doesn't cross the part."); return; }
-    M.sel = added; M.face = -1; M.part = A.design.bodies[i].id;
+    M.sel = added; M.faces.clear(); M.part = A.design.bodies[i].id;
     commit();
 }
 void meshExtrudePicked() {
     int i = selMesh();
-    if (i < 0 || M.face < 0) { toast("Pick a face first (click it)."); return; }
+    if (i < 0 || M.faces.empty()) { toast("Pick a face first (click it; Shift-click picks more)."); return; }
     MeshDef& m = A.design.bodies[i].mesh;
-    if (M.face >= (int)m.f.size()) return;
-    M.sel = meshExtrude(m, M.face, M.extrude);
+    M.sel = meshExtrudeFaces(m, M.faces, M.extrude);   // (the picked faces keep their places in the list: still picked)
     M.part = A.design.bodies[i].id;
-    // (meshExtrude keeps the face's place in the list)
     commit();
+    toast(TextFormat("Pushed out %d face%s by %.1f mm. Drag them to pull further.", (int)M.faces.size(), M.faces.size() == 1 ? "" : "s", M.extrude));
 }
 void meshRemovePicked() {
     int i = selMesh();
     if (i < 0 || M.sel.empty()) return;
     if (!meshRemoveVerts(A.design.bodies[i].mesh, M.sel)) { toast("A part needs at least four corners."); return; }
-    M.sel.clear(); M.face = -1;
+    M.sel.clear(); M.faces.clear();
     commit();
+}
+void meshJoinPicked() {
+    int i = selMesh();
+    if (i < 0 || M.sel.size() < 2) { toast("Pick two or more corners to join (Shift-click them), then press M."); return; }
+    MeshDef& m = A.design.bodies[i].mesh;
+    int n = (int)M.sel.size();
+    int v = meshMergeVerts(m, M.sel, middleOf(m, M.sel));
+    if (v < 0) { toast("Joining those would leave too little of the part."); return; }
+    M.sel = {v}; M.faces.clear();
+    commit();
+    toast(TextFormat("Joined %d corners into one, half way between them.", n));
+}
+void meshConnectPicked() {
+    int i = selMesh();
+    if (i < 0 || M.sel.size() != 2) { toast("Pick exactly two corners on the same face, then press J to draw an edge between them."); return; }
+    if (!meshConnect(A.design.bodies[i].mesh, M.sel[0], M.sel[1])) { toast("Those two corners aren't across a face from each other (or they're already joined by an edge)."); return; }
+    M.faces.clear();
+    commit();
+    toast("A new edge across the face: it's two faces now.");
 }
 void meshScalePicked(double sx, double sy, double sz) {
     int i = selMesh();
@@ -197,7 +218,9 @@ void meshInput(bool overUI) {
         if (IsKeyPressed(KEY_E)) { meshExtrudePicked(); return; }
         if (IsKeyPressed(KEY_DELETE) || IsKeyPressed(KEY_BACKSPACE)) { meshRemovePicked(); return; }
         if (ctrl && IsKeyPressed(KEY_A)) { M.sel.clear(); for (int v = 0; v < (int)A.design.bodies[i].mesh.v.size(); v++) M.sel.push_back(v); return; }
-        if (IsKeyPressed(KEY_ESCAPE)) { M.sel.clear(); M.face = -1; return; }
+        if (IsKeyPressed(KEY_M)) { meshJoinPicked(); return; }
+        if (IsKeyPressed(KEY_J)) { meshConnectPicked(); return; }
+        if (IsKeyPressed(KEY_ESCAPE)) { M.sel.clear(); M.faces.clear(); return; }
     }
     if (overUI || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return;
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
@@ -205,23 +228,30 @@ void meshInput(bool overUI) {
         auto it = std::find(M.sel.begin(), M.sel.end(), M.hoverV);
         if (shift) { if (it != M.sel.end()) { M.sel.erase(it); return; } M.sel.push_back(M.hoverV); }
         else if (it == M.sel.end()) M.sel = {M.hoverV};
-        M.face = -1;
+        M.faces.clear();
         beginDrag(i, A.design.bodies[i].mesh.v[M.hoverV]);
         return;
     }
     if (i >= 0 && M.hoverF >= 0) {
         const MeshDef& m = A.design.bodies[i].mesh;
-        if (shift) { for (int v : m.f[M.hoverF]) if (std::find(M.sel.begin(), M.sel.end(), v) == M.sel.end()) M.sel.push_back(v); }
-        else M.sel = m.f[M.hoverF];
-        M.face = M.hoverF;
-        beginDrag(i, meshFaceCentre(m, M.face));
+        auto fit = std::find(M.faces.begin(), M.faces.end(), M.hoverF);
+        if (shift && fit != M.faces.end()) {   // Shift-click a picked face: let it go (and the corners no other picked face has)
+            M.faces.erase(fit);
+            M.sel.clear();
+            for (int f : M.faces) for (int v : m.f[f]) if (std::find(M.sel.begin(), M.sel.end(), v) == M.sel.end()) M.sel.push_back(v);
+            return;
+        }
+        if (shift) { for (int v : m.f[M.hoverF]) if (std::find(M.sel.begin(), M.sel.end(), v) == M.sel.end()) M.sel.push_back(v); M.faces.push_back(M.hoverF); }
+        else if (fit == M.faces.end()) { M.sel = m.f[M.hoverF]; M.faces = {M.hoverF}; }
+        beginDrag(i, meshFaceCentre(m, M.hoverF));
         return;
     }
     // anywhere else: pick the part there (or nothing)
     auto hits = bodiesUnderMouse();
     if (!hits.empty()) { A.sel = {1, hits.front().body, -1}; A.selVs.clear(); }
     else if (!shift) { A.sel = {}; }
-    M.sel.clear(); M.face = -1;
+    M.sel.clear(); M.faces.clear();
+    if (!hits.empty() && !meshShaped(A.design.bodies[hits.front().body])) meshMakeFromSelected();   // (straight into 3D: no extra step)
 }
 
 void drawMeshTool() {
@@ -229,7 +259,7 @@ void drawMeshTool() {
     int i = selMesh();
     Vector2 mp = GetMousePosition();
     if (i < 0) {
-        const char* t = A.sel.kind == 1 ? "Make it a 3D mesh in the panel (Make a 3D mesh), then drag its corners anywhere" : "Click a part to shape it in 3D";
+        const char* t = "Click a part to shape it in 3D";
         DrawText(t, (int)mp.x + 16, (int)mp.y + 16, 14, Color{255, 205, 60, 220});
         return;
     }
@@ -246,7 +276,7 @@ void drawMeshTool() {
         }
     };
     if (M.hoverF >= 0 && M.hoverF < (int)m.f.size() && !M.dragging) wash(M.hoverF, Color{255, 205, 60, 40});
-    if (M.face >= 0 && M.face < (int)m.f.size()) wash(M.face, Color{255, 205, 60, 70});
+    for (int f : M.faces) if (f >= 0 && f < (int)m.f.size()) wash(f, Color{255, 205, 60, 70});
     std::set<std::pair<int, int>> edges;
     for (auto& f : m.f) for (size_t k = 0; k < f.size(); k++) { int a = f[k], b = f[(k + 1) % f.size()]; edges.insert({std::min(a, b), std::max(a, b)}); }
     std::set<int> picked(M.sel.begin(), M.sel.end());
@@ -267,5 +297,5 @@ void drawMeshTool() {
         DrawRectangle((int)mp.x - tw - 12, (int)mp.y - 34, tw, 22, Color{20, 24, 32, 220});
         DrawText(t.c_str(), (int)mp.x - tw - 7, (int)mp.y - 31, 16, Color{255, 205, 60, 255});
     } else if (M.hoverV >= 0) DrawText("Corner: click to pick, drag to move (Shift adds)", (int)mp.x + 14, (int)mp.y + 14, 13, Color{255, 205, 60, 220});
-    else if (M.hoverF >= 0) DrawText("Face: click to pick its corners, drag to move it; E pushes it out", (int)mp.x + 14, (int)mp.y + 14, 13, Color{255, 205, 60, 220});
+    else if (M.hoverF >= 0) DrawText("Face: click to pick, Shift-click to pick more, drag to move; E pushes them out", (int)mp.x + 14, (int)mp.y + 14, 13, Color{255, 205, 60, 220});
 }

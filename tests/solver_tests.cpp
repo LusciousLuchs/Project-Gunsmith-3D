@@ -7,6 +7,7 @@
 #include "npcai.hpp"
 #include "rig.hpp"
 #include <array>
+#include <map>
 #include "doors.hpp"
 #include "penetrate.hpp"
 #include "map.hpp"
@@ -3146,6 +3147,56 @@ static void revolverCylinder() {
     CHECK(r.fired == 30 && r.jams == 0, "the bench test fires 30 of 30, reloading the cylinder");
 }
 
+// Several faces pushed out together, corners joined into one, an edge drawn across a face (the 3D vertices tool)
+static void meshEditing() {
+    std::printf("\n== 3D mesh editing\n");
+    auto box = []() { BodyDef b; b.id = "m"; b.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; b.thick = 10; b.z = 0; fixShape(b); meshFromPart(b); return b.mesh; };
+    auto volume = [](const MeshDef& m) {
+        std::vector<int> t; meshTriangles(m, t);
+        double s = 0;
+        for (size_t k = 0; k + 2 < t.size(); k += 3) {
+            const P3d &a = m.v[t[k]], &c = m.v[t[k + 1]], &d = m.v[t[k + 2]];
+            s += a.x * (c.y * d.z - c.z * d.y) - a.y * (c.x * d.z - c.z * d.x) + a.z * (c.x * d.y - c.y * d.x);
+        }
+        return std::fabs(s / 6);
+    };
+    auto closed = [](const MeshDef& m) {   // every edge used once each way: no holes, no doubled walls
+        std::map<std::pair<int, int>, int> e;
+        for (auto& f : m.f) for (size_t k = 0; k < f.size(); k++) e[{f[k], f[(k + 1) % f.size()]}]++;
+        for (auto& [k, n] : e) if (n != 1 || !e.count({k.second, k.first})) return false;
+        return true;
+    };
+    // the face toward +z (the near face), split corner to corner into two faces, both pushed out 5 mm together
+    MeshDef m = box();
+    int near = -1; for (int f = 0; f < (int)m.f.size(); f++) if (meshFaceNormal(m, f).z > 0.9) near = f;
+    std::vector<int> L = near >= 0 ? m.f[near] : std::vector<int>{};
+    bool split = L.size() == 4 && meshConnect(m, L[0], L[2]);
+    int other = (int)m.f.size() - 1;
+    CHECK(split && m.f.size() == 7 && closed(m), "an edge drawn across a face splits it in two, the part still closed");
+    CHECK(!meshConnect(m, L[0], L[1]), "two corners already joined by an edge: nothing to connect");
+    size_t v0 = m.v.size(), f0 = m.f.size();
+    auto moved = meshExtrudeFaces(m, {near, other}, 5);
+    std::printf("  (two faces pushed out: %zu new corners, %zu new faces, volume %.0f -> %.0f mm3)\n", m.v.size() - v0, m.f.size() - f0, 8000.0, volume(m));
+    CHECK(moved.size() == 4 && m.v.size() - v0 == 4 && m.f.size() - f0 == 4 && closed(m) && std::fabs(volume(m) - (8000 + 40 * 20 * 5)) < 1,
+          "two faces side by side pushed out together: one block, walls only round the outside, the volume grown by area x 5 mm");
+    // two faces on opposite sides pushed out at once: each grows its own walls
+    MeshDef m2 = box();
+    int far = -1; for (int f = 0; f < (int)m2.f.size(); f++) { double z = meshFaceNormal(m2, f).z; if (z > 0.9) near = f; if (z < -0.9) far = f; }
+    meshExtrudeFaces(m2, {near, far}, 3);
+    CHECK(m2.v.size() == 16 && m2.f.size() == 14 && closed(m2) && std::fabs(volume(m2) - 8000 * 1.6) < 1, "the near and far faces pushed out at once: thicker by 3 mm on each side");
+    // two corners at either end of an edge joined into one: the box becomes a wedge, still closed
+    MeshDef m3 = box();
+    int a = -1, b = -1;
+    for (auto& f : m3.f) for (size_t k = 0; k < f.size() && a < 0; k++) { a = f[k]; b = f[(k + 1) % f.size()]; }
+    P3d mid{(m3.v[a].x + m3.v[b].x) / 2, (m3.v[a].y + m3.v[b].y) / 2, (m3.v[a].z + m3.v[b].z) / 2};
+    int j = meshMergeVerts(m3, {a, b}, mid);
+    CHECK(j >= 0 && m3.v.size() == 7 && m3.f.size() == 6 && closed(m3) && std::fabs(m3.v[j].x - mid.x) < 1e-9 && volume(m3) < 8000,
+          "two corners joined into one, half way between: 7 corners, the faces closed round it");
+    MeshDef m4 = box();
+    std::vector<int> all; for (int v = 0; v < (int)m4.v.size(); v++) all.push_back(v);
+    CHECK(meshMergeVerts(m4, all, {0, 0, 0}) < 0 && m4.v.size() == 8, "joining every corner is refused: the part is left as it was");
+}
+
 static void meshParts() {
     std::printf("meshParts\n");
     BodyDef b; b.id = "m"; b.pts = {{0, 0}, {40, 0}, {40, 20}, {0, 20}}; b.thick = 10; b.z = 0;
@@ -3299,7 +3350,7 @@ static void shotSounds() {
 int main() {
     if (const char* only = std::getenv("GUNSMITH_TESTONLY")) {   // (one quick group while working on it)
         std::string o = only;
-        if (o == "mesh") meshParts();
+        if (o == "mesh") { meshParts(); meshEditing(); }
         else if (o == "revolver") revolverCylinder();
         else if (o == "gas") gasPistol();
         else if (o == "handload") handLoadedReliability();
@@ -3382,6 +3433,7 @@ int main() {
     doorsBlock();
     woodPenetration();
     meshParts();
+    meshEditing();
     revolverCylinder();
     gasPistol();
     handLoadedReliability();

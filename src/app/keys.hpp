@@ -20,6 +20,7 @@ enum class Act {
     SlideRelease,
     Ready, PointShoot, Holster,
     Selector,
+    Shape3D,
     Count
 };
 

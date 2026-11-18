@@ -6,7 +6,9 @@ void meshInput(bool overUI);        // the tool's mouse and keys (Build mode)
 void drawMeshTool();                // the selected mesh part's edges and corners, the face under the mouse
 // for the panel
 std::vector<int>& meshSel();        // the picked corners of the selected part
-int& meshFace();                    // the picked face (-1 none)
+std::vector<int>& meshFaces();     // the picked faces
+void meshJoinPicked();             // the picked corners joined into one (M)
+void meshConnectPicked();          // an edge across a face between the two picked corners (J)
 double& meshExtrudeBy();            // how far E pushes a face out (mm)
 void meshMakeFromSelected();        // the selected part becomes a 3D mesh (its shape as it is now)
 void meshFlatten();                 // back to an ordinary part, its outline the mesh's biggest cross-section
