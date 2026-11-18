@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.44-alpha
+
+- A cleaner main menu: the small notes beside the menu items are gone.
+
 ## 0.8.43-alpha
 
 Fixes.

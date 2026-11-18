@@ -319,19 +319,19 @@ void mainMenu() {
         ImGui::SetCursorPos({0, sy + 12 * S()});
     }
     ImGui::BeginGroup();
-    if (menuItem(ICON_FA_GRADUATION_CAP, "Tutorials", true, tutorialsDoneCount() == 0 ? "start here" : nullptr)) A.showTutorials = true;
-    if (menuItem(ICON_FA_BRIEFCASE, "Career", true, careerExists() ? "carry on" : "start your business")) A.showCareerPicker = true;
+    if (menuItem(ICON_FA_GRADUATION_CAP, "Tutorials")) A.showTutorials = true;
+    if (menuItem(ICON_FA_BRIEFCASE, "Career")) A.showCareerPicker = true;
     if (menuItem(ICON_FA_CUBE, "Sandbox")) enterWorkshop(false);
     if (menuItem(ICON_FA_CROSSHAIRS, "Firing range")) A.showRangePicker = true;
     if (menuItem(ICON_FA_USERS, "Your character")) enterCharacterEditor();
     {   // the tools for making places to shoot and things to shoot at
         static bool mapTools = false;
-        if (menuItem(ICON_FA_SCREWDRIVER_WRENCH, "Tools", true, mapTools ? nullptr : "level editor, NPCs, test bench", mapTools, mapTools ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT)) mapTools = !mapTools;
+        if (menuItem(ICON_FA_SCREWDRIVER_WRENCH, "Tools", true, nullptr, mapTools, mapTools ? ICON_FA_CARET_DOWN : ICON_FA_CARET_RIGHT)) mapTools = !mapTools;
         if (mapTools) {
             ImGui::Indent(40 * S());
-            if (menuItem(ICON_FA_MAP, "Level editor", true, "build maps")) enterMapEditor();
-            if (menuItem(ICON_FA_GHOST, "NPC editor", true, "build enemies")) enterNpcEditor();
-            if (menuItem(ICON_FA_FLASK, "Test bench", true, "any gun")) A.showBenchPicker = true;
+            if (menuItem(ICON_FA_MAP, "Level editor")) enterMapEditor();
+            if (menuItem(ICON_FA_GHOST, "NPC editor")) enterNpcEditor();
+            if (menuItem(ICON_FA_FLASK, "Test bench")) A.showBenchPicker = true;
             ImGui::Unindent(40 * S());
         }
     }
@@ -340,13 +340,13 @@ void mainMenu() {
         update::Status u = update::status();
         const char* note = u.state == update::State::Checking ? "looking..." : u.state == update::State::UpToDate ? "you have the newest"
                          : u.state == update::State::Downloading || u.state == update::State::Installing ? "updating..."
-                         : u.state == update::State::Failed ? "couldn't reach the server" : "look for a new version";
+                         : u.state == update::State::Failed ? "couldn't reach the server" : nullptr;   // (only once there's something to say)
         if (menuItem(ICON_FA_ROTATE, "Check for updates", u.state != update::State::Checking && u.state != update::State::Downloading && u.state != update::State::Installing, note))
             update::checkNow();
     }
 #endif
     if (menuItem(ICON_FA_GEAR, "Settings")) A.showSettings = true;
-    if (menuItem(ICON_FA_COMMENTS, "Discord", true, "join the community")) OpenURL(DISCORD_URL);
+    if (menuItem(ICON_FA_COMMENTS, "Discord")) OpenURL(DISCORD_URL);
     if (menuItem(ICON_FA_CIRCLE_INFO, "About")) A.showAbout = true;
     if (menuItem(ICON_FA_POWER_OFF, "Quit")) A.quit = true;
     ImGui::EndGroup();
