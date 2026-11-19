@@ -177,6 +177,82 @@ Brush makeCylinder(V3 mn, V3 mx, int sides, int mat) {
     return b;
 }
 
+// every corner of a brush (each once)
+std::vector<V3> brushVertices(const Brush& b) {
+    std::vector<V3> out;
+    for (size_t f = 0; f < b.faces.size(); f++)
+        for (V3 p : facePolygon(b, (int)f)) {
+            bool seen = false;
+            for (auto& q : out) if (len(q - p) < 1e-5) { seen = true; break; }
+            if (!seen) out.push_back(p);
+        }
+    return out;
+}
+// The smallest convex block around these points (every plane through three of them with all the rest behind it).
+// Faces take the material, colour and texture settings of `like`'s face pointing the nearest way, else `mat`.
+bool brushFromPoints(const std::vector<V3>& pts, int mat, Brush& out, const Brush* like) {
+    if (pts.size() < 4 || pts.size() > 96) return false;
+    std::vector<Face> fs;
+    size_t n = pts.size();
+    for (size_t a = 0; a < n; a++)
+        for (size_t b = a + 1; b < n; b++)
+            for (size_t c = b + 1; c < n; c++) {
+                V3 nn = cross(pts[b] - pts[a], pts[c] - pts[a]);
+                double L = len(nn);
+                if (L < 1e-9) continue;
+                nn = nn * (1 / L);
+                double d = dot(nn, pts[a]);
+                int above = 0, below = 0;
+                for (auto& p : pts) { double e = dot(nn, p) - d; if (e > 1e-6) above++; else if (e < -1e-6) below++; }
+                if (above && below) continue;
+                if (above) { nn = -nn; d = -d; }
+                if (!above && !below) continue;   // (all in one plane: no solid)
+                bool dup = false;
+                for (auto& f : fs) if (dot(f.n, nn) > 1 - 1e-7 && std::fabs(f.d - d) < 1e-6) { dup = true; break; }
+                if (dup) continue;
+                Face f = face(nn, d, mat);
+                if (like && !like->faces.empty()) {
+                    const Face* best = &like->faces[0]; double bd = -2;
+                    for (auto& g : like->faces) { double k = dot(g.n, nn); if (k > bd) { bd = k; best = &g; } }
+                    f.mat = best->mat; f.scale = best->scale; f.shiftU = best->shiftU; f.shiftV = best->shiftV; f.color = best->color;
+                }
+                fs.push_back(f);
+            }
+    Brush b; b.faces = fs;
+    if (like) b.locked = like->locked;
+    brushClean(b);
+    if (!brushValid(b)) return false;
+    out = b;
+    return true;
+}
+Brush makePyramid(V3 mn, V3 mx, int mat) {
+    Brush b;
+    double cx = (mn.x + mx.x) / 2, cz = (mn.z + mx.z) / 2;
+    brushFromPoints({{mn.x, mn.y, mn.z}, {mx.x, mn.y, mn.z}, {mx.x, mn.y, mx.z}, {mn.x, mn.y, mx.z}, {cx, mx.y, cz}}, mat, b, nullptr);
+    return b;
+}
+Brush makeCone(V3 mn, V3 mx, int sides, int mat) {
+    sides = std::clamp(sides, 3, 32);
+    std::vector<V3> p;
+    double cx = (mn.x + mx.x) / 2, cz = (mn.z + mx.z) / 2, rx = (mx.x - mn.x) / 2, rz = (mx.z - mn.z) / 2;
+    for (int k = 0; k < sides; k++) { double t = 2 * PI * k / sides + PI / sides; p.push_back({cx + rx * std::cos(t), mn.y, cz + rz * std::sin(t)}); }
+    p.push_back({cx, mx.y, cz});
+    Brush b; brushFromPoints(p, mat, b, nullptr);
+    return b;
+}
+Brush makeSphere(V3 mn, V3 mx, int sides, int mat) {
+    sides = std::clamp(sides, 6, 16);
+    int rings = std::max(3, sides / 2);
+    std::vector<V3> p;
+    V3 c = (mn + mx) * 0.5, r = (mx - mn) * 0.5;
+    p.push_back({c.x, mx.y, c.z}); p.push_back({c.x, mn.y, c.z});
+    for (int i = 1; i < rings; i++) {
+        double ph = PI * i / rings, y = std::cos(ph), s = std::sin(ph);
+        for (int k = 0; k < sides; k++) { double t = 2 * PI * k / sides + (i % 2) * PI / sides; p.push_back({c.x + r.x * s * std::cos(t), c.y + r.y * y, c.z + r.z * s * std::sin(t)}); }
+    }
+    Brush b; brushFromPoints(p, mat, b, nullptr);
+    return b;
+}
 std::vector<Brush> makeStairs(V3 mn, V3 mx, int steps, int dir, int mat) {
     steps = std::clamp(steps, 1, 64);
     std::vector<Brush> out;
@@ -283,7 +359,7 @@ Hit rayMap(const Map& m, V3 o, V3 dir, double maxT, bool throughGlass) {
     Hit best;
     best.t = maxT;
     for (size_t i = 0; i < m.brushes.size(); i++) {
-        if (throughGlass && isGlass(m.brushes[i])) continue;
+        if (m.brushes[i].hidden || (throughGlass && isGlass(m.brushes[i]))) continue;
         Hit h = rayBrush(m.brushes[i], o, dir, best.t);
         if (h.brush >= 0 && h.t < best.t) { best = h; best.brush = (int)i; }
     }

@@ -372,7 +372,7 @@ static void buildBrushMeshes(const std::vector<gmap::Brush>& brushes, std::vecto
     std::vector<std::vector<float>> pos(count), nrm(count), uv(count);
     std::vector<std::vector<unsigned char>> col(count);
     for (auto& b : brushes)
-        for (size_t fi = 0; fi < b.faces.size(); fi++) {
+        for (size_t fi = 0; fi < b.faces.size() && !b.hidden; fi++) {
             auto poly = gmap::facePolygon(b, (int)fi);
             if (poly.size() < 3) continue;
             const gmap::Face& f = b.faces[fi];

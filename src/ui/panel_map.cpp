@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cctype>
 #include <string>
 #include <cstdio>
 #include <cstdlib>
@@ -104,7 +105,8 @@ void mapToolbar() {
     struct TB { const char* icon; const char* tip; MTool t; } tools[] = {
         {ICON_FA_ARROW_POINTER, "Select, move and resize", MTool::Select}, {ICON_FA_SQUARE, "Box brush", MTool::Box},
         {ICON_FA_CARET_UP, "Ramp (wedge) brush", MTool::Wedge}, {ICON_FA_CIRCLE, "Cylinder brush", MTool::Cylinder},
-        {ICON_FA_STAIRS, "Stairs", MTool::Stairs}, {ICON_FA_SCISSORS, "Clip: cut brushes along a line", MTool::Clip},
+        {ICON_FA_STAIRS, "Stairs", MTool::Stairs}, {ICON_FA_PLAY, "Pyramid", MTool::Pyramid}, {ICON_FA_ICE_CREAM, "Cone", MTool::Cone},
+        {ICON_FA_VOLLEYBALL, "Ball", MTool::Sphere}, {ICON_FA_SCISSORS, "Clip: cut brushes along a line", MTool::Clip},
         {ICON_FA_PERSON, "Player start", MTool::Start}, {ICON_FA_GHOST, "NPC: place an NPC from the NPC editor", MTool::Npc},
         {ICON_FA_BOX_OPEN, "Gun spawner: a stand players take guns from", MTool::Spawner},
         {ICON_FA_SHIELD_HALVED, "Armour plates: walk over them to fill the armour bar", MTool::Armor},
@@ -130,11 +132,15 @@ void mapToolbar() {
     int i = 0;
     for (auto& t : tools) {
         if (!shown(t.t)) continue;
-        if (iconBtn(t.icon, t.tip, ME.tool == t.t && !(t.t == MTool::Select && ME.rotateMode))) { ME.tool = t.t; ME.clipPts.clear(); ME.rotateMode = false; }
-        if (t.t == MTool::Select) {   // Rotate: Select with rotation rings, as in the gun designer
+        if (iconBtn(t.icon, t.tip, ME.tool == t.t && !(t.t == MTool::Select && (ME.rotateMode || ME.cornerMode)))) { ME.tool = t.t; ME.clipPts.clear(); ME.rotateMode = ME.cornerMode = false; }
+        if (t.t == MTool::Select) {   // Rotate: Select with rotation rings, as in the gun designer; Corners: drag the block's corners
             gap(3);
             if (iconBtn(ICON_FA_ARROWS_ROTATE, "Rotate: rings round the selection. Drag a ring to turn blocks (or a thing) about that axis. Ctrl: 15 degree steps", ME.tool == MTool::Select && ME.rotateMode)) {
-                ME.tool = MTool::Select; ME.rotateMode = true; ME.clipPts.clear();
+                ME.tool = MTool::Select; ME.rotateMode = true; ME.cornerMode = false; ME.clipPts.clear();
+            }
+            gap(3);
+            if (iconBtn(ICON_FA_DRAW_POLYGON, "Corners: drag the selected block's corners to any shape (Alt: up and down). Snaps to the grid", ME.tool == MTool::Select && ME.cornerMode)) {
+                ME.tool = MTool::Select; ME.cornerMode = true; ME.rotateMode = false; ME.clipPts.clear();
             }
         }
         gap(t.t == MTool::Select || t.t == MTool::Clip ? 12 : 3);
@@ -168,6 +174,14 @@ void mapToolbar() {
     gap(8);
     ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
     mapUnitPicker(ImGui::GetFrameHeight());
+    gap(8);
+    {   // the camera's flying speed (also the wheel while flying)
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + (sz - ImGui::GetFrameHeight()) / 2);
+        ImGui::SetNextItemWidth(130 * S());
+        float sp = (float)ME.flySpeed;
+        if (ImGui::SliderFloat("##camspeed", &sp, 0.5f, 300.f, ICON_FA_GAUGE_HIGH " %.0f m/s", ImGuiSliderFlags_Logarithmic)) ME.flySpeed = sp;
+        if (tipHover()) ImGui::SetTooltip("Camera speed when flying (right mouse + WASD, Q/E down and up).\nThe wheel while flying changes it; Shift goes 4x faster, Ctrl 5x slower.\nMiddle mouse orbits, Shift+middle pans, the wheel zooms toward the mouse.");
+    }
     // right side
     float right = 5 * (sz + 4 * S()) + 110 * S() + 10 * S();
     ImGui::SameLine(GetScreenWidth() - right);
@@ -201,6 +215,73 @@ void mapToolbar() {
 
 // ---------------------------------------------------------------- panel
 static int tab = -1;
+
+// Everything in the map, to find, pick and hide things (blocks and things placed; furniture's own blocks come with it)
+static void outliner() {
+    auto& M = ME.map;
+    if (!section("Everything in the map", false)) return;
+    static char filt[64] = "";
+    ImGui::SetNextItemWidth(-1);
+    ImGui::InputTextWithHint("##outfilt", ICON_FA_MAGNIFYING_GLASS "  Find (a texture, a kind of thing...)", filt, sizeof filt);
+    std::string f = filt; for (auto& c : f) c = (char)std::tolower((unsigned char)c);
+    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+    ImGui::BeginDisabled(ME.sel.empty());
+    if (ImGui::Button(ICON_FA_EYE_SLASH "  Hide selected", {w2, 0})) meHideSelected();
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_EYE "  Show all", {w2, 0})) meShowAll();
+    struct Row { std::string label; int brush = -1, ent = -1; };
+    std::vector<Row> rows;
+    for (size_t i = 0; i < M.ents.size(); i++) {
+        const auto& e = M.ents[i];
+        std::string t = e.type; for (auto& c : t) if (c == '_') c = ' ';
+        if (!t.empty()) t[0] = (char)std::toupper((unsigned char)t[0]);
+        if (!e.ref.empty() && e.type != "light") t += ": " + e.ref;
+        rows.push_back({t, -1, (int)i});
+    }
+    for (size_t i = 0; i < M.brushes.size(); i++) {
+        const auto& b = M.brushes[i];
+        if (b.furn) continue;
+        gmap::V3 a, c; gmap::brushBounds(b, a, c);
+        std::string mat = b.faces.empty() ? "" : gmap::materialNames()[std::clamp(b.faces[0].mat, 0, (int)gmap::materialNames().size() - 1)];
+        rows.push_back({TextFormat("Block %zu  %s  %.1f x %.1f x %.1f m%s", i + 1, mat.c_str(), c.x - a.x, c.y - a.y, c.z - a.z, b.locked ? "  (locked)" : ""), (int)i, -1});
+    }
+    if (!f.empty()) {
+        std::vector<Row> keep;
+        for (auto& r : rows) { std::string l = r.label; for (auto& c : l) c = (char)std::tolower((unsigned char)c); if (l.find(f) != std::string::npos) keep.push_back(r); }
+        rows.swap(keep);
+    }
+    ImGui::TextDisabled("%zu shown. Click to pick, double-click to fly there.", rows.size());
+    ImGui::BeginChild("##outlist", {0, 260 * S()}, ImGuiChildFlags_Borders);
+    ImGuiListClipper clip;
+    clip.Begin((int)rows.size());
+    while (clip.Step()) {
+        for (int k = clip.DisplayStart; k < clip.DisplayEnd; k++) {
+            const Row& r = rows[k];
+            ImGui::PushID(k);
+            if (r.brush >= 0) {   // the eye: hide or show this block
+                bool hid = M.brushes[r.brush].hidden;
+                if (ImGui::SmallButton(hid ? ICON_FA_EYE_SLASH : ICON_FA_EYE)) { M.brushes[r.brush].hidden = !hid; ME.version++; if (!hid) ME.sel.erase(std::remove(ME.sel.begin(), ME.sel.end(), r.brush), ME.sel.end()); }
+                ImGui::SameLine();
+            } else { ImGui::TextDisabled(ICON_FA_LOCATION_DOT); ImGui::SameLine(); }
+            bool on = r.brush >= 0 ? std::find(ME.sel.begin(), ME.sel.end(), r.brush) != ME.sel.end() : ME.ent == r.ent;
+            bool dim = r.brush >= 0 && M.brushes[r.brush].hidden;
+            if (dim) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            if (ImGui::Selectable(r.label.c_str(), on, ImGuiSelectableFlags_AllowDoubleClick)) {
+                bool add = ImGui::GetIO().KeyShift;
+                if (r.brush >= 0 && !M.brushes[r.brush].hidden) {
+                    if (!add) ME.sel.clear();
+                    if (!on) ME.sel.push_back(r.brush);
+                    ME.ent = -1; ME.face = -1;
+                } else if (r.ent >= 0) { ME.sel.clear(); ME.face = -1; ME.ent = r.ent; }
+                if (ImGui::IsMouseDoubleClicked(0)) meFocus();
+            }
+            if (dim) ImGui::PopStyleColor();
+            ImGui::PopID();
+        }
+    }
+    ImGui::EndChild();
+}
 
 static void editTab() {
     auto& M = ME.map;
@@ -603,7 +684,7 @@ static void toolOptions() {
             ImGui::EndCombo();
         }
     }
-    if (ME.tool == MTool::Cylinder) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); typeable(); }
+    if (ME.tool == MTool::Cylinder || ME.tool == MTool::Cone || ME.tool == MTool::Sphere) { prop("Sides"); ImGui::SliderInt("##sides", &ME.cylSides, 3, 32); typeable(); }
     if (ME.tool == MTool::Stairs) { prop("Steps"); ImGui::SliderInt("##steps", &ME.stairSteps, 2, 32); typeable(); }
 }
 
@@ -892,7 +973,7 @@ void mapPanel() {
     }
     ImGui::BeginChild("##mapbody");
     switch (tab) {
-    case 0: if (!ME.careerFile.empty()) shopChecklist(); editTab(); toolOptions(); ImGui::Dummy({0, 6 * S()}); groupTools(); break;
+    case 0: if (!ME.careerFile.empty()) shopChecklist(); editTab(); toolOptions(); ImGui::Dummy({0, 6 * S()}); outliner(); ImGui::Dummy({0, 6 * S()}); groupTools(); break;
     case 1: texturesTab(); break;
     case 2: mapTab(); break;
     case 3: fileTab(); break;

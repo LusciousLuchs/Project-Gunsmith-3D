@@ -54,6 +54,7 @@ struct Brush {
     mutable double boundsCache[6] = {0, 0, 0, 0, 0, 0};
     mutable unsigned long long boundsKey = 0;
     bool locked = false;   // part of a building that comes with a career property (its walls): can't be changed
+    bool hidden = false;   // (not saved) hidden in the Level editor: not drawn, not picked
 };
 struct Entity {
     std::string type = "player_start";   // player_start, target_paper, npc_spawn (an NPC stands here), gun_spawner
@@ -136,6 +137,12 @@ Brush makeBox(V3 mn, V3 mx, int mat);
 Brush makeWedge(V3 mn, V3 mx, int dir, int mat);       // a ramp rising towards +X, +Z, -X, -Z for dir 0..3
 Brush makeCylinder(V3 mn, V3 mx, int sides, int mat);  // an upright prism inscribed in the footprint
 std::vector<Brush> makeStairs(V3 mn, V3 mx, int steps, int dir, int mat);
+Brush makePyramid(V3 mn, V3 mx, int mat);              // four-sided, its point at the top middle
+Brush makeCone(V3 mn, V3 mx, int sides, int mat);
+Brush makeSphere(V3 mn, V3 mx, int sides, int mat);    // a ball (as round as `sides` allows) filling the box
+std::vector<V3> brushVertices(const Brush& b);          // every corner, once
+// the smallest convex block round these points; faces copy their look from `like`'s nearest-facing face (else mat)
+bool brushFromPoints(const std::vector<V3>& pts, int mat, Brush& out, const Brush* like = nullptr);
 
 void translate(Brush& b, V3 d);
 void rotateY(Brush& b, double radians, V3 pivot);

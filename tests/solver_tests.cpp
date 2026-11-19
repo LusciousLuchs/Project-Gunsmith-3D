@@ -3065,6 +3065,23 @@ static void mapRotateGlass() {
     CHECK(h1.brush == 0 && h2.brush == 1 && std::fabs(h2.t - 8) < 1e-6, "a window stops a plain ray (walking into it) but not a bullet or a look");
     Map back; mapFromJson(mapToJson(m), back);
     CHECK(back.brushes.size() == 2 && isGlass(back.brushes[0]) && !isGlass(back.brushes[1]), "glass saves and loads by name");
+    {   // corners: a block rebuilt round its own corners is the same; one corner dragged makes a new shape; new shapes
+        Brush bx = makeBox({0, 0, 0}, {2, 1, 1}, 3);
+        bx.faces[0].color = 0x3E7CA8FFu;
+        auto v = brushVertices(bx);
+        Brush same; bool ok = brushFromPoints(v, 1, same, &bx);
+        V3 a0, a1, b0, b1; brushBounds(bx, a0, a1); brushBounds(same, b0, b1);
+        CHECK(v.size() == 8 && ok && same.faces.size() == 6 && len(a1 - b1) < 1e-9 && len(a0 - b0) < 1e-9, "a block rebuilt from its 8 corners is the same block");
+        bool kept = false; for (auto& f : same.faces) kept |= f.color == 0x3E7CA8FFu && f.mat == 3;
+        CHECK(kept, "the rebuilt faces keep their texture and colour");
+        for (auto& p : v) if (p.x > 1.9 && p.y > 0.9 && p.z > 0.9) p.y += 1;   // one top corner pulled up a metre
+        Brush pulled; bool ok2 = brushFromPoints(v, 1, pulled, &bx);
+        V3 c0, c1; brushBounds(pulled, c0, c1);
+        CHECK(ok2 && std::fabs(c1.y - 2) < 1e-9 && pulled.faces.size() > 6 && brushVertices(pulled).size() == 8, "dragging one corner reshapes the block");
+        Brush py = makePyramid({0, 0, 0}, {2, 2, 2}, 1), co = makeCone({0, 0, 0}, {2, 2, 2}, 12, 1), sp = makeSphere({0, 0, 0}, {2, 2, 2}, 10, 1);
+        std::printf("  shapes: pyramid %zu faces, cone %zu, sphere %zu\n", py.faces.size(), co.faces.size(), sp.faces.size());
+        CHECK(brushValid(py) && py.faces.size() == 5 && brushValid(co) && co.faces.size() == 13 && brushValid(sp) && sp.faces.size() > 30, "pyramids, cones and balls");
+    }
     {   // an invisible wall: walked into like any wall, but bullets and sight go through
         Map w; w.brushes.push_back(makeBox({2, 0, -1}, {2.2, 2, 1}, invisibleMaterial()));
         Hit a = rayMap(w, {0, 1, 0}, {1, 0, 0}, 10), b = rayMap(w, {0, 1, 0}, {1, 0, 0}, 10, true);

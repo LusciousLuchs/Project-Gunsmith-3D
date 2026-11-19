@@ -445,6 +445,12 @@ static V3 selCentre() {
     }
     return (mn + mx) * 0.5;
 }
+void meHideSelected() {
+    for (int i : ME.sel) ME.map.brushes[i].hidden = true;
+    if (!ME.sel.empty()) ME.status = std::to_string(ME.sel.size()) + " hidden (in the editor only). Show all brings them back.";
+    ME.sel.clear(); ME.face = -1; ME.version++;
+}
+void meShowAll() { int n = 0; for (auto& b : ME.map.brushes) { n += b.hidden; b.hidden = false; } if (n) ME.status = std::to_string(n) + " shown again."; ME.version++; }
 void meRotate(double deg) {
     if (ME.ent >= 0) { meSnapshot(); ME.map.ents[ME.ent].yaw = std::fmod(ME.map.ents[ME.ent].yaw + deg + 360, 360); meChanged(); return; }
     if (ME.sel.empty() || selLocked()) return;
@@ -605,40 +611,88 @@ static void flyCamera(float dt) {
         return;
     }
     CamB b = camBasis();
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && (inView || flying)) {
+    // where the mouse points in the world (a block, else the ground), for zooming toward it and turning round it
+    auto pointUnder = [&](V3& at) {
+        V3 o, d; mouseRay(o, d);
+        gmap::Hit h = gmap::rayMap(ME.map, o, d, 2000);
+        if (h.brush >= 0) { at = o + d * h.t; return true; }
+        if (rayPlaneY(o, d, 0, at) && gmap::len(at - o) < 2000) return true;
+        at = o + d * 20; return false;
+    };
+    static V3 vel;                 // flying: eased toward where you're steering (no jerks, no crawl)
+    static V3 orbitAt; static double orbitDist = 10;
+    static bool orbiting = false, panning = false; static double panDist = 10;
+    bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT), ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT) && (inView || flying)) {   // fly: look with the mouse, WASD Q/E (or Space/C) to move
         flying = true;
         Vector2 d = GetMouseDelta();
         double s = 0.0022 * CFG.mouseSens;
         ME.yaw += d.x * s;
         ME.pitch = std::clamp(ME.pitch - d.y * s * (CFG.invertMouse ? -1 : 1), -1.55, 1.55);
+        b = camBasis();
+        V3 want;
         if (!io.WantCaptureKeyboard) {
-            double sp = ME.flySpeed * (actDown(Act::Sprint) ? 3 : 1) * dt;
-            V3 mv;
-            if (actDown(Act::MoveFwd)) mv += b.fwd;
-            if (actDown(Act::MoveBack)) mv -= b.fwd;
-            if (actDown(Act::MoveRight)) mv += b.right;
-            if (actDown(Act::MoveLeft)) mv -= b.right;
-            if (actDown(Act::FlyUp)) mv += V3{0, 1, 0};
-            if (actDown(Act::FlyDown)) mv -= V3{0, 1, 0};
-            ME.cam += mv * sp;
+            if (actDown(Act::MoveFwd)) want += b.fwd;
+            if (actDown(Act::MoveBack)) want -= b.fwd;
+            if (actDown(Act::MoveRight)) want += b.right;
+            if (actDown(Act::MoveLeft)) want -= b.right;
+            if (actDown(Act::FlyUp) || IsKeyDown(KEY_E)) want += V3{0, 1, 0};
+            if (actDown(Act::FlyDown) || IsKeyDown(KEY_Q)) want -= V3{0, 1, 0};
         }
+        double k = shift ? 4 : ctrl ? 0.2 : 1;   // Shift: fast, Ctrl: slow and careful
+        if (gmap::len(want) > 1e-9) want = gmap::norm(want) * (ME.flySpeed * k);
+        double ease = 1 - std::exp(-dt * 12);
+        vel = vel + (want - vel) * ease;
+        ME.cam += vel * dt;
         float w = GetMouseWheelMove();
-        if (w != 0) ME.flySpeed = std::clamp(ME.flySpeed * std::pow(1.25, (double)w), 1.0, 80.0);
-    } else {
-        flying = false;
-        if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE) && inView) {  // pan
-            Vector2 d = GetMouseDelta();
-            double s = 0.01 + 0.002 * ME.flySpeed;
-            ME.cam += b.right * (-d.x * s) + b.up * (d.y * s);
+        if (w != 0) { ME.flySpeed = std::clamp(ME.flySpeed * std::pow(1.3, (double)w), 0.5, 300.0); ME.status = TextFormat("Camera speed %s/s (wheel while flying; Shift x4, Ctrl x0.2).", meLen(ME.flySpeed).c_str()); }
+        orbiting = panning = false;
+        return;
+    }
+    flying = false;
+    vel = {};
+    // the middle button turns round the point you're looking at; Shift+middle slides the view
+    if (IsMouseButtonPressed(MOUSE_BUTTON_MIDDLE) && inView) {
+        V3 at;
+        if (shift) { panning = true; pointUnder(at); panDist = std::max(0.5, gmap::len(at - ME.cam)); }
+        else {
+            orbiting = true;
+            VP v = viewRect();   // (round the middle of the view: no jump)
+            V3 o = b.pos, d = b.fwd;
+            gmap::Hit h = gmap::rayMap(ME.map, o, d, 2000);
+            if (h.brush >= 0) orbitAt = o + d * h.t;
+            else if (!rayPlaneY(o, d, 0, orbitAt) || gmap::len(orbitAt - o) > 300) orbitAt = o + d * 12;
+            orbitDist = std::max(0.5, gmap::len(orbitAt - ME.cam));
+            (void)v;
         }
-        float w = GetMouseWheelMove();
-        if (w != 0 && inView) ME.cam += b.fwd * (w * std::max(0.5, ME.flySpeed * 0.25));
+    }
+    if (!IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) orbiting = panning = false;
+    Vector2 md = GetMouseDelta();
+    if (orbiting) {
+        double s = 0.005 * CFG.mouseSens;
+        ME.yaw += md.x * s;
+        ME.pitch = std::clamp(ME.pitch - md.y * s, -1.5, 1.5);
+        ME.cam = orbitAt - camBasis().fwd * orbitDist;
+    } else if (panning) {
+        VP v = viewRect();
+        double mpp = 2 * panDist * std::tan(b.fovy * DEG2RAD / 2) / std::max(1.f, v.h);   // metres per pixel at that distance
+        ME.cam += b.right * (-md.x * mpp) + b.up * (md.y * mpp);
+    }
+    // the wheel: toward (or away from) what the mouse points at, a share of the way there (fast far off, fine up close)
+    float w = GetMouseWheelMove();
+    if (w != 0 && inView) {
+        V3 at; pointUnder(at);
+        V3 o, d; mouseRay(o, d);
+        double dist = gmap::len(at - ME.cam);
+        double step = std::max(0.15, dist * 0.2) * w * (shift ? 3 : ctrl ? 0.3 : 1);
+        if (w > 0) step = std::min(step, std::max(0.0, dist - 0.3));
+        ME.cam += d * step;
     }
 }
 
 // ---------------------------------------------------------------- input: tools
 namespace {
-enum class Drag { None, Move, MoveEnt, Face, Create, Rotate };
+enum class Drag { None, Move, MoveEnt, Face, Create, Rotate, Axis, Box, Corner };
 Drag drag = Drag::None;
 bool dragChanged = false, dragVertical = false;
 V3 dragHit, dragPlaneN;
@@ -651,6 +705,11 @@ V3 createA, createB;
 double createY = 0;
 std::string preDrag;
 Rings gRot;                       // the rotation rings (Rotate)
+int gAxis = -1, gAxisHot = -1;    // the move arrows: the one dragged, the one under the mouse
+V3 gAxisO; double gAxisT0 = 0;    // where the arrows stood at the press, and how far along the axis the mouse was
+Vector2 gBoxA;                    // a box-select's first corner (screen)
+int gCorner = -1, gCornerHot = -1;   // corner editing: the corner dragged, the one under the mouse
+std::vector<V3> gCornerPts;       // the block's corners at the press
 V3 rotPivot;
 double rotYaw0 = 0;               // a thing's yaw at the press
 gmap::Stance wantStance = gmap::Stance::Stand;
@@ -760,6 +819,79 @@ static void applyClip(bool split) {
     if (cut) meChanged(); else { ME.undo.pop_back(); ME.status = "That cut would remove the whole brush. Press Tab to keep the other side."; }
 }
 
+// ---- move arrows: X (red), Y (green, up), Z (blue) from the selection's middle; drag one to slide along it
+static bool gizmoOn() {
+    if (ME.tool != MTool::Select || ME.rotateMode || ME.cornerMode || ME.walking) return false;
+    if (ME.ent >= 0) return true;
+    return !ME.sel.empty() && ME.face < 0 && !selLocked();
+}
+static V3 gizmoAt() { return ME.ent >= 0 ? ME.map.ents[ME.ent].pos + V3{0, 0.4, 0} : selCentre(); }
+static double gizmoLen(V3 at) {   // world length that shows about 85 pixels long
+    CamB c = camBasis(); VP v = viewRect();
+    double dist = c.ortho ? 1 : std::max(0.3, dot(at - c.pos, c.fwd));
+    double span = c.ortho ? c.fovy : 2 * dist * std::tan(c.fovy * DEG2RAD / 2);
+    return 85 * span / std::max(1.f, v.h);
+}
+static const V3 AXES[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+static int gizmoPick(Vector2 m) {
+    if (!gizmoOn()) return -1;
+    V3 at = gizmoAt(); double L = gizmoLen(at);
+    Vector2 a; if (!project(at, a)) return -1;
+    int best = -1; float bd = 10;
+    for (int k = 0; k < 3; k++) {
+        Vector2 e; if (!project(at + AXES[k] * L, e)) continue;
+        Vector2 ab = Vector2Subtract(e, a); float l2 = Vector2LengthSqr(ab);
+        if (l2 < 1) continue;
+        float t = std::clamp(Vector2DotProduct(Vector2Subtract(m, a), ab) / l2, 0.15f, 1.1f);
+        float d = Vector2Distance(m, Vector2Add(a, Vector2Scale(ab, t)));
+        if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+}
+static double axisParam(V3 O, V3 A) {   // how far along the line O + t A the mouse ray passes closest
+    V3 o, d; mouseRay(o, d);
+    V3 w0 = O - o;
+    double b = dot(A, d), dd = dot(A, w0), e = dot(d, w0), den = 1 - b * b;
+    if (std::fabs(den) < 1e-6) return 0;
+    return (b * e - dd) / den;
+}
+static void drawGizmo() {
+    if (!gizmoOn()) return;
+    V3 at = gizmoAt(); double L = gizmoLen(at);
+    Vector2 a; if (!project(at, a)) return;
+    static const Color col[3] = {{235, 80, 70, 255}, {110, 210, 90, 255}, {80, 140, 240, 255}};
+    static const char* lab[3] = {"X", "Y", "Z"};
+    for (int k = 0; k < 3; k++) {
+        Vector2 e; if (!project(at + AXES[k] * L, e)) continue;
+        bool hot = k == gAxisHot || k == gAxis;
+        Color c = hot ? Color{255, 225, 90, 255} : col[k];
+        DrawLineEx(a, e, hot ? 4.f : 3.f, c);
+        Vector2 dir = Vector2Normalize(Vector2Subtract(e, a)), nrm{-dir.y, dir.x};
+        DrawTriangle(Vector2Add(e, Vector2Scale(dir, 12)), Vector2Add(e, Vector2Scale(nrm, -6)), Vector2Add(e, Vector2Scale(nrm, 6)), c);
+        DrawTriangle(Vector2Add(e, Vector2Scale(dir, 12)), Vector2Add(e, Vector2Scale(nrm, 6)), Vector2Add(e, Vector2Scale(nrm, -6)), c);
+        viewText(lab[k], e.x + dir.x * 16 - 4, e.y + dir.y * 16 - 7, 12, c);
+    }
+    DrawCircleV(a, 4, Color{255, 255, 255, 200});
+}
+// ---- corners: the selected block's corners, to drag into any shape
+static bool cornersOn() { return ME.cornerMode && ME.tool == MTool::Select && ME.sel.size() == 1 && !selLocked() && !ME.walking; }
+static int cornerPick(Vector2 m) {
+    if (!cornersOn()) return -1;
+    auto v = gmap::brushVertices(ME.map.brushes[ME.sel[0]]);
+    int best = -1; float bd = 10;
+    for (size_t i = 0; i < v.size(); i++) { Vector2 s; if (project(v[i], s)) { float d = Vector2Distance(s, m); if (d < bd) { bd = d; best = (int)i; } } }
+    return best;
+}
+static void drawCorners() {
+    if (!cornersOn()) return;
+    auto v = gmap::brushVertices(ME.map.brushes[ME.sel[0]]);
+    for (size_t i = 0; i < v.size(); i++) {
+        Vector2 s; if (!project(v[i], s)) continue;
+        bool hot = (int)i == gCornerHot || (drag == Drag::Corner && (int)i == gCorner);
+        DrawCircleV(s, hot ? 7.f : 5.f, hot ? Color{255, 225, 90, 255} : Color{20, 24, 32, 230});
+        DrawCircleLinesV(s, hot ? 7.f : 5.f, Color{255, 205, 60, 255});
+    }
+}
 // the rotation rings round the selection (Rotate mode): world X, Y, Z for blocks; a thing turns about Y only
 static Vector2 ringScreen(Vector3 p) { Vector2 s{-1e6f, -1e6f}; project(V3{p.x, p.y, p.z}, s); return s; }
 static bool ringsActive() {
@@ -800,6 +932,25 @@ static void toolInput() {
                     break;
                 }
             }
+            {   // a move arrow: slide the selection along it
+                int k = gizmoPick(m);
+                if (k >= 0) {
+                    beginDrag(Drag::Axis);
+                    gAxis = k; gAxisO = gizmoAt(); gAxisT0 = axisParam(gAxisO, AXES[k]);
+                    dragOrig.clear(); for (int i : ME.sel) dragOrig.push_back(ME.map.brushes[i]);
+                    if (ME.ent >= 0) dragEntOrig = ME.map.ents[ME.ent].pos;
+                    break;
+                }
+            }
+            if (cornersOn()) {   // a corner of the selected block
+                int c = cornerPick(m);
+                if (c >= 0) {
+                    beginDrag(Drag::Corner);
+                    gCorner = c; dragOrig = {ME.map.brushes[ME.sel[0]]}; gCornerPts = gmap::brushVertices(dragOrig[0]);
+                    dragHit = gCornerPts[c]; dragVertical = alt;
+                    break;
+                }
+            }
             // the first click picks (a brush, a thing, a face's square); press on it again to drag it
             static int pickedFace = -1;
             int fh = faceHandleAt(m);
@@ -821,7 +972,11 @@ static void toolInput() {
                 dragHit = o + d * te; dragVertical = alt;
                 break;
             }
-            if (h.brush < 0) { if (!shift) { ME.sel.clear(); ME.face = -1; ME.ent = -1; } break; }
+            if (h.brush < 0) {   // empty space: drag a box round blocks to pick them all (Shift adds)
+                if (!shift) { ME.sel.clear(); ME.face = -1; ME.ent = -1; }
+                beginDrag(Drag::Box); gBoxA = m;
+                break;
+            }
             ME.ent = -1;
             if (ctrl) { ME.sel = {h.brush}; ME.face = h.face; ME.mat = ME.map.brushes[h.brush].faces[h.face].mat; break; }
             if (shift) {
@@ -838,7 +993,7 @@ static void toolInput() {
             for (int i : ME.sel) dragOrig.push_back(ME.map.brushes[i]);
             break;
         }
-        case MTool::Box: case MTool::Wedge: case MTool::Cylinder: case MTool::Stairs: {
+        case MTool::Box: case MTool::Wedge: case MTool::Cylinder: case MTool::Stairs: case MTool::Pyramid: case MTool::Cone: case MTool::Sphere: {
             V3 p, n; int b, f;
             if (!surfaceUnderMouse(p, n, b, f)) break;
             createY = (b >= 0 && n.y > 0.7) ? p.y : 0;
@@ -1037,6 +1192,26 @@ static void toolInput() {
                     if (gmap::pushFace(b, dragFace, amt)) { ME.map.brushes[ME.sel[0]] = b; ME.version++; dragChanged = amt != 0; }
                 }
             }
+        } else if (drag == Drag::Axis && gAxis >= 0) {
+            double t = axisParam(gAxisO, AXES[gAxis]) - gAxisT0;
+            t = snapG(t);
+            V3 dl = AXES[gAxis] * t;
+            if (ME.ent >= 0) { ME.map.ents[ME.ent].pos = dragEntOrig + dl; if (ME.map.ents[ME.ent].type == "furniture") rebake(); }
+            else for (size_t k = 0; k < ME.sel.size() && k < dragOrig.size(); k++) { ME.map.brushes[ME.sel[k]] = dragOrig[k]; gmap::translate(ME.map.brushes[ME.sel[k]], dl); }
+            ME.status = TextFormat("Moved %s along %c.", meLen(t).c_str(), "XYZ"[gAxis]);
+            if (std::fabs(t) > 1e-9) { dragChanged = true; ME.version++; }
+        } else if (drag == Drag::Corner && gCorner >= 0 && !dragOrig.empty()) {
+            V3 p; bool ok;
+            if (dragVertical || ME.top) {   // up and down (Alt), or across in the top view
+                if (ME.top) { ok = true; p = o + d * ((o.y - dragHit.y) / -d.y); }
+                else { CamB c = camBasis(); V3 nrm = norm({c.fwd.x, 0, c.fwd.z}); ok = rayPlane(o, d, nrm, dot(nrm, dragHit), p); if (ok) p = {dragHit.x, p.y, dragHit.z}; }
+            } else ok = rayPlaneY(o, d, dragHit.y, p);
+            if (ok) {
+                p = {snapG(p.x), dragVertical ? snapG(p.y) : dragHit.y, snapG(p.z)};
+                auto pts = gCornerPts; pts[gCorner] = p;
+                gmap::Brush nb;
+                if (gmap::brushFromPoints(pts, ME.mat, nb, &dragOrig[0])) { ME.map.brushes[ME.sel[0]] = nb; ME.version++; dragChanged = gmap::len(p - gCornerPts[gCorner]) > 1e-9; }
+            }
         } else if (drag == Drag::Rotate) {
             double deg = ringsDrag(gRot, m, ctrl);
             Vector3 a = gRot.ax[gRot.axis];
@@ -1057,6 +1232,20 @@ static void toolInput() {
     }
 
     if (drag != Drag::None && IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (drag == Drag::Box) {   // every block whose middle is inside the box
+            Rectangle r{std::min(gBoxA.x, m.x), std::min(gBoxA.y, m.y), std::fabs(m.x - gBoxA.x), std::fabs(m.y - gBoxA.y)};
+            if (r.width > 4 && r.height > 4) {
+                for (size_t i = 0; i < ME.map.brushes.size(); i++) {
+                    const auto& br = ME.map.brushes[i];
+                    if (br.hidden || br.furn || (careerZoned() && br.locked) || isSel((int)i)) continue;
+                    Vector2 sc; if (project(gmap::brushCentre(br), sc) && CheckCollisionPointRec(sc, r)) ME.sel.push_back((int)i);
+                }
+                if (!ME.sel.empty()) { ME.ent = -1; ME.face = -1; ME.status = std::to_string(ME.sel.size()) + " blocks selected."; }
+            }
+            drag = Drag::None;
+            return;
+        }
+        gAxis = -1; gCorner = -1;
         if (drag == Drag::Create) {
             double minW = std::max(ME.grid, 0.01) * 0.5;
             V3 mn{std::min(createA.x, createB.x), createY, std::min(createA.z, createB.z)};
@@ -1066,6 +1255,9 @@ static void toolInput() {
                 if (ME.tool == MTool::Box) made.push_back(gmap::makeBox(mn, mx, ME.mat));
                 else if (ME.tool == MTool::Wedge) made.push_back(gmap::makeWedge(mn, mx, wedgeDir(), ME.mat));
                 else if (ME.tool == MTool::Cylinder) made.push_back(gmap::makeCylinder(mn, mx, ME.cylSides, ME.mat));
+                else if (ME.tool == MTool::Pyramid) made.push_back(gmap::makePyramid(mn, mx, ME.mat));
+                else if (ME.tool == MTool::Cone) made.push_back(gmap::makeCone(mn, mx, ME.cylSides, ME.mat));
+                else if (ME.tool == MTool::Sphere) made.push_back(gmap::makeSphere(mn, mx, std::clamp(ME.cylSides, 6, 16), ME.mat));
                 else made = gmap::makeStairs(mn, mx, ME.stairSteps, wedgeDir(), ME.mat);
                 ME.sel.clear();
                 for (auto& b : made) if (gmap::brushValid(b)) { ME.map.brushes.push_back(b); ME.sel.push_back((int)ME.map.brushes.size() - 1); }
@@ -1286,7 +1478,7 @@ static void drawStart(const gmap::Entity& e, bool sel) {
 }
 
 static const char* HINT[] = {
-    "Click to select (Shift adds, Ctrl picks a face to paint). Drag to move, Alt+drag up/down, squares resize. Arrows nudge (Shift x4), R turns (Alt 15 deg), Ctrl+C/V copy and paste, Ctrl+D duplicates, Ctrl+A all. Right mouse flies.",
+    "Click to select (Shift adds, Ctrl picks a face to paint), drag on empty space to box-select. Drag a block, or its coloured arrows, to move it; squares resize. Right mouse + WASD flies (wheel: speed), middle mouse orbits, Shift+middle pans, wheel zooms to the mouse.",
     "Drag on the ground, or on top of a brush, to draw a box. Its height is set in the top bar.",
     "Drag to draw a ramp. It rises away from where you're looking.",
     "Drag to draw a cylinder. Its number of sides is in the panel.",
@@ -1306,8 +1498,11 @@ static const char* HINT[] = {
     "Click the floor to place the furniture chosen in the panel, facing you. Click a wall to stand it with its back to the wall.",
     "Click any surface (a shelf, a table, the floor) to place the thing chosen in the panel. Players pick it up with F.",
     "Click a floor, a shelf or a table to place a radio. Pick its station in the panel; on foot, F at it tunes it.",
+    "Drag to draw a pyramid. Its height is set in the top bar.",
+    "Drag to draw a cone. Its number of sides is in the panel.",
+    "Drag to draw a ball (its roundness is the number of sides in the panel).",
 };
-static_assert(sizeof(HINT) / sizeof(HINT[0]) == (int)MTool::Radio + 1, "a hint for every tool");
+static_assert(sizeof(HINT) / sizeof(HINT[0]) == (int)MTool::Sphere + 1, "a hint for every tool");
 
 static void drawEditor3D() {
     CamB b = camBasis();
@@ -1341,7 +1536,8 @@ static void drawEditor3D() {
                 if (hb.furn) { for (auto& fb : ME.map.brushes) if (fb.furn == hb.furn) drawBrushEdges(fb, Color{255, 255, 255, 110}); }
                 else if (!locked && !isSel(h.brush)) drawBrushEdges(hb, Color{255, 255, 255, 110});
             }
-        } else if (ME.tool != MTool::Box && ME.tool != MTool::Wedge && ME.tool != MTool::Cylinder && ME.tool != MTool::Stairs && ME.tool != MTool::Clip) {
+        } else if (ME.tool != MTool::Box && ME.tool != MTool::Wedge && ME.tool != MTool::Cylinder && ME.tool != MTool::Stairs && ME.tool != MTool::Clip
+                   && ME.tool != MTool::Pyramid && ME.tool != MTool::Cone && ME.tool != MTool::Sphere) {
             V3 p, n; int bh, fh;
             if (surfaceUnderMouse(p, n, bh, fh)) {
                 bool wall = std::fabs(n.y) <= 0.7;
@@ -1371,6 +1567,9 @@ static void drawEditor3D() {
             if (ME.tool == MTool::Box) pv.push_back(gmap::makeBox(mn, mx, 0));
             else if (ME.tool == MTool::Wedge) pv.push_back(gmap::makeWedge(mn, mx, wedgeDir(), 0));
             else if (ME.tool == MTool::Cylinder) pv.push_back(gmap::makeCylinder(mn, mx, ME.cylSides, 0));
+            else if (ME.tool == MTool::Pyramid) pv.push_back(gmap::makePyramid(mn, mx, 0));
+            else if (ME.tool == MTool::Cone) pv.push_back(gmap::makeCone(mn, mx, ME.cylSides, 0));
+            else if (ME.tool == MTool::Sphere) pv.push_back(gmap::makeSphere(mn, mx, std::clamp(ME.cylSides, 6, 16), 0));
             else pv = gmap::makeStairs(mn, mx, ME.stairSteps, wedgeDir(), 0);
             for (auto& p : pv) drawBrushEdges(p, Color{120, 230, 200, 255});
         }
@@ -1417,13 +1616,23 @@ static void drawEditor3D() {
 
 static void drawEditorOverlay() {
     VP v = viewRect();
+    if (drag == Drag::None && mouseInView()) { gAxisHot = gizmoPick(GetMousePosition()); gCornerHot = cornerPick(GetMousePosition()); }
+    else if (drag == Drag::None) gAxisHot = gCornerHot = -1;
+    drawGizmo();
+    drawCorners();
+    if (drag == Drag::Box) {
+        Vector2 m = GetMousePosition();
+        Rectangle r{std::min(gBoxA.x, m.x), std::min(gBoxA.y, m.y), std::fabs(m.x - gBoxA.x), std::fabs(m.y - gBoxA.y)};
+        DrawRectangleRec(r, Color{255, 205, 60, 30});
+        DrawRectangleLinesEx(r, 1.5f, Color{255, 205, 60, 220});
+    }
     if (ringsActive()) {
         ringsSetup();
         if (drag != Drag::Rotate) gRot.hot = ringsPick(gRot, ringScreen, GetMousePosition());
         ringsDraw(gRot, ringScreen, rv(camBasis().pos));
     }
     // face handles on the single selected brush
-    if (ME.sel.size() == 1 && ME.face < 0 && ME.tool == MTool::Select && !ME.rotateMode) {
+    if (ME.sel.size() == 1 && ME.face < 0 && ME.tool == MTool::Select && !ME.rotateMode && !ME.cornerMode) {
         const auto& b = ME.map.brushes[ME.sel[0]];
         CamB c = camBasis();
         int hot = drag == Drag::Face ? dragFace : faceHandleAt(GetMousePosition());
@@ -1450,6 +1659,7 @@ static void drawEditorOverlay() {
     }
     if (CFG.hints) {
         const char* h = ME.tool == MTool::Select && ME.rotateMode ? "Rotate: click a block or a thing, then drag a ring to turn it about that axis (Ctrl: 15 degree steps). R turns 90 degrees about up."
+                      : ME.tool == MTool::Select && ME.cornerMode ? "Corners: click a block, then drag its corner dots to reshape it (Alt: up and down). It stays a solid, convex shape; snaps to the grid."
                                                                    : HINT[(int)ME.tool];
         float w = viewTextWidth(h, 12);
         DrawRectangleRounded({v.x + 12, v.y + v.h - 30, w + 20, 22}, 0.4f, 6, Color{20, 23, 28, 170});
@@ -1493,6 +1703,7 @@ void mapEditorUpdate(float dt, bool modal) {
             ME.map.brushes.push_back(gmap::makeBox(at + V3{0.6, 0, -0.4}, at + V3{1.6, 0.6, 0.4}, ME.mat));
             ME.sel = {(int)ME.map.brushes.size() - 1}; ME.ent = -1; ME.face = -1;
             ME.tool = MTool::Select; ME.rotateMode = true;
+            if (const char* md = std::getenv("GUNSMITH_MAPMODE")) { std::string mm = md; ME.rotateMode = mm == "rotate"; ME.cornerMode = mm == "corners"; }   // (move, rotate, corners)
             V3 axis{ax == 0 ? 1.0 : 0.0, ax == 1 ? 1.0 : 0.0, ax == 2 ? 1.0 : 0.0};
             if (dg != 0) gmap::rotateAxis(ME.map.brushes.back(), axis, dg * DEG2RAD, selCentre());
             for (auto& f : ME.map.brushes.back().faces) f.color = 0x3E7CA8FFu;   // (painted blue: the colour too)

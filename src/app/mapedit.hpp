@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station, Door, Target, Furniture, Prop, Radio };
+enum class MTool { Select, Box, Wedge, Cylinder, Stairs, Clip, Start, Npc, Spawner, Armor, Crate, Light, Ammo, Weapons, Station, Door, Target, Furniture, Prop, Radio, Pyramid, Cone, Sphere };
 
 struct MapEd {
     std::string doorStyle = "wood";       // the Door tool: wood, metal, glass
@@ -26,12 +26,13 @@ struct MapEd {
     int mat = 1;                           // material for new brushes
     int cylSides = 12, stairSteps = 8;
     bool showGrid = true;
-    bool rotateMode = false;               // Select: rotation rings on the selection (drag a ring to turn it about that axis)
+    bool rotateMode = false;
+    bool cornerMode = false;               // Select: the selected block's corners as dots to drag (any shape)               // Select: rotation rings on the selection (drag a ring to turn it about that axis)
     int lightMode = 1;                     // 0 as players will see it, 1 a work light (dark maps still show), 2 fullbright (no shading, no fog)
     // camera
     gmap::V3 cam{-10, 4, 0};
     double yaw = 0, pitch = -0.25;         // radians, yaw 0 looks along +X
-    double flySpeed = 8;                   // m/s
+    double flySpeed = 14;                   // m/s
     bool top = false;                      // looking straight down, orthographic
     gmap::V3 topC{0, 0, 0};
     double topH = 40;                      // metres visible top to bottom
@@ -64,7 +65,9 @@ void meSnapshot();                         // call before changing ME.map
 void meChanged();                          // call after
 void meUndo();
 void meSaveQuiet();                        // (career) write the property's map, no message
-void meReplaceMap(const gmap::Map& m);   // the whole map swapped for another (undoable)
+void meReplaceMap(const gmap::Map& m);
+void meHideSelected();                     // hide the selected blocks (in the editor only: not saved)
+void meShowAll();   // the whole map swapped for another (undoable)
 void meRedo();
 void meDelete();
 void meDuplicate();
