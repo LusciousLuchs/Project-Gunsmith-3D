@@ -1,5 +1,6 @@
 // Gunsmith3D - Test mode panels: bench controls and motion trace.
 #include "hand.hpp"
+#include "autoanim.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
 #include "app/range.hpp"
@@ -20,6 +21,8 @@
 #include <cmath>
 #include <cstdio>
 #include <mutex>
+#include <future>
+#include <chrono>
 #include <string>
 #include <vector>
 
@@ -217,6 +220,27 @@ static void handControls(const char* title, HandHold& h, const char* which, cons
     }
     ImGui::PopID();
 }
+// "Make it for me": the animation worked out from the gun (core autoanim.cpp) on a thread, as it plays it through the
+// physics to check it, which takes a few seconds on a busy gun
+namespace {
+struct AutoJob { Animation a; AutoAnimReport r; };
+std::future<AutoJob> gAutoJob;
+std::string gAutoSlot, gAutoNote;
+bool gAutoOk = false;
+void autoAnimTick() {
+    if (!gAutoJob.valid() || gAutoJob.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return;
+    AutoJob j = gAutoJob.get();
+    gAutoNote = j.r.note; gAutoOk = j.r.ok;
+    if (!j.a.keys.empty()) {
+        A.design.anims[gAutoSlot] = j.a;
+        A.animSlot = gAutoSlot; A.animT = 0; A.animPreview = false;
+        commit();
+        if (j.r.clipsBefore > 0 || j.r.clipsAfter > 0)
+            gAutoNote += j.r.clipsAfter == 0 ? " The hands stay clear of the gun." : TextFormat(" The hands touch the gun in %d small spot%s: check them.", j.r.clipsAfter, j.r.clipsAfter == 1 ? "" : "s");
+    }
+    toast(gAutoNote);
+}
+}  // namespace
 // Recorded animations: keys on a timeline where both hands are; the hands go smoothly through them
 static void animSection() {
     bool open = section("Animations", A.animEdit);
@@ -241,6 +265,24 @@ static void animSection() {
         ImGui::EndCombo();
     }
     tutAnchor("anim:slot");
+    autoAnimTick();
+    if (canAutoAnimate(A.animSlot)) {   // the animation worked out for you, the hands kept out of the gun, checked in the physics
+        bool busy = gAutoJob.valid();
+        bool has = D.anims.count(A.animSlot) && !D.anims[A.animSlot].keys.empty();
+        ImGui::BeginDisabled(busy || (A.S && sim::animPlaying(*A.S)));
+        if (accentButton(busy ? "Working it out..." : has ? ICON_FA_WAND_MAGIC_SPARKLES "  Make it for me (replaces these keys)" : ICON_FA_WAND_MAGIC_SPARKLES "  Make it for me", false, {-1, 0})) {
+            gAutoSlot = A.animSlot; gAutoNote.clear();
+            Design copy = D;
+            std::string slot = A.animSlot;
+            gAutoJob = std::async(std::launch::async, [copy, slot] { AutoJob j; j.a = autoAnimate(copy, slot, &j.r); return j; });
+        }
+        ImGui::EndDisabled();
+        if (tipHover()) ImGui::SetTooltip("Works this animation out from the gun: where the hand takes hold, the fingers curled round\n"
+                                          "the part until they touch it, the hand lifted clear of the gun as it comes and goes.\n"
+                                          "Then it's played through the physics to check it does the job (the action opens and\n"
+                                          "comes home, a fresh magazine goes in). Change any key afterwards. Undo brings yours back.");
+        if (!busy && !gAutoNote.empty() && gAutoSlot == A.animSlot) ImGui::TextColored(gAutoOk ? ImVec4(0.55f, 0.85f, 0.55f, 1) : ImVec4(0.95f, 0.75f, 0.35f, 1), "%s", gAutoNote.c_str());
+    }
     Animation& an = D.anims[A.animSlot];
     static std::map<std::string, double> spans;   // how long each timeline is shown (it grows with its keys)
     double len = animLength(an), span = std::max({2.0, len + 0.5, spans[A.animSlot]});
@@ -308,8 +350,34 @@ static void animSection() {
         edit |= pCheck("Support hand", kk.support.on, "On the gun at this key. Off: away from the gun.");
         if (kk.support.on) edit |= pCheck("  grips its part##s", kk.gripS, "From here the hand holds the part it's on (a slide, a bolt handle, a catch)\nand moves it, until a key lets go.");
         tutAnchor("anim:grip");
-        if (kk.firing.on && kk.gripF) ImGui::TextDisabled("Firing hand holds: %s", bname(kk.firing.part).c_str());
-        if (kk.support.on && kk.gripS) ImGui::TextDisabled("Support hand holds: %s", bname(kk.support.part).c_str());
+        {   // which part each gripping hand holds: any moving part (the slide, a bolt, a handle, the magazine, a lever)
+            auto holds = [&](const char* label, const char* id, HandHold& h) {
+                prop(label, "The part this hand takes hold of and moves from this key on.\nFixed parts are greyed: a hand can't move them.");
+                ImGui::PushID(id);
+                if (ImGui::BeginCombo("##holds", bname(h.part).c_str())) {
+                    for (int pass = 0; pass < 2; pass++)   // moving parts first, then the fixed ones (greyed)
+                        for (auto& b : D.bodies) {
+                            if ((pass == 0) == b.fixed) continue;
+                            ImGui::BeginDisabled(b.fixed);
+                            if (ImGui::Selectable((bname(b.id) + "##" + b.id).c_str(), h.part == b.id)) {
+                                h.part = b.id;
+                                for (auto& k2 : an.keys) {   // the rest of this hold (until a key lets go) takes the same part
+                                    if (k2.t <= kk.t + 1e-9) continue;
+                                    bool g = (&h == &kk.firing) ? k2.gripF : k2.gripS;
+                                    if (!g) break;
+                                    ((&h == &kk.firing) ? k2.firing : k2.support).part = b.id;
+                                }
+                                edit = true;
+                            }
+                            ImGui::EndDisabled();
+                        }
+                    ImGui::EndCombo();
+                }
+                ImGui::PopID();
+            };
+            if (kk.firing.on && kk.gripF) holds("Firing hand holds", "hf", kk.firing);
+            if (kk.support.on && kk.gripS) holds("Support hand holds", "hs", kk.support);
+        }
         static const char* EVS[] = {"", "dropmag", "freshmag", "clipin", "strip", "clipout"};
         int ev = 0;
         for (int e = 1; e < 6; e++) if (kk.event == EVS[e]) ev = e;

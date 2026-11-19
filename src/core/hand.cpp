@@ -1,6 +1,8 @@
 // Gunsmith3D - the hand skeleton (see hand.hpp). Proportions of an adult hand, roughly.
 #include "hand.hpp"
+#include "solver.hpp"
 #include <cmath>
+#include <algorithm>
 
 namespace {
 constexpr double PI_ = 3.14159265358979323846, D2R_ = PI_ / 180;
@@ -175,4 +177,55 @@ double reachDigit(DigitPose digits[DIGIT_COUNT], int digit, HV target, int itera
         if (!better) { P = before; break; }   // no better: stop where it was nearest
     }
     return std::sqrt(dot(e, e));
+}
+
+// ---------------------------------------------------------------- the hand on the gun
+V2 wristOff(double angleDeg) {
+    double a = angleDeg * 3.14159265358979 / 180;
+    V2 n1{-std::sin(a), std::cos(a)}, n2{std::sin(a), -std::cos(a)};
+    auto score = [](V2 n) { return -0.5 * n.x + n.y; };
+    return score(n1) >= score(n2) ? n1 : n2;
+}
+void gunSpan(const Design& d, V2 at, const std::string& part, double& zc, double& half) {
+    double z0 = 1e9, z1 = -1e9;
+    for (auto& b : d.bodies)
+        if (!b.magazine && sim::inPoly(at.x, at.y, b.pts)) { z0 = std::min(z0, b.z - b.thick / 2); z1 = std::max(z1, b.z + b.thick / 2); }
+    if (z0 > z1) {
+        int i = d.bodyIndex(part);
+        double t = i >= 0 ? d.bodies[i].thick : 20, z = i >= 0 ? d.bodies[i].z : 0;
+        z0 = z - t / 2; z1 = z + t / 2;
+    }
+    zc = (z0 + z1) / 2; half = (z1 - z0) / 2;
+}
+HandFrame handFrame(const Design& d, const HandHold& h, int side) {
+    HandFrame f;
+    if (!h.on) return f;
+    double zc, half;
+    gunSpan(d, h.at, h.part, zc, half);
+    double an = h.angle * 3.14159265358979 / 180;
+    V2 g{std::cos(an), std::sin(an)}, n = wristOff(h.angle);
+    // the index finger's end of the grip line: the higher one (or the one toward the muzzle)
+    V2 toPinky = (-(-g.y) + 0.3 * (-g.x)) >= (-g.y + 0.3 * g.x) ? g : V2{-g.x, -g.y};
+    f.on = true;
+    f.o = {h.at.x + n.x * 12, h.at.y + n.y * 12, zc + side * (half + 12 + h.dz)};   // (dz: lifted off the gun's side)
+    f.X = {-n.x, -n.y, 0}; f.Y = {0, 0, (double)-side}; f.Z = {toPinky.x, toPinky.y, 0};
+    if (h.under) {   // snug: the hand slid down the part's side until its knuckles are at the top edge, so the fingers
+                     // wrap over the top instead of standing up past it (into the line of sight, over a slim fore-end)
+        double yt = h.at.y;   // the part's top above the hand (design y runs down)
+        for (int k = 0; k < 200; k++) {
+            bool in = false;
+            for (auto& b : d.bodies) if (!b.magazine && sim::inPoly(h.at.x, yt - 1, b.pts)) { in = true; break; }
+            if (!in) break;
+            yt -= 1;
+        }
+        double along = (yt - f.o.y) / (-n.y != 0 ? -n.y : 1) - 40;   // (how far the middle moves along X to get there)
+        if (-n.y < -0.5 && along < 0) { f.o.x += -n.x * along; f.o.y += -n.y * along; }
+    }
+    if (h.twist != 0) {   // rolled about the grip line (Z)
+        double c = std::cos(h.twist * 3.14159265358979 / 180), s = std::sin(h.twist * 3.14159265358979 / 180);
+        HV X = f.X, Y = f.Y;
+        f.X = {X.x * c + Y.x * s, X.y * c + Y.y * s, X.z * c + Y.z * s};
+        f.Y = {-X.x * s + Y.x * c, -X.y * s + Y.y * c, -X.z * s + Y.z * c};
+    }
+    return f;
 }

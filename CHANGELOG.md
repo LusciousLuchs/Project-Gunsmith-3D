@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.52-alpha
+
+- **Make it for me** (animation panel): Work the action, Reload, Reload (empty), Clear a jam and Inspect worked out from your gun. The hand comes in lifted clear of the gun with its fingers open, takes hold with its fingers curled round the part until they touch it, and leaves the same way; where it would pass through the gun it's lifted off the side. Then it's played through the physics to check it works (the action opens as far as it should and comes home, a fresh magazine goes in), trying a longer, slower pull if not. Every key can be changed afterwards; undo brings yours back.
+- **Choose what a hand holds**: a gripping key now has *Firing / Support hand holds*, a list of the gun's moving parts (slide, bolt, handle, magazine, lever...). The rest of that grip follows. A hand dropped on a fixed part still takes the slide or bolt under it.
+
 ## 0.8.51-alpha
 
 - **Rings and arrows switch on and off right in the editors**, not in Settings: the designer's top bar (next to Move, Rotate, Scale), the character maker's and NPC editor's top bar (Rings, Arrows), the Level editor's tool bar (next to Corners), and the Pose view's own strip.

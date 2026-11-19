@@ -32,3 +32,15 @@ void clampDigit(int digit, DigitPose& p);
 // moves are preferred, so the rest of its pose is kept where it doesn't need to change. Returns the distance left (mm).
 double reachDigit(DigitPose digits[DIGIT_COUNT], int digit, HV target, int iterations = 30);
 HV digitTip(const DigitPose digits[DIGIT_COUNT], int digit);
+
+// ---------------------------------------------------------------- the hand on the gun (gun millimetres, 3D)
+// The hand's frame where a HandHold puts it: the palm against the side of whatever is held there, the knuckles along
+// the grip line (index finger at its upper / forward end), the fingers reaching across, curling over the far side.
+// A point in hand space p sits at o + X p.x + Y p.y + Z p.z (design mm: y runs down, z toward the gun's right).
+struct HandFrame { bool on = false; HV o, X, Y, Z; };
+V2 wristOff(double angleDeg);   // where the wrist is for a hand round this grip line: off the side away from the gun
+void gunSpan(const Design& d, V2 at, const std::string& part, double& zc, double& half);   // the gun's width where a hand holds it
+HandFrame handFrame(const Design& d, const HandHold& h, int side);   // side: +1 the firing hand (the gun's right), -1 support
+inline HV handToGun(const HandFrame& f, HV p) {
+    return {f.o.x + f.X.x * p.x + f.Y.x * p.y + f.Z.x * p.z, f.o.y + f.X.y * p.x + f.Y.y * p.y + f.Z.y * p.z, f.o.z + f.X.z * p.x + f.Y.z * p.y + f.Z.z * p.z};
+}

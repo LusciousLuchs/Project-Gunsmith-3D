@@ -1,5 +1,6 @@
 // Headless checks that each example action actually cycles. Run: ./gunsmith3d_tests
 #include "solver.hpp"
+#include "autoanim.hpp"
 #include "shotsound.hpp"
 #include "npc.hpp"
 #include "career.hpp"
@@ -3516,6 +3517,21 @@ static void shotSounds() {
     CHECK(actionMix(1.0, -1).pitch < actionMix(0.1, -1).pitch && actionMix(0.25, 8).gain > actionMix(0.25, 1).gain, "heavier parts deeper, faster louder");
 }
 
+// "Make it for me": the blowback's work-the-action and reload made with the hands kept clear of the gun, checked in the
+// physics; a hand keyed on a moving part holds that part, one dropped on the frame takes the action under it
+static void autoAnimTest() {
+    std::printf("\n== auto animations\n");
+    Design d = loadPreset("blowback");
+    AutoAnimReport r; Animation a = autoAnimate(d, "work_action", &r);
+    std::printf("  (work the action: %zu keys, clips %d -> %d, opens %.1f of %.1f mm)\n", a.keys.size(), r.clipsBefore, r.clipsAfter, r.opened, r.needed);
+    CHECK(r.ok && r.opened >= r.needed * 0.9 && !a.keys.empty(), "the made work-the-action opens the slide as far as the plain way, and it comes home");
+    CHECK(r.clipsBefore > 0 && r.clipsAfter == 0, "the plain way's hand goes through the gun; the made one stays clear");
+    AutoAnimReport r2; Animation b = autoAnimate(d, "reload", &r2);
+    CHECK(r2.ok && !b.keys.empty(), "the made reload puts a fresh magazine in");
+    AutoAnimReport r3; autoAnimate(loadPreset("revolver"), "reload", &r3);
+    CHECK(!r3.ok && !r3.note.empty(), "a gun with no magazine says so instead");
+}
+
 int main() {
     if (const char* only = std::getenv("GUNSMITH_TESTONLY")) {   // (one quick group while working on it)
         std::string o = only;
@@ -3541,6 +3557,7 @@ int main() {
         else if (o == "career") careerEarlyIncome();
         else if (o == "maprot") mapRotateGlass();
         else if (o == "garage") garageStreet();
+        else if (o == "autoanim") autoAnimTest();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -3603,6 +3620,7 @@ int main() {
     careerEarlyIncome();
     mapRotateGlass();
     garageStreet();
+    autoAnimTest();
     careerStages();
     mapsCarryNpcs();
     npcsAlive();

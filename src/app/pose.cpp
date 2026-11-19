@@ -123,14 +123,6 @@ Vector3 pocketPt(const Frame& F) { BodyHold h = cur(); return bp(F, h.pocket[0],
 Vector3 gunPt(V2 mm, double zmm) { return Vector3Transform(W3(mm, (float)zmm * U), poseGunMatrix()); }
 double partZ(const std::string& id) { int i = A.design.bodyIndex(id); return i >= 0 ? A.design.bodies[i].z : 0; }
 
-// where the wrist is for a hand round this grip line: off the side of the line away from the gun (behind a pistol
-// grip, under a fore-end)
-V2 wristOff(double angleDeg) {
-    double a = angleDeg * DEG2RAD;
-    V2 n1{-std::sin(a), std::cos(a)}, n2{std::sin(a), -std::cos(a)};
-    auto score = [](V2 n) { return -0.5 * n.x + n.y; };
-    return score(n1) >= score(n2) ? n1 : n2;
-}
 
 // the arms' lengths (mm): the mannequin's, or the player's character's
 double gUpperArm[2] = {UPPER_ARM, UPPER_ARM}, gForearm[2] = {FOREARM, FOREARM};   // [0] right (firing), [1] left
@@ -163,49 +155,8 @@ Arm reach(Vector3 s, Vector3 target, Vector3 pole, double elbowDeg = 0, Vector3 
     A_.e = Vector3Add(Vector3Add(s, Vector3Scale(dir, a)), Vector3Scale(p, h));
     return A_;
 }
-// The hand's frame on the gun (gun millimetres, 3D): the palm against the side of whatever is held there, the knuckles
-// along the grip line (index finger at its upper / forward end), the fingers reaching across, curling over the far side.
-struct HandFrame { bool on = false; HV o, X, Y, Z; };
-void gunSpan(V2 at, const std::string& part, double& zc, double& half) {  // how wide the gun is where the hand holds it
-    double z0 = 1e9, z1 = -1e9;
-    for (auto& b : A.design.bodies)
-        if (!b.magazine && sim::inPoly(at.x, at.y, b.pts)) { z0 = std::min(z0, b.z - b.thick / 2); z1 = std::max(z1, b.z + b.thick / 2); }
-    if (z0 > z1) { int i = A.design.bodyIndex(part); double t = i >= 0 ? A.design.bodies[i].thick : 20; z0 = partZ(part) - t / 2; z1 = partZ(part) + t / 2; }
-    zc = (z0 + z1) / 2; half = (z1 - z0) / 2;
-}
-HandFrame handFrame(const HandHold& h, int side) {
-    HandFrame f;
-    if (!h.on) return f;
-    double zc, half;
-    gunSpan(h.at, h.part, zc, half);
-    double an = h.angle * DEG2RAD;
-    V2 g{std::cos(an), std::sin(an)}, n = wristOff(h.angle);
-    // the index finger's end of the grip line: the higher one (or the one toward the muzzle)
-    V2 toPinky = (-(-g.y) + 0.3 * (-g.x)) >= (-g.y + 0.3 * g.x) ? g : V2{-g.x, -g.y};
-    f.on = true;
-    f.o = {h.at.x + n.x * 12, h.at.y + n.y * 12, zc + side * (half + 12 + h.dz)};   // (dz: lifted off the gun's side)
-    f.X = {-n.x, -n.y, 0}; f.Y = {0, 0, (double)-side}; f.Z = {toPinky.x, toPinky.y, 0};
-    if (h.under) {   // snug: the hand slid down the part's side until its knuckles are at the top edge, so the fingers
-                     // wrap over the top instead of standing up past it (into the line of sight, over a slim fore-end)
-        double yt = h.at.y;   // the part's top above the hand (design y runs down)
-        for (int k = 0; k < 200; k++) {
-            bool in = false;
-            for (auto& b : A.design.bodies) if (!b.magazine && sim::inPoly(h.at.x, yt - 1, b.pts)) { in = true; break; }
-            if (!in) break;
-            yt -= 1;
-        }
-        // the knuckles are about 42 mm along the fingers' way (X) from the hand's middle
-        double along = (yt - f.o.y) / (-n.y != 0 ? -n.y : 1) - 40;   // (how far the middle moves along X to get there)
-        if (-n.y < -0.5 && along < 0) { f.o.x += -n.x * along; f.o.y += -n.y * along; }
-    }
-    if (h.twist != 0) {   // rolled about the grip line (Z)
-        double c = std::cos(h.twist * DEG2RAD), s = std::sin(h.twist * DEG2RAD);
-        HV X = f.X, Y = f.Y;
-        f.X = {X.x * c + Y.x * s, X.y * c + Y.y * s, X.z * c + Y.z * s};
-        f.Y = {-X.x * s + Y.x * c, -X.y * s + Y.y * c, -X.z * s + Y.z * c};
-    }
-    return f;
-}
+// (the hand's frame on the gun: core hand.cpp handFrame, from the design being edited)
+HandFrame handFrame(const HandHold& h, int side) { return ::handFrame(A.design, h, side); }
 // a hand's frame in the world: a point in hand space (mm) is o + x p.x + y p.y + z p.z
 struct WF { Vector3 o, x, y, z; };
 Vector3 handPt(const WF& f, HV p) {
