@@ -10,6 +10,7 @@
 #include "app/careermode.hpp"
 #include "app/shop3d.hpp"
 #include "app/settings.hpp"
+#include "app/paths.hpp"
 #include "ui/ui.hpp"
 #include "npcai.hpp"
 #include "imgui.h"
@@ -781,8 +782,74 @@ static void workshopFileTab() {
         if (ImGui::Button("Cancel", {w, 0})) askFresh = false;
     }
 }
+// The developer build only: make the map you're editing one of the game's built-in maps (a career property's building,
+// or the practice range), with the career areas and locked walls it needs. Saved in Defaults (send it in to ship it).
+static void devMapTools() {
+    if (!devBuild()) return;
+    ImGui::Dummy({0, 8 * S()});
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 0.75f, 0.3f, 1));
+    heading(ICON_FA_SCREWDRIVER_WRENCH "  Developer: built-in maps");
+    ImGui::PopStyleColor();
+    auto& M = ME.map;
+    static const char* kinds[][2] = {{"garage", "Home garage"}, {"shack", "Workshop shack"}, {"retail", "Strip-mall unit"}, {"warehouse", "Warehouse"}, {"range", "Practice range"}};
+    static int k = 0;
+    ImGui::SetNextItemWidth(-1);
+    if (ImGui::BeginCombo("##devkind", kinds[k][1])) { for (int i = 0; i < 5; i++) if (ImGui::Selectable(kinds[i][1], i == k)) k = i; ImGui::EndCombo(); }
+    bool property = k < 4;
+    if (ImGui::Button(("Open the built-in " + std::string(kinds[k][1])).c_str(), {-1, 0})) {
+        gmap::Map d = property ? gmap::propertyShell(kinds[k][0]) : gmap::builtinRange();
+        meReplaceMap(d);
+        ME.status = std::string("Opened the built-in ") + kinds[k][1] + ".";
+    }
+    if (property) {   // a career building: where you may build, the storefront, the ceiling, the locked walls
+        auto selBox = [&](gmap::V3& mn, gmap::V3& mx) {
+            mn = {1e30, 1e30, 1e30}; mx = {-1e30, -1e30, -1e30};
+            for (int i : ME.sel) { gmap::V3 a, b; gmap::brushBounds(M.brushes[i], a, b);
+                mn = {std::min(mn.x, a.x), std::min(mn.y, a.y), std::min(mn.z, a.z)}; mx = {std::max(mx.x, b.x), std::max(mx.y, b.y), std::max(mx.z, b.z)}; }
+            return !ME.sel.empty();
+        };
+        ImGui::TextDisabled("Build area %s, storefront %s, ceiling %s.", M.build.on() ? TextFormat("%.1f x %.1f m", M.build.x1 - M.build.x0, M.build.z1 - M.build.z0) : "anywhere",
+                            M.store.on() ? TextFormat("%.1f x %.1f m", M.store.x1 - M.store.x0, M.store.z1 - M.store.z0) : "none", M.roofY > 0 ? meLen(M.roofY).c_str() : "from the walls");
+        float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+        gmap::V3 mn, mx;
+        ImGui::BeginDisabled(ME.sel.empty());
+        if (ImGui::Button("Build area = selection", {w2, 0}) && selBox(mn, mx)) { meSnapshot(); M.build = {mn.x, mn.z, mx.x, mx.z}; meChanged(); }
+        if (tipHover()) ImGui::SetTooltip("The floor area players may build in: the footprint of the selected blocks (select the floor).");
+        ImGui::SameLine();
+        if (ImGui::Button("Storefront = selection", {w2, 0}) && selBox(mn, mx)) { meSnapshot(); M.store = {mn.x, mn.z, mx.x, mx.z}; meChanged(); }
+        if (tipHover()) ImGui::SetTooltip("Where customers shop (the store rating counts displays and decoration here).");
+        if (ImGui::Button("Ceiling = top of selection", {w2, 0}) && selBox(mn, mx)) { meSnapshot(); M.roofY = mx.y; meChanged(); }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("Lock all outside the build area", {w2, 0})) {
+            meSnapshot();
+            int n = 0;
+            for (auto& b : M.brushes) {
+                if (b.furn) continue;
+                gmap::V3 a, c; gmap::brushBounds(b, a, c);
+                bool inside = M.build.on() && a.x >= M.build.x0 - 0.01 && c.x <= M.build.x1 + 0.01 && a.z >= M.build.z0 - 0.01 && c.z <= M.build.z1 + 0.01;
+                b.locked = !inside; n += b.locked;
+            }
+            meChanged();
+            ME.status = TextFormat("%d blocks locked (the building, the street); the ones inside the build area are the player's.", n);
+        }
+        if (tipHover()) ImGui::SetTooltip("Players can't move or delete locked blocks (they can still paint their faces).\nBlocks wholly inside the build area stay theirs.");
+    }
+    if (accentButton(TextFormat(ICON_FA_FLOPPY_DISK "  Make this the built-in %s", kinds[k][1]), true, {-1, 0})) {
+        std::error_code ec;
+        std::filesystem::create_directories(defaultsFolder() + "/maps", ec);
+        gmap::Map out = M;
+        embedMapNpcs(out);
+        std::string path = defaultsFolder() + "/maps/" + kinds[k][0] + ".gsmap";
+        std::ofstream(path) << gmap::mapToJson(out);
+        toast(std::string("Saved: new ") + kinds[k][1] + " careers and the game use it now. Send me the file to ship it.");
+        ME.status = "Saved to " + path;
+    }
+    if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Open the Defaults folder", {-1, 0})) openFolder(defaultsFolder());
+}
+
 static void fileTab() {
-    if (!ME.careerFile.empty()) { workshopFileTab(); return; }
+    if (!ME.careerFile.empty()) { workshopFileTab(); devMapTools(); return; }
     heading("Save");
     ImGui::TextDisabled("Saved in your Levels folder as <name>.gsmap (Settings > Files shows where). Maps are plain text, so they're easy to share and edit.");
     if (ImGui::Button(ICON_FA_FLOPPY_DISK "  Save", {-1, 30 * S()})) meSave();
@@ -800,6 +867,7 @@ static void fileTab() {
         if (ImGui::Selectable(stem.c_str())) { uiTick(); meOpen(f); }
         if (tipHover()) ImGui::SetTooltip("%s", f.c_str());
     }
+    devMapTools();
 }
 
 void mapPanel() {

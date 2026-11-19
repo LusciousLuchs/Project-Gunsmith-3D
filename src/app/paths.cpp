@@ -1,5 +1,6 @@
 // Gunsmith3D - the player's folders (see paths.hpp).
 #include "app/paths.hpp"
+#include "defaults.hpp"
 #include "app/app.hpp"
 #include "design.hpp"
 #include <cstring>
@@ -46,8 +47,12 @@ void initAppFolder() {
         copyIfMissing("gunsmith3d_autosave.json", sAutosave);
     }
     setCrashFolder(gApp.empty() ? "user/crashes" : gApp + "/Crashes");
+#ifdef GUNSMITH_DEV
+    defaults::setOverrideDir(defaultsFolder());   // (the developer build: the owner's own defaults come first)
+#endif
 }
 std::string appFolder() { return gApp; }
+std::string defaultsFolder() { return (gApp.empty() ? std::string("user") : gApp) + "/Defaults"; }
 const char* settingsPath() { return sSettings.c_str(); }
 const char* autosavePath() { return sAutosave.c_str(); }
 std::string defaultUserFolder() { return gApp.empty() ? "user" : gApp + "/User"; }

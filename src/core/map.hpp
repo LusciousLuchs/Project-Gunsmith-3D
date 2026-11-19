@@ -36,7 +36,8 @@ int materialIndex(const std::string& name);       // unknown names fall back to 
 int builtInMaterials();
 bool isUserMaterial(int m);
 double materialTile(int m);
-int glassMaterial();                               // "glass": a block with any face of it is a window (drawn see-through)                        // metres per texture repeat at scale 1
+int glassMaterial();
+int invisibleMaterial();                           // "invisible": an invisible wall (you can't walk through it; not drawn in play; bullets and sight pass)                               // "glass": a block with any face of it is a window (drawn see-through)                        // metres per texture repeat at scale 1
 
 struct Face {
     V3 n;                 // outward unit normal
@@ -145,7 +146,8 @@ bool pushFace(Brush& b, int face, double amount);      // move one face along it
 bool clipBrush(Brush& b, V3 n, double d, int mat);
 std::vector<Brush> hollow(const Brush& b, double wall); // walls of the given thickness around the brush's inside
 
-bool isGlass(const Brush& b);
+bool isGlass(const Brush& b);       // glass or invisible: bullets and sight go through
+bool isInvisible(const Brush& b);
 // ---- collision and picking
 struct Hit {
     double t = 1;        // fraction of the move (sweep) or distance (ray)

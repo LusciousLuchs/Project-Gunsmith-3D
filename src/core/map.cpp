@@ -1,6 +1,7 @@
 // Gunsmith3D - Maps (see map.hpp).
 #include <cstdlib>
 #include "map.hpp"
+#include "defaults.hpp"
 #include "netradio.hpp"
 #include "json.hpp"
 
@@ -26,13 +27,17 @@ static std::vector<std::string>& registry() {
         "institutional", "formwork", "cinderblock", "old_brick", "metal_panels", "rust", "wallpaper", "parquet", "carpet",
         "checker_tile", "stone_wall", "shingles", "marble", "door_wood", "door_metal",
         // (0.8.47) see-through: windows (bullets and sight go through it)
-        "glass"};
+        "glass",
+        // (0.8.49) invisible walls: solid to walk into, not drawn when playing, bullets and sight go through
+        "invisible"};
     return n;
 }
 const std::vector<std::string>& materialNames() { return registry(); }
-int builtInMaterials() { return 34; }
+int builtInMaterials() { return 35; }
 int glassMaterial() { return 33; }
-bool isGlass(const Brush& b) { for (auto& f : b.faces) if (f.mat == 33) return true; return false; }
+int invisibleMaterial() { return 34; }
+bool isGlass(const Brush& b) { for (auto& f : b.faces) if (f.mat == 33 || f.mat == 34) return true; return false; }
+bool isInvisible(const Brush& b) { for (auto& f : b.faces) if (f.mat == 34) return true; return false; }
 bool isUserMaterial(int m) { return m >= builtInMaterials() && m < (int)registry().size(); }
 int materialIndex(const std::string& name) {
     auto& n = registry();
@@ -729,6 +734,11 @@ double storeRating(const Map& m, std::vector<std::string>* tips) {
 }
 
 Map propertyShell(const std::string& kind) {
+    {   // the owner's own map for it (set in the developer build), when there is one
+        std::string t = defaults::mapText(kind == "shack" || kind == "retail" || kind == "warehouse" ? kind : std::string("garage"));
+        Map d;
+        if (!t.empty() && mapFromJson(t, d)) return d;
+    }
     Map m;
     int concrete = materialIndex("concrete"), dark = materialIndex("concrete_dark"), ply = materialIndex("plywood"), plaster = materialIndex("plaster"),
         brick = materialIndex("brick"), corr = materialIndex("corrugated"), planks = materialIndex("wood_planks"), asphalt = materialIndex("asphalt"),
@@ -818,7 +828,14 @@ std::map<std::string, int> workshopStations(const Map& m) {
     return n;
 }
 
-Map builtinRange() {
+static Map builtinRangeInCode();
+Map builtinRange() {   // the owner's own practice range (developer build), else the one made below
+    std::string t = defaults::mapText("range");
+    Map d;
+    if (!t.empty() && mapFromJson(t, d)) return d;
+    return builtinRangeInCode();
+}
+static Map builtinRangeInCode() {
     Map m;
     m.name = "Practice range";
     int concrete = materialIndex("concrete"), grass = materialIndex("grass"), dirt = materialIndex("dirt"), ply = materialIndex("plywood"),

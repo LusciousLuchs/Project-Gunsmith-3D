@@ -24,7 +24,15 @@ inline const char* LOADOUT_DIR = "user/loadouts";
 inline const char* MODELS_DIR = "user/models";       // modelled characters (.glb/.gltf with a skeleton); "Shop people" in it: the career's customers and staff     // which attachments go where on a gun (the fitting bench)
 
 void initAppFolder();                  // first thing: where the settings and autosave live (Documents/OAB Foundry/Gunsmith on Windows)
-std::string appFolder();               // that folder ("" = the game folder)
+std::string appFolder();
+std::string defaultsFolder();   // (developer build) where the owner's defaults are saved: maps/<kind>.gsmap, settings.json
+inline bool devBuild() {
+#ifdef GUNSMITH_DEV
+    return true;
+#else
+    return false;
+#endif
+}               // that folder ("" = the game folder)
 const char* settingsPath();
 const char* autosavePath();
 std::string defaultUserFolder();       // Documents/OAB Foundry/Gunsmith/User on Windows, else user/ in the game folder

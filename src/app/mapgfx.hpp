@@ -14,6 +14,7 @@ void mapRestoreLook();                          // back to the workshop lighting
 void mapSetLamps(const gmap::Map& m, gmap::V3 eye, const std::vector<Lamp>& extra = {});
 void mapWorkLight(int mode);                    // the level editor: 0 as players see it, 1 a work light (dark maps still show), 2 fullbright
 void mapDrawWorld();
+void mapShowInvisible(bool on);   // the Level editor shows invisible walls (faint stripes); play never draws them
 // Sun shadows: the map (and `extra` casters) drawn from the sun into a depth picture round `focus` (an area about 90 m
 // across); the lit shader then shades whatever's behind something. Off at night, and when Settings has them off.
 // A person's shadow, kept simple (the owner's: the body's outline only, no gun): a body and a head. Upright, or lying

@@ -1569,7 +1569,9 @@ void mapEditorRender() {
     if (ME.top && !ME.walking) { look.fogStart = 1e6; look.fogEnd = 2e6; }  // the top-view camera sits far above the map
     mapApplyLook(look);
     mapSetLamps(ME.map, ME.walking ? gmap::playerEye(ME.pl, ME.map) : ME.cam);
+    mapShowInvisible(!ME.walking);
     mapDrawWorld();
+    mapShowInvisible(false);
     mapWorkLight(false);
     if (!ME.walking) drawEditor3D();
     else for (auto& e : ME.map.ents) {   // on foot: the things you'd see (not the editor's markers)

@@ -11,6 +11,9 @@
 #include "doors.hpp"
 #include "penetrate.hpp"
 #include "map.hpp"
+#include "defaults.hpp"
+#include <fstream>
+#include <filesystem>
 #include "reliability.hpp"
 #include "version.hpp"
 #include "carve.hpp"
@@ -3033,6 +3036,18 @@ static void cheatsTest() {
 // (0.8.47) the level editor's rotation rings: blocks turned about any axis; glass lets bullets and sight through
 static void mapRotateGlass() {
     using namespace gmap;
+    {   // the developer build's own defaults: a built-in map from the Defaults folder comes first
+        std::string dir = "/tmp/gs_defaults_test";
+        std::filesystem::create_directories(dir + "/maps");
+        Map mine; mine.name = "My garage street"; mine.brushes.push_back(makeBox({0, 0, 0}, {1, 1, 1}, 1));
+        std::ofstream(dir + "/maps/garage.gsmap") << mapToJson(mine);
+        std::string before = propertyShell("garage").name;
+        defaults::setOverrideDir(dir);
+        std::string after = propertyShell("garage").name, shack = propertyShell("shack").name;
+        defaults::setOverrideDir("");
+        std::filesystem::remove_all(dir);
+        CHECK(after == "My garage street" && before != after && shack == "Workshop shack", "a built-in map set in the developer build replaces only that one");
+    }
     Brush a = makeBox({0, 0, 0}, {2, 1, 0.5}, 1), b = a;
     rotateY(a, 0.7, {1, 0.5, 0.25});
     rotateAxis(b, {0, 1, 0}, 0.7, {1, 0.5, 0.25});
@@ -3050,6 +3065,12 @@ static void mapRotateGlass() {
     CHECK(h1.brush == 0 && h2.brush == 1 && std::fabs(h2.t - 8) < 1e-6, "a window stops a plain ray (walking into it) but not a bullet or a look");
     Map back; mapFromJson(mapToJson(m), back);
     CHECK(back.brushes.size() == 2 && isGlass(back.brushes[0]) && !isGlass(back.brushes[1]), "glass saves and loads by name");
+    {   // an invisible wall: walked into like any wall, but bullets and sight go through
+        Map w; w.brushes.push_back(makeBox({2, 0, -1}, {2.2, 2, 1}, invisibleMaterial()));
+        Hit a = rayMap(w, {0, 1, 0}, {1, 0, 0}, 10), b = rayMap(w, {0, 1, 0}, {1, 0, 0}, 10, true);
+        bool blocks = !boxFree(w, {2.1, 1, 0}, {0.2, 0.5, 0.2});
+        CHECK(a.brush == 0 && b.brush < 0 && blocks && isInvisible(w.brushes[0]), "an invisible wall stops you but not a bullet or a look");
+    }
     m.brushes[1].faces[2].color = 0x3E7CA8FFu;
     Map back2; mapFromJson(mapToJson(m), back2);
     CHECK(back2.brushes[1].faces[2].color == 0x3E7CA8FFu && back2.brushes[1].faces[0].color == 0xFFFFFFFFu, "a painted face's colour saves and loads (the rest stay plain)");

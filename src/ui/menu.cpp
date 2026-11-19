@@ -16,6 +16,7 @@
 #include "app/range.hpp"
 #include "map.hpp"
 #include "version.hpp"
+#include "json.hpp"
 #include "imgui.h"
 
 #include <algorithm>
@@ -346,6 +347,7 @@ void mainMenu() {
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, H - 34 * S()});
     ImGui::TextDisabled("Gunsmith 3D  v%s", version::text());
+    if (devBuild()) { ImGui::SameLine(); ImGui::TextColored({1, 0.75f, 0.3f, 1}, "  DEVELOPER BUILD"); }
     {   // only when an update couldn't be fetched (offline): say so, and offer another go
         update::Status u = update::status();
         if (u.state == update::State::Failed) {
@@ -862,6 +864,21 @@ void settingsWindow() {
     }
     ImGui::EndChild();
     ImGui::Separator();
+    if (devBuild()) {   // the developer build: these settings become what a new player starts with
+        if (ImGui::Button(ICON_FA_SCREWDRIVER_WRENCH "  Developer: make these the defaults for new players")) {
+            saveSettings();
+            std::ifstream in(settingsFile());
+            nlohmann::json j = nlohmann::json::parse(in, nullptr, false);
+            if (j.is_object()) {
+                for (const char* k : {"userDir", "eulaAgreed", "seenVersion", "lastFullMode", "monitor"}) j.erase(k);   // (yours alone)
+                std::error_code ec; std::filesystem::create_directories(defaultsFolder(), ec);
+                std::ofstream(defaultsFolder() + "/settings.json") << j.dump(1);
+                toast("Saved as new players' defaults (Defaults/settings.json). Send me the file to ship it.");
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(ICON_FA_FOLDER_OPEN "  Defaults folder")) openFolder(defaultsFolder());
+    }
     ImGui::TextDisabled("Changes are saved automatically. Only the cheats change how guns behave.");
     ImGui::SameLine(ImGui::GetWindowWidth() - 130 * S());
     bool close = ImGui::Button("Done", {116 * S(), 0}) || (IsKeyPressed(KEY_ESCAPE) && capturing < 0 && confirmUntil == 0);

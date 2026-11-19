@@ -5,6 +5,7 @@
 #include "app/audio.hpp"
 #include "json.hpp"
 #include "solver.hpp"
+#include "defaults.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -17,9 +18,14 @@ const char* settingsFile() { return settingsPath(); }   // (Documents/OAB Foundr
 
 void loadSettings() {
     std::ifstream in(settingsFile());
-    if (!in) return;
     json j;
-    try { in >> j; } catch (...) { return; }
+    if (in) { try { in >> j; } catch (...) { return; } }
+    else {   // a new player: the game's defaults (set by the owner in the developer build), if there are any
+        std::string t = defaults::settingsText();
+        if (t.empty()) return;
+        j = json::parse(t, nullptr, false);
+        if (!j.is_object()) return;
+    }
     Settings d;  // defaults for anything missing
     auto g = [&](const char* k, auto def) { return j.contains(k) ? j[k].get<decltype(def)>() : def; };
     try {

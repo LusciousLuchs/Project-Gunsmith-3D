@@ -27,6 +27,13 @@ else()
   set(GUNSMITH_BUILD_APP ${GUNSMITH_NATIVE_APP})
 endif()
 
+# GUNSMITH_DEV=ON: the developer build (the owner's): tools to set the game's built-in maps and a new player's
+# settings (saved to Documents/OAB Foundry/Gunsmith/Defaults, read there first), and no self-update.
+option(GUNSMITH_DEV "Developer build: tools to set the game's defaults; no self-update" OFF)
+if(GUNSMITH_DEV)
+  add_compile_definitions(GUNSMITH_DEV=1)
+endif()
+
 if(GUNSMITH_BUILD_APP)
 # ---- raylib (compiled from source)
 add_library(raylib STATIC
