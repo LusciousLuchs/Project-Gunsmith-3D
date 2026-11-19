@@ -309,9 +309,18 @@ static void animSection() {
         tutAnchor("anim:grip");
         if (kk.firing.on && kk.gripF) ImGui::TextDisabled("Firing hand holds: %s", bname(kk.firing.part).c_str());
         if (kk.support.on && kk.gripS) ImGui::TextDisabled("Support hand holds: %s", bname(kk.support.part).c_str());
-        int ev = kk.event == "dropmag" ? 1 : kk.event == "freshmag" ? 2 : 0;
-        prop("Magazine", "What happens to the magazine as the hands reach this key.\nDrop: it's let go and falls out (or slides out sideways).\nFresh one in: a full magazine goes into the well.");
-        if (ImGui::Combo("##aev", &ev, "Nothing\0Drop it\0Fresh one in\0")) { kk.event = ev == 1 ? "dropmag" : ev == 2 ? "freshmag" : ""; edit = true; }
+        static const char* EVS[] = {"", "dropmag", "freshmag", "clipin", "strip", "clipout"};
+        int ev = 0;
+        for (int e = 1; e < 6; e++) if (kk.event == EVS[e]) ev = e;
+        prop("Magazine", "What happens as the hands reach this key.\nDrop it: the magazine is let go and falls out (or slides out sideways).\n"
+             "Fresh one in: a full magazine goes into the well.\nClip in hand: a stripper clip of rounds appears in the support hand.\n"
+             "Strip the rounds in: they go into the magazine one by one, until the next key\n(push the support hand's thumb down over that time).\n"
+             "Throw the clip away: the empty clip goes.");
+        if (ImGui::Combo("##aev", &ev, "Nothing\0Drop it\0Fresh one in\0Clip in hand\0Strip the rounds in\0Throw the clip away\0")) { kk.event = EVS[ev]; edit = true; }
+        if (ev >= 3 && ev <= 5) {
+            int left = clipAt(D, an, kk.t + 1e-6);
+            ImGui::TextDisabled(left >= 0 ? "Clip of %d (Rounds per clip, on the magazine): %d left here" : "Clip of %d: none in the hand here", clipSizeOf(D), left);
+        }
         tutAnchor("anim:mag");
         if (ImGui::TreeNode("Arms at this key")) {   // elbows, wrists, hands placed off the gun
             ImGui::TextDisabled("Firing hand"); ImGui::PushID("fk"); edit |= armFreedom(kk.firing, "firing"); ImGui::PopID();

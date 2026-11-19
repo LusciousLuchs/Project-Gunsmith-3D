@@ -27,6 +27,28 @@ std::string animSlotName(const Design& d, const std::string& slot) {
 
 bool gunMoved(const double g[6]) { for (int q = 0; q < 6; q++) if (std::fabs(g[q]) > 1e-9) return true; return false; }
 static const double BACK = 0.4;   // seconds to return to the hold after the last key
+int clipSizeOf(const Design& d) {
+    for (auto& b : d.bodies) if (b.magazine && b.clip == "stripper") return std::max(1, b.clipSize);
+    for (auto& b : d.bodies) if (b.magazine) return std::max(1, b.clipSize);
+    return 5;
+}
+int clipAt(const Design& d, const Animation& a, double t) {
+    int left = -1, cap = 1 << 20;
+    for (auto& b : d.bodies) if (b.magazine) { cap = b.magCap; break; }
+    for (size_t i = 0; i < a.keys.size() && a.keys[i].t <= t; i++) {
+        const std::string& e = a.keys[i].event;
+        if (e == "clipin") left = clipSizeOf(d);
+        else if (e == "clipout") left = -1;
+        else if (e == "strip") {
+            if (left < 0) left = clipSizeOf(d);
+            double t0 = a.keys[i].t, t1 = i + 1 < a.keys.size() ? std::max(t0 + 0.02, a.keys[i + 1].t) : t0 + 0.35;
+            int n = std::min(left, cap);
+            int gone = (int)std::floor(n * std::clamp((t - t0) / (t1 - t0), 0.0, 1.0) + 1e-9);
+            left -= gone;
+        }
+    }
+    return t > animLength(a) ? -1 : left;
+}
 double animLength(const Animation& a) { return a.keys.empty() ? 0 : a.keys.back().t + (gunMoved(a.keys.back().gun) ? 0.7 : BACK); }
 
 namespace {

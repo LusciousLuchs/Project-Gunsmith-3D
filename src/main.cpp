@@ -263,6 +263,18 @@ int main(int argc, char** argv) {
     if (designerArg) { A.editCart = A.design.breech.cart; A.showCartDesigner = true; }
     if (testArg || !demo.empty() || !fittingArg.empty()) setMode(Mode::Test);
     if (!fittingArg.empty()) { enterFitting(); if (fittingArg != "-") loadLoadout(fittingArg); }
+    if (std::getenv("GUNSMITH_CLIPDEMO")) {   // (screenshots) stripper clips and a reload animation that strips one in over the action
+        for (auto& b : A.design.bodies) if (b.magazine) b.clip = "stripper";
+        const auto& br = A.design.breech;
+        Animation an;
+        AnimKey k; k.firing = A.design.pose.firing; k.support = A.design.pose.support;
+        k.t = 0.3; k.event = "clipin"; an.keys.push_back(k);
+        k.support.at = {br.face.x - br.cart.oal * 0.45, br.face.y - 50}; k.support.angle = 90; k.support.under = false;
+        k.t = 0.8; k.event = "strip"; an.keys.push_back(k);
+        k.support.at.y += 15; k.t = 1.6; k.event = ""; an.keys.push_back(k);
+        k.t = 1.9; k.event = "clipout"; an.keys.push_back(k);
+        A.design.anims["reload"] = an;
+    }
     if (poseArg >= 0 && std::getenv("GUNSMITH_ANIM")) {   // (screenshots) "slot seconds": the animation editor at that moment
         char slot[64] = {0}; double t = 0;
         if (std::sscanf(std::getenv("GUNSMITH_ANIM"), "%63s %lf", slot, &t) >= 1) { A.animEdit = true; A.animSlot = slot; A.animT = t; }

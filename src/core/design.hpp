@@ -408,7 +408,9 @@ struct AnimKey {
     double t = 0;                        // seconds from the start
     HandHold firing, support;
     bool gripF = false, gripS = false;   // from here, the hand holds its part and moves it
-    std::string event;                   // "" | "dropmag" (the magazine is let go) | "freshmag" (a new one goes in)
+    std::string event;                   // "" | "dropmag" (the magazine is let go) | "freshmag" (a new one goes in) |
+                                         // "clipin" (a stripper clip of rounds in the support hand) | "strip" (its rounds
+                                         // pushed into the magazine one by one until the next key) | "clipout" (the clip goes)
     double turn = -1;                    // a gripped part that turns (a bolt): how far it's turned from closed, degrees
                                          // (-1: the hand doesn't turn it)
     // the gun moved from the hold (brought up to look at it, tipped to see the port): forward, up, toward the gun's
@@ -433,6 +435,10 @@ BodyHold holdOf(const struct Design& d, int h); // the hold as posed, or one wor
 std::vector<std::string> animSlots(const struct Design& d);
 std::string animSlotName(const struct Design& d, const std::string& slot);
 double animLength(const Animation& a);
+// a stripper clip in the support hand at time t: rounds still on it (-1: none in the hand), as the simulation would
+// have it with the magazine empty (for drawing it while the animation is edited)
+int clipAt(const struct Design& d, const Animation& a, double t);
+int clipSizeOf(const struct Design& d);   // rounds a stripper clip holds for this gun (its magazine's setting, else 5)
 AnimHands animAt(const struct Design& d, const Animation& a, double t);
 Animation defaultInspect(const struct Design& d);   // a plain look over the gun (it's brought up and turned), for a gun with no "inspect"
 // A gun made for NPCs to carry (like the simple guns enemies carry in some games): never reloaded, never runs out, not

@@ -517,6 +517,68 @@ PoseReport poseReport() {
     return R;
 }
 
+
+// a stripper clip in the support hand (an animation's Clip in hand / Strip the rounds in keys): pinched between the
+// thumb and the index finger, its rounds hanging below it pointing down the bore, as many as are still on it
+static int clipShown() {
+    if (A.S && sim::animPlaying(*A.S)) return sim::clipInHand(*A.S);
+    if (A.posing && A.animEdit) {
+        auto it = A.design.anims.find(A.animSlot);
+        if (it != A.design.anims.end()) return clipAt(A.design, it->second, A.animT);
+    }
+    return -1;
+}
+static void drawHeldClip(const HandGeo& g, int left) {
+    if (!g.on || left < 0) return;
+    HV th{0, 0, 0}, ix{0, 0, 0};
+    int got = 0;
+    for (auto& b : g.bones) {
+        if (b.digit == DIGIT_THUMB && b.seg == 2) { th = b.b; got |= 1; }
+        if (b.digit == DIGIT_INDEX && b.seg == 2) { ix = b.b; got |= 2; }
+    }
+    Vector3 pinch = got == 3 ? Vector3Lerp(handPt(g.f, th), handPt(g.f, ix), 0.5f) : g.c;
+    const auto& br = A.design.breech;
+    const Cartridge& c = br.cart;
+    V2 dir{1, 0};
+    if (br.on && br.hasFace && br.hasMuzzle) {
+        double dx = br.muzzle.x - br.face.x, dy = br.muzzle.y - br.face.y, l = std::hypot(dx, dy);
+        if (l > 1) dir = {dx / l, dy / l};
+    }
+    Vector3 o = gunPt({0, 0}, 0);
+    Vector3 fwd = Vector3Normalize(Vector3Subtract(gunPt({dir.x * 100, dir.y * 100}, 0), o));
+    Vector3 down = Vector3Subtract(gunPt({-dir.y * 100, dir.x * 100}, 0), o);   // (y is down in the gun's drawing)
+    down = Vector3Normalize(Vector3Subtract(down, Vector3Scale(fwd, Vector3DotProduct(down, fwd))));
+    if (Vector3DotProduct(down, Vector3Subtract(gunPt({0, 100}, 0), o)) < 0) down = Vector3Negate(down);
+    int n = std::max(1, clipSizeOf(A.design));
+    float head = (float)std::max(4.0, c.headDia()), step = head * 0.92f;
+    float len = step * n + 3;
+    // the clip: a thin channel the rims slide in, its top end just under the hand (where the thumb presses it), held by
+    // the rims a little behind the case heads
+    float under = -1e9f;
+    for (auto& b : g.bones) for (HV q : {b.a, b.b}) under = std::max(under, Vector3DotProduct(Vector3Subtract(handPt(g.f, q), pinch), down) + (float)b.radius * U);
+    Vector3 top = Vector3Add(pinch, Vector3Scale(fwd, (float)(-c.rimThick * 0.5) * U));
+    if (under > 0) top = Vector3Add(top, Vector3Scale(down, under + 1 * U));
+    Vector3 bot = Vector3Add(top, Vector3Scale(down, len * U));
+    Color steel{70, 72, 76, 255};
+    Vector3 across = Vector3CrossProduct(fwd, down);
+    for (float sd : {-1.f, 1.f}) {
+        Vector3 off = Vector3Scale(across, sd * (head * 0.42f) * U);
+        drawCyl(Vector3Add(top, off), Vector3Add(bot, off), 0.9f * U, steel);
+    }
+    drawCyl(top, bot, 0.7f * U, steel);
+    Color brass = c.kind == "shotshell" ? Color{(unsigned char)(c.hullColor >> 24), (unsigned char)(c.hullColor >> 16), (unsigned char)(c.hullColor >> 8), 255}
+                                        : Color{196, 160, 82, 255};
+    Color lead{184, 115, 70, 255};
+    for (int i = 0; i < std::min(left, n); i++) {   // the rounds left: under the thumb at the top (pushed down, the bottom one goes in first)
+        float at = 1.5f + step * (i + 0.5f);
+        Vector3 h = Vector3Add(top, Vector3Scale(down, at * U));
+        Vector3 cs = Vector3Add(h, Vector3Scale(fwd, (float)c.caseLen * U));
+        Vector3 tip = Vector3Add(h, Vector3Scale(fwd, (float)std::max(c.caseLen + 1, c.oal) * U));
+        drawCyl(h, Vector3Add(h, Vector3Scale(fwd, (float)c.rimThick * U)), (float)(c.rimDia / 2) * U, brass);
+        drawCyl(h, cs, (float)(std::max(c.baseDia, c.neckDia) / 2) * U, brass);
+        if (c.kind != "shotshell") drawCyl(cs, tip, (float)(c.bulletDia / 2 * 0.95) * U, lead);
+    }
+}
 void drawPoseBody() {
     Frame F = bodyFrame();
     const Pose P = viewPose();
@@ -654,6 +716,7 @@ void drawPoseBody() {
                     capsule(handPt(g.f, lerp(thumb->a, thumb->b, t)), handPt(g.f, lerp(palmIndex->a, palmIndex->b, 0.25 + 0.5 * t)), 9 * U, SKIN);
             }
         } else drawSphereLit(a.w, 45 * U, SKIN);
+        if (side == 1) drawHeldClip(g, clipShown());
     }
     if (CF.ok && modelled) { Color red = STRAIN; drawCharModel(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // a modelled character, its arms reaching
     else if (CF.ok && CF.n->look.on) { Color red = STRAIN; drawCharacterBody(*CF.n, bodyM, bodyStrain ? &red : nullptr); }   // the one-piece body, arms reaching
@@ -690,6 +753,7 @@ void drawFirstPersonArms(Vector3 eye, Vector3 fwd, Vector3 up) {
         limb(SH.sleeve, a.s, a.e, shirt);
         limb(SH.fore, a.e, a.w, skin);
         if (!g.on) { drawSphereLit(a.w, 45 * U, skin); continue; }
+        if (side == 1) drawHeldClip(g, clipShown());
         const HandBone *thumb = nullptr, *palmIndex = nullptr;
         for (auto& b : g.bones) {
             if (b.digit == DIGIT_THUMB && b.seg == 0) {

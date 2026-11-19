@@ -1649,10 +1649,35 @@ bool playAnim(Sim& S, const std::string& slot) {
     auto it = S.design.anims.find(slot);
     if (it == S.design.anims.end() || it->second.keys.empty()) return false;
     S.animSlot = slot; S.animT = 0; S.animKeysDone = 0; S.animWait = 0;
+    S.clipLeft = -1; S.stripTotal = S.stripDone = 0;
     for (auto& h : S.animHand) h.on = false;
     return true;
 }
 bool animPlaying(const Sim& S) { return S.animT >= 0; }
+int clipInHand(const Sim& S) { return S.animT >= 0 ? S.clipLeft : -1; }
+// the magazine a clip strips into: the seated one, else any built-in one
+static Body* stripTarget(Sim& S) {
+    if (Body* m = seatedMag(S)) return m;
+    for (auto& b : S.bodies) if (!b.gone && b.builtInMag && b.d) return &b;
+    return nullptr;
+}
+static int clipSizeOf(Sim& S) {
+    Body* m = stripTarget(S);
+    return m && m->d ? std::max(1, m->d->clipSize) : 5;
+}
+// rounds off the clip into the magazine, as far as the stripping has got by time t (all of them when t is past its end)
+static void stripTo(Sim& S, double t) {
+    if (S.stripDone >= S.stripTotal || S.clipLeft <= 0) return;
+    double span = std::max(1e-6, S.stripTo - S.stripFrom);
+    int want = (int)std::floor(S.stripTotal * std::clamp((t - S.stripFrom) / span, 0.0, 1.0) + 1e-9);
+    Body* m = stripTarget(S);
+    while (S.stripDone < want && S.clipLeft > 0) {
+        S.stripDone++;
+        if (!m || !m->d || m->rounds >= m->d->magCap) continue;   // full: the rest stay on the clip (as fillMagazines counts it)
+        m->rounds++; m->idle = 0; S.clipLeft--;
+        S.events.push_back({Ev::MagLoaded, S.t});
+    }
+}
 Cheats& cheats() { static Cheats c; return c; }
 std::string cheatsOn(const Sim& S) {
     std::string s;
@@ -1705,13 +1730,24 @@ static void animTick(Sim& S) {
     while (S.animKeysDone < a.keys.size() && a.keys[S.animKeysDone].t <= S.animT) {   // a key passed: its event
         const std::string& ev = a.keys[S.animKeysDone].event;
         Joint* J = magwell(S);
+        if (ev != "strip") stripTo(S, 1e18);   // (a stripping still going finishes at the next key)
         if (ev == "dropmag") dropMagazine(S);
         else if (ev == "freshmag" && J) {
             if (J->A) quickReload(S); else spawnMagazine(S, {0, 0}, true);
-        }
+        } else if (ev == "clipin") { S.clipLeft = clipSizeOf(S); S.stripTotal = S.stripDone = 0; }
+        else if (ev == "strip") {
+            stripTo(S, 1e18);
+            if (S.clipLeft < 0) S.clipLeft = clipSizeOf(S);   // (no clip taken first: it takes one now)
+            double t0 = a.keys[S.animKeysDone].t, t1 = t0 + 0.35;
+            if (S.animKeysDone + 1 < a.keys.size()) t1 = std::max(t0 + 0.02, a.keys[S.animKeysDone + 1].t);
+            S.stripFrom = t0; S.stripTo = t1; S.stripTotal = S.clipLeft; S.stripDone = 0;
+        } else if (ev == "clipout" && S.clipLeft >= 0) { S.clipLeft = -1; S.stripTotal = S.stripDone = 0; S.events.push_back({Ev::ClipOut, S.t}); }
         S.animKeysDone++;
     }
+    stripTo(S, S.animT);
     if (S.animT > animLength(a)) {
+        stripTo(S, 1e18);
+        S.clipLeft = -1; S.stripTotal = S.stripDone = 0;
         S.animT = -1; for (auto& h : S.animHand) h.on = false;
         if (S.animTurning) { S.rollHand.on = false; S.animTurning = false; }
         return;

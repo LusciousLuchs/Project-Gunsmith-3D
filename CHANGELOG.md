@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.46-alpha
+
+Stripper clips.
+
+- A magazine loaded with stripper clips now has a **Rounds per clip** slider (up to the magazine's size). R tops up one clip's worth instead of one round at a time.
+- The reload animator has three new key events: **Clip in hand** (a clip of rounds appears in the support hand), **Strip the rounds in** (they go into the magazine one by one until the next key, so push the thumb down over that time) and **Throw the clip away**. The clip and its rounds are drawn in the hand while you edit, on the bench and in first person.
+- A clip only gives the magazine what fits: the rest stay on it.
+- On the bench, R on a gun with a built-in magazine now loads it (it used to do nothing without a removable magazine).
+
 ## 0.8.45-alpha
 
 3D vertices, easier and stronger.

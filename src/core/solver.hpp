@@ -165,6 +165,10 @@ struct Sim {
     double animT = -1;
     size_t animKeysDone = 0;
     double animWait = 0;                 // how long it has waited for a gripped part to catch up (follows the gun)
+    // a stripper clip in an animation (key events clipin / strip / clipout): rounds left on the clip in the hand (-1:
+    // no clip), and while stripping, the rounds go into the magazine one by one between stripFrom and stripTo
+    int clipLeft = -1, stripTotal = 0, stripDone = 0;
+    double stripFrom = 0, stripTo = 0;
     bool animTurning = false;            // it's turning a part (the bolt-turning grip is the animation's)
     struct { bool on = false; Body* b = nullptr; double t = 0, arm = 0; } rollHand;  // arm: lever (m) limiting the torque; 0 = no limit
     double handStrength = 250;           // N, the most force your hand applies (a firm pull: a stiff action like the long-recoil gun needs it)
@@ -293,6 +297,7 @@ void quickReload(Sim& S);                                  // drop the old magaz
 // playing. While it plays, its hands grip and move parts every substep.
 bool playAnim(Sim& S, const std::string& slot);
 bool animPlaying(const Sim& S);
+int clipInHand(const Sim& S);                              // rounds on a stripper clip the animation holds (-1: none)
 AnimHands animHandsNow(const Sim& S);                      // where the hands are now (the pose's hold when none plays)
 bool magLoadPoint(const Sim& S, const Body& M, V2& w);     // where to hold a round to push it into this magazine (m)
 int fillMagazines(Sim& S);                                 // top up every magazine (seated and on the bench); rounds added

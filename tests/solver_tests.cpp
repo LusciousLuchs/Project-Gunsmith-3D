@@ -1293,6 +1293,48 @@ static void severalChambers() {
     }
 }
 
+// a reload animation with a stripper clip: taken in hand, stripped in one by one over the key's span, thrown away
+static void stripperClipAnim() {
+    Design st = loadPreset("boltaction");
+    for (auto& b : st.bodies) if (b.magazine) { b.clip = "stripper"; b.clipSize = 5; }
+    Animation an;
+    AnimKey k; k.firing = st.pose.firing; k.support = st.pose.support;
+    k.t = 0.2; k.event = "clipin"; an.keys.push_back(k);
+    k.t = 0.4; k.event = "strip"; an.keys.push_back(k);
+    k.t = 1.4; k.event = ""; an.keys.push_back(k);
+    k.t = 1.6; k.event = "clipout"; an.keys.push_back(k);
+    st.anims["reload"] = an;
+    CHECK(clipAt(st, an, 0.1) == -1 && clipAt(st, an, 0.3) == 5 && clipAt(st, an, 0.9) == 3 && clipAt(st, an, 1.5) == 0 && clipAt(st, an, 1.7) == -1,
+          "the editor's clip: none, five, three halfway through stripping, empty, gone");
+    auto S = sim::build(st); sim::run(*S, 0.1);
+    sim::Body* M = sim::seatedMag(*S);
+    bool ok = M != nullptr && M->d && M->d->magCap >= 5;
+    if (!ok) { CHECK(false, "the bolt rifle has a magazine to strip into"); return; }
+    auto inMag = [&]() { return M->rounds; };   // (the top round under the lips isn't counted, as fillMagazines counts it)
+    M->rounds = 0;
+    int base = 0;
+    CHECK(sim::playAnim(*S, "reload"), "the reload animation plays");
+    sim::run(*S, 0.3);
+    int inHand = sim::clipInHand(*S), at03 = inMag() - base;
+    sim::run(*S, 0.6);   // t 0.9: halfway through the stripping
+    int mid = inMag() - base, midClip = sim::clipInHand(*S);
+    sim::run(*S, 0.6);   // t 1.5
+    int after = inMag() - base, afterClip = sim::clipInHand(*S);
+    bool out = false;
+    sim::run(*S, 0.2);
+    for (auto& e : S->events) out |= e.kind == sim::Ev::ClipOut;
+    std::printf("  stripper clip: in hand %d, magazine %d -> %d (clip %d) -> %d (clip %d), clip out %d\n", inHand, at03, mid, midClip, after, afterClip, (int)out);
+    CHECK(inHand == 5 && at03 == 0, "a clip of five in the hand, none in yet");
+    CHECK(mid >= 2 && mid <= 3 && midClip == 5 - mid, "halfway: rounds going in one by one, the rest still on the clip");
+    CHECK(after == 5 && afterClip == 0, "all five in by the next key, the clip empty");
+    CHECK(out && sim::clipInHand(*S) == -1, "the empty clip is thrown away");
+    M->rounds = M->d->magCap - 2;   // nearly full: only two fit, the rest stay on the clip
+    sim::playAnim(*S, "reload"); sim::run(*S, 1.5);
+    CHECK(inMag() == M->d->magCap && sim::clipInHand(*S) == 3, "a nearly full magazine takes what fits");
+    Design back; designFromJson(designToJson(st), back);
+    CHECK(back.anims["reload"].keys.size() == 4 && back.anims["reload"].keys[1].event == "strip", "the clip keys save and load");
+}
+
 static void beltsAndClips() {
     std::printf("Belts and clips\n");
     Design d = loadPreset("belted");
@@ -1336,6 +1378,7 @@ static void beltsAndClips() {
         if (ok2) { N->rounds = 0; sim::fillMagazines(*T); ok2 = N->rounds == 2; sim::fillMagazines(*T); ok2 = ok2 && N->rounds == 4; }
         CHECK(ok2, "stripper clips go in one clip at a time");
     }
+    stripperClipAnim();
 }
 
 static void grips() {
@@ -3368,6 +3411,7 @@ int main() {
         else if (o == "hollow") hollowParts();
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
+        else if (o == "clips") stripperClipAnim();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }

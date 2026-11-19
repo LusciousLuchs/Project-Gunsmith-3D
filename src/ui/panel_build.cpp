@@ -1196,14 +1196,17 @@ static void inspectPart(BodyDef& b) {
                 {
                     int ck = b.clip == "stripper" ? 1 : b.clip == "enbloc" ? 2 : 0;
                     prop("Loaded with", "Loose rounds: reloading fills it.\n"
-                                        "Stripper clips: reloading pushes in one clip's worth at a time.\n"
+                                        "Stripper clips: reloading pushes in one clip's worth at a time (instead of one round at a time by hand).\n"
                                         "En-bloc clip: the clip goes in with the rounds. Only a full clip fits, so it can't be topped up,\n"
                                         "and the empty clip is thrown out after the last round.");
                     if (ImGui::Combo("##clip", &ck, "Loose rounds\0Stripper clips\0En-bloc clip\0")) { b.clip = ck == 1 ? "stripper" : ck == 2 ? "enbloc" : "none"; editedAny = true; }
                     if (ck == 1) {
-                        prop("Rounds per clip");
-                        ImGui::DragInt("##clipsize", &b.clipSize, 0.2f, 1, 200, "%d"); markEdit();
-                        b.clipSize = std::clamp(b.clipSize, 1, 200);
+                        prop("Rounds per clip", "How many rounds one clip holds. R tops up one clip's worth;\n"
+                                                "a reload animation can show it: Pose > Animations, keys Clip in hand,\nStrip the rounds in, Throw the clip away.");
+                        int top = std::max(2, b.magCap);
+                        b.clipSize = std::clamp(b.clipSize, 1, top);
+                        ImGui::SliderInt("##clipsize", &b.clipSize, 1, top, "%d rounds"); markEdit();
+                        b.clipSize = std::clamp(b.clipSize, 1, top);
                     }
                 }
             }

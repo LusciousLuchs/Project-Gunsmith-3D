@@ -151,7 +151,9 @@ void handleKeys() {
             bool empty = !A.S->chambered && (!m || m->rounds == 0);
             A.S->design.anims = A.design.anims;
             if ((empty && sim::playAnim(*A.S, "reload_empty")) || sim::playAnim(*A.S, "reload")) toast("Reloading (your animation).");
-            else { sim::quickReload(*A.S); toast("Reloaded."); }
+            else if (sim::magwell(*A.S)) { sim::quickReload(*A.S); toast("Reloaded."); }
+            else if (int n = sim::fillMagazines(*A.S)) toast(n == 1 ? "One round in." : TextFormat("%d rounds in.", n));
+            else toast("It's full.");
         }
         if (actPressed(Act::NewMag)) spawnSpareMag();
         if (actPressed(Act::WorkAction)) workAction();
