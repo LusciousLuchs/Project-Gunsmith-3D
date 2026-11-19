@@ -17,7 +17,7 @@ V3 eyeOf(const Actor& a) { return a.body.feet + V3{0, a.tune.standEye, 0}; }
 bool clearLine(const gmap::Map& m, V3 a, V3 b) {
     V3 d = b - a; double L = gmap::len(d);
     if (L < 1e-6) return true;
-    gmap::Hit h = gmap::rayMap(m, a, d * (1 / L), L);
+    gmap::Hit h = gmap::rayMap(m, a, d * (1 / L), L, true);   // (they see you through a window)
     if (h.brush >= 0 && h.t < L - 0.15) return false;
     double dt = doors::ray(m, a, d * (1 / L), L);   // (a shut wood or steel door hides you; glass doesn't)
     return dt < 0 || dt >= L - 0.15;

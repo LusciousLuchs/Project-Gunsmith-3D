@@ -316,6 +316,13 @@ bool buyAccessories(Career& c, int boxes, std::string* why) {
     c.money -= cost; c.taxable -= cost; c.accessories += boxes;
     return true;
 }
+bool buyAmmo(Career& c, int boxes, std::string* why) {
+    double cost = boxes * AMMO_COST;
+    if (boxes <= 0) return false;
+    if (cost > c.money) { if (why) *why = "you need " + money(cost); return false; }
+    c.money -= cost; c.taxable -= cost; c.ammo += boxes;
+    return true;
+}
 double taxRate(const Career& c) {
     std::string st;
     for (auto& p : c.props) if (p.city >= 0) { st = places::cities()[p.city].state; break; }
@@ -392,7 +399,7 @@ bool hire(Career& c, int i, std::string* why) {
 }
 void letGo(Career& c, int i) { if (i >= 0 && i < (int)c.staff.size()) c.staff.erase(c.staff.begin() + i); }
 
-namespace { Walkin walkin(Career& c); }
+namespace { Walkin walkin(Career& c); Walkin errand(Career& c); }
 void addWalkins(Career& c, int n, int prop) { for (int i = 0; i < n; i++) { Walkin w = walkin(c); w.prop = prop; c.walkins.push_back(w); } }
 Career newCareer(unsigned seed) {
     Career c;
@@ -403,7 +410,18 @@ Career newCareer(unsigned seed) {
     { Property p; p.id = 1; p.kind = "garage"; p.role = "both"; p.stations = c.stations; c.props.push_back(p); c.here = 1; }
     refreshCandidates(c);
     for (int i = 0; i < 2; i++) c.walkins.push_back(walkin(c));
+    {   // and two who don't need a gun you've made: money on day one
+        bool clean = false, ammo = false;
+        for (int tries = 0; tries < 40 && !(clean && ammo); tries++) {
+            Walkin x = errand(c);
+            bool& got = x.want == "cleaning" ? clean : ammo;
+            if (x.want == "accessory" || got) continue;
+            got = true; c.walkins.push_back(x);
+        }
+    }
+    c.ammo = 12; c.accessories = 4;   // (a little stock to start with)
     c.news = {"Day 1. You've opened your shop. Design a gun, rate it on the bench, build some copies and list them in your online store.",
+              "Until then: sell ammunition and accessories at the counter, and take in guns to clean.",
               "Customers' orders are under Contracts."};
     return c;
 }
@@ -471,6 +489,30 @@ Walkin walkin(Career& c) {
     }
     return w;
 }
+// someone who isn't after one of your guns: ammunition, an accessory, or their own gun cleaned (no paperwork)
+Walkin errand(Career& c) {
+    Walkin w = walkin(c);
+    w.trouble.clear(); w.flaws.clear(); w.interest.clear();
+    double r = rnd(c);
+    if (r < 0.45) {
+        static const std::vector<std::string> T = {"A couple of boxes of ammo, please.", "Just here for ammunition.", "Range day tomorrow: I need ammo.",
+                                                   "Whatever ammo you've got on the shelf.", "Stocking up. Ammo, please."};
+        w.want = "ammo"; w.qty = rndInt(c, 1, 4); w.request = pick(c, T);
+    } else if (r < 0.65) {
+        static const std::vector<std::string> T = {"Need a holster and a spare magazine.", "Got any slings?", "Looking for a cleaning kit.", "A case for my rifle, if you have one."};
+        w.want = "accessory"; w.qty = rndInt(c, 1, 2); w.request = pick(c, T);
+    } else {
+        static const std::vector<std::string> G = {"lever-action rifle", "service revolver", "bird gun", "bolt rifle", "old pistol", "grandad's shotgun", "deer rifle"};
+        static const std::vector<std::string> T = {"Could you give my %s a proper clean? It's filthy.", "My %s's been sitting in the closet for years. Can you clean it up?",
+                                                   "The %s keeps jamming. I think it just needs a good clean.", "Clean and oil my %s before the season?"};
+        w.want = "cleaning"; w.theirGun = pick(c, G);
+        char b[200]; std::snprintf(b, sizeof b, pick(c, T).c_str(), w.theirGun.c_str()); w.request = b;
+        w.jobHours = std::round((0.75 + 1.75 * rnd(c)) * 4) / 4;
+        w.jobPay = std::round((w.jobHours * 35 + 15) / 5) * 5;
+    }
+    w.budget = 0;
+    return w;
+}
 }  // namespace
 
 void endDay(Career& c) {
@@ -479,6 +521,17 @@ void endDay(Career& c) {
     // the day's work: copies in order, by you and your staff; some come out flawed, and a finisher catches most
     Crew crew = crewToday(c);
     double hours = crew.hours;
+    // guns taken in to clean go first (their owners are waiting); paid when done
+    for (auto& jb : c.jobs) {
+        double use = std::min(jb.hours - jb.done, hours);
+        if (use <= 0) continue;
+        jb.done += use; hours -= use;
+        if (jb.done >= jb.hours - 1e-9) {
+            c.money += jb.pay; c.taxable += jb.pay; c.reputation = std::min(100.0, c.reputation + 0.2);
+            std::snprintf(b, sizeof b, "Cleaned %s's %s: paid %s.", jb.who.c_str(), jb.what.c_str(), money(jb.pay).c_str()); c.news.push_back(b);
+        }
+    }
+    c.jobs.erase(std::remove_if(c.jobs.begin(), c.jobs.end(), [](const Job& x) { return x.done >= x.hours - 1e-9; }), c.jobs.end());
     int caught = 0, slipped = 0;
     for (auto& bd : c.builds) {
         auto it = c.sheets.find(bd.gun);
@@ -571,6 +624,7 @@ void endDay(Career& c) {
             if (!p.shown.empty() && rnd(c) < 0.35 + 0.08 * p.rating) w.interest = p.shown[rndInt(c, 0, (int)p.shown.size() - 1)];
             c.walkins.push_back(w);
         }
+        for (int i = 0, m = 1 + (rnd(c) < 0.6 ? 1 : 0) + (int)(c.reputation / 40); i < m; i++) { Walkin w = errand(c); w.prop = p.id; c.walkins.push_back(w); }   // (ammo, accessories, cleaning)
     }
     if (!c.props.empty() && c.accessories > 0) {   // accessories: the day's customers (and people who only came in for ammo)
         int sold = 0;
@@ -704,7 +758,18 @@ std::string careerToJson(const Career& c) {
                      {"prop", w.prop}, {"interest", w.interest}, {"address", w.address}, {"idAddress", w.idAddress}, {"idNumber", w.idNumber}, {"idState", w.idState},
                      {"sex", w.sex}, {"height", w.height}, {"weight", w.weight}, {"birthPlace", w.birthPlace}, {"answers", w.answers}, {"signed", w.signedForm},
                      {"flaws", w.flaws}, {"scanned", w.scanned}, {"scan", w.scan}, {"txn", w.txn}, {"badPaper", w.badPaper}});
+    for (size_t i = 0; i < c.walkins.size(); i++) {
+        const Walkin& w = c.walkins[i];
+        json& j = W[i];
+        if (w.want != "gun") { j["want"] = w.want; j["qty"] = w.qty; }
+        if (w.want == "cleaning") { j["theirGun"] = w.theirGun; j["jobHours"] = w.jobHours; j["jobPay"] = w.jobPay; }
+        if (!w.typed[0].empty() || !w.typed[1].empty() || !w.typed[2].empty() || !w.typed[3].empty()) j["typed"] = {w.typed[0], w.typed[1], w.typed[2], w.typed[3]};
+        if (w.step) j["step"] = w.step;
+    }
     o["walkins"] = W;
+    json Jb = json::array();
+    for (auto& jb : c.jobs) Jb.push_back({{"id", jb.id}, {"who", jb.who}, {"what", jb.what}, {"hours", jb.hours}, {"done", jb.done}, {"pay", jb.pay}});
+    o["jobs"] = Jb; o["ammo"] = c.ammo; o["ammoPrice"] = c.ammoPrice;
     json P = json::array();
     for (auto& p : c.props) {
         json st = json::object(); for (auto& [k, n] : p.stations) st[k] = n;
@@ -767,6 +832,10 @@ bool careerFromJson(const std::string& text, Career& out) {
         w.signedForm = j.value("signed", true);
         if (j.contains("flaws") && j["flaws"].is_array()) for (auto& f : j["flaws"]) if (f.is_string()) w.flaws.push_back(f.get<std::string>());
         w.scanned = j.value("scanned", false); w.scan = j.value("scan", ""); w.txn = j.value("txn", ""); w.badPaper = j.value("badPaper", false);
+        w.want = j.value("want", std::string("gun")); w.qty = j.value("qty", 1);
+        w.theirGun = j.value("theirGun", ""); w.jobHours = j.value("jobHours", 0.0); w.jobPay = j.value("jobPay", 0.0);
+        if (j.contains("typed") && j["typed"].is_array()) for (size_t i = 0; i < 4 && i < j["typed"].size(); i++) if (j["typed"][i].is_string()) w.typed[i] = j["typed"][i].get<std::string>();
+        w.step = j.value("step", 0);
         c.walkins.push_back(w);
     }
     if (o.contains("news") && o["news"].is_array()) for (auto& n : o["news"]) if (n.is_string()) c.news.push_back(n.get<std::string>());
@@ -783,6 +852,12 @@ bool careerFromJson(const std::string& text, Career& out) {
     c.badForms = o.value("badForms", 0);
     c.taxable = o.value("taxable", 0.0); c.taxesPaid = o.value("taxesPaid", 0.0); c.taxDay = o.value("taxDay", c.day);
     c.accessories = o.value("accessories", 0); c.accPrice = o.value("accPrice", 45.0);
+    c.ammo = o.value("ammo", 0); c.ammoPrice = o.value("ammoPrice", 24.0);
+    for (auto& j : o.value("jobs", json::array())) {
+        Job jb; jb.id = j.value("id", 0); jb.who = j.value("who", ""); jb.what = j.value("what", "");
+        jb.hours = j.value("hours", 1.0); jb.done = j.value("done", 0.0); jb.pay = j.value("pay", 0.0);
+        c.jobs.push_back(jb);
+    }
     if (c.stations.empty()) {   // a career from before the workshop (0.5): it starts with what a new one has (once the
                                 // workshop is built, its map is counted instead)
         c.stations = {{"bench", 1}, {"counter", 1}};
@@ -862,6 +937,7 @@ bool sellToWalkin(Career& c, int id, const std::string& gun, double price, std::
     Walkin* w = findWalkin(c, id);
     auto no = [&](const std::string& t) { if (why) *why = t; return false; };
     if (!w || w->state != 0) return no("they've gone");
+    if (w->want != "gun") return no("they're not after a gun");
     if (!w->checked) return no("run the background check first");
     if (w->result == "DELAYED") return no("the check came back DELAYED: not today");
     if (w->result == "DENIED") return no("the check DENIED them");
@@ -895,6 +971,70 @@ void refuseWalkin(Career& c, int id, bool police) {
     if (!w->trouble.empty() && police) { c.reputation = std::min(100.0, c.reputation + 2); c.news.push_back("The deputies came for " + w->name + ". The sheriff thanks you for the call."); }
     else if (w->trouble.empty() && police) { c.reputation = std::max(0.0, c.reputation - 2); c.news.push_back("You called the police on " + w->name + ", who'd done nothing wrong. Awkward."); }
     else if (w->trouble.empty()) c.reputation = std::max(0.0, c.reputation - 0.3);   // (a customer turned away for nothing)
+}
+
+bool sellSupplies(Career& c, int id, int boxes, std::string* why) {
+    Walkin* w = findWalkin(c, id);
+    auto no = [&](const std::string& t) { if (why) *why = t; return false; };
+    if (!w || w->state != 0) return no("they've gone");
+    bool ammo = w->want == "ammo";
+    if (!ammo && w->want != "accessory") return no("they're not after that");
+    int& stock = ammo ? c.ammo : c.accessories;
+    double price = ammo ? c.ammoPrice : c.accPrice;
+    if (stock <= 0) return no(ammo ? "no ammunition in stock: order some on the computer (Online store)" : "no accessories in stock: order some on the computer (Online store)");
+    boxes = std::clamp(boxes, 1, std::min(stock, w->qty));
+    double typical = ammo ? 24 : 45;
+    if (price > typical * 2.2) return no("\"How much? I'll get it online.\"");
+    stock -= boxes;
+    double got = boxes * price;
+    c.money += got; c.taxable += got;
+    w->state = 1;
+    c.reputation = std::min(100.0, c.reputation + 0.05);
+    char b[200];
+    std::snprintf(b, sizeof b, "Sold %s %d box%s of %s for %s.", w->name.c_str(), boxes, boxes == 1 ? "" : "es", ammo ? "ammunition" : "accessories", money(got).c_str());
+    c.news.push_back(b);
+    return true;
+}
+bool takeJob(Career& c, int id, std::string* why) {
+    Walkin* w = findWalkin(c, id);
+    if (!w || w->state != 0 || w->want != "cleaning") { if (why) *why = "they've gone"; return false; }
+    Job jb; jb.id = c.nextId++; jb.who = w->name; jb.what = w->theirGun; jb.hours = std::max(0.25, w->jobHours); jb.pay = w->jobPay;
+    c.jobs.push_back(jb);
+    w->state = 1;
+    char b[200];
+    std::snprintf(b, sizeof b, "Took in %s's %s to clean (%.2g h, %s when it's done).", w->name.c_str(), w->theirGun.c_str(), jb.hours, money(jb.pay).c_str());
+    c.news.push_back(b);
+    return true;
+}
+std::vector<std::string> paperworkProblems(const Walkin& w) {
+    std::vector<std::string> p;
+    if (w.want != "gun") return p;
+    for (size_t i = 0; i < w.answers.size(); i++) {
+        std::string q = std::to_string(i + 9);   // (the form numbers them 9 to 17, after its own details)
+        if (w.answers[i] == ' ') p.push_back("Question " + q + " is left blank. Hand the form back.");
+        else if (i == 0 && w.answers[i] != 'Y') p.push_back("They say they're NOT buying it for themselves (question 9). They can't buy.");
+        else if (i > 0 && w.answers[i] == 'Y') p.push_back("They answered Yes to question " + q + ". They can't buy.");
+    }
+    if (!w.signedForm) p.push_back("The form isn't signed. Hand it back.");
+    if (w.name != w.idName) p.push_back("The name on the ID (" + w.idName + ") is not the name on the form (" + w.name + "). Don't sell.");
+    if (w.dob != w.idDob) p.push_back("The date of birth on the form is not the one on the ID. Hand the form back.");
+    if (w.address != w.idAddress) p.push_back("The address on the form is not the one on the ID. Hand the form back.");
+    if (w.scanned && w.scan == "EXPIRED") p.push_back("The ID has run out. Don't sell.");
+    if (w.scanned && w.scan == "NOT VALID") p.push_back("The scanner says the ID is NOT VALID: a fake. Don't sell.");
+    if (w.checked && w.result == "DENIED") p.push_back("The check DENIED them. Don't sell.");
+    if (w.checked && w.result == "DELAYED") p.push_back("The check came back DELAYED: not today.");
+    return p;
+}
+std::string doPaperwork(Career& c, int id) {
+    Walkin* w = findWalkin(c, id);
+    if (!w || w->state != 0 || w->want != "gun") return "";
+    // a form with mistakes they can put right goes back to them (a name that isn't theirs stays: that's for you to see)
+    fixForm(c, id);
+    if (!w->scanned) scanId(c, id);
+    std::string nm = w->idName;
+    w->typed[0] = nm.substr(nm.rfind(' ') + 1); w->typed[1] = nm.substr(0, nm.find(' ')); w->typed[2] = w->idDob; w->typed[3] = w->idNumber;
+    w->step = 3;
+    return submitCheck(c, id, w->typed[0], w->typed[1], w->typed[2], w->typed[3]);
 }
 
 // ---------------------------------------------------------------- stage 4: the range demonstration

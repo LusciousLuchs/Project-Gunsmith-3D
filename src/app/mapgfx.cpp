@@ -291,6 +291,10 @@ static Color texelNew(int m, int I, int J, float u, float v) {
         float k = (0.78f + gr * 0.22f) * (groove ? 0.6f : 1);
         return rgbf(122 * k, 82 * k, 50 * k);
     }
+    case 33: {  // glass: faintly blue-green, with a few soft streaks (drawn see-through)
+        float n = grain(6, 140), streak = std::max(0.f, fbm(u * 0.3f + v, v * 3, 4, 3, 141) - 0.6f) * 60;
+        return rgbf(196 + n + streak, 222 + n + streak, 226 + n + streak);
+    }
     case 32: default: {  // painted metal door face, tiled: worn green paint, dents
         float n = grain(16, 130), wear = std::max(0.f, fbm(u, v, 16, 4, 131) - 0.66f) * 200;
         int x = I % (N / 2), y = J % (N / 2);
@@ -429,6 +433,7 @@ void mapDrawBrushes(const std::vector<gmap::Brush>& local, Matrix M, Color tint)
 }
 
 static int gWorkLight = 0;
+static bool gShadowing = false;   // (drawing the sun's depth picture: windows let the light through)
 static RenderTexture2D gShadowRT{};
 static const int SHADOW_SIZE = 2048;
 static const float SHADOW_SPAN = 90;   // metres across the shadowed area
@@ -477,7 +482,7 @@ void mapShadowPass(const gmap::Look& L, Vector3 focus, void (*extra)()) {
     rlClearScreenBuffers();
     BeginMode3D(cam);
     Matrix vp = MatrixMultiply(rlGetMatrixModelview(), rlGetMatrixProjection());
-    mapDrawWorld();
+    gShadowing = true; mapDrawWorld(); gShadowing = false;
     if (extra) extra();
     EndMode3D();
     EndTextureMode();
@@ -487,7 +492,19 @@ void mapShadowPass(const gmap::Look& L, Vector3 focus, void (*extra)()) {
 void mapDrawWorld() {
     ensureUserMaterials();
     setSpecular(0.1f);
-    for (size_t i = 0; i < MESH.size() && i < MATS.size(); i++) if (MESH[i].vertexCount > 0) DrawMesh(MESH[i], MATS[i], MatrixIdentity());
+    int glass = gmap::glassMaterial();
+    for (size_t i = 0; i < MESH.size() && i < MATS.size(); i++) if (MESH[i].vertexCount > 0 && (int)i != glass) DrawMesh(MESH[i], MATS[i], MatrixIdentity());
+    if (!gShadowing && glass < (int)MESH.size() && MESH[glass].vertexCount > 0) {   // windows last, see-through, not hiding what's behind them
+        rlDrawRenderBatchActive();
+        rlDisableDepthMask(); rlDisableBackfaceCulling();
+        Color keep = MATS[glass].maps[MATERIAL_MAP_DIFFUSE].color;
+        MATS[glass].maps[MATERIAL_MAP_DIFFUSE].color = Color{255, 255, 255, 52};
+        setSpecular(0.9f);
+        DrawMesh(MESH[glass], MATS[glass], MatrixIdentity());
+        MATS[glass].maps[MATERIAL_MAP_DIFFUSE].color = keep;
+        rlDrawRenderBatchActive();
+        rlEnableDepthMask(); rlEnableBackfaceCulling();
+    }
     setSpecular(0.3f);
 }
 

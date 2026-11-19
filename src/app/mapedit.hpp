@@ -26,6 +26,7 @@ struct MapEd {
     int mat = 1;                           // material for new brushes
     int cylSides = 12, stairSteps = 8;
     bool showGrid = true;
+    bool rotateMode = false;               // Select: rotation rings on the selection (drag a ring to turn it about that axis)
     int lightMode = 1;                     // 0 as players will see it, 1 a work light (dark maps still show), 2 fullbright (no shading, no fog)
     // camera
     gmap::V3 cam{-10, 4, 0};

@@ -23,11 +23,15 @@ static std::vector<std::string>& registry() {
         "dirt", "grass", "sand", "gravel", "wood_planks", "asphalt", "tile", "steel", "paint_white", "paint_orange",
         // (0.8.4: added after the first 18, so older maps' materials keep their places)
         "institutional", "formwork", "cinderblock", "old_brick", "metal_panels", "rust", "wallpaper", "parquet", "carpet",
-        "checker_tile", "stone_wall", "shingles", "marble", "door_wood", "door_metal"};
+        "checker_tile", "stone_wall", "shingles", "marble", "door_wood", "door_metal",
+        // (0.8.47) see-through: windows (bullets and sight go through it)
+        "glass"};
     return n;
 }
 const std::vector<std::string>& materialNames() { return registry(); }
-int builtInMaterials() { return 33; }
+int builtInMaterials() { return 34; }
+int glassMaterial() { return 33; }
+bool isGlass(const Brush& b) { for (auto& f : b.faces) if (f.mat == 33) return true; return false; }
 bool isUserMaterial(int m) { return m >= builtInMaterials() && m < (int)registry().size(); }
 int materialIndex(const std::string& name) {
     auto& n = registry();
@@ -195,6 +199,17 @@ void rotateY(Brush& b, double r, V3 c) {
     }
 }
 
+void rotateAxis(Brush& b, V3 k, double r, V3 c) {   // the right-hand way about k (Rodrigues), round c
+    k = norm(k);
+    double cs = std::cos(r), sn = std::sin(r);
+    for (auto& f : b.faces) {
+        V3 n = f.n * cs + cross(k, f.n) * sn + k * (dot(k, f.n) * (1 - cs));
+        n = norm(n);
+        f.d = f.d - dot(f.n, c) + dot(n, c);
+        f.n = n;
+    }
+}
+
 void mirror(Brush& b, int axis, V3 c) {
     for (auto& f : b.faces) {
         V3 n = f.n;
@@ -258,10 +273,11 @@ Hit rayBrush(const Brush& b, V3 o, V3 dir, double maxT) {
     return h;
 }
 
-Hit rayMap(const Map& m, V3 o, V3 dir, double maxT) {
+Hit rayMap(const Map& m, V3 o, V3 dir, double maxT, bool throughGlass) {
     Hit best;
     best.t = maxT;
     for (size_t i = 0; i < m.brushes.size(); i++) {
+        if (throughGlass && isGlass(m.brushes[i])) continue;
         Hit h = rayBrush(m.brushes[i], o, dir, best.t);
         if (h.brush >= 0 && h.t < best.t) { best = h; best.brush = (int)i; }
     }

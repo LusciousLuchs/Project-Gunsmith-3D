@@ -95,7 +95,23 @@ struct Walkin {
     std::string scan;                      // the ID scanner's answer: VALID, EXPIRED, NOT VALID
     std::string txn;                       // the check's transaction number
     bool badPaper = false;                 // sold to with mistakes still on the form
+    // (0.8.47) not everyone wants a gun: "gun", "ammo" (boxes of ammunition), "accessory" (a holster, a sling, a spare
+    // magazine...) or "cleaning" (their own gun cleaned: a job for your bench). Only a gun needs the paperwork.
+    std::string want = "gun";
+    int qty = 1;                           // boxes they're after (ammo, accessories)
+    std::string theirGun;                  // cleaning: the gun they brought in
+    double jobHours = 0, jobPay = 0;       // cleaning: how long it takes, what they'll pay
+    // what you'd got to at the counter, kept when you walk away from it: the check system's fields and the step open
+    std::string typed[4];
+    int step = 0;
 };
+// A job taken in at the counter (a gun to clean): done at your bench before the day's builds, paid when it's done
+struct Job { int id = 0; std::string who, what; double hours = 0, done = 0, pay = 0; };
+// Plain words for what's wrong with their paperwork (empty: nothing to see): mistakes on the form, an ID that doesn't
+// match it or has run out, the scanner's answer, answers that mean they can't buy. For players who'd rather not read
+// every line (Settings > Interface > Paperwork help).
+std::vector<std::string> paperworkProblems(const Walkin& w);
+
 // The transfer form's questions (a made-up form, in plain words). The first must be answered Yes; the rest No: any
 // other answer means they can't buy.
 const std::vector<std::string>& formQuestions();
@@ -155,6 +171,10 @@ struct Career {
     // accessories: plain boxes (magazines, ammunition, holsters, slings, cleaning kits...) sold in your stores
     int accessories = 0;                    // boxes in stock
     double accPrice = 45;                   // what you sell one for
+    // (0.8.47) early income: boxes of ammunition sold at the counter, and cleaning jobs
+    int ammo = 0;                           // boxes in stock
+    double ammoPrice = 24;                  // what you sell a box for
+    std::vector<Job> jobs;
 };
 Property* propertyById(Career& c, int id);
 const Property* propertyById(const Career& c, int id);
@@ -169,6 +189,15 @@ void setLocation(Career& c, Property& p, int city);   // a property's city, and 
 std::string propertyAddress(const Property& p);       // "" if it has no place yet
 constexpr double ACC_COST = 18;             // a box of accessories, wholesale
 bool buyAccessories(Career& c, int boxes, std::string* why = nullptr);
+constexpr double AMMO_COST = 12;            // a box of ammunition, wholesale
+bool buyAmmo(Career& c, int boxes, std::string* why = nullptr);
+// a customer after ammunition or accessories: sold from stock at your price (no paperwork). True if they bought.
+bool sellSupplies(Career& c, int walkinId, int boxes, std::string* why = nullptr);
+// a customer's gun to clean: taken in as a job (paid when it's done, at the end of a day)
+bool takeJob(Career& c, int walkinId, std::string* why = nullptr);
+// The paperwork done for you: the form handed back if it has mistakes, the ID scanned, the check filled in from the
+// ID and submitted. Returns the check's answer.
+std::string doPaperwork(Career& c, int walkinId);
 double taxRate(const Career& c);            // percent of profit, this week
 double accessoryChance(const Property& p);  // the chance a customer in this store buys a box (accessory stands help)                // Career::stations from the making properties' own (call after a property's map changes)
 // a person's body from their first name: "male", "female", or "" (a name either could have)

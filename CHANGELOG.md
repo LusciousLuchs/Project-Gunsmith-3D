@@ -8,6 +8,17 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.47-alpha
+
+Career: money from day one, and easier paperwork. Level editor: windows and rotation rings.
+
+- **Customers who don't need a gun**: some come in for ammunition, accessories, or their own gun cleaned. Sell from your stock (order more on the computer, new **Supplies** tab), or take the gun in: it's cleaned at your bench at the end of the day and they pay then. New careers start with a little stock.
+- **Paperwork help** (counter, or Settings > Interface > Accessibility): *Fill it in for me* types the check in and spells out anything wrong in plain words; *Do it for me* does the whole lot with one button.
+- **Walk away from the counter without losing anything**: what you typed and the step you were on stay with each customer, even after saving.
+- Cleaner shop screens: a strip of day, money, reputation and queue at the top; the counter's queue shows what each person wants; Today is a to-do list.
+- **Glass** for the Level editor: a see-through block material for windows. You can't walk through it, but bullets and NPCs' eyes go through.
+- **Rotate** in the Level editor (next to Select): rings round the selection, drag one to turn blocks about any axis (Ctrl: 15 degree steps), or a thing about up.
+
 ## 0.8.46-alpha
 
 Stripper clips.

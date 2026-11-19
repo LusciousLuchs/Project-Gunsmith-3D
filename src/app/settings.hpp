@@ -24,6 +24,7 @@ struct Settings {
     int mapUnit = 0;                     // the Level editor's lengths: 0 m, 1 cm, 2 ft (and inches), 3 in, 4 yd
     bool shadows = true;                 // sun shadows on maps (Settings > Display)
     bool fpArms = true;                  // the range: your arms and hands on the gun
+    int paperHelp = 0;                   // career counter paperwork: 0 by hand, 1 filled in and problems spelled out, 2 done for you
     bool cheatAutoFeed = false;          // cheats (Settings > Cheats): sim::cheats() follows these
     bool cheatBruteForce = false;
     bool poseCharacter = true;           // Pose mode: your character (if you made one) holds the gun, not the mannequin                 // the performance overlay (F3): 0 off, 1 frame rate, 2 full details

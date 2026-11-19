@@ -706,6 +706,10 @@ void interfacePage() {
     row("How-to hints", "The short line over the 3D view that says what the current tool does."); dirty |= ImGui::Checkbox("##hi", &CFG.hints);
     ImGui::SeparatorText("Accessibility");
     row("Colour-blind friendly", "Blue and orange instead of green and red for good and bad states."); dirty |= ImGui::Checkbox("##cb", &CFG.colorblind);
+    row("Paperwork help (career)", "At your shop's counter, selling a gun takes paperwork: reading their form and ID and typing their details into the check.\n"
+        "Fill it in for me: the check is typed in for you, and anything wrong is spelled out in plain words.\n"
+        "Do it for me: one button does the whole lot; you just read the answer and decide.");
+    dirty |= enumCombo("##ph", CFG.paperHelp, "By hand\0Fill it in for me\0Do it for me\0");
 }
 
 void designerPage() {

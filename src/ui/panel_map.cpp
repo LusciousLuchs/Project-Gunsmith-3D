@@ -129,7 +129,13 @@ void mapToolbar() {
     int i = 0;
     for (auto& t : tools) {
         if (!shown(t.t)) continue;
-        if (iconBtn(t.icon, t.tip, ME.tool == t.t)) { ME.tool = t.t; ME.clipPts.clear(); }
+        if (iconBtn(t.icon, t.tip, ME.tool == t.t && !(t.t == MTool::Select && ME.rotateMode))) { ME.tool = t.t; ME.clipPts.clear(); ME.rotateMode = false; }
+        if (t.t == MTool::Select) {   // Rotate: Select with rotation rings, as in the gun designer
+            gap(3);
+            if (iconBtn(ICON_FA_ARROWS_ROTATE, "Rotate: rings round the selection. Drag a ring to turn blocks (or a thing) about that axis. Ctrl: 15 degree steps", ME.tool == MTool::Select && ME.rotateMode)) {
+                ME.tool = MTool::Select; ME.rotateMode = true; ME.clipPts.clear();
+            }
+        }
         gap(t.t == MTool::Select || t.t == MTool::Clip ? 12 : 3);
         i++;
     }

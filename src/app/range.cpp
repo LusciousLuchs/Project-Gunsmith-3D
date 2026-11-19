@@ -591,7 +591,7 @@ void stepBullets(double dt) {
                     }
                 }
                 if (ha >= 0) {
-                    gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L);
+                    gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L, true);
                     double dt0 = doors::ray(R.map, b.p, step * (1 / L), L);
                     if ((mh.brush < 0 || mh.t / L > bestS) && (dt0 < 0 || dt0 / L > bestS)) {   // (and not a wall or a shut door in front of it)
                         auto& act = R.actors[ha];
@@ -612,7 +612,7 @@ void stepBullets(double dt) {
                 V3 feet = R.pl.feet, eye = feet + V3{0, R.pl.eye + 0.12, 0};
                 double sAlong;
                 if (segSeg(b.p, b.p + step, feet + V3{0, 0.25, 0}, eye - V3{0, 0.1, 0}, &sAlong) < 0.28) {
-                    gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L);
+                    gmap::Hit mh = gmap::rayMap(R.map, b.p, step * (1 / L), L, true);
                     double dt0 = doors::ray(R.map, b.p, step * (1 / L), L);
                     if ((mh.brush < 0 || mh.t / L > sAlong) && (dt0 < 0 || dt0 / L > sAlong)) {
                         double v2 = gmap::len(b.v);
@@ -624,7 +624,7 @@ void stepBullets(double dt) {
                 }
             }
             if (L > 1e-9) {
-                gmap::Hit hit = gmap::rayMap(R.map, b.p, step * (1 / L), L);
+                gmap::Hit hit = gmap::rayMap(R.map, b.p, step * (1 / L), L, true);
                 int doorHit = -1;
                 double doorT = doors::ray(R.map, b.p, step * (1 / L), L, &doorHit);
                 if (doorT >= 0 && (hit.brush < 0 || doorT < hit.t)) {   // a shut door: steel stops it, wood if it's too slow to get through
@@ -980,6 +980,13 @@ void enterRange(const Design& gun, const gmap::Map& map) {
     R.map.look = gmap::lookAtHour(R.baseLook, R.hour);
     R.nav.clear();
     installMapNpcs(R.map);   // the NPCs this map brought with it
+    if (std::getenv("GUNSMITH_GLASSDEMO")) {   // (screenshots) a window pane across the lane, 3 m ahead of the start
+        gmap::Player p0; gmap::playerSpawn(p0, R.map);
+        double c = std::cos(p0.yaw), sn = std::sin(p0.yaw);
+        gmap::V3 at = p0.feet + gmap::V3{c * 3, 0, sn * 3};
+        gmap::V3 h = std::fabs(c) > std::fabs(sn) ? gmap::V3{0.02, 1.0, 1.4} : gmap::V3{1.4, 1.0, 0.02};
+        R.map.brushes.push_back(gmap::makeBox(at + gmap::V3{-h.x, 0.3, -h.z}, at + gmap::V3{h.x, 0.3 + 2 * h.y, h.z}, gmap::glassMaterial()));
+    }
     mapBuildMeshes(R.map);
     gmap::playerSpawn(R.pl, R.map);
     findTargets();

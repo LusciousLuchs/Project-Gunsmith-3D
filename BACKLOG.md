@@ -111,6 +111,13 @@ is up to them, and the game's own examples stay original.
 - [ ] **AAC and Ogg stations** (a decoder for each).
 - [ ] **In-game browser** for Spotify / YouTube Music logins: Microsoft Edge's engine (WebView2, already on Windows 10/11) as a window over the game. Its sound comes out normally, not from a spot in the world; routing it through a radio needs capturing that window's sound (Windows' per-app loopback) and is untested.
 
+## From the owner (0.8.47)
+
+- [ ] **The test for single-shot guns needs fixing** (not urgent): the reliability test handles guns loaded one round at a time badly. Look at how the Runner loads, fires and counts them before changing it.
+- [ ] **Extended magazines as attachments**: take an existing gun and give it an alternate magazine (longer, more rounds) you fit as an upgrade, like the other attachments, from the fitting bench and crates.
+- [x] Career: money before your first gun (ammunition, accessories, cleaning jobs), paperwork help for players who struggle with reading and typing, the counter keeping your progress, cleaner shop screens (0.8.47).
+- [x] Level editor: glass for windows, rotation rings on blocks (0.8.47).
+
 ## Next
 
 - **Firing range**: first person, walking the range with your gun, using its poses; weighty handling (inertia, sway, time to aim), holstering, recoil from the bench, live-fire jams from the measured jam rate.

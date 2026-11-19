@@ -35,7 +35,8 @@ int materialIndex(const std::string& name);       // unknown names fall back to 
                                                    // (pictures in user/textures) are added to the list
 int builtInMaterials();
 bool isUserMaterial(int m);
-double materialTile(int m);                        // metres per texture repeat at scale 1
+double materialTile(int m);
+int glassMaterial();                               // "glass": a block with any face of it is a window (drawn see-through)                        // metres per texture repeat at scale 1
 
 struct Face {
     V3 n;                 // outward unit normal
@@ -136,12 +137,14 @@ std::vector<Brush> makeStairs(V3 mn, V3 mx, int steps, int dir, int mat);
 
 void translate(Brush& b, V3 d);
 void rotateY(Brush& b, double radians, V3 pivot);
+void rotateAxis(Brush& b, V3 axis, double radians, V3 pivot);   // any axis, the right-hand way (the editor's rotation rings)
 void mirror(Brush& b, int axis, V3 pivot);             // axis 0 = X, 2 = Z
 bool pushFace(Brush& b, int face, double amount);      // move one face along its normal; false (unchanged) if it would break the brush
 // Cut with a plane: keeps the part where dot(n, p) <= d. Returns false if nothing would be left.
 bool clipBrush(Brush& b, V3 n, double d, int mat);
 std::vector<Brush> hollow(const Brush& b, double wall); // walls of the given thickness around the brush's inside
 
+bool isGlass(const Brush& b);
 // ---- collision and picking
 struct Hit {
     double t = 1;        // fraction of the move (sweep) or distance (ray)
@@ -151,7 +154,7 @@ struct Hit {
 };
 // Ray against one brush or the whole map; t is a distance along the (unit) direction. Misses give brush = -1.
 Hit rayBrush(const Brush& b, V3 o, V3 dir, double maxT);
-Hit rayMap(const Map& m, V3 o, V3 dir, double maxT);
+Hit rayMap(const Map& m, V3 o, V3 dir, double maxT, bool throughGlass = false);   // throughGlass: windows don't stop it (bullets, sight)
 // Sweep an axis-aligned box (half extents `half`, centred on the path) from a to b. t is the fraction travelled.
 Hit sweepBox(const Map& m, V3 a, V3 b, V3 half);
 bool boxFree(const Map& m, V3 centre, V3 half);

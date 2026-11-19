@@ -1907,6 +1907,38 @@ static void magazineShaping() {
     CHECK(autoRoundPath(loadPreset("tilting").bodies[mi], f.breech.cart).size() >= 2, "an automatic layout has a feed spot and a direction to drag");
 }
 // Career mode: rating a gun, building copies, the online store, reviews, contracts, saving
+// (0.8.47) money before your first gun: ammunition, accessories, cleaning jobs; the counter's progress kept; paperwork help
+static void careerEarlyIncome() {
+    career::Career c = career::newCareer(5);
+    career::Walkin* clean = nullptr; career::Walkin* ammo = nullptr; career::Walkin* gun = nullptr;
+    for (auto& w : c.walkins) { if (w.want == "cleaning") clean = &w; if (w.want == "ammo") ammo = &w; if (w.want == "gun" && w.trouble.empty() && !gun) gun = &w; }
+    CHECK(clean && ammo && gun, "day one: a gun to clean and an ammunition buyer besides the gun buyers");
+    if (!clean || !ammo || !gun) return;
+    double m0 = c.money; int a0 = c.ammo;
+    std::string why;
+    CHECK(career::sellSupplies(c, ammo->id, ammo->qty, &why) && c.ammo == a0 - std::min(a0, ammo->qty) && c.money > m0, "ammunition sold from stock, no paperwork");
+    double pay = clean->jobPay; std::string who = clean->name;
+    CHECK(career::takeJob(c, clean->id, &why) && c.jobs.size() == 1 && pay > 0, "a gun taken in to clean");
+    std::string gunName = gun->name; int gid = gun->id;
+    gun->typed[0] = "Half"; gun->step = 2;
+    career::Career back; career::careerFromJson(career::careerToJson(c), back);
+    bool kept = false;
+    for (auto& w : back.walkins) if (w.id == gid) kept = w.typed[0] == "Half" && w.step == 2;
+    CHECK(kept && back.jobs.size() == 1 && back.ammo == c.ammo, "what you'd typed at the counter, the step, jobs and ammunition are saved");
+    std::string r = career::doPaperwork(c, gid);
+    career::Walkin* g = nullptr; for (auto& w : c.walkins) if (w.id == gid) g = &w;
+    CHECK(g && g->checked && (r == "PROCEED" || r == "DELAYED") && g->scanned && g->flaws.empty(), "the paperwork done for you: form fixed, ID scanned, check run");
+    career::Walkin bad = *g; bad.idName = "Someone Else"; bad.scan = "EXPIRED";
+    auto probs = career::paperworkProblems(bad);
+    CHECK(probs.size() >= 2, "paperwork help spells out a name that doesn't match and an ID that's run out");
+    double m1 = c.money;
+    career::endDay(c);
+    bool paid = false; for (auto& n : c.news) paid |= n.find("Cleaned " + who) != std::string::npos;
+    std::printf("  cleaning paid %.0f (news %d), money %.0f -> %.0f, errands tomorrow %d\n", pay, (int)paid, m1, c.money,
+                (int)std::count_if(c.walkins.begin(), c.walkins.end(), [](const career::Walkin& w) { return w.want != "gun"; }));
+    CHECK(paid && c.jobs.empty(), "the cleaning is done at the end of the day and paid");
+    CHECK(std::count_if(c.walkins.begin(), c.walkins.end(), [](const career::Walkin& w) { return w.want != "gun"; }) >= 1, "more errands the next day");
+}
 static void careerRules() {
     std::printf("Career mode\n");
     using namespace career;
@@ -1996,6 +2028,7 @@ static void careerStages() {
     Career c2 = c; setSt(c2, {{"bench", 3}, {"counter", 1}});
     std::printf("        (hours a day: you alone %.1f, with a machinist at a lathe %.1f, at a bench %.1f)\n", alone, withM, workHours(c2));
     CHECK(withM > alone + 6 && workHours(c2) < withM, "a machinist adds a day's work, more at a lathe than at a bench");
+    c.accessories = 0;   // (no stock selling meanwhile: just the wages)
     double m0 = c.money; endDay(c);
     CHECK(c.money <= m0 - 400 + 1e-6, "wages are paid at the end of each day");
     // flaws: an unskilled crew makes flawed copies; a finisher at a test bench catches most
@@ -2138,7 +2171,7 @@ static void propertiesTest() {
     auto walkinsWith = [&](double rating) {
         career::Career k = c; k.props[0].rating = rating; k.props[0].stations["counter"] = 1; k.props[1].stations.erase("counter");
         int n = 0;
-        for (int d = 0; d < 20; d++) { career::endDay(k); for (auto& w : k.walkins) if (w.prop == k.props[0].id) n++; }
+        for (int d = 0; d < 20; d++) { career::endDay(k); for (auto& w : k.walkins) if (w.prop == k.props[0].id && w.want == "gun") n++; }   // (gun buyers: errands come anyway)
         return n;
     };
     int plain = walkinsWith(0), smart = walkinsWith(5);
@@ -2983,6 +3016,27 @@ static void cheatsTest() {
     sim::cheats() = sim::Cheats();
 }
 // Furniture on maps: its blocks are solid parts of the map, kept inside it; files keep it whole
+// (0.8.47) the level editor's rotation rings: blocks turned about any axis; glass lets bullets and sight through
+static void mapRotateGlass() {
+    using namespace gmap;
+    Brush a = makeBox({0, 0, 0}, {2, 1, 0.5}, 1), b = a;
+    rotateY(a, 0.7, {1, 0.5, 0.25});
+    rotateAxis(b, {0, 1, 0}, 0.7, {1, 0.5, 0.25});
+    V3 a0, a1, b0, b1; brushBounds(a, a0, a1); brushBounds(b, b0, b1);
+    CHECK(len(a0 - b0) < 1e-9 && len(a1 - b1) < 1e-9, "turning about up matches the old 90-degree turn's maths");
+    Brush c = makeBox({0, 0, 0}, {2, 1, 0.5}, 1);
+    rotateAxis(c, {1, 0, 0}, 3.14159265358979 / 2, {1, 0.5, 0.25});
+    V3 c0, c1; brushBounds(c, c0, c1);
+    std::printf("  box 2 x 1 x 0.5 turned about X: %.3f x %.3f x %.3f\n", c1.x - c0.x, c1.y - c0.y, c1.z - c0.z);
+    CHECK(std::fabs((c1.x - c0.x) - 2) < 1e-6 && std::fabs((c1.y - c0.y) - 0.5) < 1e-6 && std::fabs((c1.z - c0.z) - 1) < 1e-6, "a block turned on its side about X");
+    Map m;
+    m.brushes.push_back(makeBox({4, 0, -1}, {4.05, 2, 1}, glassMaterial()));
+    m.brushes.push_back(makeBox({8, 0, -1}, {8.2, 2, 1}, 1));
+    Hit h1 = rayMap(m, {0, 1, 0}, {1, 0, 0}, 50), h2 = rayMap(m, {0, 1, 0}, {1, 0, 0}, 50, true);
+    CHECK(h1.brush == 0 && h2.brush == 1 && std::fabs(h2.t - 8) < 1e-6, "a window stops a plain ray (walking into it) but not a bullet or a look");
+    Map back; mapFromJson(mapToJson(m), back);
+    CHECK(back.brushes.size() == 2 && isGlass(back.brushes[0]) && !isGlass(back.brushes[1]), "glass saves and loads by name");
+}
 static void furnitureTest() {
     std::printf("\n== furniture\n");
     gmap::Map m = gmap::builtinRange();
@@ -3412,6 +3466,8 @@ int main() {
         else if (o == "cheats") cheatsTest();
         else if (o == "furniture") furnitureTest();
         else if (o == "clips") stripperClipAnim();
+        else if (o == "career") careerEarlyIncome();
+        else if (o == "maprot") mapRotateGlass();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -3471,6 +3527,8 @@ int main() {
     paperworkTest();
     npcDesigns();
     careerRules();
+    careerEarlyIncome();
+    mapRotateGlass();
     careerStages();
     mapsCarryNpcs();
     npcsAlive();

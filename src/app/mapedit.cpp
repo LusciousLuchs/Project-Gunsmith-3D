@@ -2,6 +2,7 @@
 // Gunsmith3D - The map editor (see mapedit.hpp).
 #include "app/paths.hpp"
 #include "app/mapedit.hpp"
+#include "app/gizmo.hpp"
 #include "app/doors.hpp"
 #include "app/furnish.hpp"
 #include "app/shop3d.hpp"
@@ -637,7 +638,7 @@ static void flyCamera(float dt) {
 
 // ---------------------------------------------------------------- input: tools
 namespace {
-enum class Drag { None, Move, MoveEnt, Face, Create };
+enum class Drag { None, Move, MoveEnt, Face, Create, Rotate };
 Drag drag = Drag::None;
 bool dragChanged = false, dragVertical = false;
 V3 dragHit, dragPlaneN;
@@ -649,6 +650,9 @@ Vector2 dragMouse0;
 V3 createA, createB;
 double createY = 0;
 std::string preDrag;
+Rings gRot;                       // the rotation rings (Rotate)
+V3 rotPivot;
+double rotYaw0 = 0;               // a thing's yaw at the press
 gmap::Stance wantStance = gmap::Stance::Stand;
 }
 
@@ -756,6 +760,24 @@ static void applyClip(bool split) {
     if (cut) meChanged(); else { ME.undo.pop_back(); ME.status = "That cut would remove the whole brush. Press Tab to keep the other side."; }
 }
 
+// the rotation rings round the selection (Rotate mode): world X, Y, Z for blocks; a thing turns about Y only
+static Vector2 ringScreen(Vector3 p) { Vector2 s{-1e6f, -1e6f}; project(V3{p.x, p.y, p.z}, s); return s; }
+static bool ringsActive() {
+    if (!ME.rotateMode || ME.tool != MTool::Select || ME.walking) return false;
+    if (ME.ent >= 0) return true;
+    return !ME.sel.empty() && ME.face < 0 && !selLocked();
+}
+static void ringsSetup() {
+    if (drag == Drag::Rotate) return;   // (kept as at the press while dragging)
+    V3 c = ME.ent >= 0 ? ME.map.ents[ME.ent].pos + V3{0, 0.5, 0} : selCentre();
+    rotPivot = c;
+    gRot.c = rv(c);
+    bool ent = ME.ent >= 0;
+    gRot.ax[0] = ent ? Vector3{0, 0, 0} : Vector3{1, 0, 0}; gRot.label[0] = "X ";
+    gRot.ax[1] = {0, 1, 0}; gRot.label[1] = "Y ";
+    gRot.ax[2] = ent ? Vector3{0, 0, 0} : Vector3{0, 0, 1}; gRot.label[2] = "Z ";
+    ringsFit(gRot, ringScreen, 80);
+}
 static void toolInput() {
     if (!mouseInView() && drag == Drag::None) return;
     Vector2 m = GetMousePosition();
@@ -766,6 +788,18 @@ static void toolInput() {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && mouseInView()) {
         switch (ME.tool) {
         case MTool::Select: {
+            if (ringsActive()) {   // Rotate: a ring under the mouse turns the selection
+                ringsSetup();
+                int r = ringsPick(gRot, ringScreen, m);
+                if (r >= 0) {
+                    beginDrag(Drag::Rotate);
+                    ringsBegin(gRot, r, ringScreen, m);
+                    dragOrig.clear();
+                    for (int i : ME.sel) dragOrig.push_back(ME.map.brushes[i]);
+                    if (ME.ent >= 0) rotYaw0 = ME.map.ents[ME.ent].yaw;
+                    break;
+                }
+            }
             // the first click picks (a brush, a thing, a face's square); press on it again to drag it
             static int pickedFace = -1;
             int fh = faceHandleAt(m);
@@ -1003,6 +1037,18 @@ static void toolInput() {
                     if (gmap::pushFace(b, dragFace, amt)) { ME.map.brushes[ME.sel[0]] = b; ME.version++; dragChanged = amt != 0; }
                 }
             }
+        } else if (drag == Drag::Rotate) {
+            double deg = ringsDrag(gRot, m, ctrl);
+            Vector3 a = gRot.ax[gRot.axis];
+            if (ME.ent >= 0) {   // a thing: its yaw (the right-hand way about up turns +X toward -Z: yaw goes down)
+                ME.map.ents[ME.ent].yaw = std::fmod(rotYaw0 - deg + 3600, 360);
+                if (ME.map.ents[ME.ent].type == "furniture") rebake();
+            } else for (size_t k = 0; k < ME.sel.size() && k < dragOrig.size(); k++) {
+                ME.map.brushes[ME.sel[k]] = dragOrig[k];
+                gmap::rotateAxis(ME.map.brushes[ME.sel[k]], V3{a.x, a.y, a.z}, deg * DEG2RAD, rotPivot);
+            }
+            ME.status = TextFormat("Turned %.1f degrees about %c.", deg, "XYZ"[std::clamp(gRot.axis, 0, 2)]);
+            if (std::fabs(deg) > 1e-6) { dragChanged = true; ME.version++; }
         } else if (drag == Drag::Create) {
             V3 p;
             bool ok = rayPlaneY(o, d, createY, p);
@@ -1371,8 +1417,13 @@ static void drawEditor3D() {
 
 static void drawEditorOverlay() {
     VP v = viewRect();
+    if (ringsActive()) {
+        ringsSetup();
+        if (drag != Drag::Rotate) gRot.hot = ringsPick(gRot, ringScreen, GetMousePosition());
+        ringsDraw(gRot, ringScreen, rv(camBasis().pos));
+    }
     // face handles on the single selected brush
-    if (ME.sel.size() == 1 && ME.face < 0 && ME.tool == MTool::Select) {
+    if (ME.sel.size() == 1 && ME.face < 0 && ME.tool == MTool::Select && !ME.rotateMode) {
         const auto& b = ME.map.brushes[ME.sel[0]];
         CamB c = camBasis();
         int hot = drag == Drag::Face ? dragFace : faceHandleAt(GetMousePosition());
@@ -1398,7 +1449,8 @@ static void drawEditorOverlay() {
         viewText(t.c_str(), m.x + 21, m.y + 18, 12, Color{236, 238, 242, 255});
     }
     if (CFG.hints) {
-        const char* h = HINT[(int)ME.tool];
+        const char* h = ME.tool == MTool::Select && ME.rotateMode ? "Rotate: click a block or a thing, then drag a ring to turn it about that axis (Ctrl: 15 degree steps). R turns 90 degrees about up."
+                                                                   : HINT[(int)ME.tool];
         float w = viewTextWidth(h, 12);
         DrawRectangleRounded({v.x + 12, v.y + v.h - 30, w + 20, 22}, 0.4f, 6, Color{20, 23, 28, 170});
         viewText(h, v.x + 22, v.y + v.h - 25, 12, Color{220, 224, 230, 255});
@@ -1431,6 +1483,21 @@ static void drawWalkHud() {
 
 // ---------------------------------------------------------------- the frame
 void mapEditorUpdate(float dt, bool modal) {
+    if (const char* e = std::getenv("GUNSMITH_MAPROT")) {   // (screenshots) "axis,deg": a block by the start, selected in Rotate, turned that much
+        static int fr = 0;
+        if (++fr == 10) {
+            int ax = 1; double dg = 0; std::sscanf(e, "%d,%lf", &ax, &dg);
+            V3 at{-3, 0, 0};
+            for (auto& en : ME.map.ents) if (en.type == "player_start") at = en.pos;
+            meSnapshot();
+            ME.map.brushes.push_back(gmap::makeBox(at + V3{0.6, 0, -0.4}, at + V3{1.6, 0.6, 0.4}, ME.mat));
+            ME.sel = {(int)ME.map.brushes.size() - 1}; ME.ent = -1; ME.face = -1;
+            ME.tool = MTool::Select; ME.rotateMode = true;
+            V3 axis{ax == 0 ? 1.0 : 0.0, ax == 1 ? 1.0 : 0.0, ax == 2 ? 1.0 : 0.0};
+            if (dg != 0) gmap::rotateAxis(ME.map.brushes.back(), axis, dg * DEG2RAD, selCentre());
+            meChanged();
+        }
+    }
     if (std::getenv("GUNSMITH_MECLIPTEST")) {   // (test) select all, copy, paste, duplicate a thing: counts before and after
         static int fr = 0;
         if (++fr == 20) {
