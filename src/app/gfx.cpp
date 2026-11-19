@@ -716,7 +716,9 @@ std::vector<Vector3> featureEdges(const Mesh& m, double deg) {
     }
     float c = (float)std::cos(deg * 3.14159265358979 / 180);
     for (auto& [k, e] : edges) {
-        bool draw = e.n.size() == 1;   // an open edge
+        // only real corners: two faces meeting at an angle. An edge with one face is where a cut split the surface into
+        // pieces whose corners don't line up (not an edge you'd see): drawing those gave hairy lines round every cut
+        bool draw = false;
         for (size_t i = 0; i < e.n.size() && !draw; i++)
             for (size_t j = i + 1; j < e.n.size(); j++) {
                 float d = e.n[i].x * e.n[j].x + e.n[i].y * e.n[j].y + e.n[i].z * e.n[j].z;

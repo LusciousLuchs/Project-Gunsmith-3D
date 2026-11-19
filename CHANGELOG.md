@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.55-alpha
+
+- **Fixed: scratchy lines round cuts.** Since 0.8.54 a cut part (serrations, holes) drew hairy lines under each cut and stray lines across flat faces. Edge lines now only follow real corners, and a part that's only cut keeps its plain outline.
+
 ## 0.8.54-alpha
 
 - **Smooth shading** (Part section): lights a part as a smooth surface where its faces meet at a gentle angle, so curves, rounded edges and 3D-shaped parts look round instead of faceted; corners sharper than the angle you set stay crisp. *Whole piece* and *Every part* buttons. Looks only.

@@ -354,7 +354,7 @@ float plateY() { return -(float)groundLevelMM(A.design) * U; }
 static void drawOutline(int i, Matrix M, Color c) {
     const BodyDef& d = A.design.bodies[i];
     V2 cen = centroidOf(d);
-    bool realEdges = meshShaped(d) || d.shade > 0 || (!d.round && (d.smooth > 0 || carve::tilted(d) || !d.carves.empty() || carve::hollowOn(d)));
+    bool realEdges = meshShaped(d) || d.shade > 0 || (!d.round && (d.smooth > 0 || carve::tilted(d)));   // (a part that is only cut keeps its plain outline)
     if (realEdges && !(depthShaped(d) && !meshShaped(d)) && i < (int)A.meshes.size() && A.meshes[i].ok) {
         // shaped freely in 3D, rounded, leaned, cut, hollow or smooth: the edges of the solid as built (where it has real
         // corners), not the flat outline it started from (that showed as a ghost line round a sculpted or rounded part)
