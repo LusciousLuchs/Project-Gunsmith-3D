@@ -2,6 +2,7 @@
 // Planar rigid bodies (x, y, in-plane angle) plus an optional roll angle about each body's bore axis,
 // solved with XPBD at 8 kHz. Units inside: metres, kg, seconds. Design data stays in mm.
 #pragma once
+#include <array>
 #include "design.hpp"
 #include <deque>
 #include <memory>
@@ -40,6 +41,8 @@ struct Body {
         std::vector<std::vector<int>> bands;
     } acc;
     std::vector<std::vector<V2>> cav;     // carved parts: cuts through this slice (local, m, convex). Empty for most parts
+    std::vector<std::array<double, 4>> cavBox;   // each cut's box (x0, y0, x1, y1), to skip the ones nowhere near (setCavs)
+    mutable double trigA = 1e300, trigC = 1, trigS = 0;   // cos/sin of `a`, kept while it doesn't change (wpt, lpt)
     bool slice = false;                  // one of the extra depth slices of a carved part (the part itself is the main slice)
     double fx = 0, fy = 0, tq = 0, tr = 0, px = 0, py = 0, pa = 0, pr = 0;
     double bb[4] = {0, 0, 0, 0};

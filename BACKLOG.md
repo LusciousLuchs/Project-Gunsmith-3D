@@ -113,10 +113,15 @@ is up to them, and the game's own examples stay original.
 
 ## From the owner (0.8.47)
 
-- [ ] **The test for single-shot guns needs fixing** (not urgent): the reliability test handles guns loaded one round at a time badly. Look at how the Runner loads, fires and counts them before changing it.
+- [x] **The test for single-shot guns needs fixing** (done 0.8.56: hand loading always pushes the round home): the reliability test handles guns loaded one round at a time badly. Look at how the Runner loads, fires and counts them before changing it.
 - [ ] **Extended magazines as attachments**: take an existing gun and give it an alternate magazine (longer, more rounds) you fit as an upgrade, like the other attachments, from the fitting bench and crates.
 - [x] Career: money before your first gun (ammunition, accessories, cleaning jobs), paperwork help for players who struggle with reading and typing, the counter keeping your progress, cleaner shop screens (0.8.47).
 - [x] Level editor: glass for windows, rotation rings on blocks (0.8.47).
+
+## From the owner (0.8.56)
+
+- [ ] **Ugly lines on barrels**: a barrel seen from the muzzle shows streaky lines across its turned outside face and diagonal lines inside the bore (the rifling's helical lines and the turned mesh's facets catching the light). Make the bore and a turned part's faces draw clean.
+- [ ] **Low frame rate on a detailed pistol** (being worked on): many shallow cuts on the slide and 3D-shaped frame and grip make the physics split them into many slices.
 
 ## Next
 

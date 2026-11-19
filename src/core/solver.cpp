@@ -63,13 +63,42 @@ void interpTable(const std::vector<V2>& tab0, double u, double& val, double& slo
     }
 }
 
+static inline void trigOf(const Body& b) {   // (cos and sin of the body's angle, worked out again only when it turns)
+    if (b.trigA != b.a) { b.trigA = b.a; b.trigC = std::cos(b.a); b.trigS = std::sin(b.a); }
+}
 V2 wpt(const Body& b, V2 l) {
-    double c = std::cos(b.a), s = std::sin(b.a);
+    trigOf(b);
+    double c = b.trigC, s = b.trigS;
     return {b.x + c * l.x - s * l.y, b.y + s * l.x + c * l.y};
 }
 V2 lpt(const Body& b, V2 w) {
-    double c = std::cos(b.a), s = std::sin(b.a), dx = w.x - b.x, dy = w.y - b.y;
+    trigOf(b);
+    double c = b.trigC, s = b.trigS, dx = w.x - b.x, dy = w.y - b.y;
     return {c * dx + s * dy, -s * dx + c * dy};
+}
+// A carved slice's cuts: only those that reach its outline (a cut beside it changes nothing), each with its box
+void setCavs(Body& x, std::vector<std::vector<V2>> cav) {
+    double ox0 = 1e9, oy0 = 1e9, ox1 = -1e9, oy1 = -1e9;
+    for (auto& p : x.lp) { ox0 = std::min(ox0, p.x); ox1 = std::max(ox1, p.x); oy0 = std::min(oy0, p.y); oy1 = std::max(oy1, p.y); }
+    x.cav.clear(); x.cavBox.clear();
+    for (auto& q : cav) {
+        std::array<double, 4> bx{1e9, 1e9, -1e9, -1e9};
+        for (auto& p : q) { bx[0] = std::min(bx[0], p.x); bx[1] = std::min(bx[1], p.y); bx[2] = std::max(bx[2], p.x); bx[3] = std::max(bx[3], p.y); }
+        if (q.size() < 3 || bx[2] < ox0 || bx[0] > ox1 || bx[3] < oy0 || bx[1] > oy1) continue;
+        x.cav.push_back(std::move(q)); x.cavBox.push_back(bx);
+    }
+}
+static inline bool inCavity(const Body& A, V2 p) {
+    for (size_t i = 0; i < A.cav.size(); i++) {
+        const auto& b = A.cavBox[i];
+        if (p.x < b[0] || p.x > b[2] || p.y < b[1] || p.y > b[3]) continue;
+        if (carve::inConvex(A.cav[i], p)) return true;
+    }
+    return false;
+}
+static inline double boxDist2(const std::array<double, 4>& b, V2 p) {   // (squared distance from a point to a box; 0 inside)
+    double dx = std::max({b[0] - p.x, 0.0, p.x - b[2]}), dy = std::max({b[1] - p.y, 0.0, p.y - b[3]});
+    return dx * dx + dy * dy;
 }
 double axial(const Body& A, const Body& B, V2 rel0) { return lpt(B, {A.x, A.y}).x - rel0.x; }
 
@@ -279,11 +308,14 @@ std::unique_ptr<Sim> build(const Design& design) {
             double t = c.z1 - c.z0, cx = b.x0 * 1000, cy = b.y0 * 1000;
             x.lp.clear();
             for (auto& p : shape) x.lp.push_back({(p.x - cx) / 1000, (p.y - cy) / 1000});
-            x.cav.clear();
-            for (auto& q : c.cav) {
-                std::vector<V2> lq;
-                for (auto& p : q) lq.push_back({(p.x - cx) / 1000, (p.y - cy) / 1000});
-                x.cav.push_back(lq);
+            {
+                std::vector<std::vector<V2>> lc;
+                for (auto& q : c.cav) {
+                    std::vector<V2> lq;
+                    for (auto& p : q) lq.push_back({(p.x - cx) / 1000, (p.y - cy) / 1000});
+                    lc.push_back(lq);
+                }
+                setCavs(x, std::move(lc));
             }
             double off2 = (cen.x - cx) * (cen.x - cx) + (cen.y - cy) * (cen.y - cy);
             const double dens = densityOf(d);   // (its material)
@@ -710,19 +742,21 @@ void bbox(Body& b) {
 }
 bool solidPoint(const Body& A, V2 l, V2& bq, double& d) {
     if (!inPoly(l.x, l.y, A.lp)) return false;
-    for (auto& c : A.cav) if (carve::inConvex(c, l)) return false;   // in a cut: empty space
-    auto inCut = [&](V2 q) { for (auto& c : A.cav) if (carve::inConvex(c, q)) return true; return false; };
+    if (inCavity(A, l)) return false;   // in a cut: empty space
     double best = 1e18;
     const size_t n = A.lp.size();
     for (size_t i = 0; i < n; i++) {
         double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[(i + 1) % n], &d2);
-        if (d2 < best && (A.cav.empty() || !inCut(q))) { best = d2; bq = q; }
+        if (d2 < best && (A.cav.empty() || !inCavity(A, q))) { best = d2; bq = q; }
     }
-    for (auto& c : A.cav)
+    for (size_t ci = 0; ci < A.cav.size(); ci++) {
+        const auto& c = A.cav[ci];
+        if (boxDist2(A.cavBox[ci], l) >= best) continue;   // (no edge of this cut can be nearer)
         for (size_t i = 0; i < c.size(); i++) {
             double d2; V2 q = closestOnSeg(l, c[i], c[(i + 1) % c.size()], &d2);
             if (d2 < best && inPoly(q.x, q.y, A.lp)) { best = d2; bq = q; }
         }
+    }
     if (best > 1e17) return false;
     d = std::sqrt(best);
     return true;
@@ -781,19 +815,19 @@ void contacts(Body& A, Body& B, double mu) {  // push B's boundary samples out o
                     if (d2 < best) { best = d2; bq = q; }
                 }
         } else {  // carved: inside the outline but in a cut is empty space; the cut walls are surfaces too
-            bool hollow = false;
-            for (auto& c : A.cav) if (carve::inConvex(c, l)) { hollow = true; break; }
-            if (hollow) continue;
-            auto inCut = [&](V2 q) { for (auto& c : A.cav) if (carve::inConvex(c, q)) return true; return false; };
+            if (inCavity(A, l)) continue;
             eachEdge([&](size_t i) {
                 double d2; V2 q = closestOnSeg(l, A.lp[i], A.lp[i + 1 < n ? i + 1 : 0], &d2);
-                if (d2 < best && !inCut(q)) { best = d2; bq = q; }
+                if (d2 < best && !inCavity(A, q)) { best = d2; bq = q; }
             });
-            for (auto& c : A.cav)
+            for (size_t ci = 0; ci < A.cav.size(); ci++) {
+                const auto& c = A.cav[ci];
+                if (boxDist2(A.cavBox[ci], l) >= best) continue;   // (no edge of this cut can be nearer)
                 for (size_t i = 0; i < c.size(); i++) {
                     double d2; V2 q = closestOnSeg(l, c[i], c[(i + 1) % c.size()], &d2);
                     if (d2 < best && inPoly(q.x, q.y, A.lp)) { best = d2; bq = q; }
                 }
+            }
         }
         double d = std::sqrt(best);
         if (d < 1e-7 || d > CONTACT_REACH) continue;
