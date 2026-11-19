@@ -18,7 +18,7 @@ void copyLook(const BodyDef& from, BodyDef& to) {
     to.depthOff = from.depthOff; to.depthZn = from.depthZn; to.depthZf = from.depthZf; to.depthRef = from.depthRef;
     to.mesh = from.mesh; to.meshRef = from.meshRef; to.meshRefZ = from.meshRefZ; to.meshRefThick = from.meshRefThick;
     to.z = from.z; to.thick = from.thick; to.tiltX = from.tiltX; to.tiltY = from.tiltY;
-    to.color = from.color; to.texture = from.texture; to.texScale = from.texScale; to.smooth = from.smooth;
+    to.color = from.color; to.texture = from.texture; to.texScale = from.texScale; to.smooth = from.smooth; to.shade = from.shade;
     to.round = from.round; to.roundSides = from.roundSides; to.roundTurn = from.roundTurn; to.roundSweep = from.roundSweep;
     to.roundAxis = from.roundAxis; to.mass = from.mass;
 }

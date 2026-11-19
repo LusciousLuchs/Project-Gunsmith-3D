@@ -3517,6 +3517,31 @@ static void shotSounds() {
     CHECK(actionMix(1.0, -1).pitch < actionMix(0.1, -1).pitch && actionMix(0.25, 8).gain > actionMix(0.25, 1).gain, "heavier parts deeper, faster louder");
 }
 
+// Several versions of one animation: the game picks one at random each time; an exact play takes that one; saved
+static void animVersionsTest() {
+    std::printf("\n== animation versions\n");
+    Design d = loadPreset("blowback");
+    AnimKey k; k.t = 0.3; k.firing = d.pose.firing; k.support = d.pose.support;
+    d.anims["reload"].keys = {k};
+    std::string v2 = newAnimVersion(d, "reload");
+    d.anims[v2].keys = {k, k}; d.anims[v2].keys[1].t = 0.6;
+    std::string v3 = newAnimVersion(d, "reload");
+    d.anims[v3] = Animation{};   // (empty: left out)
+    CHECK(v2 == "reload~2" && v3 == "reload~3" && animVersions(d, "reload~3").size() == 3 && animBase(v3) == "reload", "versions are named and listed in order");
+    CHECK(animSlotName(d, v2) == "Reload (2)", "a version is named after its animation");
+    auto S = sim::build(d);
+    int got1 = 0, got2 = 0, other = 0;
+    for (int i = 0; i < 200; i++) {
+        sim::playAnim(*S, "reload");
+        if (S->animSlot == "reload") got1++; else if (S->animSlot == v2) got2++; else other++;
+    }
+    std::printf("  (200 reloads: version 1 x%d, version 2 x%d, the empty one x%d)\n", got1, got2, other);
+    CHECK(got1 > 60 && got2 > 60 && other == 0, "each reload picks one of the recorded versions at random, never an empty one");
+    sim::playAnim(*S, v2, true);
+    CHECK(S->animSlot == v2, "playing one version exactly (the editor's Play) plays that one");
+    Design back; designFromJson(designToJson(d), back);
+    CHECK(back.anims.count(v2) && back.anims[v2].keys.size() == 2, "versions are saved with the gun");
+}
 // "Make it for me": the blowback's work-the-action and reload made with the hands kept clear of the gun, checked in the
 // physics; a hand keyed on a moving part holds that part, one dropped on the frame takes the action under it
 static void autoAnimTest() {
@@ -3558,6 +3583,7 @@ int main() {
         else if (o == "maprot") mapRotateGlass();
         else if (o == "garage") garageStreet();
         else if (o == "autoanim") autoAnimTest();
+        else if (o == "animversions") animVersionsTest();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -3621,6 +3647,7 @@ int main() {
     mapRotateGlass();
     garageStreet();
     autoAnimTest();
+    animVersionsTest();
     careerStages();
     mapsCarryNpcs();
     npcsAlive();

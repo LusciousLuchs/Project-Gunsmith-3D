@@ -154,7 +154,7 @@ Played play(const Design& d0, const Animation& a, const std::string& slot, bool 
         if (sim::Body* m = sim::seatedMag(*S)) m->rounds = 0;
         S->chambered = false;
     }
-    sim::playAnim(*S, slot);
+    sim::playAnim(*S, slot, true);   // (exactly this one, not another version)
     for (int i = 0; i < 800 && sim::animPlaying(*S); i++) { sim::run(*S, 0.01); r.opened = std::max(r.opened, sim::breechGap(*S)); }
     sim::run(*S, 0.6);
     r.end = sim::breechGap(*S);
@@ -344,11 +344,13 @@ Animation reload(const Design& d, AutoAnimReport& R, bool empty) {
 }
 }  // namespace
 
-bool canAutoAnimate(const std::string& slot) {
+bool canAutoAnimate(const std::string& slotIn) {
+    std::string slot = animBase(slotIn);
     return slot == "work_action" || slot == "reload" || slot == "reload_empty" || slot == "inspect" || slot == "clear_jam";
 }
-Animation autoAnimate(const Design& d, const std::string& slot, AutoAnimReport* rep) {
+Animation autoAnimate(const Design& d, const std::string& slotIn, AutoAnimReport* rep) {
     AutoAnimReport R;
+    const std::string slot = animBase(slotIn);   // (a second version of a reload is made the same way)
     Animation a;
     if (slot == "work_action") a = workAction(d, R, slot);
     else if (slot == "clear_jam") {   // worked twice, briskly

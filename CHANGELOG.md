@@ -8,6 +8,12 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.54-alpha
+
+- **Smooth shading** (Part section): lights a part as a smooth surface where its faces meet at a gentle angle, so curves, rounded edges and 3D-shaped parts look round instead of faceted; corners sharper than the angle you set stay crisp. *Whole piece* and *Every part* buttons. Looks only.
+- **Fixed: a ghost outline round rounded or 3D-shaped parts.** The edge lines followed the flat shape the part started from; now they follow the part as it really is (rounded, sculpted, leaned, cut or hollow).
+- **Several versions of an animation**: under *Animation* in Pose, *Version* shows 1, 2, 3... with *+ New* (an empty one), *+ Copy* (start from this one) and *Delete*. Make a few reloads (or inspects, or ways of working the action) and the game picks one at random each time, on the bench and on the range. Versions with no keys are left out; *Play on the gun* plays the one you're editing. *Make it for me* works on any version.
+
 ## 0.8.53-alpha
 
 - **A new practice range.** Same lanes, targets and pickups, built properly:

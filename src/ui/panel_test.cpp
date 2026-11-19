@@ -253,18 +253,44 @@ static void animSection() {
     tutAnchor("anim:edit");
     if (!A.animEdit) { muted("Reload, inspect, clear a jam, or work a control, with hands you place. Not animated, it just happens."); return; }
     auto slots = animSlots(D);
-    if (std::find(slots.begin(), slots.end(), A.animSlot) == slots.end()) A.animSlot = slots.front();
+    if (std::find(slots.begin(), slots.end(), animBase(A.animSlot)) == slots.end()) A.animSlot = slots.front();
     prop("Animation");
-    if (ImGui::BeginCombo("##aslot", animSlotName(D, A.animSlot).c_str())) {
+    if (ImGui::BeginCombo("##aslot", animSlotName(D, animBase(A.animSlot)).c_str())) {
         for (auto& s : slots) {
-            auto it = D.anims.find(s);
-            int n = it == D.anims.end() ? 0 : (int)it->second.keys.size();
-            std::string lab = animSlotName(D, s) + (n ? "  (" + std::to_string(n) + (n == 1 ? " key)" : " keys)") : "  (not animated)");
-            if (ImGui::Selectable(lab.c_str(), s == A.animSlot)) { A.animSlot = s; A.animT = 0; A.animPreview = false; }
+            int n = 0, made = 0;
+            for (auto& v : animVersions(D, s)) { auto it = D.anims.find(v); if (it != D.anims.end() && !it->second.keys.empty()) { n += (int)it->second.keys.size(); made++; } }
+            std::string lab = animSlotName(D, s) + (made > 1 ? "  (" + std::to_string(made) + " versions)" : n ? "  (" + std::to_string(n) + (n == 1 ? " key)" : " keys)") : "  (not animated)");
+            if (ImGui::Selectable(lab.c_str(), s == animBase(A.animSlot))) { A.animSlot = s; A.animT = 0; A.animPreview = false; }
         }
         ImGui::EndCombo();
     }
     tutAnchor("anim:slot");
+    {   // versions of this animation: the game picks one at random each time it plays (a few reloads, for variety)
+        auto vers = animVersions(D, A.animSlot);
+        if (std::find(vers.begin(), vers.end(), A.animSlot) == vers.end()) A.animSlot = vers.front();
+        prop("Version", "Make a few versions of this animation and the game picks one at random each time\n(versions with no keys are left out). Each is edited on its own timeline.");
+        for (size_t i = 0; i < vers.size(); i++) {
+            ImGui::PushID((int)i);
+            if (accentButton(std::to_string(i + 1).c_str(), vers[i] == A.animSlot, {26 * CFG.uiScale, 0})) { A.animSlot = vers[i]; A.animT = 0; A.animPreview = false; }
+            ImGui::PopID();
+            ImGui::SameLine(0, 3);
+        }
+        bool hasKeys = D.anims.count(A.animSlot) && !D.anims[A.animSlot].keys.empty();
+        if (ImGui::SmallButton("+ New")) { std::string v = newAnimVersion(D, A.animSlot); D.anims[v] = Animation{}; A.animSlot = v; A.animT = 0; commit(); }
+        if (tipHover()) ImGui::SetTooltip("Another version, empty: record it on its own timeline");
+        if (hasKeys) {
+            ImGui::SameLine(0, 3);
+            if (ImGui::SmallButton("+ Copy")) { std::string v = newAnimVersion(D, A.animSlot); Animation c = D.anims[A.animSlot]; D.anims[v] = c; A.animSlot = v; A.animT = 0; commit(); }
+            if (tipHover()) ImGui::SetTooltip("Another version starting as a copy of this one, to change a little");
+        }
+        if (A.animSlot.find('~') != std::string::npos) {
+            ImGui::SameLine(0, 3);
+            if (ImGui::SmallButton("Delete")) { D.anims.erase(A.animSlot); A.animSlot = animBase(A.animSlot); A.animT = 0; commit(); }
+            if (tipHover()) ImGui::SetTooltip("Delete this version (the others stay)");
+        }
+        int made = 0; for (auto& v : vers) if (D.anims.count(v) && !D.anims[v].keys.empty()) made++;
+        if (made > 1) muted(TextFormat("%d versions: the game picks one at random each time.", made));
+    }
     autoAnimTick();
     if (canAutoAnimate(A.animSlot)) {   // the animation worked out for you, the hands kept out of the gun, checked in the physics
         bool busy = gAutoJob.valid();
@@ -323,7 +349,7 @@ static void animSection() {
     if (playIt) {
         A.animPreview = false;
         A.S->design.anims = D.anims;
-        sim::playAnim(*A.S, A.animSlot);
+        sim::playAnim(*A.S, A.animSlot, true);   // (this version, not a random one)
         A.running = true;
     }
     if (tipHover()) ImGui::SetTooltip("Runs it for real: gripping hands pull their parts through the physics.\nIf the gun doesn't work that way, it shows (a slide not pulled back far enough won't chamber).");

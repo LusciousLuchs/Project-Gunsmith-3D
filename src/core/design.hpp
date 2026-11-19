@@ -163,6 +163,8 @@ struct BodyDef {
     double texScale = 40;                // mm before the picture repeats
     bool ghost = false;                  // drawn see-through in X-ray mode
     double opacity = 1;                  // how solid it looks: 1 solid .. 0.05 nearly clear (glass, see-through magazines); looks only
+    double shade = 0;                    // smooth shading: faces meeting at less than this many degrees are lit as one smooth
+                                         // surface, sharper corners stay crisp (0: flat faces, as before); looks only. JSON "shade"
     BarrelDef barrel;
     RailDef rail;                        // a Picatinny rail (the Rail tool)
     std::vector<MountDef> mounts;        // attachment points on it (the Mount tool)
@@ -434,6 +436,12 @@ BodyHold holdOf(const struct Design& d, int h); // the hold as posed, or one wor
 // long one runs (its last key, then back to the hold), and where the hands are at a moment of it
 std::vector<std::string> animSlots(const struct Design& d);
 std::string animSlotName(const struct Design& d, const std::string& slot);
+// Several versions of one animation (a few reloads, for variety): "reload", "reload~2", "reload~3"... The game picks
+// one of those that have keys at random each time (sim::playAnim). animBase drops the "~n"; animVersions lists the
+// slot's versions that exist (the plain one always first); newAnimVersion is the next free name.
+std::string animBase(const std::string& slot);
+std::vector<std::string> animVersions(const struct Design& d, const std::string& slot);
+std::string newAnimVersion(const struct Design& d, const std::string& slot);
 double animLength(const Animation& a);
 // a stripper clip in the support hand at time t: rounds still on it (-1: none in the hand), as the simulation would
 // have it with the magazine empty (for drawing it while the animation is edited)

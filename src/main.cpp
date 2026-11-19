@@ -233,6 +233,8 @@ int main(int argc, char** argv) {
             meshJoinPicked();
         }
     }
+    if (const char* e = std::getenv("GUNSMITH_SHADE")) for (auto& b : A.design.bodies) b.shade = std::atof(e);   // (screenshots) smooth shading on every part
+    if (const char* e = std::getenv("GUNSMITH_ROUNDEDGES")) for (auto& b : A.design.bodies) if (!b.round) b.smooth = std::atof(e);   // (screenshots) rounded edges on every flat part
     if (solidArg) A.xray = false;
     if (camYaw > -50) { A.yaw = camYaw; A.pitch = camPitch; }
     if (camDist > 0) A.dist = camDist;

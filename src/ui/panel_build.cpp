@@ -706,6 +706,21 @@ static void inspectPart(BodyDef& b) {
                 ImGui::SetNextItemWidth(-1);
                 if (ImGui::SliderFloat("##opacity", &pct, 5, 100, "%.0f%%")) { b.opacity = std::clamp(pct / 100.0, 0.05, 1.0); editedAny = true; }
             }
+            {   // smooth shading: gently angled faces lit as one smooth surface (curves, a turned barrel, a sculpted grip)
+                bool on = b.shade > 0;
+                if (pCheck("Smooth shading", on, "Lights the part as a smooth surface where its faces meet at a gentle angle,\nso curves and 3D-shaped parts look round instead of faceted. Corners sharper than\nthe angle below stay crisp. Looks only.")) { b.shade = on ? 40 : 0; editedAny = true; }
+                if (b.shade > 0) {
+                    float ang = (float)b.shade;
+                    prop("Corners sharper than", "Faces meeting at more than this angle keep a crisp edge between them.");
+                    ImGui::SetNextItemWidth(-1);
+                    if (ImGui::SliderFloat("##shadeang", &ang, 5, 90, "%.0f\xc2\xb0")) { b.shade = ang; editedAny = true; }
+                }
+                auto piece2 = weldedWith(A.design, A.sel.idx);
+                if (ImGui::SmallButton(on ? "Whole piece##shp" : "Smooth the whole piece##shp")) { for (int k : piece2) A.design.bodies[k].shade = b.shade > 0 ? b.shade : 40; editedAny = true; }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Every part##sha")) { double v = b.shade > 0 ? b.shade : 40; for (auto& q : A.design.bodies) q.shade = v; editedAny = true; }
+                if (tipHover()) ImGui::SetTooltip("Smooth shading on every part of the gun, at this angle");
+            }
             if (ImGui::SmallButton(TextFormat("Its usual colour##mc"))) { b.color = mt.color; b.texture.clear(); editedAny = true; }
             if (tipHover()) ImGui::SetTooltip("Paint the part as %s usually looks (takes off a picture on it).", mt.name);
             auto piece = weldedWith(A.design, A.sel.idx);

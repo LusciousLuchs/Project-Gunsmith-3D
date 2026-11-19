@@ -1,6 +1,8 @@
 // Gunsmith3D - recorded hand animations (see AnimKey in design.hpp): the slots, and where the hands are at a moment.
 // The hands start in the aiming hold, pass smoothly through the keys (a curve through the points, not straight
 // lines between them) and come back to the hold at the end.
+#include <cstdlib>
+#include <algorithm>
 #include "design.hpp"
 #include "hand.hpp"
 #include <algorithm>
@@ -12,7 +14,23 @@ std::vector<std::string> animSlots(const Design& d) {
         if (b.ctrl != "none" && b.ctrl != "trigger" && b.key != "fire") s.push_back("control:" + b.id);
     return s;
 }
-std::string animSlotName(const Design& d, const std::string& slot) {
+std::string animBase(const std::string& slot) { size_t p = slot.find('~'); return p == std::string::npos ? slot : slot.substr(0, p); }
+static int versionNo(const std::string& slot) { size_t p = slot.find('~'); return p == std::string::npos ? 1 : std::max(1, std::atoi(slot.c_str() + p + 1)); }
+std::vector<std::string> animVersions(const Design& d, const std::string& slot) {
+    std::string base = animBase(slot);
+    std::vector<std::string> v = {base};
+    for (auto& [k, a] : d.anims) if (k.size() > base.size() + 1 && k.compare(0, base.size() + 1, base + "~") == 0) v.push_back(k);
+    std::sort(v.begin() + 1, v.end(), [](const std::string& a, const std::string& b) { return versionNo(a) < versionNo(b); });
+    return v;
+}
+std::string newAnimVersion(const Design& d, const std::string& slot) {
+    int n = 1;
+    for (auto& v : animVersions(d, slot)) n = std::max(n, versionNo(v));
+    return animBase(slot) + "~" + std::to_string(n + 1);
+}
+std::string animSlotName(const Design& d, const std::string& slotIn) {
+    if (slotIn.find('~') != std::string::npos) return animSlotName(d, animBase(slotIn)) + " (" + std::to_string(versionNo(slotIn)) + ")";
+    const std::string& slot = slotIn;
     if (slot == "work_action") return "Work the action";
     if (slot == "inspect") return "Inspect";
     if (slot == "reload") return "Reload";

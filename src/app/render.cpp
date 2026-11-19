@@ -204,7 +204,8 @@ static std::vector<std::vector<csg::Poly>> partCutters(const BodyDef& d, V2 c) {
     }
     return cut;
 }
-static void partFinish(Mesh& mesh, const BodyDef& d) {   // its picture laid on, and leaned if tilted
+static void partFinish(Mesh& mesh, const BodyDef& d) {   // smooth shading, its picture laid on, and leaned if tilted
+    if (d.shade > 0) smoothNormals(mesh, d.shade);
     if (!d.texture.empty()) {  // lay the picture on every face from the side it faces (box mapping), in mm
         Mesh& m = mesh;
         double sc = std::max(1.0, d.texScale) * U;
@@ -290,7 +291,7 @@ static void ensureMeshes() {
         auto& d = D.bodies[i];
         if (!A.S) { followMarks(d); meshSync(d); }   // (a free 3D mesh goes with its part)   // engravings go with a part being moved, turned or flipped as a whole
         std::ostringstream k;
-        k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis << 'T' << d.texture << ' ' << d.texScale << 'X' << d.tiltX << 'Y' << d.tiltY;
+        k << (d.round ? 'R' : 'F') << (d.round ? 0.0 : d.thick) << 's' << d.smooth << 'n' << d.roundSides << 't' << d.roundTurn << 'w' << d.roundSweep << 'a' << d.roundAxis << 'T' << d.texture << ' ' << d.texScale << 'X' << d.tiltX << 'Y' << d.tiltY << 'S' << d.shade;
         for (auto& p : d.pts) k << ',' << p.x << ' ' << p.y;
         for (double r : d.rad) k << 'r' << r;
         for (double b : d.bulge) k << 'b' << b;
@@ -353,6 +354,19 @@ float plateY() { return -(float)groundLevelMM(A.design) * U; }
 static void drawOutline(int i, Matrix M, Color c) {
     const BodyDef& d = A.design.bodies[i];
     V2 cen = centroidOf(d);
+    bool realEdges = meshShaped(d) || d.shade > 0 || (!d.round && (d.smooth > 0 || carve::tilted(d) || !d.carves.empty() || carve::hollowOn(d)));
+    if (realEdges && !(depthShaped(d) && !meshShaped(d)) && i < (int)A.meshes.size() && A.meshes[i].ok) {
+        // shaped freely in 3D, rounded, leaned, cut, hollow or smooth: the edges of the solid as built (where it has real
+        // corners), not the flat outline it started from (that showed as a ghost line round a sculpted or rounded part)
+        struct Cached { unsigned vao = 0; int vc = -1; double deg = 0; std::vector<Vector3> segs; };
+        static std::map<int, Cached> cache;
+        const Mesh& m = A.meshes[i].mesh;
+        double deg = d.shade > 0 ? d.shade : 30;
+        Cached& ce = cache[i];
+        if (ce.vao != m.vaoId || ce.vc != m.vertexCount || ce.deg != deg) { ce.vao = m.vaoId; ce.vc = m.vertexCount; ce.deg = deg; ce.segs = featureEdges(m, deg); }
+        for (size_t k = 0; k + 1 < ce.segs.size(); k += 2) DrawLine3D(Vector3Transform(ce.segs[k], M), Vector3Transform(ce.segs[k + 1], M), c);
+        return;
+    }
     if (depthShaped(d) && !d.round) {   // shaped in depth: its own corners on each face, and the edges between them
         std::vector<P3d> N, F;
         depthRings(d, N, F);

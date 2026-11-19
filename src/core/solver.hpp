@@ -295,7 +295,7 @@ void dropMagazine(Sim& S);                                 // unlatch and pull t
 void quickReload(Sim& S);                                  // drop the old magazine, seat a full one
 // Recorded animations: start one (false if that slot has no keys: do the plain action instead), and whether one is
 // playing. While it plays, its hands grip and move parts every substep.
-bool playAnim(Sim& S, const std::string& slot);
+bool playAnim(Sim& S, const std::string& slot, bool exact = false);   // a slot with versions ("reload~2"...) plays one of them at random (exact: just that one)
 bool animPlaying(const Sim& S);
 int clipInHand(const Sim& S);                              // rounds on a stripper clip the animation holds (-1: none)
 AnimHands animHandsNow(const Sim& S);                      // where the hands are now (the pose's hold when none plays)

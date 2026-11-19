@@ -1076,6 +1076,7 @@ std::string designToJson(const Design& d, bool pretty) {
         if (b.mass > 0) jb["mass"] = b.mass;
         if (!b.material.empty() && b.material != "steel") jb["material"] = b.material;
         if (b.opacity < 0.999) jb["opacity"] = b.opacity;
+        if (b.shade > 0) jb["shade"] = b.shade;
         if (b.magazine) {
             jb["magazine"] = {{"cap", b.magCap}};
             if (b.lipHeight != 0) jb["magazine"]["lipHeight"] = b.lipHeight;
@@ -1297,6 +1298,7 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
         b.mass = opt<double>(jb, "mass", 0);
         b.material = opt<std::string>(jb, "material", "");
         b.opacity = std::clamp(opt<double>(jb, "opacity", 1.0), 0.05, 1.0);
+        b.shade = std::clamp(opt<double>(jb, "shade", 0.0), 0.0, 90.0);
         b.damp = opt<double>(jb, "damp", 0);
         b.color = opt<std::string>(jb, "color", "#8e9ab4");
         b.ghost = opt<bool>(jb, "ghost", b.fixed);

@@ -52,5 +52,10 @@ struct CarvedTris { std::vector<float> v, n; };   // triangles (world units, mes
 // base minus the cutters, without graphics (safe on a worker thread), and its upload
 CarvedTris carveTris(const std::vector<float>& v, const std::vector<float>& n, const std::vector<std::vector<csg::Poly>>& cutters);
 Mesh uploadTris(const CarvedTris& t);
+// Smooth shading: each corner's normal becomes the average of the faces round it that meet its own face at less than
+// `deg` degrees (sharper corners stay crisp). The mesh is one triangle per three vertices; its normals are re-sent.
+void smoothNormals(Mesh& m, double deg);
+// The edges worth drawing on a mesh: where its faces meet at more than `deg` degrees, and open edges (pairs of points)
+std::vector<Vector3> featureEdges(const Mesh& m, double deg);
 Mesh carveMesh(const Mesh& base, const std::vector<std::vector<csg::Poly>>& cutters);  // base minus the cutters (mm, mesh frame)
 void initGfx();

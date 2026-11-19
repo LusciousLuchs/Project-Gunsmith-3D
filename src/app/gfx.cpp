@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 #include <cstring>
 #include <vector>
 
@@ -642,3 +643,88 @@ void drawStation(const std::string& type, Vector3 base, float yawDeg, Color tint
     }
 }
 
+
+// ---------------------------------------------------------------- smooth shading and drawn edges
+namespace {
+struct PKey { long long x, y, z; bool operator==(const PKey& o) const { return x == o.x && y == o.y && z == o.z; } };
+struct PKeyHash { size_t operator()(const PKey& k) const { return (size_t)(k.x * 73856093LL ^ k.y * 19349663LL ^ k.z * 83492791LL); } };
+PKey pkey(const float* v) { const double q = 1e4; return {std::llround(v[0] * q), std::llround(v[1] * q), std::llround(v[2] * q)}; }   // (0.01 mm in world units of 0.1 m/mm... fine enough to weld)
+Vector3 faceN(const float* a, const float* b, const float* c) {   // unnormalised: its length is twice the area
+    Vector3 u{b[0] - a[0], b[1] - a[1], b[2] - a[2]}, v{c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+    return {u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x};
+}
+}  // namespace
+void smoothNormals(Mesh& m, double deg) {
+    if (!m.vertices || !m.normals || m.vertexCount < 3) return;
+    int nv = m.vertexCount, nt = nv / 3;
+    std::vector<Vector3> fn(nt), fu(nt);
+    for (int t = 0; t < nt; t++) {
+        fn[t] = faceN(m.vertices + t * 9, m.vertices + t * 9 + 3, m.vertices + t * 9 + 6);
+        float l = std::sqrt(fn[t].x * fn[t].x + fn[t].y * fn[t].y + fn[t].z * fn[t].z);
+        fu[t] = l > 1e-12f ? Vector3{fn[t].x / l, fn[t].y / l, fn[t].z / l} : Vector3{0, 0, 0};
+        if (l > 1e-12f) {   // (the face as built may point the other way from its normals: follow those)
+            const float* n0 = m.normals + t * 9;
+            if (fu[t].x * n0[0] + fu[t].y * n0[1] + fu[t].z * n0[2] < 0) { fu[t] = {-fu[t].x, -fu[t].y, -fu[t].z}; fn[t] = {-fn[t].x, -fn[t].y, -fn[t].z}; }
+        }
+    }
+    std::unordered_map<PKey, std::vector<int>, PKeyHash> at;   // the vertices at each place
+    at.reserve(nv);
+    for (int i = 0; i < nv; i++) at[pkey(m.vertices + i * 3)].push_back(i);
+    float c = (float)std::cos(deg * 3.14159265358979 / 180);
+    std::vector<float> out(m.normals, m.normals + nv * 3);
+    for (int i = 0; i < nv; i++) {
+        int t = i / 3;
+        if (fu[t].x == 0 && fu[t].y == 0 && fu[t].z == 0) continue;
+        Vector3 s{0, 0, 0};
+        int faces = 0;
+        for (int j : at[pkey(m.vertices + i * 3)]) {
+            int u = j / 3;
+            if (fu[u].x * fu[t].x + fu[u].y * fu[t].y + fu[u].z * fu[t].z < c) continue;
+            s.x += fn[u].x; s.y += fn[u].y; s.z += fn[u].z;
+            faces++;
+        }
+        if (faces < 2) continue;   // (nothing to blend with, as where a cut split the faces: keep the normal it was built with)
+        float l = std::sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
+        if (l > 1e-12f) { out[i * 3] = s.x / l; out[i * 3 + 1] = s.y / l; out[i * 3 + 2] = s.z / l; }
+    }
+    std::copy(out.begin(), out.end(), m.normals);
+    if (m.vboId) UpdateMeshBuffer(m, 2, m.normals, nv * 3 * sizeof(float), 0);
+}
+std::vector<Vector3> featureEdges(const Mesh& m, double deg) {
+    std::vector<Vector3> segs;
+    if (!m.vertices || m.vertexCount < 3) return segs;
+    int nt = m.vertexCount / 3;
+    struct E { int a, b; std::vector<Vector3> n; };
+    struct EKey { PKey a, b; bool operator==(const EKey& o) const { return a == o.a && b == o.b; } };
+    struct EHash { size_t operator()(const EKey& k) const { PKeyHash h; return h(k.a) * 31 ^ h(k.b); } };
+    std::unordered_map<EKey, E, EHash> edges;
+    auto less = [](const PKey& p, const PKey& q) { return p.x != q.x ? p.x < q.x : p.y != q.y ? p.y < q.y : p.z < q.z; };
+    for (int t = 0; t < nt; t++) {
+        Vector3 n = faceN(m.vertices + t * 9, m.vertices + t * 9 + 3, m.vertices + t * 9 + 6);
+        float l = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
+        if (l < 1e-12f) continue;
+        n = {n.x / l, n.y / l, n.z / l};
+        for (int k = 0; k < 3; k++) {
+            int ia = t * 3 + k, ib = t * 3 + (k + 1) % 3;
+            PKey a = pkey(m.vertices + ia * 3), b = pkey(m.vertices + ib * 3);
+            if (a == b) continue;
+            EKey key = less(a, b) ? EKey{a, b} : EKey{b, a};
+            auto& e = edges[key];
+            if (e.n.empty()) { e.a = ia; e.b = ib; }
+            e.n.push_back(n);
+        }
+    }
+    float c = (float)std::cos(deg * 3.14159265358979 / 180);
+    for (auto& [k, e] : edges) {
+        bool draw = e.n.size() == 1;   // an open edge
+        for (size_t i = 0; i < e.n.size() && !draw; i++)
+            for (size_t j = i + 1; j < e.n.size(); j++) {
+                float d = e.n[i].x * e.n[j].x + e.n[i].y * e.n[j].y + e.n[i].z * e.n[j].z;
+                if (std::fabs(d) < c) { draw = true; break; }   // (faces wound either way: compare the lines they lie in)
+            }
+        if (!draw) continue;
+        segs.push_back({m.vertices[e.a * 3], m.vertices[e.a * 3 + 1], m.vertices[e.a * 3 + 2]});
+        segs.push_back({m.vertices[e.b * 3], m.vertices[e.b * 3 + 1], m.vertices[e.b * 3 + 2]});
+    }
+    return segs;
+}

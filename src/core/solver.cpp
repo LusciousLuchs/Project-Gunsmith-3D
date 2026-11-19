@@ -1,6 +1,7 @@
 #include "solver_internal.hpp"
 #include "carve.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <set>
 #include <map>
@@ -1645,7 +1646,17 @@ void substep(Sim& S) {
 }
 
 // ---------- recorded animations: the hands move through the keys; a gripping hand holds its part and pulls it
-bool playAnim(Sim& S, const std::string& slot) {
+bool playAnim(Sim& S, const std::string& slotIn, bool exact) {
+    std::string slot = slotIn;
+    if (!exact && slot.find('~') == std::string::npos) {   // one of its versions that has keys, at random (for variety)
+        std::vector<std::string> have;
+        for (auto& v : animVersions(S.design, slot)) { auto f = S.design.anims.find(v); if (f != S.design.anims.end() && !f->second.keys.empty()) have.push_back(v); }
+        if (have.size() > 1) {
+            static thread_local unsigned long long rs = 0x9E3779B97F4A7C15ull ^ (unsigned long long)std::chrono::steady_clock::now().time_since_epoch().count();
+            rs ^= rs << 13; rs ^= rs >> 7; rs ^= rs << 17;
+            slot = have[rs % have.size()];
+        } else if (have.size() == 1) slot = have[0];
+    }
     auto it = S.design.anims.find(slot);
     if (it == S.design.anims.end() || it->second.keys.empty()) return false;
     S.animSlot = slot; S.animT = 0; S.animKeysDone = 0; S.animWait = 0;
