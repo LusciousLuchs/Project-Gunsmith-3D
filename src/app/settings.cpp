@@ -40,6 +40,7 @@ void loadSettings() {
         CFG.poseCharacter = g("poseCharacter", d.poseCharacter);
         CFG.fpArms = g("fpArms", d.fpArms);
         CFG.paperHelp = std::clamp(g("paperHelp", d.paperHelp), 0, 2);
+        CFG.devTools = g("devTools", d.devTools);
         CFG.shadows = g("shadows", d.shadows);
         CFG.mapUnit = std::clamp(g("mapUnit", CFG.units == Units::Imperial ? 2 : 0), 0, 4);
         CFG.cheatAutoFeed = g("cheatAutoFeed", d.cheatAutoFeed);
@@ -94,7 +95,7 @@ void loadSettings() {
 void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
-        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"paperHelp", CFG.paperHelp}, {"shadows", CFG.shadows}, {"mapUnit", CFG.mapUnit}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
+        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"paperHelp", CFG.paperHelp}, {"devTools", CFG.devTools}, {"shadows", CFG.shadows}, {"mapUnit", CFG.mapUnit}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical}, {"volRadio", CFG.volRadio},
         {"titleSplash", CFG.titleSplash}, {"menuPicture", CFG.menuPicture}, {"seenVersion", CFG.seenVersion},
@@ -164,3 +165,5 @@ void applyCheats() {
         if (feedChanged) restartTest();          // (feeding is set up when the gun is built: built again)
     }
 }
+
+void applyDevTools() { defaults::setOverrideDir(CFG.devTools ? defaultsFolder() : std::string()); }

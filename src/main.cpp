@@ -139,13 +139,14 @@ int main(int argc, char** argv) {
 #endif
     initAppFolder();     // Documents/OAB Foundry/Gunsmith on Windows: the settings and autosave (moved over from the game folder)
     loadSettings();
+    applyDevTools();
     if (const char* c = std::getenv("GUNSMITH_CHEATS")) {   // (screenshots, tests) f: auto feed, b: brute force
         std::string s = c;
         CFG.cheatAutoFeed = s.find('f') != std::string::npos; CFG.cheatBruteForce = s.find('b') != std::string::npos;
         sim::cheats().autoFeed = CFG.cheatAutoFeed; sim::cheats().bruteForce = CFG.cheatBruteForce;
     }
     update::cleanup();   // the program file the last update moved aside
-    if (((frames == 0 && shotPath.empty()) || std::getenv("GUNSMITH_UPDATE_API")) && !devBuild()) update::start();   // (the developer build never replaces itself)   // (always: updates aren't optional; not for screenshot runs, unless testing it)
+    if (((frames == 0 && shotPath.empty()) || std::getenv("GUNSMITH_UPDATE_API"))) update::start();   // (always: updates aren't optional; not for screenshot runs, unless testing it)
     setUserFolder(CFG.userDir.empty() ? defaultUserFolder() : CFG.userDir);   // your files: Blueprints, Levels, Rounds, ...
     setupUserFolders();  // (and files moved over from where older versions kept them)
     scanUserTextures();
@@ -155,7 +156,7 @@ int main(int argc, char** argv) {
     SetConfigFlags(flags);
     if (perfArg) CFG.perfOverlay = 2;
     installLogCapture();   // (keeps the graphics driver's report for the About window)
-    InitWindow(CFG.resW, CFG.resH, (std::string("Gunsmith3D ") + version::text() + (devBuild() ? " (developer build)" : "")).c_str());
+    InitWindow(CFG.resW, CFG.resH, (std::string("Gunsmith3D ") + version::text()).c_str());
     if (!IsWindowReady()) {  // no display (e.g. started over SSH): say so instead of crashing
         std::fprintf(stderr, "Gunsmith3D could not open a window. Start it from a desktop session (Wayland or X11).\n");
         return 1;

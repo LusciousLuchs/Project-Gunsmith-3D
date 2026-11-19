@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 # ---- version: the one place to change it. See CHANGELOG.md.
 #   0.1.0-dev: the editor and test bench worked out (dev1 to dev25).
 #   0.2.x-alpha: barrels, posing, and first-person shooting.
-project(Gunsmith3D VERSION 0.8.48 LANGUAGES C CXX)
+project(Gunsmith3D VERSION 0.8.49 LANGUAGES C CXX)
 set(GUNSMITH_STAGE "alpha" CACHE STRING "Release stage: dev, alpha, beta, rc, or empty for a release")
 
 set(CMAKE_CXX_STANDARD 17)
@@ -25,13 +25,6 @@ else()
   option(GUNSMITH_NATIVE_APP "Also build the app natively (X11)" OFF)
   option(GUNSMITH_LINUX_RELEASE "The Linux release build (the C++ runtime linked in)" OFF)
   set(GUNSMITH_BUILD_APP ${GUNSMITH_NATIVE_APP})
-endif()
-
-# GUNSMITH_DEV=ON: the developer build (the owner's): tools to set the game's built-in maps and a new player's
-# settings (saved to Documents/OAB Foundry/Gunsmith/Defaults, read there first), and no self-update.
-option(GUNSMITH_DEV "Developer build: tools to set the game's defaults; no self-update" OFF)
-if(GUNSMITH_DEV)
-  add_compile_definitions(GUNSMITH_DEV=1)
 endif()
 
 if(GUNSMITH_BUILD_APP)

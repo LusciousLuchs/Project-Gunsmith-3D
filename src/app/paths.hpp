@@ -26,13 +26,7 @@ inline const char* MODELS_DIR = "user/models";       // modelled characters (.gl
 void initAppFolder();                  // first thing: where the settings and autosave live (Documents/OAB Foundry/Gunsmith on Windows)
 std::string appFolder();
 std::string defaultsFolder();   // (developer build) where the owner's defaults are saved: maps/<kind>.gsmap, settings.json
-inline bool devBuild() {
-#ifdef GUNSMITH_DEV
-    return true;
-#else
-    return false;
-#endif
-}               // that folder ("" = the game folder)
+               // that folder ("" = the game folder)
 const char* settingsPath();
 const char* autosavePath();
 std::string defaultUserFolder();       // Documents/OAB Foundry/Gunsmith/User on Windows, else user/ in the game folder

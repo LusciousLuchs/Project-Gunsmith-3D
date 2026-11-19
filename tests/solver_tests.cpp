@@ -12,6 +12,7 @@
 #include "penetrate.hpp"
 #include "map.hpp"
 #include "defaults.hpp"
+#include "nav.hpp"
 #include <fstream>
 #include <filesystem>
 #include "reliability.hpp"
@@ -1911,6 +1912,22 @@ static void magazineShaping() {
 }
 // Career mode: rating a gun, building copies, the online store, reviews, contracts, saving
 // (0.8.47) money before your first gun: ammunition, accessories, cleaning jobs; the counter's progress kept; paperwork help
+// the built-in home garage street: loads, has the shop's things, and isn't too heavy for walking and path-finding
+static void garageStreet() {
+    using namespace gmap;
+    Map m = propertyShell("garage");
+    int stations = 0; for (auto& e : m.ents) stations += e.type == "station_bench" || e.type == "shop_counter" || e.type == "shop_computer" || e.type == "shop_door";
+    CHECK(m.brushes.size() > 500 && stations == 4 && m.build.on() && m.roofY > 2.5, "the garage street: hundreds of blocks, the shop's four things, a build area and ceiling");
+    auto t0 = std::chrono::steady_clock::now();
+    nav::Grid g = nav::build(m, nav::Agent{});
+    double navMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    t0 = std::chrono::steady_clock::now();
+    int hits = 0;
+    for (int i = 0; i < 2000; i++) { Hit h = sweepBox(m, {4.0 + 0.001 * i, 0.9, -8.5}, {12.0, 0.9, -8.5}, {0.3, 0.9, 0.3}); hits += h.brush >= 0; }
+    double sweepUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / 2000;
+    std::printf("  garage street: %zu blocks, path-finding grid %.0f ms, a walking step %.1f us\n", m.brushes.size(), navMs, sweepUs);
+    CHECK(navMs < 4000 && sweepUs < 500, "the street is quick enough to walk and plan routes on");
+}
 static void careerEarlyIncome() {
     career::Career c = career::newCareer(5);
     career::Walkin* clean = nullptr; career::Walkin* ammo = nullptr; career::Walkin* gun = nullptr;
@@ -3523,6 +3540,7 @@ int main() {
         else if (o == "clips") stripperClipAnim();
         else if (o == "career") careerEarlyIncome();
         else if (o == "maprot") mapRotateGlass();
+        else if (o == "garage") garageStreet();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
@@ -3584,6 +3602,7 @@ int main() {
     careerRules();
     careerEarlyIncome();
     mapRotateGlass();
+    garageStreet();
     careerStages();
     mapsCarryNpcs();
     npcsAlive();

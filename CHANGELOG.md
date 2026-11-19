@@ -8,6 +8,20 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.49-alpha
+
+A new home garage street, and a much better Level editor.
+
+- **New careers start on a proper street**: your brick house and garage among five neighbours' houses (windows with glass, porches with lights, chimneys, gutters), a road with curbs and lines, street lights, trees, hedges, fences and parked cars. The garage is fitted out: an open roll-up door, a window, shelving, a pegboard, a water heater, lights. (An existing career keeps its garage; File > the empty workshop brings in the new one.)
+- **Level editor camera**: much faster and smoother. Right mouse + WASD flies (Q/E down and up, Shift 4x, Ctrl slow, the wheel sets the speed, also a speed slider on the top bar); the middle mouse orbits round what you're looking at, Shift+middle pans, the wheel zooms toward the mouse.
+- **Move arrows**: drag the red, green or blue arrow on the selection to slide it along that axis (snaps to the grid).
+- **Box select**: drag on empty space to pick every block inside.
+- **Corners** (next to Rotate): drag a block's corners to reshape it into any (convex) shape.
+- **New shapes**: pyramids, cones and balls.
+- **Everything in the map**: a list (Edit tab) to find, pick, hide and show blocks and things; Hide selected / Show all.
+- **Invisible walls**: the "invisible" texture makes a block you can't walk through but can't see in play (bullets and eyes go through it).
+- **Developer tools** (Settings > Files): make a map the built-in one for a career property or the practice range (with its build area, storefront and locked walls), and make your settings what new players start with.
+
 ## 0.8.48-alpha
 
 Linux catches up with Windows, block colours, and leaving the garage.

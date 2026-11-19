@@ -47,9 +47,6 @@ void initAppFolder() {
         copyIfMissing("gunsmith3d_autosave.json", sAutosave);
     }
     setCrashFolder(gApp.empty() ? "user/crashes" : gApp + "/Crashes");
-#ifdef GUNSMITH_DEV
-    defaults::setOverrideDir(defaultsFolder());   // (the developer build: the owner's own defaults come first)
-#endif
 }
 std::string appFolder() { return gApp; }
 std::string defaultsFolder() { return (gApp.empty() ? std::string("user") : gApp) + "/Defaults"; }

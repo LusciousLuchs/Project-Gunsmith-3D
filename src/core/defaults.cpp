@@ -3,10 +3,13 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include <string>
+#include <cstddef>
+
+#include "builtin_defaults.inc"  // file scope: it includes headers of its own
 
 namespace defaults {
 namespace {
-#include "builtin_defaults.inc"
 std::string gDir;
 std::string readFile(const std::string& p) {
     std::ifstream in(p, std::ios::binary);

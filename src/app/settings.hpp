@@ -24,6 +24,7 @@ struct Settings {
     int mapUnit = 0;                     // the Level editor's lengths: 0 m, 1 cm, 2 ft (and inches), 3 in, 4 yd
     bool shadows = true;                 // sun shadows on maps (Settings > Display)
     bool fpArms = true;                  // the range: your arms and hands on the gun
+    bool devTools = false;               // developer tools (the owner's, Settings > Files): set the game's built-in maps and new players' settings
     int paperHelp = 0;                   // career counter paperwork: 0 by hand, 1 filled in and problems spelled out, 2 done for you
     bool cheatAutoFeed = false;          // cheats (Settings > Cheats): sim::cheats() follows these
     bool cheatBruteForce = false;
@@ -76,6 +77,8 @@ extern Settings CFG;
 
 void loadSettings();
 void saveSettings();
+inline bool devBuild() { return CFG.devTools; }   // the developer tools are on
+void applyDevTools();                         // (after loading settings, or switching them) your own Defaults folder comes first
 void applyDisplay();          // window mode, size, monitor, vsync, frame cap
 void toggleFullscreenKey();   // F11: window <-> full screen
 void applyAudio();            // per frame: volumes and mute when unfocused

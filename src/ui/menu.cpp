@@ -347,7 +347,7 @@ void mainMenu() {
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, H - 34 * S()});
     ImGui::TextDisabled("Gunsmith 3D  v%s", version::text());
-    if (devBuild()) { ImGui::SameLine(); ImGui::TextColored({1, 0.75f, 0.3f, 1}, "  DEVELOPER BUILD"); }
+    if (devBuild()) { ImGui::SameLine(); ImGui::TextColored({1, 0.75f, 0.3f, 1}, "  DEVELOPER TOOLS ON"); }
     {   // only when an update couldn't be fetched (offline): say so, and offer another go
         update::Status u = update::status();
         if (u.state == update::State::Failed) {
@@ -738,6 +738,7 @@ void benchPage() {
 }
 
 // Where your files are kept, and choosing another folder for them
+static void devToolsRow();
 void filesPage() {
     namespace fs = std::filesystem;
     std::error_code ec;
@@ -783,6 +784,16 @@ void filesPage() {
     ImGui::TextDisabled("These settings and the designer's autosave are kept in:");
     ImGui::TextUnformatted(fs::absolute(appFolder().empty() ? "." : appFolder(), ec).string().c_str());
     ImGui::PopTextWrapPos();
+    devToolsRow();
+}
+static void devToolsRow() {   // the owner's tools for making the game
+    ImGui::SeparatorText("Developer tools");
+    row("Developer tools", "For making the game itself: the Level editor's File tab can make a map the built-in one for a career\n"
+        "property or the practice range (with its build area, storefront and locked walls), and Settings can make your\n"
+        "settings the ones new players start with. Saved in your Defaults folder; send the files in to ship them.\n"
+        "While this is on, the game uses your Defaults folder's maps and settings before its own.");
+    if (ImGui::Checkbox("##devtools", &CFG.devTools)) { saveSettings(); applyDevTools(); }
+    if (CFG.devTools) { ImGui::SameLine(); if (ImGui::SmallButton("Open the Defaults folder")) openFolder(defaultsFolder()); }
 }
 void cheatsPage() {
     ImGui::SeparatorText("Cheats");
