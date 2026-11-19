@@ -375,6 +375,7 @@ void pauseMenu() {
     if (ImGui::Button("Resume", bw) || (IsKeyPressed(KEY_ESCAPE) && A.modalAtFrameStart)) { uiTick(); A.showPause = false; }
     if (ImGui::Button("Tutorials", bw)) { uiTick(); A.showPause = false; A.showTutorials = true; }
     if (ImGui::Button("Settings", bw)) { uiTick(); A.showSettings = true; }
+    if (A.screen == Screen::Range && ImGui::Button(rangeIsNight() ? ICON_FA_SUN "  Make it day" : ICON_FA_MOON "  Make it night", bw)) { uiTick(); rangeSetHour(rangeIsNight() ? 14 : 22); }
     if (ImGui::Button(A.screen == Screen::Range ? "Leave the range" : A.benchOnly ? "Leave the bench" : "Main menu", bw)) { uiTick(); backToMenu(); }
     if (A.screen == Screen::MapEditor) ImGui::TextDisabled("Your map is autosaved.");
     if (A.screen == Screen::NpcEditor) ImGui::TextDisabled(NE.player ? "Your character is kept." : "Your NPC is kept as it is for next time.");
@@ -407,6 +408,15 @@ void rangePicker() {
         for (int i = 0; i < (int)names.size(); i++) if (ImGui::Selectable(names[i].c_str(), i == mapPick)) mapPick = i;
         ImGui::EndCombo();
     }
+    // day or night: the practice range has no running clock, you choose; another map can keep its own
+    static int lightPick = 0;   // practice range: 0 day, 1 night; other maps: 0 as the map has it, 1 day, 2 night
+    {
+        bool practice = mapPick == 0;
+        const char* opts = practice ? "Day\0Night\0" : "As the map has it\0Day\0Night\0";
+        if (practice) lightPick = std::min(lightPick, 1);
+        ImGui::AlignTextToFramePadding(); ImGui::TextUnformatted("Light"); ImGui::SameLine(90 * S()); ImGui::SetNextItemWidth(-1);
+        ImGui::Combo("##light", &lightPick, opts);
+    }
     auto go = [&](const Design& d) {
         gmap::Map m = gmap::builtinRange();
         auto readMap = [&](const std::string& path) {
@@ -419,6 +429,9 @@ void rangePicker() {
         if (mapPick >= 2 && !readMap(maps[mapPick - 2].string())) toast("That map couldn't be read: off to the practice range.");
         uiTick();
         enterRange(d, m);
+        int light = mapPick == 0 ? lightPick + 1 : lightPick;   // 0 as the map has it, 1 day, 2 night
+        if (light == 1) rangeSetHour(14);
+        if (light == 2) rangeSetHour(22);
     };
     ImGui::BeginChild("##list", {0, -44 * S()});
     ImGui::SeparatorText("Your sandbox design");

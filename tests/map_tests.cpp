@@ -39,7 +39,7 @@ void mapTests(int& failures) {
         CHECK(mapFromJson(mapToJson(m), back) && back.ents.size() == 1 && back.ents[0].type == "light" && near(back.ents[0].power, 6) && near(back.ents[0].range, 8) &&
               near(back.ents[0].cone, 40) && near(back.ents[0].color[1], 0.5) && near(back.look.daylight, 0), "a map keeps its daylight and its lights");
         Map r = builtinRange();
-        r.look = lookAtHour(r.look, 21);   // (its day runs: after nightfall)
+        r.look = lookAtHour(r.look, 22);   // (its Night choice)
         int lamps = 0; for (auto& e : r.ents) if (e.type == "light") lamps++;
         double paper[3]; lightAt(r, {7, 1.45, 0}, {-1, 0, 0}, paper);
         CHECK(r.look.daylight < 0.2 && lamps >= 8 && paper[0] > 0.3, "the practice range after nightfall is dark, lit by its own lamps (its paper targets well lit)");
@@ -166,5 +166,7 @@ void mapTests(int& failures) {
     r2.feet.z = 1.1;  // along the walkway between two benches
     PlayerInput fi; fi.forward = 1;
     for (int i = 0; i < 60 * 4; i++) playerStep(r2, rng, fi, 1.0 / 60);
+    PlayerInput stop;   // (then stands: it may be cresting the moving target's earth bank)
+    for (int i = 0; i < 30; i++) playerStep(r2, rng, stop, 1.0 / 60);
     CHECK(r2.onGround && r2.feet.x > 5, "walks out of the shed onto the range");
 }

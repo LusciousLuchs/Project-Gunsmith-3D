@@ -965,6 +965,13 @@ double segSeg(V3 p1, V3 q1, V3 p2, V3 q2, double* tOut) {
 }
 
 static std::vector<fit::Item> gBenchFit;   // the bench gun's attachments, set aside while on the range
+// Day or night on the range, fixed (no running clock): the practice range's choice, and the pause menu's switch
+void rangeSetHour(double h) {
+    if (R.baseLook.time < 0) R.baseLook.daylight = std::max(R.baseLook.daylight, 1.0);
+    R.baseLook.time = h; R.baseLook.dayMinutes = 0; R.hour = h;
+    R.map.look = gmap::lookAtHour(R.baseLook, R.hour);
+}
+bool rangeIsNight() { double h = R.baseLook.time >= 0 ? R.hour : 12; return h < 6.5 || h > 19.5; }
 void enterRange(const Design& gun, const gmap::Map& map) {
     if (!A.stash) { A.stash = std::make_unique<Design>(A.design); gBenchFit = A.fitItems; }
     A.fitItems.clear();
@@ -2058,7 +2065,7 @@ void rangeHud() {
     viewText(mag, W - viewTextWidth(mag, 12) - 36, H - 32, 12, Color{200, 204, 212, 200});
     std::snprintf(b, sizeof b, "%s   %d shot%s", A.design.name.c_str(), R.shots, R.shots == 1 ? "" : "s");
     viewText(b, 24, H - 32, 13, Color{235, 238, 242, 220});
-    if (R.baseLook.time >= 0) { std::string t = gmap::clockText(R.hour); viewText(t.c_str(), W - viewTextWidth(t.c_str(), 15) - 24, 20, 15, Color{235, 238, 242, 200}); }   // (the time of day)
+    if (R.baseLook.time >= 0 && R.baseLook.dayMinutes > 0) { std::string t = gmap::clockText(R.hour); viewText(t.c_str(), W - viewTextWidth(t.c_str(), 15) - 24, 20, 15, Color{235, 238, 242, 200}); }   // (the time of day)
     if (std::string ch = sim::cheatsOn(S); !ch.empty()) viewText(("Cheats: " + ch).c_str(), 24, H - 52, 12, Color{255, 150, 80, 230});
     if (S.malf != sim::Malf::None) {
         std::string t = std::string("Jammed: ") + sim::malfName(S.malf) + ".  B works the action to clear it.";

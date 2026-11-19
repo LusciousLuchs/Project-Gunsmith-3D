@@ -1754,6 +1754,7 @@ static void drawWalkHud() {
 
 // ---------------------------------------------------------------- the frame
 void mapEditorUpdate(float dt, bool modal) {
+    ME.map.geom = ME.version;   // (collision's lookup of nearby blocks is built again after any edit)
     if (const char* e = std::getenv("GUNSMITH_MAPROT")) {   // (screenshots) "axis,deg": a block by the start, selected in Rotate, turned that much
         static int fr = 0;
         if (++fr == 10) {
@@ -1792,7 +1793,7 @@ void mapEditorUpdate(float dt, bool modal) {
     if (!modal) {
         if (ME.walking) radioListen(ME.map, gmap::playerEye(ME.pl, ME.map), gmap::playerForward(ME.pl));
         else { CamB cb = camBasis(); radioListen(ME.map, ME.top ? ME.topC + V3{0, 1.6, 0} : ME.cam, cb.fwd); }
-        if (ME.walking) walkUpdate(dt);
+        if (ME.walking) { ME.map.geom = ME.version; walkUpdate(dt); }
         else {
             if (shopActive() && IsKeyPressed(KEY_B) && !ImGui::GetIO().WantCaptureKeyboard) { shopWalk(); return; }   // (career: back on foot)
             flyCamera(dt); toolInput(); keyInput();

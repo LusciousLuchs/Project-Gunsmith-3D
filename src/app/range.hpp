@@ -5,7 +5,9 @@
 #include "design.hpp"
 #include "map.hpp"
 
-void enterRange(const Design& gun, const gmap::Map& map);   // from the main menu's picker
+void enterRange(const Design& gun, const gmap::Map& map);
+void rangeSetHour(double h);   // a fixed time of day on the range (14 = day, 22 = night)
+bool rangeIsNight();   // from the main menu's picker
 void rangeShotSetup(double yawDeg, double pitchDeg, double armorBar);   // (screenshots) where you look, and your armour
 void leaveRange();                                          // (backToMenu calls it)
 bool inRange();

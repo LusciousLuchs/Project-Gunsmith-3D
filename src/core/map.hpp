@@ -120,6 +120,16 @@ struct Map {
     // the NPCs the map uses, carried in the map file (name, the NPC's own JSON), so a shared map brings its enemies
     std::vector<std::pair<std::string, std::string>> npcs;
     std::vector<std::pair<std::string, std::string>> npcGuns;   // and the guns made for NPCs they carry (name, blueprint JSON)
+    // (not saved) a count of edits to the blocks: an editor bumps it when it moves or reshapes one, so the lookup below
+    // is built again. Collision (sweepBox, boxFree) only looks at the blocks in the cells a move passes through
+    unsigned geom = 0;
+    struct Broad {
+        const void* data = nullptr; size_t n = 0; unsigned geom = 0; bool ok = false;
+        double x0 = 0, z0 = 0, cell = 4; int nx = 0, nz = 0;
+        std::vector<std::vector<int>> cells;   // the blocks touching each cell (x-z, from above)
+        std::vector<int> big;                  // blocks too big to list in cells: always looked at
+    };
+    mutable Broad broad;
 };
 
 // How lit a point is (red, green, blue, about 0..1+) facing normal n: the map's daylight and ambient plus its lights.

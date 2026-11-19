@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.53-alpha
+
+- **A new practice range.** Same lanes, targets and pickups, built properly:
+  - a block-walled shed with painted bands, acoustic panels, a rules board, a bench, lane boards over each bench, rubber-matted benches and padded dividers, a yellow firing line;
+  - timber target stands on block bases, motor boxes and earth banks for the moving targets, steel plates on stands;
+  - grass-topped berms, a railway-tie backstop, overhead safety baffles, distance boards, floodlight towers, a range flag;
+  - trees all round, a parking lot with an office and trucks, and the ground runs to the edges (you can't walk off the world).
+- **Faster collision on detailed maps**: people and enemies only check the blocks near them (64 enemies on the new range: 17 ms a frame down to 1.3).
+- **Day or night, your choice**: the practice range no longer runs its clock. Pick *Light: Day / Night* when you choose the range (other maps: as they have it, or day, or night), or switch with *Make it night / Make it day* in the pause menu.
+
 ## 0.8.52-alpha
 
 - **Make it for me** (animation panel): Work the action, Reload, Reload (empty), Clear a jam and Inspect worked out from your gun. The hand comes in lifted clear of the gun with its fingers open, takes hold with its fingers curled round the part until they touch it, and leaves the same way; where it would pass through the gun it's lifted off the side. Then it's played through the physics to check it works (the action opens as far as it should and comes home, a fresh magazine goes in), trying a longer, slower pull if not. Every key can be changed afterwards; undo brings yours back.

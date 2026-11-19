@@ -3170,7 +3170,7 @@ static void dayNightTest() {
     gmap::Look o2 = gmap::lookAtHour(old, 3);
     CHECK(o2.daylight == 0.3 && o2.sunYaw == old.sunYaw, "a map without a time of day looks as it always did");
     gmap::Map m = gmap::builtinRange(), r;
-    CHECK(gmap::mapFromJson(gmap::mapToJson(m), r) && r.look.time == 17 && r.look.dayMinutes == 40, "the practice range's late afternoon and running day are saved with it");
+    CHECK(gmap::mapFromJson(gmap::mapToJson(m), r) && r.look.time == 14 && r.look.dayMinutes == 0, "the practice range is a fixed time of day (its Day / Night choice), saved with it");
     CHECK(gmap::clockText(17.5) == "17:30" && gmap::clockText(24) == "00:00", "the clock reads right");
 }
 // A round part rotated in the side view keeps its shape: its turning axis goes round with it (it used to stay level and

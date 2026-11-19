@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdio>
+#include <mutex>
 
 namespace gmap {
 using json = nlohmann::json;
@@ -382,13 +383,49 @@ static void expanded(const Brush& b, V3 half, std::vector<Face>& out) {
     out.push_back(face({0, 0, 1}, mx.z + half.z, 0)); out.push_back(face({0, 0, -1}, -mn.z + half.z, 0));
 }
 
+// ---- the blocks near a box, from above (Map::Broad): built when the blocks change, else reused
+static std::mutex gBroadLock;
+static void nearBlocks(const Map& m, V3 mn, V3 mx, std::vector<int>& out) {
+    out.clear();
+    std::lock_guard<std::mutex> lock(gBroadLock);   // (built once; a range and its NPCs ask from one thread, tools may from others)
+    Map::Broad& B = m.broad;
+    if (!B.ok || B.data != (const void*)m.brushes.data() || B.n != m.brushes.size() || B.geom != m.geom) {
+        B = Map::Broad{};
+        B.data = m.brushes.data(); B.n = m.brushes.size(); B.geom = m.geom; B.ok = true;
+        double x0 = 1e30, z0 = 1e30, x1 = -1e30, z1 = -1e30;
+        std::vector<std::pair<V3, V3>> bb(m.brushes.size());
+        for (size_t i = 0; i < m.brushes.size(); i++) {
+            brushBounds(m.brushes[i], bb[i].first, bb[i].second);
+            x0 = std::min(x0, bb[i].first.x); z0 = std::min(z0, bb[i].first.z); x1 = std::max(x1, bb[i].second.x); z1 = std::max(z1, bb[i].second.z);
+        }
+        if (m.brushes.empty()) { x0 = z0 = 0; x1 = z1 = 1; }
+        B.x0 = x0; B.z0 = z0;
+        B.nx = std::clamp((int)std::ceil((x1 - x0) / B.cell), 1, 512); B.nz = std::clamp((int)std::ceil((z1 - z0) / B.cell), 1, 512);
+        B.cell = std::max((x1 - x0) / B.nx, (z1 - z0) / B.nz) + 1e-6;
+        B.cells.assign((size_t)B.nx * B.nz, {});
+        for (size_t i = 0; i < m.brushes.size(); i++) {
+            int ia = std::clamp((int)((bb[i].first.x - x0) / B.cell), 0, B.nx - 1), ib = std::clamp((int)((bb[i].second.x - x0) / B.cell), 0, B.nx - 1);
+            int ja = std::clamp((int)((bb[i].first.z - z0) / B.cell), 0, B.nz - 1), jb = std::clamp((int)((bb[i].second.z - z0) / B.cell), 0, B.nz - 1);
+            if ((long)(ib - ia + 1) * (jb - ja + 1) > 64) { B.big.push_back((int)i); continue; }
+            for (int ii = ia; ii <= ib; ii++) for (int jj = ja; jj <= jb; jj++) B.cells[(size_t)ii * B.nz + jj].push_back((int)i);
+        }
+    }
+    int ia = std::clamp((int)((mn.x - B.x0) / B.cell), 0, B.nx - 1), ib = std::clamp((int)((mx.x - B.x0) / B.cell), 0, B.nx - 1);
+    int ja = std::clamp((int)((mn.z - B.z0) / B.cell), 0, B.nz - 1), jb = std::clamp((int)((mx.z - B.z0) / B.cell), 0, B.nz - 1);
+    out = B.big;
+    for (int ii = ia; ii <= ib; ii++) for (int jj = ja; jj <= jb; jj++) { const auto& c = B.cells[(size_t)ii * B.nz + jj]; out.insert(out.end(), c.begin(), c.end()); }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+}
 Hit sweepBox(const Map& m, V3 a, V3 b, V3 half) {
     static constexpr double SKIN = 0.001;  // stop a millimetre short of surfaces so the next move starts outside
     Hit best;
     std::vector<Face> planes;
     V3 smn{std::min(a.x, b.x) - half.x, std::min(a.y, b.y) - half.y, std::min(a.z, b.z) - half.z};
     V3 smx{std::max(a.x, b.x) + half.x, std::max(a.y, b.y) + half.y, std::max(a.z, b.z) + half.z};
-    for (size_t bi = 0; bi < m.brushes.size(); bi++) {
+    thread_local std::vector<int> near;
+    nearBlocks(m, smn, smx, near);
+    for (int bi : near) {
         const Brush& br = m.brushes[bi];
         V3 mn, mx;
         brushBounds(br, mn, mx);
@@ -429,7 +466,13 @@ Hit sweepBox(const Map& m, V3 a, V3 b, V3 half) {
 
 bool boxFree(const Map& m, V3 c, V3 half) {
     std::vector<Face> planes;
-    for (auto& br : m.brushes) {
+    thread_local std::vector<int> near;
+    nearBlocks(m, c - half, c + half, near);
+    for (int bi : near) {
+        const Brush& br = m.brushes[bi];
+        V3 mn, mx;
+        brushBounds(br, mn, mx);
+        if (mx.x < c.x - half.x || mn.x > c.x + half.x || mx.y < c.y - half.y || mn.y > c.y + half.y || mx.z < c.z - half.z || mn.z > c.z + half.z) continue;
         expanded(br, half, planes);
         bool inside = true;
         for (auto& f : planes) if (dot(f.n, c) - f.d > -1e-4) { inside = false; break; }
@@ -914,83 +957,189 @@ Map builtinRange() {   // the owner's own practice range (developer build), else
 static Map builtinRangeInCode() {
     Map m;
     m.name = "Practice range";
-    int concrete = materialIndex("concrete"), grass = materialIndex("grass"), dirt = materialIndex("dirt"), ply = materialIndex("plywood"),
-        steel = materialIndex("steel"), corr = materialIndex("corrugated"), planks = materialIndex("wood_planks"), gravel = materialIndex("gravel"),
-        dark = materialIndex("concrete_dark"), orange = materialIndex("paint_orange");
-    auto box = [&](V3 a, V3 b, int mat) { m.brushes.push_back(makeBox(a, b, mat)); };
-    const double W = 12;   // half width of the range
-    // ground: a concrete pad under the shed, gravel walkway, grass out to the berm
-    box({-8, -0.4, -W - 6}, {2, 0, W + 6}, concrete);
-    box({2, -0.4, -W - 6}, {6, 0, W + 6}, gravel);
-    box({6, -0.4, -W - 6}, {112, 0, W + 6}, grass);
-    // the shed: back wall, posts, a sloped corrugated roof
-    box({-8, 0, -W - 2}, {-7.8, 3.2, W + 2}, ply);
-    for (double z : {-11.2, -4.8, 4.8, 11.2}) box({1.3, 0, z - 0.08}, {1.46, 2.75, z + 0.08}, steel);  // posts in the gaps between lanes
-    box({-7.8, 0, -W - 2}, {1.46, 3.2, -W - 1.84}, ply);   // side walls
-    box({-7.8, 0, W + 1.84}, {1.46, 3.2, W + 2}, ply);
+    auto M = [](const char* n) { return materialIndex(n); };
+    // a block, coloured over its texture (RGBA; white: as it is) and its texture scaled
+    auto put = [&](Brush b, unsigned col = 0xFFFFFFFFu, double sc = 1) { for (auto& f : b.faces) { f.color = col; f.scale = sc; } m.brushes.push_back(b); };
+    auto box = [&](V3 a, V3 b, const char* mat, unsigned col = 0xFFFFFFFFu, double sc = 1) { put(makeBox(a, b, M(mat)), col, sc); };
+    auto cyl = [&](V3 a, V3 b, int sides, const char* mat, unsigned col = 0xFFFFFFFFu) { put(makeCylinder(a, b, sides, M(mat)), col); };
+    auto ball = [&](V3 a, V3 b, int sides, const char* mat, unsigned col) { put(makeSphere(a, b, sides, M(mat)), col); };
+    const double W = 12;   // half width of the range (the lanes are within it)
+    const unsigned STEEL_GREEN = 0x3E5446FFu, CONC = 0xC4BFB5FFu, BLOCK = 0xD8D4CAFFu, BAND = 0x4F6272FFu, WOOD = 0xB08654FFu,
+                   DARKWOOD = 0x5C4632FFu, MAT = 0x2B2D30FFu, YELLOW = 0xE2B12AFFu, RED = 0xB8342CFFu, GRASS = 0xC8D49CFFu,
+                   DIRT = 0xB0926CFFu, TIE = 0x4E3B2BFFu, TAN = 0xCDAE80FFu, WHITE = 0xF2F0EAFFu;
+
+    // ---- ground: the whole site, then the concrete pad under the shed, a gravel walk, the parking behind
+    box({-42, -0.5, -46}, {126, -0.006, 46}, "grass", GRASS, 0.6);
+    box({-8, -0.4, -W - 6}, {2, 0, W + 6}, "concrete", CONC, 0.7);
+    box({2, -0.4, -W - 6}, {6, 0, W + 6}, "gravel", 0xD6D0C4FFu);
+    box({6, -0.4, -W - 6}, {112, 0, W + 6}, "grass", GRASS, 0.6);
+    box({-30, -0.4, -W - 6}, {-8, 0, W + 6}, "asphalt", 0x8D8C8AFFu);                    // parking behind the shed
+    for (double z = -14; z <= 14.1; z += 3.5) box({-27, 0, z - 0.06}, {-21, 0.004, z + 0.06}, "paint_white", WHITE);   // its bays
+    // walls nobody sees round the site (you can't walk off the world)
+    for (int s = -1; s <= 1; s += 2) { box({-42, 0, s * 45.5 - 0.5}, {126, 4, s * 45.5 + 0.5}, "invisible"); }
+    box({-42.5, 0, -46}, {-41.5, 4, 46}, "invisible"); box({125.5, 0, -46}, {126.5, 4, 46}, "invisible");
+
+    // ---- the shed: block walls painted inside with a dark band, steel posts, a sloping roof on purlins
+    box({-8, 0, -W - 2}, {-7.8, 3.3, W + 2}, "cinderblock", BLOCK, 0.6);
+    box({-7.8, 0, -W - 2}, {1.46, 3.2, -W - 1.84}, "cinderblock", BLOCK, 0.6);
+    box({-7.8, 0, W + 1.84}, {1.46, 3.2, W + 2}, "cinderblock", BLOCK, 0.6);
+    box({-7.8, 0, -W - 1.84}, {-7.79, 1.05, W + 1.84}, "paint_white", BAND);                 // the band along the back wall
+    for (int s = -1; s <= 1; s += 2) box({-7.79, 0, s * (W + 1.84) - (s > 0 ? 0.01 : 0)}, {1.46, 1.05, s * (W + 1.84) + (s < 0 ? 0.01 : 0)}, "paint_white", BAND);
+    for (double z : {-11.2, -4.8, 4.8, 11.2}) {   // posts in the gaps between lanes, with base plates
+        box({1.3, 0, z - 0.08}, {1.46, 2.75, z + 0.08}, "steel", STEEL_GREEN);
+        box({1.25, 0, z - 0.14}, {1.51, 0.02, z + 0.14}, "steel", 0x55595EFFu);
+    }
+    auto roofY = [](double x) { return 2.85 + (2.2 - x) * 0.0625; };   // the roof's top
     {
-        // a 15 cm slab sloping from 3.5 m at the back down to 2.85 m at the front
-        Brush roof = makeBox({-8.2, 2.6, -W - 2.3}, {2.2, 3.6, W + 2.3}, corr);
+        Brush roof = makeBox({-8.2, 2.6, -W - 2.3}, {2.2, 3.6, W + 2.3}, M("corrugated"));
         V3 n = norm({0.65, 10.4, 0});
         double top = dot(n, V3{2.2, 2.85, 0});
-        clipBrush(roof, n, top, corr);
-        clipBrush(roof, -n, -(top - 0.15), corr);
-        m.brushes.push_back(roof);
+        clipBrush(roof, n, top, M("corrugated"));
+        clipBrush(roof, -n, -(top - 0.15), M("corrugated"));
+        put(roof, 0x9AA0A6FFu);
     }
-    // shooting benches along the firing line, one per lane
+    box({2.2, 2.62, -W - 2.4}, {2.32, 2.92, W + 2.4}, "steel", STEEL_GREEN);   // the fascia along the front
+    for (double x : {-6.0, -3.0, 0.0}) { double y = roofY(x) - 0.15; box({x - 0.06, y - 0.18, -W - 1.84}, {x + 0.06, y, W + 1.84}, "steel", 0x5B6066FFu); }   // purlins
+    box({1.32, 2.55, -W - 1.84}, {1.46, 2.78, W + 1.84}, "steel", STEEL_GREEN);   // the beam over the posts
+    // the yellow firing line, and a lane mark on the floor behind each bench
+    box({1.5, 0, -W - 0.6}, {1.62, 0.004, W + 0.6}, "paint_white", YELLOW);
+    // benches: steel frames, a wooden top with a rubber mat, a shelf below; dividers between lanes faced with carpet
     for (int lane = -3; lane <= 3; lane++) {
         double z = lane * 3.2;
-        box({0.2, 0.86, z - 0.8}, {1.0, 0.92, z + 0.8}, planks);     // top
-        box({0.3, 0, z - 0.72}, {0.42, 0.86, z - 0.6}, planks);       // legs
-        box({0.3, 0, z + 0.6}, {0.42, 0.86, z + 0.72}, planks);
-        box({0.78, 0, z - 0.72}, {0.9, 0.86, z - 0.6}, planks);
-        box({0.78, 0, z + 0.6}, {0.9, 0.86, z + 0.72}, planks);
-        if (lane < 3) box({-1.4, 0, z + 1.55}, {0.1, 1.4, z + 1.65}, ply);  // divider between lanes, short of the benches
+        box({0.2, 0.86, z - 0.8}, {1.0, 0.92, z + 0.8}, "wood_planks", WOOD);
+        box({0.3, 0.92, z - 0.55}, {0.9, 0.935, z + 0.55}, "paint_white", MAT);
+        for (double x : {0.28, 0.84}) for (double dz : {-0.72, 0.62}) box({x, 0, z + dz}, {x + 0.06, 0.86, z + dz + 0.1}, "steel", 0x3A3F44FFu);
+        box({0.28, 0.25, z - 0.72}, {0.9, 0.28, z + 0.72}, "wood_planks", DARKWOOD);
+        box({-0.1, 0.004, z - 0.06}, {0.2, 0.006, z + 0.06}, "paint_white", WHITE);
+        if (lane < 3) {
+            box({-1.4, 0, z + 1.55}, {0.1, 1.4, z + 1.65}, "carpet", 0x8A96A2FFu, 0.7);
+            box({-1.42, 1.4, z + 1.53}, {0.12, 1.45, z + 1.67}, "wood_planks", WOOD);
+            box({0.1, 0, z + 1.53}, {0.14, 1.45, z + 1.67}, "wood_planks", WOOD);
+        }
+        box({1.34, 2.22, z - 0.3}, {1.4, 2.55, z + 0.3}, "paint_white", WHITE);   // a lane board under the front beam, facing you
+        box({1.33, 2.27, z - 0.22}, {1.34, 2.5, z + 0.22}, "paint_white", lane % 2 ? 0x2E5E8CFFu : RED);
     }
-    // side berms the length of the range, and the backstop
-    m.brushes.push_back(makeWedge({2, 0, W + 2}, {108, 3.5, W + 7}, 1, dirt));
-    m.brushes.push_back(makeWedge({2, 0, -W - 7}, {108, 3.5, -W - 2}, 3, dirt));
-    m.brushes.push_back(makeWedge({100, 0, -W - 7}, {108, 7, W + 7}, 0, dirt));
-    box({108, 0, -W - 7}, {112, 7, W + 7}, dirt);
-    // distance markers: a short concrete post at each distance, on both sides
-    for (double x : {7.0, 15.0, 25.0, 50.0, 75.0, 100.0})
-        for (double s : {-1.0, 1.0}) box({x - 0.15, 0, s * (W + 0.6) - 0.15}, {x + 0.15, 0.6, s * (W + 0.6) + 0.15}, dark);
-    // target stands: paper boards close in, steel plates further out
+    // the back wall: acoustic panels, a rules board, a bench to sit on, a bin, an extinguisher
+    for (double z = -10; z <= 10.1; z += 4) box({-7.79, 1.3, z - 1.2}, {-7.72, 2.6, z + 1.2}, "carpet", 0x9AA5B0FFu, 0.6);
+    box({-7.78, 1.25, -1.0}, {-7.7, 2.45, 1.0}, "paint_white", WHITE);   // the rules board
+    box({-7.7, 2.2, -0.95}, {-7.69, 2.4, 0.95}, "paint_white", RED);
+    for (int r = 0; r < 6; r++) box({-7.7, 1.4 + r * 0.12, -0.85}, {-7.695, 1.43 + r * 0.12, 0.25 + (r % 3) * 0.2}, "paint_white", 0x3A3A3AFFu);
+    box({-7.6, 0.42, 1.6}, {-7.2, 0.47, 5.6}, "wood_planks", WOOD);
+    for (double z : {1.7, 5.4}) box({-7.55, 0, z}, {-7.25, 0.42, z + 0.12}, "steel", 0x3A3F44FFu);
+    cyl({-7.5, 0, 6.2}, {-7.0, 0.85, 6.7}, 10, "steel", STEEL_GREEN);   // the bin
+    cyl({-7.75, 0.9, -12.9}, {-7.6, 1.45, -12.75}, 10, "paint_white", RED);   // an extinguisher on the wall
+    for (double x : {-3.2}) for (double z : {-8.0, 0.0, 8.0}) {   // light fittings under the roof (their lamps are below)
+        double y = roofY(x) - 0.15;
+        box({x - 0.6, y - 0.12, z - 0.12}, {x + 0.6, y - 0.05, z + 0.12}, "steel", 0xD9D6CFFFu);
+        box({x - 0.55, y - 0.13, z - 0.08}, {x + 0.55, y - 0.12, z + 0.08}, "paint_white", 0xFFF8E6FFu);
+    }
+    // the range flag by the shed's corner: up when it's live
+    cyl({1.9, 0, -W - 2.8}, {2.0, 6.5, -W - 2.7}, 8, "paint_white", WHITE);
+    box({2.0, 5.7, -W - 2.77}, {3.1, 6.4, -W - 2.73}, "paint_white", RED);
+    // a small office by the parking, with a door and a window
+    box({-18, 0, -W - 9}, {-11, 2.8, -W - 4}, "metal_panels", 0xB8BFB4FFu, 0.8);
+    box({-18.2, 2.8, -W - 9.2}, {-10.8, 2.95, -W - 3.8}, "corrugated", 0x7D838AFFu);
+    box({-14.9, 0, -W - 4.02}, {-14.0, 2.1, -W - 3.97}, "door_metal", 0x6F7B85FFu);
+    box({-13.4, 1.0, -W - 4.02}, {-11.8, 1.9, -W - 3.98}, "glass");
+    box({-13.46, 0.95, -W - 4.04}, {-11.74, 1.0, -W - 3.96}, "paint_white", WHITE);
+    // a couple of parked trucks
+    auto truck = [&](double x, double z, unsigned col) {
+        box({x - 2.6, 0.45, z - 0.95}, {x + 2.6, 1.15, z + 0.95}, "paint_white", col);
+        box({x - 1.2, 1.15, z - 0.9}, {x + 0.6, 1.85, z + 0.9}, "paint_white", col);
+        box({x - 1.1, 1.25, z - 0.92}, {x + 0.5, 1.75, z + 0.92}, "glass");
+        for (double dx : {-1.7, 1.7}) for (double s : {-1.0, 1.0}) put(makeCylinder({x + dx - 0.38, 0, z + s * 0.9 - 0.14}, {x + dx + 0.38, 0.76, z + s * 0.9 + 0.14}, 12, M("steel")), 0x222222FFu);
+    };
+    truck(-24, -10.5, 0x7A2E26FFu); truck(-24, 7.0, 0x30485EFFu);
+
+    // ---- downrange: berms with grass on top, a timber-faced backstop, overhead baffles, trees beyond
+    m.brushes.push_back(makeWedge({2, 0, W + 2}, {108, 3.5, W + 7}, 1, M("dirt"))); for (auto& f : m.brushes.back().faces) f.color = DIRT;
+    m.brushes.push_back(makeWedge({2, 0, -W - 7}, {108, 3.5, -W - 2}, 3, M("dirt"))); for (auto& f : m.brushes.back().faces) f.color = DIRT;
+    m.brushes.push_back(makeWedge({100, 0, -W - 7}, {108, 7, W + 7}, 0, M("dirt"))); for (auto& f : m.brushes.back().faces) f.color = DIRT;
+    box({108, 0, -W - 7}, {112, 7, W + 7}, "dirt", DIRT);
+    box({2, 0, W + 7}, {112, 3.5, W + 10}, "grass", GRASS, 0.6);
+    box({2, 0, -W - 10}, {112, 3.5, -W - 7}, "grass", GRASS, 0.6);
+    box({112, 0, -W - 10}, {115, 7, W + 10}, "grass", GRASS, 0.6);
+    for (int r = 0; r < 6; r++)   // railway ties stacked in front of the backstop, staggered
+        for (double z = -W - 1.5 + (r % 2) * 1.2; z < W + 1.5; z += 2.4)
+            box({99.2, r * 0.5, z}, {99.8, r * 0.5 + 0.46, std::min(z + 2.3, W + 1.5)}, "wood_planks", (r + (int)std::floor(z)) % 2 ? TIE : 0x5E4734FFu, 0.5);
+    for (double x : {30.0, 60.0}) {   // overhead safety baffles (a stray shot up the range hits wood, not sky)
+        box({x, 3.0, -W - 1.6}, {x + 0.3, 4.1, W + 1.6}, "wood_planks", WOOD, 0.6);
+        for (int s = -1; s <= 1; s += 2) box({x + 0.05, 0, s * (W + 1.8) - 0.1}, {x + 0.25, 4.2, s * (W + 1.8) + 0.1}, "steel", STEEL_GREEN);
+    }
+    // distance boards: a white post with a coloured board facing the firing line, both sides
+    const unsigned DIST[6] = {0xE8E3D6FFu, 0x3E8E4FFFu, 0x2E5E8CFFu, 0xC9A227FFu, 0xB8342CFFu, 0x222222FFu};
+    int di = 0;
+    for (double x : {7.0, 15.0, 25.0, 50.0, 75.0, 100.0}) {
+        for (double s : {-1.0, 1.0}) {
+            double zc = s * (W + 0.6);
+            box({x - 0.06, 0, zc - 0.06}, {x + 0.06, 1.1, zc + 0.06}, "paint_white", WHITE);
+            box({x - 0.08, 0.75, zc - 0.3}, {x - 0.06, 1.15, zc + 0.3}, "paint_white", DIST[di]);
+        }
+        di++;
+    }
+    // target stands: a tan backer on two timber posts set in concrete blocks
     for (int lane = -3; lane <= 3; lane++) {
         double z = lane * 3.2;
         double x = lane % 3 == 0 ? 25 : (std::abs(lane) == 1 ? 7 : 15);
-        box({x, 0, z - 0.4}, {x + 0.08, 1.1, z - 0.33}, planks);
-        box({x, 0, z + 0.33}, {x + 0.08, 1.1, z + 0.4}, planks);
-        box({x - 0.01, 1.0, z - 0.45}, {x + 0.02, 1.9, z + 0.45}, ply);
+        for (double s : {-1.0, 1.0}) {
+            box({x + 0.02, 0, z + s * 0.38 - 0.035}, {x + 0.09, 1.92, z + s * 0.38 + 0.035}, "wood_planks", WOOD);
+            box({x - 0.1, 0, z + s * 0.38 - 0.15}, {x + 0.2, 0.2, z + s * 0.38 + 0.15}, "cinderblock", BLOCK);
+        }
+        box({x - 0.01, 1.0, z - 0.45}, {x + 0.02, 1.9, z + 0.45}, "plywood", TAN);
+        box({x - 0.012, 0.45, z - 0.4}, {x + 0.02, 0.6, z + 0.4}, "wood_planks", WOOD);   // a cross brace
         Entity t; t.type = "target_paper"; t.pos = {x - 0.01, 1.45, z}; t.yaw = 180;   // a paper target on the board, facing the firing line
         m.ents.push_back(t);
     }
-    // two moving targets on rails, sliding across the range (closer and slower, further and faster)
+    // two moving targets on rails, sliding across the range (closer and slower, further and faster), each with a
+    // motor box at one end behind a low earth bank
     for (int k = 0; k < 2; k++) {
         double x = k ? 20 : 11, travel = k ? 8 : 5, sp = k ? 2.0 : 1.2;
-        box({x - 0.05, 0, -travel / 2 - 0.4}, {x + 0.05, 0.12, travel / 2 + 0.4}, dark);   // the rail
+        box({x - 0.05, 0, -travel / 2 - 0.4}, {x + 0.05, 0.12, travel / 2 + 0.4}, "steel", 0x55595EFFu);
+        box({x - 0.25, 0, travel / 2 + 0.45}, {x + 0.25, 0.5, travel / 2 + 0.95}, "metal_panels", STEEL_GREEN);
+        m.brushes.push_back(makeWedge({x - 0.9, 0, -travel / 2 - 0.6}, {x - 0.2, 0.35, travel / 2 + 1.1}, 0, M("dirt"))); for (auto& f : m.brushes.back().faces) f.color = DIRT;
         Entity t; t.type = "target_paper"; t.ref = "moving"; t.pos = {x, 1.45, 0}; t.yaw = 180; t.width = travel; t.range = sp;
         m.ents.push_back(t);
     }
+    // steel plates on A-frame stands, swinging from chains under a crossbar (orange paint shows the hits)
     for (int k = -4; k <= 4; k++) {
         double z = k * 2.4, x = k % 2 == 0 ? 50 : 75;
-        box({x, 0, z - 0.05}, {x + 0.1, 0.9, z + 0.05}, steel);           // post
-        box({x - 0.03, 0.9, z - 0.25}, {x + 0.0, 1.4, z + 0.25}, orange);  // plate
+        box({x, 0, z - 0.05}, {x + 0.1, 0.9, z + 0.05}, "steel", 0x4A4E53FFu);           // post
+        box({x - 0.25, 0, z - 0.04}, {x + 0.35, 0.05, z + 0.04}, "steel", 0x4A4E53FFu);  // its foot
+        box({x - 0.03, 0.9, z - 0.25}, {x + 0.0, 1.4, z + 0.25}, "paint_orange");          // plate
     }
-    // late afternoon with the day running: the sun sets a couple of minutes in, then the range is lit by its own lamps
-    // (under the roof, over each target, on the steel)
-    m.look.daylight = 1; m.look.time = 17; m.look.dayMinutes = 40;
+    // trees beyond the berms and the backstop
+    unsigned seed = 7;
+    auto rnd = [&] { seed = seed * 1664525u + 1013904223u; return (seed >> 8) / 16777216.0; };
+    auto tree = [&](double x, double z, double h) {
+        cyl({x - 0.18, 0, z - 0.18}, {x + 0.18, h * 0.45, z + 0.18}, 7, "wood_planks", 0x4A3A2AFFu);
+        double r = h * 0.32;
+        unsigned g = 0x4E7A36FFu + ((unsigned)(rnd() * 24) << 16);
+        ball({x - r, h * 0.35, z - r}, {x + r, h * 0.35 + 2 * r, z + r}, 8, "grass", g);
+        ball({x - r * 0.7, h * 0.62, z - r * 0.7}, {x + r * 0.7, h * 0.62 + 1.4 * r, z + r * 0.7}, 8, "grass", g + 0x00080400u);
+    };
+    for (double x = 8; x < 112; x += 7) for (int s = -1; s <= 1; s += 2) tree(x + rnd() * 3, s * (W + 13 + rnd() * 8), 6 + rnd() * 3);
+    for (double z = -W - 6; z <= W + 6; z += 6) tree(119 + rnd() * 3, z + rnd() * 2, 7 + rnd() * 3);
+    for (double z : {-30.0, 30.0}) for (double x = -36; x < -2; x += 8) tree(x + rnd() * 2, z + rnd() * 4, 6 + rnd() * 2);
+    // floodlight towers along the berms
+    for (double x : {30.0, 65.0}) for (int s = -1; s <= 1; s += 2) {
+        double zc = s * (W + 3.0);
+        cyl({x - 0.12, 0, zc - 0.12}, {x + 0.12, 7.0, zc + 0.12}, 8, "steel", 0x7A7F85FFu);
+        box({x - 0.35, 6.8, zc - 0.25}, {x + 0.35, 7.2, zc + 0.25}, "steel", 0x3A3F44FFu);
+    }
+
+    // ---- light: a fixed time of day (the range's own Day / Night choice sets it; no running clock)
+    m.look.daylight = 1; m.look.time = 14; m.look.dayMinutes = 0;
     auto lamp = [&](V3 at, double power, double range, double cone, double yaw, double pitch, double r, double g, double b) {
         Entity e; e.type = "light"; e.pos = at; e.power = power; e.range = range; e.cone = cone; e.yaw = yaw; e.pitch = pitch;
         e.color[0] = r; e.color[1] = g; e.color[2] = b; m.ents.push_back(e);
     };
-    for (double z : {-8.0, 0.0, 8.0}) lamp({-3.2, 2.75, z}, 3.5, 9, 0, 0, -90, 1.0, 0.85, 0.65);       // warm lamps under the roof
+    for (double z : {-8.0, 0.0, 8.0}) lamp({-3.2, roofY(-3.2) - 0.35, z}, 3.5, 9, 0, 0, -90, 1.0, 0.85, 0.65);   // warm lamps under the roof
     for (int lane = -3; lane <= 3; lane++) {                                                         // a light over each paper target
         double z = lane * 3.2, x = lane % 3 == 0 ? 25 : (std::abs(lane) == 1 ? 7 : 15);
         lamp({x - 1.2, 2.8, z}, 6, 7, 90, 0, -50, 0.95, 0.97, 1.0);
     }
-    lamp({58, 4.5, -13.5}, 70, 40, 70, 60, -12, 0.9, 0.95, 1.0);                                     // floodlights on the steel
-    lamp({58, 4.5, 13.5}, 70, 40, 70, -60, -12, 0.9, 0.95, 1.0);
+    for (double x : {30.0, 65.0}) for (int s = -1; s <= 1; s += 2)   // the towers, aimed down the range at the steel
+        lamp({x, 6.7, s * (W + 3.0)}, 80, 50, 70, s * -55, -14, 0.9, 0.95, 1.0);
     lamp({1.3, 2.6, 0}, 30, 30, 50, 0, -8, 0.95, 0.97, 1.0);                                          // the firing line's floodlight
     Entity plates; plates.type = "armor_plate"; plates.pos = {-3.6, 0, 2.2}; plates.count = 3; plates.respawn = 20; plates.yaw = 20;   // to try the armour bar
     m.ents.push_back(plates);
