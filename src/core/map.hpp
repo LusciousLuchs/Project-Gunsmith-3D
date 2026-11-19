@@ -44,6 +44,7 @@ struct Face {
     int mat = 0;
     double scale = 1;     // texture scale (1 = the material's natural size)
     double shiftU = 0, shiftV = 0;  // texture offset in metres
+    unsigned color = 0xFFFFFFFFu;   // a colour over the texture (RGBA; white: the texture as it is). JSON "color" only when set
 };
 struct Brush {
     std::vector<Face> faces;

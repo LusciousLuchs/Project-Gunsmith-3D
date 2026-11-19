@@ -414,13 +414,24 @@ static void workshopTab() {
         ImGui::PushFont(gFontBold, 0.0f); ImGui::Text("%s", k.name); ImGui::PopFont();
         ImGui::SameLine(); ImGui::TextColored({0.55f, 0.92f, 0.6f, 1}, "%s", usd(k.price).c_str());
         wrappedDim(std::string(k.blurb) + TextFormat("  Room for %d workstations and %d staff; %s a day to keep.", k.stations, k.staff, usd(k.upkeep).c_str()));
+        bool hasGarage = false; for (auto& q : C.props) hasGarage |= q.kind == "garage";
+        if (hasGarage && (std::string(k.id) == "retail" || std::string(k.id) == "warehouse"))
+            ImGui::TextColored({1, 0.78f, 0.38f, 1}, ICON_FA_TRIANGLE_EXCLAMATION "  You'll move out of your home garage: what's in it stays behind.");
         ImGui::SetNextItemWidth(230 * CFG.uiScale);
         ImGui::Combo("##brole", &buyRole, roleNames, 3);
         ImGui::SameLine();
         ImGui::BeginDisabled(C.money < k.price);
         if (accentButton("Buy", true)) {
             std::string why;
-            if (career::buyProperty(C, k.id, roles[buyRole], &why)) { career::setLocation(C, C.props.back(), buyCity); careerSave(); toast(std::string("Bought: ") + k.name + " at " + C.props.back().address + ". Go there from this list or the front door."); }
+            int wasHere = C.here;
+            if (career::buyProperty(C, k.id, roles[buyRole], &why)) {
+                career::setLocation(C, C.props.back(), buyCity); careerSave();
+                if (C.here != wasHere) {   // (moved out of the garage you were standing in: off to the new place)
+                    toast(std::string("Bought: ") + k.name + " at " + C.props.back().address + ". You've moved out of your home garage.");
+                    ImGui::EndDisabled(); ImGui::PopID(); careerOpenWorkshop(true); return;
+                }
+                toast(std::string("Bought: ") + k.name + " at " + C.props.back().address + ". Go there from this list or the front door.");
+            }
             else toast(why);
         }
         ImGui::EndDisabled();

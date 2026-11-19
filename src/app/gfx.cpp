@@ -12,13 +12,13 @@
 
 // ---------------------------------------------------------------- graphics kit
 static const char* VS = R"(#version 330
-in vec3 vertexPosition; in vec2 vertexTexCoord; in vec3 vertexNormal;
+in vec3 vertexPosition; in vec2 vertexTexCoord; in vec3 vertexNormal; in vec4 vertexColor;
 uniform mat4 mvp; uniform mat4 matModel; uniform mat4 matNormal;
-out vec2 fragTexCoord; out vec3 fragNormal; out vec3 fragPos;
-void main(){ fragTexCoord=vertexTexCoord; fragNormal=normalize(vec3(matNormal*vec4(vertexNormal,0.0)));
+out vec2 fragTexCoord; out vec3 fragNormal; out vec3 fragPos; out vec4 fragTint;
+void main(){ fragTexCoord=vertexTexCoord; fragTint=vertexColor; fragNormal=normalize(vec3(matNormal*vec4(vertexNormal,0.0)));
  fragPos=vec3(matModel*vec4(vertexPosition,1.0)); gl_Position=mvp*vec4(vertexPosition,1.0); })";
 static const char* FS = R"(#version 330
-in vec2 fragTexCoord; in vec3 fragNormal; in vec3 fragPos;
+in vec2 fragTexCoord; in vec3 fragNormal; in vec3 fragPos; in vec4 fragTint;
 uniform sampler2D texture0; uniform vec4 colDiffuse; uniform vec3 viewPos; uniform float spec;
 uniform vec3 lightDir; uniform vec3 lightCol; uniform vec3 fillDir; uniform vec3 fillCol;
 uniform vec3 ambSky; uniform vec3 ambGround; uniform vec3 fogColor; uniform vec3 fogParam;
@@ -37,7 +37,7 @@ void main(){ vec4 tex=texture(texture0,fragTexCoord); vec3 n=normalize(fragNorma
    sh=sum/9.0; } }
  d*=sh;
  float hemi=0.5+0.5*n.y; vec3 amb=mix(ambGround,ambSky,hemi);
- vec3 base=tex.rgb*colDiffuse.rgb;
+ vec3 base=tex.rgb*colDiffuse.rgb*fragTint.rgb;   // (a mesh with no colours: white)
  vec3 c=shadowOn==1 ? base*(amb*(0.52+0.10*sh)+lightCol*d*0.85+fillCol*fill*0.12)   // (with sun shadows: stronger sun, deeper shade)
                     : base*(amb*0.70+lightCol*d*0.58+fillCol*fill*0.16);
  vec3 H=normalize(L+V);

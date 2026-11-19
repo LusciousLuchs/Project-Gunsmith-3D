@@ -235,7 +235,7 @@ const PropertyKind& propertyKind(const std::string& id) {
 Property* propertyById(Career& c, int id) { for (auto& p : c.props) if (p.id == id) return &p; return nullptr; }
 const Property* propertyById(const Career& c, int id) { for (auto& p : c.props) if (p.id == id) return &p; return nullptr; }
 void ensureProperties(Career& c) {
-    if (!c.props.empty()) { if (!propertyById(c, c.here)) c.here = c.props.front().id; return; }
+    if (!c.props.empty()) { leaveGarage(c); if (!propertyById(c, c.here)) c.here = c.props.front().id; return; }
     Property p;   // (the one shop an older career had: its size as it was)
     static const char* byTier[] = {"garage", "shack", "retail", "warehouse"};
     p.id = 1; p.kind = byTier[std::max(0, std::min(3, c.shopTier))]; p.role = "both";
@@ -286,6 +286,23 @@ bool buyProperty(Career& c, const std::string& kind, const std::string& role, st
     char b[200];
     std::snprintf(b, sizeof b, "You bought a %s for %s.", k.name, money(k.price).c_str());
     c.news.push_back(b);
+    if (leaveGarage(c)) c.news.push_back("You've moved the business out of your home garage.");
+    return true;
+}
+static bool provesOut(const std::string& kind) { return kind == "retail" || kind == "warehouse"; }
+// The home garage is only where you start (the owner's rule): once you have a proper store or warehouse, it goes
+bool leaveGarage(Career& c) {
+    bool proper = false;
+    for (auto& q : c.props) proper |= provesOut(q.kind);
+    if (!proper) return false;
+    size_t before = c.props.size();
+    c.props.erase(std::remove_if(c.props.begin(), c.props.end(), [](const Property& q) { return q.kind == "garage"; }), c.props.end());
+    if (c.props.size() == before) return false;
+    if (!propertyById(c, c.here)) {   // (you were in it: to the newest proper place)
+        for (auto it = c.props.rbegin(); it != c.props.rend(); ++it) if (provesOut(it->kind)) { c.here = it->id; break; }
+    }
+    sumStations(c);
+    while ((int)c.staff.size() > staffRoom(c)) c.staff.pop_back();
     return true;
 }
 bool sellProperty(Career& c, int id, std::string* why) {

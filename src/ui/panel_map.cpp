@@ -506,6 +506,27 @@ static void editTab() {
             edit(lenDrag("##su", su, 0.01), [&](gmap::Face& f) { f.shiftU = su; });
             prop("Shift up");
             edit(lenDrag("##sv", sv, 0.01), [&](gmap::Face& f) { f.shiftV = sv; });
+            {   // a colour over the texture (white: none)
+                unsigned c0 = faces[0]->color;
+                float rgb[3] = {((c0 >> 24) & 255) / 255.f, ((c0 >> 16) & 255) / 255.f, ((c0 >> 8) & 255) / 255.f};
+                prop("Colour", "Tints the texture: pick white for the texture as it is.\nPaints the picked face (Ctrl+click), or every face of the selected blocks.");
+                auto pack = [&](const float* c) { return ((unsigned)std::lround(c[0] * 255) << 24) | ((unsigned)std::lround(c[1] * 255) << 16) | ((unsigned)std::lround(c[2] * 255) << 8) | 255u; };
+                ImGui::SetNextItemWidth(-60 * S());
+                edit(ImGui::ColorEdit3("##fcol", rgb, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_PickerHueWheel), [&](gmap::Face& f) { f.color = pack(rgb); });
+                ImGui::SameLine();
+                if (ImGui::Button("None##fcolw")) { meSnapshot(); for (auto* f : faces) f->color = 0xFFFFFFFFu; meChanged(); }
+                if (tipHover()) ImGui::SetTooltip("Back to the texture's own colour.");
+                static const unsigned SW[] = {0xFFFFFFFFu, 0xD9D2C3FFu, 0x8C8C8CFFu, 0x3A3D42FFu, 0xB5442EFFu, 0xD98E2BFFu, 0xE3C64AFFu, 0x5E8C4AFFu, 0x3E7CA8FFu, 0x6A4FA3FFu, 0x8A5A3CFFu, 0xEFA7B6FFu};
+                for (int i = 0; i < 12; i++) {
+                    if (i % 6) ImGui::SameLine(0, 3);
+                    unsigned c = SW[i];
+                    ImGui::PushID(i);
+                    if (ImGui::ColorButton("##sw", ImVec4(((c >> 24) & 255) / 255.f, ((c >> 16) & 255) / 255.f, ((c >> 8) & 255) / 255.f, 1), ImGuiColorEditFlags_NoTooltip, {18 * S(), 18 * S()})) {
+                        meSnapshot(); for (auto* f : faces) f->color = c; meChanged();
+                    }
+                    ImGui::PopID();
+                }
+            }
             ImGui::TextDisabled("Pick a new texture on the Textures tab.");
         }
     }

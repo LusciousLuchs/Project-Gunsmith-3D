@@ -366,6 +366,7 @@ static void buildBrushMeshes(const std::vector<gmap::Brush>& brushes, std::vecto
     int count = (int)gmap::materialNames().size();
     out.assign(count, Mesh{});
     std::vector<std::vector<float>> pos(count), nrm(count), uv(count);
+    std::vector<std::vector<unsigned char>> col(count);
     for (auto& b : brushes)
         for (size_t fi = 0; fi < b.faces.size(); fi++) {
             auto poly = gmap::facePolygon(b, (int)fi);
@@ -387,6 +388,7 @@ static void buildBrushMeshes(const std::vector<gmap::Brush>& brushes, std::vecto
                     nrm[mi].insert(nrm[mi].end(), {(float)f.n.x, (float)f.n.y, (float)f.n.z});
                     float tu, tv; texUV(p, tu, tv);
                     uv[mi].insert(uv[mi].end(), {tu, tv});
+                    col[mi].insert(col[mi].end(), {(unsigned char)(f.color >> 24), (unsigned char)(f.color >> 16), (unsigned char)(f.color >> 8), 255});
                 }
         }
     for (int i = 0; i < count; i++) {
@@ -400,6 +402,8 @@ static void buildBrushMeshes(const std::vector<gmap::Brush>& brushes, std::vecto
         std::copy(pos[i].begin(), pos[i].end(), mesh.vertices);
         std::copy(nrm[i].begin(), nrm[i].end(), mesh.normals);
         std::copy(uv[i].begin(), uv[i].end(), mesh.texcoords);
+        mesh.colors = (unsigned char*)MemAlloc(vc * 4);
+        std::copy(col[i].begin(), col[i].end(), mesh.colors);
         UploadMesh(&mesh, false);
     }
 }
@@ -409,7 +413,7 @@ void mapBuildMeshes(const gmap::Map& m) { buildBrushMeshes(m.brushes, MESH); }
 static std::string brushesKey(const std::vector<gmap::Brush>& bs) {
     std::string k;
     char buf[64];
-    for (auto& b : bs) { for (auto& f : b.faces) { std::snprintf(buf, sizeof buf, "%.4f,%.4f,%.4f,%.4f,%d,%.3f;", f.n.x, f.n.y, f.n.z, f.d, f.mat, f.scale); k += buf; } k += '|'; }
+    for (auto& b : bs) { for (auto& f : b.faces) { std::snprintf(buf, sizeof buf, "%.4f,%.4f,%.4f,%.4f,%d,%.3f,%08x;", f.n.x, f.n.y, f.n.z, f.d, f.mat, f.scale, f.color); k += buf; } k += '|'; }
     return k;
 }
 void mapDrawBrushes(const std::vector<gmap::Brush>& local, Matrix M, Color tint) {

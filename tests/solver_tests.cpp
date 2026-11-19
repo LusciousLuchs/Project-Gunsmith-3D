@@ -2196,6 +2196,20 @@ static void propertiesTest() {
     career::Career old = career::newCareer(3); old.props.clear(); old.shopTier = 1;
     career::Career loaded; career::careerFromJson(career::careerToJson(old), loaded);
     CHECK(loaded.props.size() == 1 && loaded.props[0].kind == "shack", "an older career's shop (tier 1) becomes a shack");
+    // the home garage is only the starter: a retail unit or warehouse moves you out of it (a shack doesn't)
+    {
+        career::Career g = career::newCareer(9); g.money = 500000;
+        int home = g.props[0].id; g.here = home;
+        career::buyProperty(g, "shack", "workshop", &why);
+        bool keptWithShack = career::propertyById(g, home) != nullptr;
+        career::buyProperty(g, "retail", "both", &why);
+        bool gone = career::propertyById(g, home) == nullptr, moved = g.here != home && career::propertyById(g, g.here) && career::propertyById(g, g.here)->kind == "retail";
+        CHECK(keptWithShack && gone && moved && g.props.size() == 2, "buying a retail unit moves you out of the garage (and into the new place); a shack doesn't");
+        career::Career both = career::newCareer(9); career::Property w; w.id = 7; w.kind = "warehouse"; both.props.push_back(w);
+        career::Career lb; career::careerFromJson(career::careerToJson(both), lb);
+        bool noGarage = true; for (auto& q : lb.props) noGarage &= q.kind != "garage";
+        CHECK(noGarage && lb.props.size() == 1, "an older save with a garage and a warehouse loses the garage");
+    }
 }
 static void taxesAndAccessories() {
     std::printf("taxes and accessories\n");
@@ -3036,6 +3050,9 @@ static void mapRotateGlass() {
     CHECK(h1.brush == 0 && h2.brush == 1 && std::fabs(h2.t - 8) < 1e-6, "a window stops a plain ray (walking into it) but not a bullet or a look");
     Map back; mapFromJson(mapToJson(m), back);
     CHECK(back.brushes.size() == 2 && isGlass(back.brushes[0]) && !isGlass(back.brushes[1]), "glass saves and loads by name");
+    m.brushes[1].faces[2].color = 0x3E7CA8FFu;
+    Map back2; mapFromJson(mapToJson(m), back2);
+    CHECK(back2.brushes[1].faces[2].color == 0x3E7CA8FFu && back2.brushes[1].faces[0].color == 0xFFFFFFFFu, "a painted face's colour saves and loads (the rest stay plain)");
 }
 static void furnitureTest() {
     std::printf("\n== furniture\n");

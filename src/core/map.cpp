@@ -1,4 +1,5 @@
 // Gunsmith3D - Maps (see map.hpp).
+#include <cstdlib>
 #include "map.hpp"
 #include "netradio.hpp"
 #include "json.hpp"
@@ -414,6 +415,7 @@ static json brushJ(const Brush& b) {
         json jf = {{"n", v3j(f.n)}, {"d", f.d}, {"mat", materialNames()[std::clamp(f.mat, 0, (int)materialNames().size() - 1)]}};
         if (f.scale != 1) jf["scale"] = f.scale;
         if (f.shiftU != 0 || f.shiftV != 0) jf["shift"] = json::array({f.shiftU, f.shiftV});
+        if (f.color != 0xFFFFFFFFu) { char hx[16]; std::snprintf(hx, sizeof hx, "%08X", f.color); jf["color"] = hx; }
         fs.push_back(jf);
     }
     json jb = {{"faces", fs}};
@@ -428,6 +430,7 @@ static bool brushFromJ(const json& jb, Brush& b) {
         f.mat = materialIndex(jf.value("mat", "dev_grid"));
         f.scale = jf.value("scale", 1.0);
         if (jf.contains("shift")) { f.shiftU = jf["shift"].at(0).get<double>(); f.shiftV = jf["shift"].at(1).get<double>(); }
+        if (jf.contains("color") && jf["color"].is_string()) f.color = (unsigned)std::strtoul(jf["color"].get<std::string>().c_str(), nullptr, 16);
         b.faces.push_back(f);
     }
     b.locked = jb.value("locked", false);

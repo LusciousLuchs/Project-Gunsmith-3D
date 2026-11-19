@@ -178,7 +178,10 @@ struct Career {
 };
 Property* propertyById(Career& c, int id);
 const Property* propertyById(const Career& c, int id);
-void ensureProperties(Career& c);           // an older career: its one shop becomes its first property
+void ensureProperties(Career& c);
+// The home garage is only the starter: owning a retail unit or a warehouse moves the business out of it (it's dropped;
+// buyProperty and ensureProperties do it). True if a garage went.
+bool leaveGarage(Career& c);           // an older career: its one shop becomes its first property
 bool buyProperty(Career& c, const std::string& kind, const std::string& role, std::string* why = nullptr);   // (the new one's id is the last in props)
 bool sellProperty(Career& c, int id, std::string* why = nullptr);   // 60% back; never the last one
 int stationRoom(const Career& c);           // workstations that count today: each making property's, up to its size

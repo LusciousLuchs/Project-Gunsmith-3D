@@ -1495,6 +1495,7 @@ void mapEditorUpdate(float dt, bool modal) {
             ME.tool = MTool::Select; ME.rotateMode = true;
             V3 axis{ax == 0 ? 1.0 : 0.0, ax == 1 ? 1.0 : 0.0, ax == 2 ? 1.0 : 0.0};
             if (dg != 0) gmap::rotateAxis(ME.map.brushes.back(), axis, dg * DEG2RAD, selCentre());
+            for (auto& f : ME.map.brushes.back().faces) f.color = 0x3E7CA8FFu;   // (painted blue: the colour too)
             meChanged();
         }
     }
