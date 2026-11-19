@@ -154,8 +154,10 @@ struct Runner {
             bool empty = !S.chambered && !S.spent && !S.inTransit && S.hasFace;
             useChamber(S, 0);
             if (!empty) continue;
-            if (hinged) { dropIntoChamber(S, k); run(S, 0.15); }  // one hand holds it open, the other pushes a round in
-            else loadByHand(k);
+            // (0.8.56, the owner's: "always brute force hand loading, so single shots work") the round is pushed
+            // home into the open chamber, whatever the action: placing it by hand in front of a sprung slide missed
+            // the chamber on every self-loader and the test gave up after one shot
+            dropIntoChamber(S, k); run(S, 0.15);
         }
     }
 };

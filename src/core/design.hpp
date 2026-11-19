@@ -504,6 +504,8 @@ struct NpcGunDef {
 };
 // An editor layer: parts grouped so you can hide or lock some while you work on others (the internals while you shape
 // the receiver round them). Layers are only for editing: the bench, the physics and the range always use every part.
+struct EdLayer;
+void magazineLayer(struct Design& d);   // a gun with a magazine keeps it in a layer of its own, "Magazine" (made when needed; parts in Main are moved there)
 struct EdLayer { int id = 0; std::string name = "Main"; bool visible = true, locked = false, faint = false; };   // (faint: shown see-through, can't be picked)
 struct Design {
     std::string name = "Untitled action";

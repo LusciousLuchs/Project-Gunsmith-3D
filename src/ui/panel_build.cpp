@@ -515,6 +515,259 @@ static bool combineSection(BodyDef& b) {
     return done;
 }
 
+// The magazine settings (its own tab since 0.8.56; they used to be a section of the part panel)
+static void magazineEditor(BodyDef& b) {
+    auto& D = A.design; (void)D;
+    int kind = !b.magazine ? 0 : b.magFixed ? 2 : 1, wasKind = kind;
+    prop("Magazine", "Removable: you swap it. It slides in and out along its insertion path (the green line).\n"
+                     "Built in: part of the gun, like an internal box or a tube. You load it in place,\n"
+                     "a round at a time (drag rounds to its feed end) or topped up (T on the bench).");
+    if (ImGui::Combo("##magkind", &kind, "Not a magazine\0Removable\0Built in\0")) editedAny = true;
+    tutAnchor("mag:kind");
+    if (kind != wasKind) {
+        std::string id = b.id;
+        auto dropWell = [&] { D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.type == "magwell" && j.a == id; }), D.joints.end()); };
+        if (kind == 0) { b.magazine = false; b.magFixed = false; b.ghost = false; dropWell(); }
+        else if (kind == 1) { b.magazine = true; b.magFixed = false; if (b.fixed) b.fixed = false; if (magwellIndex(b.id) < 0) makeMagwell(b); b.ghost = true; }
+        else { b.magazine = true; b.magFixed = true; b.fixed = true; dropWell(); }
+    }
+    if (b.magazine) {
+        prop("Capacity");
+        ImGui::DragInt("##cap", &b.magCap, 0.2f, 1, 200, "%d rounds"); markEdit();
+        b.magCap = std::clamp(b.magCap, 1, 200);
+        {   // how the rounds sit inside: along a path you draw, side by side or nose to tail
+            int st = b.roundStyle == "line" ? 1 : 0;
+            prop("Rounds sit", "Side by side: stacked across the path, like a box magazine.\n"
+                               "Nose to tail: one behind another along the path, like a tube under a barrel.");
+            if (ImGui::Combo("##rstyle", &st, "Side by side\0Nose to tail\0")) {
+                b.roundStyle = st ? "line" : "side"; editedAny = true;
+                if (st) b.tubeFeed = "physical";  // a tube made now feeds the real way
+            }
+            if (st && A.design.breech.physicalFeed) {
+                int tf = b.tubeFeed == "physical" ? 0 : 1;
+                prop("Rounds leave", "Pushed out: the tube's spring pushes each round out of its mouth, head first, as a real round.\n"
+                                     "Something you draw has to take it from there, like a lifter that raises it to the bore,\n"
+                                     "and anything in the way (a lifter that's up) holds the next one back. See the pump-action example.\n"
+                                     "When the action opens: the round simply reaches the chamber once the action has opened far enough\n"
+                                     "(how tubes worked in older versions).");
+                if (ImGui::Combo("##tubefeed", &tf, "Pushed out of the mouth\0When the action opens (simple)\0")) { b.tubeFeed = tf == 0 ? "physical" : "simple"; editedAny = true; }
+                tutAnchor("mag:tubefeed");
+            }
+            if (b.roundPath.size() >= 2)
+                muted("Round path: %d points. Drag them in the view. The first is where rounds are fed from.", (int)b.roundPath.size());
+            else
+                muted(st ? "Draw the path the rounds follow, starting at the mouth." : "Laid out automatically. Draw a path to arrange them yourself, starting where the top round sits.");
+            float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+            if (ImGui::Button("Draw the round path", {b.roundPath.empty() ? -1.f : w2, 0})) {
+                A.tool = Tool::RoundPath; A.draft.clear(); A.drafting = true; A.draftHasF = false;
+                toast("Click along the inside of the magazine, starting at the feed end. Enter to finish.");
+            }
+            tutAnchor("mag:roundpath");
+            if (!b.roundPath.empty()) { ImGui::SameLine(); if (ImGui::Button("Automatic", {w2, 0})) { b.roundPath.clear(); editedAny = true; } }
+            if (st == 0) {  // a belt instead of a spring
+                int by = b.feedPawl.empty() ? 0 : 1;
+                prop("Moved by", "Its spring: a follower pushes each round up to the lips (a box).\n"
+                                 "A pawl: a belt. A part you choose moves it on one round each time it travels the stroke\n"
+                                 "away from where it rests and comes back. The next round lies in the tray at the first point\n"
+                                 "of the round path; the rest of the belt hangs out of the side. A round still in the tray\n"
+                                 "stops the belt. See the belt-fed example.");
+                if (ImGui::Combo("##movedby", &by, "Its spring\0A pawl (a belt)\0")) {
+                    if (by == 0) b.feedPawl.clear();
+                    else { b.feedPawl = D.breech.on ? D.breech.breech : ""; if (b.feedPawl.empty()) for (auto& o : D.bodies) if (!o.fixed && !o.magazine) { b.feedPawl = o.id; break; } }
+                    editedAny = true;
+                }
+                if (by == 1) {
+                    pBody("Pawl", b.feedPawl, false);
+                    if (tipHover()) ImGui::SetTooltip("The part whose stroke moves the belt: the bolt itself, or an arm you draw and link to it.");
+                    pNumU("Pawl stroke", b.pawlStroke, 0.5, Q::Length, 1, "How far the pawl must travel from where it rests to catch the next link.\nLonger than the part can actually travel, and the belt never moves.");
+                    b.pawlStroke = std::clamp(b.pawlStroke, 0.5, 500.0);
+                    if (b.roundPath.size() < 2) warn("Draw the round path: its first point is where the round lies in the tray.");
+                }
+            }
+            {
+                int ck = b.clip == "stripper" ? 1 : b.clip == "enbloc" ? 2 : 0;
+                prop("Loaded with", "Loose rounds: reloading fills it.\n"
+                                    "Stripper clips: reloading pushes in one clip's worth at a time (instead of one round at a time by hand).\n"
+                                    "En-bloc clip: the clip goes in with the rounds. Only a full clip fits, so it can't be topped up,\n"
+                                    "and the empty clip is thrown out after the last round.");
+                if (ImGui::Combo("##clip", &ck, "Loose rounds\0Stripper clips\0En-bloc clip\0")) { b.clip = ck == 1 ? "stripper" : ck == 2 ? "enbloc" : "none"; editedAny = true; }
+                if (ck == 1) {
+                    prop("Rounds per clip", "How many rounds one clip holds. R tops up one clip's worth;\n"
+                                            "a reload animation can show it: Pose > Animations, keys Clip in hand,\nStrip the rounds in, Throw the clip away.");
+                    int top = std::max(2, b.magCap);
+                    b.clipSize = std::clamp(b.clipSize, 1, top);
+                    ImGui::SliderInt("##clipsize", &b.clipSize, 1, top, "%d rounds"); markEdit();
+                    b.clipSize = std::clamp(b.clipSize, 1, top);
+                }
+            }
+        }
+        int mi = magwellIndex(b.id);
+        if (mi >= 0 && b.gen.on && b.gen.side) muted("It slides in and out sideways, across the gun.");
+        else if (mi >= 0 && D.joints[mi].path.size() >= 2) {
+            auto& j = D.joints[mi];
+            double dx = j.path.back().x - j.path.front().x, dy = j.path.back().y - j.path.front().y;
+            double travel = std::hypot(dx, dy), ang = std::atan2(dx, dy) / DEG2RAD, t0 = travel, a0 = ang;
+            if (j.pathAng.size() != j.path.size()) j.pathAng.resize(j.path.size(), 0.0);
+            if (j.path.size() == 2) {   // a straight path: its length and angle
+                pNumU("Drop-out travel", travel, 1, Q::Length);
+                pNum("Well angle", ang, 1, "%.1f\xc2\xb0", "0 is straight down.");
+                if (travel != t0 || ang != a0) {
+                    travel = std::max(5.0, travel);
+                    j.path = {j.path.front(), {j.path.front().x + travel * std::sin(ang * DEG2RAD), j.path.front().y + travel * std::cos(ang * DEG2RAD)}};
+                    if (b.gen.on && ang != a0) { b.gen.angle = ang; generateMagazine(D, A.sel.idx); }  // (this is what turns it, even right over)
+                    editedAny = true;
+                }
+            }
+            // the insertion path: bends, and how far the magazine has rocked at each point (rock-in magazines)
+            for (size_t k = 1; k < j.path.size(); k++) {
+                char lb[40];
+                if (k + 1 == j.path.size()) std::snprintf(lb, sizeof lb, "Tilt at the mouth"); else std::snprintf(lb, sizeof lb, "Tilt at bend %d", (int)k);
+                pNum(lb, j.pathAng[k], 0.5, "%.1f\xc2\xb0", "How far the magazine has rocked by the time it reaches this point.\n"
+                                                      "Rock-in magazines go in at an angle and rock back as they seat.");
+            }
+            {
+                float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+                if (ImGui::Button("Add a bend", {w2, 0})) {   // halfway along the last stretch
+                    size_t n = j.path.size();
+                    V2 a = j.path[n - 2], c = j.path[n - 1];
+                    j.path.insert(j.path.end() - 1, {(a.x + c.x) / 2, (a.y + c.y) / 2});
+                    j.pathAng.insert(j.pathAng.end() - 1, (j.pathAng[n - 2] + j.pathAng[n - 1]) / 2);
+                    editedAny = true;
+                }
+                if (tipHover()) ImGui::SetTooltip("Adds a point to the insertion path. Drag the green points in the view to shape it.");
+                ImGui::SameLine();
+                ImGui::BeginDisabled(j.path.size() <= 2);
+                if (ImGui::Button("Straighten", {w2, 0})) { j.path = {j.path.front(), j.path.back()}; j.pathAng = {j.pathAng.front(), j.pathAng.back()}; editedAny = true; }
+                ImGui::EndDisabled();
+            }
+            pBody("Well is in", j.b, true);
+            prop("Released by");
+            if (ImGui::BeginCombo("##rel", j.rel.empty() ? "The key only" : bname(j.rel).c_str())) {
+                if (ImGui::Selectable("The key only", j.rel.empty())) { j.rel = ""; editedAny = true; }
+                for (auto& o : D.bodies) if (o.id != b.id && ImGui::Selectable((o.name + "##rel" + o.id).c_str(), j.rel == o.id)) { j.rel = o.id; editedAny = true; }
+                ImGui::EndCombo();
+            }
+            if (!j.rel.empty()) pNumU("when it moves", j.releaseAt, 0.5, Q::Length, -1, nullptr, SIGNED);
+        }
+        bool gen = b.gen.on;
+        if (pCheck("Fit to cartridge", gen, "Shapes the magazine around the cartridge: the body, lips and follower.")) {
+            b.gen.on = false;
+            if (gen) generateMagazine(D, A.sel.idx);
+        }
+        if (b.gen.on && b.gen.byHand) {
+            muted("Reshaped by hand: it keeps the shape you gave it. Its rounds lie along the blue dots: drag them to line them up.");
+            if (ImGui::Button("Fit it to the cartridge again", {-1, 0})) {
+                b.gen.byHand = false; b.gen.extraH = b.gen.extraW = 0; b.roundPath.clear();
+                generateMagazine(D, A.sel.idx); editedAny = true;
+            }
+            if (tipHover()) ImGui::SetTooltip("Back to the fitted shape, sized by the cartridge and capacity, its rounds laid out automatically.");
+        }
+        if (b.gen.on && !b.gen.byHand) {
+            bool regen = false;
+            {   // where it sits: under the gun, on top, or sticking out of either side
+                int pos = b.gen.side > 0 ? 3 : b.gen.side < 0 ? 2 : std::fabs(std::remainder(b.gen.angle, 360.0)) > 90 ? 1 : 0;
+                prop("Position", "Below or on top: it sits in the side view, and drops out of its well (set its angle below).\n"
+                                 "Left or right side: it sticks out across the gun, like a Sten's. The rounds come in sideways,\n"
+                                 "and only its mouth is in the side view: the bolt strips the round lying there, and pushes it\n"
+                                 "back into the magazine as it rides over it. Released, it slides out sideways.\n"
+                                 "Cut an opening in the receiver wall for it (Carve), or it goes through the wall.");
+                if (ImGui::Combo("##magpos", &pos, "Below\0On top\0Left side\0Right side\0")) {
+                    bool wasSide = b.gen.side != 0;
+                    b.gen.side = pos == 3 ? 1 : pos == 2 ? -1 : 0;
+                    if (pos <= 1) {
+                        b.gen.angle = pos == 1 ? 180 : 0;
+                        if (wasSide) b.z = 0;
+                        int wi = magwellIndex(b.id);   // a fresh straight well, the new way out
+                        if (wi >= 0) D.joints[wi].path.resize(std::min<size_t>(D.joints[wi].path.size(), 2));
+                        if (wi >= 0 && D.joints[wi].path.size() == 2) { auto& j = D.joints[wi]; j.path[1] = {j.path[0].x + std::sin(b.gen.angle * DEG2RAD), j.path[0].y + std::cos(b.gen.angle * DEG2RAD)}; }
+                    }
+                    regen = true;
+                }
+            }
+            float curve = (float)b.gen.curve;
+            prop("Curve");
+            if (ImGui::SliderFloat("##curve", &curve, -15, 80, "%.0f\xc2\xb0")) { b.gen.curve = curve; regen = true; } typeable();
+            if (pNumU("Wall", b.gen.wall, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3)) { b.gen.wall = std::clamp(b.gen.wall, 0.6, 4.0); regen = true; }
+            if (b.gen.side == 0) {   // its size: as fitted, or longer / wider than it needs to be
+                double L = b.gen.H, Wd = b.gen.W;
+                if (pNumU("Length", L, 0.5, Q::Length, 1, "From the lips to the floorplate. Fitted: just long enough for its capacity.\nLonger leaves room below the follower; shorter than its rounds need, and they won't all fit.")) {
+                    b.gen.extraH += L - b.gen.H; regen = true;
+                }
+                if (pNumU("Width", Wd, 0.5, Q::Length, 1, "Front to back. Fitted: the round's length plus the walls.")) { b.gen.extraW += Wd - b.gen.W; regen = true; }
+                if ((b.gen.extraH != 0 || b.gen.extraW != 0) && ImGui::Button("Back to the fitted size", {-1, 0})) { b.gen.extraH = b.gen.extraW = 0; regen = true; }
+            }
+            static int lastCap = -1;
+            if (lastCap != b.magCap) { lastCap = b.magCap; regen = true; }
+            if (regen) { generateMagazine(D, A.sel.idx); editedAny = true; }
+            muted("%s, %d rounds: %s long.", D.breech.cart.name.c_str(), b.magCap, fmtQ(Q::Length, b.gen.H, 0).c_str());
+        }
+        {   // how the rounds sit and come out: any box magazine, fitted or drawn by hand
+            double rd = 0, fd = 90;
+            if (magFeedAngles(D, b, rd, fd)) {
+                ImGui::Dummy({0, 4 * S()});
+                ImGui::TextDisabled("Rounds inside");
+                int st = magStackOf(b) - 1;
+                prop("Stack", "Single: one column of rounds. Double: two staggered columns, about half as long for the same rounds.\n"
+                              "Works on any magazine: fitted, reshaped or drawn by hand. A fitted one is refitted; your shape is kept.");
+                if (ImGui::Combo("##stack", &st, "Single\0Double\0")) {
+                    b.magStack = st + 1;
+                    if (b.gen.on) { b.gen.stack = st + 1; if (!b.gen.byHand) generateMagazine(D, A.sel.idx); }
+                    editedAny = true;
+                }
+                if (magStackOf(b) == 2) {
+                    int fp = b.doubleFeed ? 1 : 0;
+                    prop("Feeds from", "Single position: the two columns taper into one, and every round feeds from the centre.\n"
+                                       "Straight in, so short pistol rounds like it; the taper's friction costs some spring (about a fifth).\n"
+                                       "Double position: rounds feed alternately from the left and right lips.\n"
+                                       "Easy on the spring, but each round comes in at an angle sideways: fine for long rifle rounds,\n"
+                                       "marginal for 9 mm, and fat short rounds like .45 ACP may not make it into the chamber.");
+                    if (ImGui::Combo("##feedpos", &fp, "Single position (centre)\0Double position (alternating)\0")) { b.doubleFeed = fp == 1; editedAny = true; }
+                }
+                auto angleRow = [&](const char* label, const char* id, bool& set, double& val, double autoVal, double lo, double hi, const char* tip) {
+                    prop(label, tip);
+                    bool on = set;
+                    if (ImGui::Checkbox(id, &on)) { set = on; if (on) val = std::round(autoVal); editedAny = true; }
+                    if (tipHover()) ImGui::SetTooltip("Ticked: set by hand. Unticked: worked out from the magazine's shape.");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(-1);
+                    float v = (float)(set ? val : autoVal);
+                    ImGui::BeginDisabled(!set);
+                    if (ImGui::DragFloat((std::string(id) + "v").c_str(), &v, 0.5f, (float)lo, (float)hi, set ? "%.1f\xc2\xb0" : "%.1f\xc2\xb0 (automatic)")) { val = std::clamp((double)v, lo, hi); editedAny = true; }
+                    typeable();
+                    ImGui::EndDisabled();
+                };
+                angleRow("Round angle", "##rndset", b.roundSet, b.roundAngle, rd, -60, 60,
+                         "The angle the top round lies at, from the bore: 0 is parallel to it, + nose up.\n"
+                         "It slides off the lips along this line when the bolt pushes it. Nose up meets the feed ramp\n"
+                         "and chamber sooner; nose down can stub on the ramp or the barrel's face (failure to feed).");
+                angleRow("Feed direction", "##fdset", b.feedSet, b.feedAngle, fd, -180, 180,
+                         "The way the follower pushes the rounds out, from the bore: 90 is straight up toward it,\n"
+                         "less leans forward, more leans back. A raked or curved magazine feeds at its own angle;\n"
+                         "set this to match where the lips actually present the round. Kept at least 25\xc2\xb0 off the round's line.");
+            }
+        }
+        // feed lips and spring: fitted to the cartridge to start with; these nudge them (physical feeding only)
+        ImGui::Dummy({0, 4 * S()});
+        ImGui::TextDisabled("Feed lips and spring");
+        if (!D.breech.physicalFeed) muted("These only matter with Firing > Physical rounds ticked.");
+        pNumU("Lip height", b.lipHeight, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3,
+              "Raises (+) or lowers (-) the top round from where the lips normally hold it.\n"
+              "Too low and the breech face rides over its rim instead of pushing it (failure to feed).", SIGNED);
+        tutAnchor("mag:lips");
+        b.lipHeight = std::clamp(b.lipHeight, -5.0, 5.0);
+        {
+            double sp = b.magSpring * 100;
+            if (pNum("Spring strength", sp, 1, "%.0f%%", "The follower spring, against a standard one (100%).\n"
+                     "A weak spring brings the next round up slowly: a fast action or a long magazine outruns it\n"
+                     "and the breech closes on nothing (failure to feed). Pistols that cycle fast feel it first; a bolt action you work by hand barely does."))
+                b.magSpring = std::clamp(sp / 100, 0.1, 3.0);
+            tutAnchor("mag:spring");
+        }
+        if (b.lipHeight != 0 || b.magSpring != 1) {
+            if (ImGui::Button("Reset lips and spring", {-1, 0})) { b.lipHeight = 0; b.lipRelease = 0.45; b.magSpring = 1; editedAny = true; }
+        }
+    }
+}
 static void inspectPart(BodyDef& b) {
     auto& D = A.design;
     // colour swatch and name on one line
@@ -1141,256 +1394,9 @@ static void inspectPart(BodyDef& b) {
         }
     }
 
-    if (section("Magazine", b.magazine)) {
-        int kind = !b.magazine ? 0 : b.magFixed ? 2 : 1, wasKind = kind;
-        prop("Magazine", "Removable: you swap it. It slides in and out along its insertion path (the green line).\n"
-                         "Built in: part of the gun, like an internal box or a tube. You load it in place,\n"
-                         "a round at a time (drag rounds to its feed end) or topped up (T on the bench).");
-        if (ImGui::Combo("##magkind", &kind, "Not a magazine\0Removable\0Built in\0")) editedAny = true;
-        tutAnchor("mag:kind");
-        if (kind != wasKind) {
-            std::string id = b.id;
-            auto dropWell = [&] { D.joints.erase(std::remove_if(D.joints.begin(), D.joints.end(), [&](const JointDef& j) { return j.type == "magwell" && j.a == id; }), D.joints.end()); };
-            if (kind == 0) { b.magazine = false; b.magFixed = false; b.ghost = false; dropWell(); }
-            else if (kind == 1) { b.magazine = true; b.magFixed = false; if (b.fixed) b.fixed = false; if (magwellIndex(b.id) < 0) makeMagwell(b); b.ghost = true; }
-            else { b.magazine = true; b.magFixed = true; b.fixed = true; dropWell(); }
-        }
-        if (b.magazine) {
-            prop("Capacity");
-            ImGui::DragInt("##cap", &b.magCap, 0.2f, 1, 200, "%d rounds"); markEdit();
-            b.magCap = std::clamp(b.magCap, 1, 200);
-            {   // how the rounds sit inside: along a path you draw, side by side or nose to tail
-                int st = b.roundStyle == "line" ? 1 : 0;
-                prop("Rounds sit", "Side by side: stacked across the path, like a box magazine.\n"
-                                   "Nose to tail: one behind another along the path, like a tube under a barrel.");
-                if (ImGui::Combo("##rstyle", &st, "Side by side\0Nose to tail\0")) {
-                    b.roundStyle = st ? "line" : "side"; editedAny = true;
-                    if (st) b.tubeFeed = "physical";  // a tube made now feeds the real way
-                }
-                if (st && A.design.breech.physicalFeed) {
-                    int tf = b.tubeFeed == "physical" ? 0 : 1;
-                    prop("Rounds leave", "Pushed out: the tube's spring pushes each round out of its mouth, head first, as a real round.\n"
-                                         "Something you draw has to take it from there, like a lifter that raises it to the bore,\n"
-                                         "and anything in the way (a lifter that's up) holds the next one back. See the pump-action example.\n"
-                                         "When the action opens: the round simply reaches the chamber once the action has opened far enough\n"
-                                         "(how tubes worked in older versions).");
-                    if (ImGui::Combo("##tubefeed", &tf, "Pushed out of the mouth\0When the action opens (simple)\0")) { b.tubeFeed = tf == 0 ? "physical" : "simple"; editedAny = true; }
-                    tutAnchor("mag:tubefeed");
-                }
-                if (b.roundPath.size() >= 2)
-                    muted("Round path: %d points. Drag them in the view. The first is where rounds are fed from.", (int)b.roundPath.size());
-                else
-                    muted(st ? "Draw the path the rounds follow, starting at the mouth." : "Laid out automatically. Draw a path to arrange them yourself, starting where the top round sits.");
-                float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-                if (ImGui::Button("Draw the round path", {b.roundPath.empty() ? -1.f : w2, 0})) {
-                    A.tool = Tool::RoundPath; A.draft.clear(); A.drafting = true; A.draftHasF = false;
-                    toast("Click along the inside of the magazine, starting at the feed end. Enter to finish.");
-                }
-                tutAnchor("mag:roundpath");
-                if (!b.roundPath.empty()) { ImGui::SameLine(); if (ImGui::Button("Automatic", {w2, 0})) { b.roundPath.clear(); editedAny = true; } }
-                if (st == 0) {  // a belt instead of a spring
-                    int by = b.feedPawl.empty() ? 0 : 1;
-                    prop("Moved by", "Its spring: a follower pushes each round up to the lips (a box).\n"
-                                     "A pawl: a belt. A part you choose moves it on one round each time it travels the stroke\n"
-                                     "away from where it rests and comes back. The next round lies in the tray at the first point\n"
-                                     "of the round path; the rest of the belt hangs out of the side. A round still in the tray\n"
-                                     "stops the belt. See the belt-fed example.");
-                    if (ImGui::Combo("##movedby", &by, "Its spring\0A pawl (a belt)\0")) {
-                        if (by == 0) b.feedPawl.clear();
-                        else { b.feedPawl = D.breech.on ? D.breech.breech : ""; if (b.feedPawl.empty()) for (auto& o : D.bodies) if (!o.fixed && !o.magazine) { b.feedPawl = o.id; break; } }
-                        editedAny = true;
-                    }
-                    if (by == 1) {
-                        pBody("Pawl", b.feedPawl, false);
-                        if (tipHover()) ImGui::SetTooltip("The part whose stroke moves the belt: the bolt itself, or an arm you draw and link to it.");
-                        pNumU("Pawl stroke", b.pawlStroke, 0.5, Q::Length, 1, "How far the pawl must travel from where it rests to catch the next link.\nLonger than the part can actually travel, and the belt never moves.");
-                        b.pawlStroke = std::clamp(b.pawlStroke, 0.5, 500.0);
-                        if (b.roundPath.size() < 2) warn("Draw the round path: its first point is where the round lies in the tray.");
-                    }
-                }
-                {
-                    int ck = b.clip == "stripper" ? 1 : b.clip == "enbloc" ? 2 : 0;
-                    prop("Loaded with", "Loose rounds: reloading fills it.\n"
-                                        "Stripper clips: reloading pushes in one clip's worth at a time (instead of one round at a time by hand).\n"
-                                        "En-bloc clip: the clip goes in with the rounds. Only a full clip fits, so it can't be topped up,\n"
-                                        "and the empty clip is thrown out after the last round.");
-                    if (ImGui::Combo("##clip", &ck, "Loose rounds\0Stripper clips\0En-bloc clip\0")) { b.clip = ck == 1 ? "stripper" : ck == 2 ? "enbloc" : "none"; editedAny = true; }
-                    if (ck == 1) {
-                        prop("Rounds per clip", "How many rounds one clip holds. R tops up one clip's worth;\n"
-                                                "a reload animation can show it: Pose > Animations, keys Clip in hand,\nStrip the rounds in, Throw the clip away.");
-                        int top = std::max(2, b.magCap);
-                        b.clipSize = std::clamp(b.clipSize, 1, top);
-                        ImGui::SliderInt("##clipsize", &b.clipSize, 1, top, "%d rounds"); markEdit();
-                        b.clipSize = std::clamp(b.clipSize, 1, top);
-                    }
-                }
-            }
-            int mi = magwellIndex(b.id);
-            if (mi >= 0 && b.gen.on && b.gen.side) muted("It slides in and out sideways, across the gun.");
-            else if (mi >= 0 && D.joints[mi].path.size() >= 2) {
-                auto& j = D.joints[mi];
-                double dx = j.path.back().x - j.path.front().x, dy = j.path.back().y - j.path.front().y;
-                double travel = std::hypot(dx, dy), ang = std::atan2(dx, dy) / DEG2RAD, t0 = travel, a0 = ang;
-                if (j.pathAng.size() != j.path.size()) j.pathAng.resize(j.path.size(), 0.0);
-                if (j.path.size() == 2) {   // a straight path: its length and angle
-                    pNumU("Drop-out travel", travel, 1, Q::Length);
-                    pNum("Well angle", ang, 1, "%.1f\xc2\xb0", "0 is straight down.");
-                    if (travel != t0 || ang != a0) {
-                        travel = std::max(5.0, travel);
-                        j.path = {j.path.front(), {j.path.front().x + travel * std::sin(ang * DEG2RAD), j.path.front().y + travel * std::cos(ang * DEG2RAD)}};
-                        if (b.gen.on && ang != a0) { b.gen.angle = ang; generateMagazine(D, A.sel.idx); }  // (this is what turns it, even right over)
-                        editedAny = true;
-                    }
-                }
-                // the insertion path: bends, and how far the magazine has rocked at each point (rock-in magazines)
-                for (size_t k = 1; k < j.path.size(); k++) {
-                    char lb[40];
-                    if (k + 1 == j.path.size()) std::snprintf(lb, sizeof lb, "Tilt at the mouth"); else std::snprintf(lb, sizeof lb, "Tilt at bend %d", (int)k);
-                    pNum(lb, j.pathAng[k], 0.5, "%.1f\xc2\xb0", "How far the magazine has rocked by the time it reaches this point.\n"
-                                                          "Rock-in magazines go in at an angle and rock back as they seat.");
-                }
-                {
-                    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-                    if (ImGui::Button("Add a bend", {w2, 0})) {   // halfway along the last stretch
-                        size_t n = j.path.size();
-                        V2 a = j.path[n - 2], c = j.path[n - 1];
-                        j.path.insert(j.path.end() - 1, {(a.x + c.x) / 2, (a.y + c.y) / 2});
-                        j.pathAng.insert(j.pathAng.end() - 1, (j.pathAng[n - 2] + j.pathAng[n - 1]) / 2);
-                        editedAny = true;
-                    }
-                    if (tipHover()) ImGui::SetTooltip("Adds a point to the insertion path. Drag the green points in the view to shape it.");
-                    ImGui::SameLine();
-                    ImGui::BeginDisabled(j.path.size() <= 2);
-                    if (ImGui::Button("Straighten", {w2, 0})) { j.path = {j.path.front(), j.path.back()}; j.pathAng = {j.pathAng.front(), j.pathAng.back()}; editedAny = true; }
-                    ImGui::EndDisabled();
-                }
-                pBody("Well is in", j.b, true);
-                prop("Released by");
-                if (ImGui::BeginCombo("##rel", j.rel.empty() ? "The key only" : bname(j.rel).c_str())) {
-                    if (ImGui::Selectable("The key only", j.rel.empty())) { j.rel = ""; editedAny = true; }
-                    for (auto& o : D.bodies) if (o.id != b.id && ImGui::Selectable((o.name + "##rel" + o.id).c_str(), j.rel == o.id)) { j.rel = o.id; editedAny = true; }
-                    ImGui::EndCombo();
-                }
-                if (!j.rel.empty()) pNumU("when it moves", j.releaseAt, 0.5, Q::Length, -1, nullptr, SIGNED);
-            }
-            bool gen = b.gen.on;
-            if (pCheck("Fit to cartridge", gen, "Shapes the magazine around the cartridge: the body, lips and follower.")) {
-                b.gen.on = false;
-                if (gen) generateMagazine(D, A.sel.idx);
-            }
-            if (b.gen.on && b.gen.byHand) {
-                muted("Reshaped by hand: it keeps the shape you gave it. Its rounds lie along the blue dots: drag them to line them up.");
-                if (ImGui::Button("Fit it to the cartridge again", {-1, 0})) {
-                    b.gen.byHand = false; b.gen.extraH = b.gen.extraW = 0; b.roundPath.clear();
-                    generateMagazine(D, A.sel.idx); editedAny = true;
-                }
-                if (tipHover()) ImGui::SetTooltip("Back to the fitted shape, sized by the cartridge and capacity, its rounds laid out automatically.");
-            }
-            if (b.gen.on && !b.gen.byHand) {
-                bool regen = false;
-                {   // where it sits: under the gun, on top, or sticking out of either side
-                    int pos = b.gen.side > 0 ? 3 : b.gen.side < 0 ? 2 : std::fabs(std::remainder(b.gen.angle, 360.0)) > 90 ? 1 : 0;
-                    prop("Position", "Below or on top: it sits in the side view, and drops out of its well (set its angle below).\n"
-                                     "Left or right side: it sticks out across the gun, like a Sten's. The rounds come in sideways,\n"
-                                     "and only its mouth is in the side view: the bolt strips the round lying there, and pushes it\n"
-                                     "back into the magazine as it rides over it. Released, it slides out sideways.\n"
-                                     "Cut an opening in the receiver wall for it (Carve), or it goes through the wall.");
-                    if (ImGui::Combo("##magpos", &pos, "Below\0On top\0Left side\0Right side\0")) {
-                        bool wasSide = b.gen.side != 0;
-                        b.gen.side = pos == 3 ? 1 : pos == 2 ? -1 : 0;
-                        if (pos <= 1) {
-                            b.gen.angle = pos == 1 ? 180 : 0;
-                            if (wasSide) b.z = 0;
-                            int wi = magwellIndex(b.id);   // a fresh straight well, the new way out
-                            if (wi >= 0) D.joints[wi].path.resize(std::min<size_t>(D.joints[wi].path.size(), 2));
-                            if (wi >= 0 && D.joints[wi].path.size() == 2) { auto& j = D.joints[wi]; j.path[1] = {j.path[0].x + std::sin(b.gen.angle * DEG2RAD), j.path[0].y + std::cos(b.gen.angle * DEG2RAD)}; }
-                        }
-                        regen = true;
-                    }
-                }
-                float curve = (float)b.gen.curve;
-                prop("Curve");
-                if (ImGui::SliderFloat("##curve", &curve, -15, 80, "%.0f\xc2\xb0")) { b.gen.curve = curve; regen = true; } typeable();
-                if (pNumU("Wall", b.gen.wall, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3)) { b.gen.wall = std::clamp(b.gen.wall, 0.6, 4.0); regen = true; }
-                if (b.gen.side == 0) {   // its size: as fitted, or longer / wider than it needs to be
-                    double L = b.gen.H, Wd = b.gen.W;
-                    if (pNumU("Length", L, 0.5, Q::Length, 1, "From the lips to the floorplate. Fitted: just long enough for its capacity.\nLonger leaves room below the follower; shorter than its rounds need, and they won't all fit.")) {
-                        b.gen.extraH += L - b.gen.H; regen = true;
-                    }
-                    if (pNumU("Width", Wd, 0.5, Q::Length, 1, "Front to back. Fitted: the round's length plus the walls.")) { b.gen.extraW += Wd - b.gen.W; regen = true; }
-                    if ((b.gen.extraH != 0 || b.gen.extraW != 0) && ImGui::Button("Back to the fitted size", {-1, 0})) { b.gen.extraH = b.gen.extraW = 0; regen = true; }
-                }
-                static int lastCap = -1;
-                if (lastCap != b.magCap) { lastCap = b.magCap; regen = true; }
-                if (regen) { generateMagazine(D, A.sel.idx); editedAny = true; }
-                muted("%s, %d rounds: %s long.", D.breech.cart.name.c_str(), b.magCap, fmtQ(Q::Length, b.gen.H, 0).c_str());
-            }
-            {   // how the rounds sit and come out: any box magazine, fitted or drawn by hand
-                double rd = 0, fd = 90;
-                if (magFeedAngles(D, b, rd, fd)) {
-                    ImGui::Dummy({0, 4 * S()});
-                    ImGui::TextDisabled("Rounds inside");
-                    int st = magStackOf(b) - 1;
-                    prop("Stack", "Single: one column of rounds. Double: two staggered columns, about half as long for the same rounds.\n"
-                                  "Works on any magazine: fitted, reshaped or drawn by hand. A fitted one is refitted; your shape is kept.");
-                    if (ImGui::Combo("##stack", &st, "Single\0Double\0")) {
-                        b.magStack = st + 1;
-                        if (b.gen.on) { b.gen.stack = st + 1; if (!b.gen.byHand) generateMagazine(D, A.sel.idx); }
-                        editedAny = true;
-                    }
-                    if (magStackOf(b) == 2) {
-                        int fp = b.doubleFeed ? 1 : 0;
-                        prop("Feeds from", "Single position: the two columns taper into one, and every round feeds from the centre.\n"
-                                           "Straight in, so short pistol rounds like it; the taper's friction costs some spring (about a fifth).\n"
-                                           "Double position: rounds feed alternately from the left and right lips.\n"
-                                           "Easy on the spring, but each round comes in at an angle sideways: fine for long rifle rounds,\n"
-                                           "marginal for 9 mm, and fat short rounds like .45 ACP may not make it into the chamber.");
-                        if (ImGui::Combo("##feedpos", &fp, "Single position (centre)\0Double position (alternating)\0")) { b.doubleFeed = fp == 1; editedAny = true; }
-                    }
-                    auto angleRow = [&](const char* label, const char* id, bool& set, double& val, double autoVal, double lo, double hi, const char* tip) {
-                        prop(label, tip);
-                        bool on = set;
-                        if (ImGui::Checkbox(id, &on)) { set = on; if (on) val = std::round(autoVal); editedAny = true; }
-                        if (tipHover()) ImGui::SetTooltip("Ticked: set by hand. Unticked: worked out from the magazine's shape.");
-                        ImGui::SameLine();
-                        ImGui::SetNextItemWidth(-1);
-                        float v = (float)(set ? val : autoVal);
-                        ImGui::BeginDisabled(!set);
-                        if (ImGui::DragFloat((std::string(id) + "v").c_str(), &v, 0.5f, (float)lo, (float)hi, set ? "%.1f\xc2\xb0" : "%.1f\xc2\xb0 (automatic)")) { val = std::clamp((double)v, lo, hi); editedAny = true; }
-                        typeable();
-                        ImGui::EndDisabled();
-                    };
-                    angleRow("Round angle", "##rndset", b.roundSet, b.roundAngle, rd, -60, 60,
-                             "The angle the top round lies at, from the bore: 0 is parallel to it, + nose up.\n"
-                             "It slides off the lips along this line when the bolt pushes it. Nose up meets the feed ramp\n"
-                             "and chamber sooner; nose down can stub on the ramp or the barrel's face (failure to feed).");
-                    angleRow("Feed direction", "##fdset", b.feedSet, b.feedAngle, fd, -180, 180,
-                             "The way the follower pushes the rounds out, from the bore: 90 is straight up toward it,\n"
-                             "less leans forward, more leans back. A raked or curved magazine feeds at its own angle;\n"
-                             "set this to match where the lips actually present the round. Kept at least 25\xc2\xb0 off the round's line.");
-                }
-            }
-            // feed lips and spring: fitted to the cartridge to start with; these nudge them (physical feeding only)
-            ImGui::Dummy({0, 4 * S()});
-            ImGui::TextDisabled("Feed lips and spring");
-            if (!D.breech.physicalFeed) muted("These only matter with Firing > Physical rounds ticked.");
-            pNumU("Lip height", b.lipHeight, 0.1, Q::Length, CFG.units == Units::Metric ? 1 : 3,
-                  "Raises (+) or lowers (-) the top round from where the lips normally hold it.\n"
-                  "Too low and the breech face rides over its rim instead of pushing it (failure to feed).", SIGNED);
-            tutAnchor("mag:lips");
-            b.lipHeight = std::clamp(b.lipHeight, -5.0, 5.0);
-            {
-                double sp = b.magSpring * 100;
-                if (pNum("Spring strength", sp, 1, "%.0f%%", "The follower spring, against a standard one (100%).\n"
-                         "A weak spring brings the next round up slowly: a fast action or a long magazine outruns it\n"
-                         "and the breech closes on nothing (failure to feed). Pistols that cycle fast feel it first; a bolt action you work by hand barely does."))
-                    b.magSpring = std::clamp(sp / 100, 0.1, 3.0);
-                tutAnchor("mag:spring");
-            }
-            if (b.lipHeight != 0 || b.magSpring != 1) {
-                if (ImGui::Button("Reset lips and spring", {-1, 0})) { b.lipHeight = 0; b.lipRelease = 0.45; b.magSpring = 1; editedAny = true; }
-            }
-        }
+    if (b.magazine) {   // (its settings are in the Magazine tab)
+        muted(b.magFixed ? "A built-in magazine." : "A removable magazine.");
+        if (ImGui::Button(ICON_FA_BOX_ARCHIVE "  Edit it in the Magazine tab", {-1, 0})) gPanelTab = 4;
     }
 
     if (section("Advanced", false)) {
@@ -2422,6 +2428,46 @@ void layerStrip() {
     }
 }
 
+// The Magazine tab: the gun's magazines (removable or built in) and their settings; with none, it's loaded by hand
+static void magazineTab() {
+    auto& D = A.design;
+    std::vector<int> mags;
+    for (int i = 0; i < (int)D.bodies.size(); i++) if (D.bodies[i].magazine) mags.push_back(i);
+    static std::string pickId;
+    int pick = -1;
+    if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size() && D.bodies[A.sel.idx].magazine) pick = A.sel.idx;
+    if (pick < 0) for (int i : mags) if (D.bodies[i].id == pickId) pick = i;
+    if (pick < 0 && !mags.empty()) pick = mags.front();
+    ImGui::Dummy({0, 4 * S()});
+    if (mags.empty()) {
+        ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted("No magazine"); ImGui::PopFont();
+        muted("This gun is loaded by hand: R puts rounds straight into an open chamber, and the test works the action for each shot.");
+        ImGui::Dummy({0, 6 * S()});
+        if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)D.bodies.size()) {
+            BodyDef& b = D.bodies[A.sel.idx];
+            if (ImGui::Button(TextFormat(ICON_FA_BOX_ARCHIVE "  Make %s a magazine", b.name.empty() ? "the selected part" : b.name.c_str()), {-1, 0})) {
+                b.magazine = true; b.magFixed = false; editedAny = true;
+            }
+        } else muted("To add one: draw its outline (or a part to hold the rounds), select it, and make it a magazine here.");
+        return;
+    }
+    if (mags.size() > 1) {
+        for (int i : mags) {
+            const BodyDef& m = D.bodies[i];
+            if (accentButton((m.name.empty() ? m.id : m.name).c_str(), i == pick)) { pickId = m.id; A.sel = {1, i, -1}; gPickedInOutline = true; }
+            ImGui::SameLine(0, 4 * S());
+        }
+        ImGui::NewLine();
+    }
+    BodyDef& b = D.bodies[pick];
+    pickId = b.id;
+    ImGui::PushFont(gFontBold, 15.0f); ImGui::TextUnformatted((b.name.empty() ? b.id : b.name).c_str()); ImGui::PopFont();
+    if (!(A.sel.kind == 1 && A.sel.idx == pick)) {
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Select it")) { A.sel = {1, pick, -1}; gPickedInOutline = true; }
+    }
+    magazineEditor(b);
+}
 static void layersTab() {
     auto& D = A.design;
     if (std::getenv("GUNSMITH_LAYERDEMO") && D.layers.empty()) {   // (screenshots) the moving parts in Internals, hidden
@@ -2581,6 +2627,7 @@ void buildPanel() {
         bool outOpen = ImGui::BeginTabItem("Outline", nullptr, tabFlag(1)); tutAnchor("tab:Outline");
         if (outOpen) { outlineTab(); ImGui::EndTabItem(); }
         if (ImGui::BeginTabItem("Layers", nullptr, tabFlag(3))) { ImGui::BeginChild("##layers", {0, 0}); layersTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
+        if (!D.attach.on && ImGui::BeginTabItem("Magazine", nullptr, tabFlag(4))) { ImGui::BeginChild("##magazine", {0, 0}); magazineTab(); ImGui::EndChild(); ImGui::EndTabItem(); }
         if (D.attach.on) {   // an attachment: what it is and how it mounts, instead of a firing system
             bool attOpen = ImGui::BeginTabItem("Attachment", nullptr, tabFlag(2));
             if (attOpen) { ImGui::BeginChild("##attach", {0, 0}); attachmentTab(); ImGui::EndChild(); ImGui::EndTabItem(); }

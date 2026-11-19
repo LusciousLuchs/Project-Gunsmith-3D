@@ -58,6 +58,7 @@ void commit() {
         int into = al.id == A.activeLayer && !al.locked ? A.activeLayer : 0;
         for (auto& b : A.design.bodies) if (b.edLayer < 0) b.edLayer = into;
     }
+    magazineLayer(A.design);   // (a magazine sits in a layer of its own)
     for (auto& b : A.design.bodies) normalizeDepth(b);
     for (auto& b : A.design.bodies) meshSync(b);   // free 3D meshes: the outline follows the mesh
     for (auto& b : A.design.bodies) followMarks(b);   // engravings go with a part that moved as a whole   // shaped in depth: follow added or removed corners

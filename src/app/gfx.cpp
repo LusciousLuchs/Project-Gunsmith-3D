@@ -657,14 +657,25 @@ Vector3 faceN(const float* a, const float* b, const float* c) {   // unnormalise
 void smoothNormals(Mesh& m, double deg) {
     if (!m.vertices || !m.normals || m.vertexCount < 3) return;
     int nv = m.vertexCount, nt = nv / 3;
-    std::vector<Vector3> fn(nt), fu(nt);
+    std::vector<Vector3> fu(nt);      // each face's unit normal (0 for a sliver)
+    std::vector<float> ang(nv, 0);    // each corner's angle: a face counts at a corner by how wide it is there, not its
+                                      // area, so long thin slivers (a fan across a curved outline) don't streak the shading
     for (int t = 0; t < nt; t++) {
-        fn[t] = faceN(m.vertices + t * 9, m.vertices + t * 9 + 3, m.vertices + t * 9 + 6);
-        float l = std::sqrt(fn[t].x * fn[t].x + fn[t].y * fn[t].y + fn[t].z * fn[t].z);
-        fu[t] = l > 1e-12f ? Vector3{fn[t].x / l, fn[t].y / l, fn[t].z / l} : Vector3{0, 0, 0};
-        if (l > 1e-12f) {   // (the face as built may point the other way from its normals: follow those)
+        const float* P[3] = {m.vertices + t * 9, m.vertices + t * 9 + 3, m.vertices + t * 9 + 6};
+        Vector3 n = faceN(P[0], P[1], P[2]);
+        float l = std::sqrt(n.x * n.x + n.y * n.y + n.z * n.z);
+        fu[t] = l > 1e-10f ? Vector3{n.x / l, n.y / l, n.z / l} : Vector3{0, 0, 0};
+        if (l > 1e-10f) {   // (follow the way its built normals point)
             const float* n0 = m.normals + t * 9;
-            if (fu[t].x * n0[0] + fu[t].y * n0[1] + fu[t].z * n0[2] < 0) { fu[t] = {-fu[t].x, -fu[t].y, -fu[t].z}; fn[t] = {-fn[t].x, -fn[t].y, -fn[t].z}; }
+            if (fu[t].x * n0[0] + fu[t].y * n0[1] + fu[t].z * n0[2] < 0) fu[t] = {-fu[t].x, -fu[t].y, -fu[t].z};
+        }
+        for (int k = 0; k < 3; k++) {
+            const float *a = P[k], *b = P[(k + 1) % 3], *c = P[(k + 2) % 3];
+            Vector3 u{b[0] - a[0], b[1] - a[1], b[2] - a[2]}, v{c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+            float lu = std::sqrt(u.x * u.x + u.y * u.y + u.z * u.z), lv = std::sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+            if (lu < 1e-9f || lv < 1e-9f) continue;
+            float cs = (u.x * v.x + u.y * v.y + u.z * v.z) / (lu * lv);
+            ang[t * 3 + k] = std::acos(std::clamp(cs, -1.f, 1.f));
         }
     }
     std::unordered_map<PKey, std::vector<int>, PKeyHash> at;   // the vertices at each place
@@ -675,15 +686,18 @@ void smoothNormals(Mesh& m, double deg) {
     for (int i = 0; i < nv; i++) {
         int t = i / 3;
         if (fu[t].x == 0 && fu[t].y == 0 && fu[t].z == 0) continue;
+        const float* n0 = m.normals + i * 3;
+        if (fu[t].x * n0[0] + fu[t].y * n0[1] + fu[t].z * n0[2] < 0.9998f) continue;   // (built smooth already: a turned part, a rounded edge)
         Vector3 s{0, 0, 0};
         int faces = 0;
         for (int j : at[pkey(m.vertices + i * 3)]) {
             int u = j / 3;
             if (fu[u].x * fu[t].x + fu[u].y * fu[t].y + fu[u].z * fu[t].z < c) continue;
-            s.x += fn[u].x; s.y += fn[u].y; s.z += fn[u].z;
-            faces++;
+            float w = ang[j];
+            s.x += fu[u].x * w; s.y += fu[u].y * w; s.z += fu[u].z * w;
+            if (u != t) faces++;
         }
-        if (faces < 2) continue;   // (nothing to blend with, as where a cut split the faces: keep the normal it was built with)
+        if (faces < 1) continue;   // (nothing to blend with, as where a cut split the faces: keep the normal it was built with)
         float l = std::sqrt(s.x * s.x + s.y * s.y + s.z * s.z);
         if (l > 1e-12f) { out[i * 3] = s.x / l; out[i * 3 + 1] = s.y / l; out[i * 3 + 2] = s.z / l; }
     }

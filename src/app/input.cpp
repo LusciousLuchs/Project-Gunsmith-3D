@@ -75,6 +75,33 @@ static void cameraInput(bool overUI) {
 }
 
 
+// Loaded by hand (no magazine): R puts a round into every open, empty chamber; a shut gun with nothing in it is
+// loaded straight away (0.8.56, the owner's: "always brute force hand loading"); one shut on a case is worked open
+// first and loaded as soon as it's open. Called every frame with press = false to finish that.
+static bool handLoadBench(bool press) {
+    static bool waiting = false;
+    if (!A.S) { waiting = false; return false; }
+    auto& S = *A.S;
+    if (!press && !waiting) return false;
+    if (sim::magwell(S) || sim::seatedMag(S)) { waiting = false; return false; }
+    for (auto& b : S.bodies) if (b.builtInMag && !b.gone) { waiting = false; return false; }
+    int n = 0;
+    for (int k = 0; k < sim::chamberCount(S); k++) { sim::useChamber(S, k); if (sim::handLoad(S)) n++; }
+    sim::useChamber(S, 0);
+    if (n > 0) { waiting = false; toast(n == 1 ? "One round in." : TextFormat("%d rounds in.", n)); return true; }
+    if (!press) { if (!sim::animPlaying(S) && !S.hand.on) waiting = false; return false; }
+    if (sim::chamberedCount(S) >= sim::chamberCount(S)) return false;
+    if (!S.spent && !S.inTransit && sim::inBattery(S) && !sim::hasCylinder(S)) {   // shut and empty: pushed straight in
+        S.chambered = true; S.gripped = false;
+        toast("One round in (loaded by hand).");
+        return true;
+    }
+    waiting = true;   // a case in it: work the action, the round goes in once it's open
+    workAction();
+    toast("Loading by hand: working the action.");
+    return true;
+}
+
 void handleViewportInput() {
     ImGuiIO& io = ImGui::GetIO();
     bool overUI = io.WantCaptureMouse || !mouseInViewport();
@@ -153,8 +180,10 @@ void handleKeys() {
             if ((empty && sim::playAnim(*A.S, "reload_empty")) || sim::playAnim(*A.S, "reload")) { A.running = true; toast("Reloading (your animation)."); }
             else if (sim::magwell(*A.S)) { sim::quickReload(*A.S); toast("Reloaded."); }
             else if (int n = sim::fillMagazines(*A.S)) toast(n == 1 ? "One round in." : TextFormat("%d rounds in.", n));
+            else if (handLoadBench(true)) {}
             else toast("It's full.");
         }
+        handLoadBench(false);
         if (actPressed(Act::NewMag)) spawnSpareMag();
         if (actPressed(Act::WorkAction)) workAction();
         if (actPressed(Act::Inspect) && A.S) {

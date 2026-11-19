@@ -1853,3 +1853,18 @@ bool partShown(const Design& d, const BodyDef& b) { return d.layers.empty() || l
 bool partLocked(const Design& d, const BodyDef& b) { return !d.layers.empty() && layerOf(d, std::max(0, b.edLayer)).locked; }
 bool partFaint(const Design& d, const BodyDef& b) { if (d.layers.empty()) return false; const EdLayer& l = layerOf(d, std::max(0, b.edLayer)); return l.visible && l.faint; }
 bool partPickable(const Design& d, const BodyDef& b) { return partShown(d, b) && !partLocked(d, b) && !partFaint(d, b); }
+
+void magazineLayer(Design& d) {
+    bool any = false;
+    for (auto& b : d.bodies) if (b.magazine) { any = true; break; }
+    if (!any) return;
+    int id = -1;
+    for (auto& l : d.layers) if (l.name == "Magazine") { id = l.id; break; }
+    if (id < 0) {
+        if (d.layers.empty()) d.layers.push_back(EdLayer{});   // (Main)
+        id = 1; for (auto& l : d.layers) id = std::max(id, l.id + 1);
+        EdLayer l; l.id = id; l.name = "Magazine";
+        d.layers.push_back(l);
+    }
+    for (auto& b : d.bodies) if (b.magazine && b.edLayer == 0) b.edLayer = id;
+}

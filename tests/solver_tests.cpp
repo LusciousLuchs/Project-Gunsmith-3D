@@ -3260,6 +3260,16 @@ static void handLoadedReliability() {
         std::printf("  (feeds from %s: fired %d of 15)\n", fm, r.fired);
         CHECK(r.fired == 15 && r.jams == 0, "a single shot with no magazine is loaded by hand by the test, whatever Feeds from says");
     }
+    // (0.8.56) self-loaders with their magazines taken off: loaded by hand, a round at a time (they used to fire one)
+    for (const char* k : {"tilting", "gaspistol", "longrecoil", "blowback"}) {
+        Design d = loadPreset(k);
+        std::vector<BodyDef> keep; for (auto& b : d.bodies) if (!b.magazine) keep.push_back(b);
+        d.bodies = keep;
+        sim::ReliabilityOptions o; o.rounds = 8; o.stallSeconds = 20;
+        auto r = sim::runReliability(d, o);
+        std::printf("  (%s with no magazine: fired %d of 8, %d jams)\n", k, r.fired, r.jams);
+        CHECK(r.fired == 8 && r.singleLoad, "a self-loader with no magazine is loaded by hand, every shot");
+    }
 }
 
 static void gasPistol() {

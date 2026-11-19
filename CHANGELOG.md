@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.56-alpha
+
+- **Magazine tab** (next to Layers and Firing): every setting for the gun's magazines in one place. With several magazines, pick one at the top. A gun with no magazine says it's loaded by hand, and can turn the selected part into one. The part's own panel just points here now.
+- **Magazines get their own layer**: a gun's magazines go into a *Magazine* layer, so you can hide them, lock them or see through them while you work on the rest.
+- **No magazine = loaded by hand, and it always works.** The test loads each round straight into the open chamber, so any gun with no magazine fires every shot (a self-loader without its magazine used to fire once and give up: now 8 of 8 for the tilting, gas, long-recoil and blowback pistols). On the bench, R loads a gun with no magazine (working the action first if a case is in it).
+- **Fixed: streaky smooth shading.** Thin slivers of faces no longer drag the shading sideways, and surfaces that were already smooth (round parts) keep their own shading.
+
 ## 0.8.55-alpha
 
 - **Fixed: scratchy lines round cuts.** Since 0.8.54 a cut part (serrations, holes) drew hairy lines under each cut and stray lines across flat faces. Edge lines now only follow real corners, and a part that's only cut keeps its plain outline.
