@@ -80,7 +80,7 @@ void testInput(bool overUI) {
 void workAction() {
     if (!A.S || sim::animPlaying(*A.S)) return;
     A.S->design.anims = A.design.anims;
-    if (sim::playAnim(*A.S, "work_action")) { toast("Working the action (your animation)."); return; }
+    if (sim::playAnim(*A.S, "work_action")) { A.running = true; toast("Working the action (your animation)."); return; }   // (running: a paused bench left it frozen, the slide never racked)
     Animation a = sim::autoWorkAction(*A.S);
     if (a.keys.empty()) { toast("Nothing to work: this gun has no moving breech."); return; }
     A.S->design.anims["auto:work_action"] = a;

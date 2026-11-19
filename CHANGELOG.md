@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.50-alpha
+
+Animations that rack the slide, move arrows everywhere, easier fingers.
+
+- **Fixed: your own animations didn't move the gun on a paused test bench.** B (work the action), R (reload) and control keys played your animation's hands while the gun stayed frozen, so a slide never racked. They now run the bench, like the built-in ones. Also, a hand gripping over the slide or bolt takes hold of it even if it was dropped "on" the frame or a barrel underneath.
+- **Move arrows (Sprocket-style)**: a picked point gets red, green and blue arrows; drag one to slide it that way only (Ctrl or the snap steps). In Pose and animations: fingertips, hands on or off the gun, the gun itself. In the designer: picked corners (Select tool; the blue one moves depth-shaped corners in depth) and 3D vertices. In the character maker and NPC editor: a picked bone end. In the Level editor's Corners mode: the corner you clicked last.
+- **Pose and animations: switches over the view** for the rotation rings and the move arrows, so they stop crowding a hand. Also in Settings > Controls > Editors.
+- **Fingers mode** (the same switches): only the fingertips to grab (bigger, dragged straight away), a Grip slider for the whole hand, and each finger's Curl and Spread as sliders, with the hand presets and Zoom in.
+- **Garage**: the fridge no longer stands in front of the door into the house (it's by the shelving now).
+
 ## 0.8.49-alpha
 
 A new home garage street, and a much better Level editor.

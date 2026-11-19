@@ -23,7 +23,7 @@
 void drawOverlay() {
     drawFaces();
     drawMeshTool();
-    if (A.mode == Mode::Build) partRingsDraw();
+    if (A.mode == Mode::Build) { partRingsDraw(); cornerArrowsDraw(); }
     auto& D = A.design;
     A.handles.clear();
     Vector2 m = GetMousePosition();

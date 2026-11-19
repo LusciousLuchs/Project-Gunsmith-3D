@@ -819,6 +819,13 @@ void controlsPage() {
     dirty |= ImGui::SliderFloat("##fov", &CFG.fov, 55.f, 105.f, "%.0f deg"); typeable();
     row("Show your arms", "On the range: your arms and hands holding the gun, as the gun's pose has them.");
     dirty |= ImGui::Checkbox("##fparms", &CFG.fpArms);
+    ImGui::SeparatorText("Editors");
+    row("Move arrows", "Red, green and blue arrows on picked corners, fingertips and points: drag one to slide it that way only.\nIn Pose and animations they have their own switch over the view.");
+    dirty |= ImGui::Checkbox("##editarrows", &CFG.editArrows);
+    row("Pose: rotation rings", "The circles round a picked joint in Pose and animations (also switched over the view).");
+    dirty |= ImGui::Checkbox("##poserings", &CFG.poseRings);
+    row("Pose: move arrows");
+    dirty |= ImGui::Checkbox("##posearrows", &CFG.poseArrows);
     const char* group = nullptr;
     for (int i = 0; i < (int)Act::Count; i++) {
         const ActInfo& a = actInfo((Act)i);

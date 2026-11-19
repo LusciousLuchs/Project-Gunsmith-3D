@@ -199,6 +199,9 @@ int main(int argc, char** argv) {
     if (direct) enterWorkshop(false);
     if (sideArg) sideView();
     if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) { A.sel = {1, i, -1}; if (std::getenv("GUNSMITH_MARKBOLT")) A.design.bodies[i].bolt = true; } }   // (screenshots) marked as a bolt
+    if (const char* c = std::getenv("GUNSMITH_SELVS"); c && A.sel.kind == 1) {   // (screenshots) "v,v,...": pick these corners of the selected part
+        A.selVs.clear(); for (const char* q = c; q; q = std::strchr(q, ',')) { if (*q == ',') q++; A.selVs.push_back(std::atoi(q)); }
+    }
     if (const char* c = std::getenv("GUNSMITH_PARTRING")) { int ax = 0; double dg = 0; A.rotateMode = true; if (std::sscanf(c, "%d,%lf", &ax, &dg) == 2) partRingTest(ax, dg); }   // (tests) the selected part's rings
     if (carveTool) A.tool = Tool::Carve;
     if (meshDemo && A.sel.kind != 1) {   // a plain block beside the gun, to show the tool on
@@ -219,6 +222,10 @@ int main(int argc, char** argv) {
                 const auto& mm = A.design.bodies[A.sel.idx].mesh; if (f >= 0 && f < (int)mm.f.size()) { meshFaces().push_back(f); for (int v : mm.f[f]) meshSel().push_back(v); } if (!c) break; e = c + 1; }
             meshExtrudeBy() = 8;
             if (std::getenv("GUNSMITH_MESHPUSH")) meshExtrudePicked();
+        }
+        if (const char* e = std::getenv("GUNSMITH_MESHSEL")) {   // (screenshots) "v,v,...": pick these corners
+            meshSel().clear(); meshFaces().clear();
+            for (const char* c = e; c; c = std::strchr(c, ',')) { if (*c == ',') c++; meshSel().push_back(std::atoi(c)); }
         }
         if (const char* e = std::getenv("GUNSMITH_MESHJOIN")) {   // (screenshots) "v,v,...": join these corners into one
             meshSel().clear(); meshFaces().clear();
@@ -281,13 +288,15 @@ int main(int argc, char** argv) {
         if (std::sscanf(std::getenv("GUNSMITH_ANIM"), "%63s %lf", slot, &t) >= 1) { A.animEdit = true; A.animSlot = slot; A.animT = t; }
     }
     if (poseArg >= 0) { A.poseHold = std::min(poseArg, 2); enterPose(); if (std::getenv("GUNSMITH_POSEHAND")) poseFocusHand(std::atoi(std::getenv("GUNSMITH_POSEHAND")));
+        if (std::getenv("GUNSMITH_POSEFINGERS")) A.poseFingers = true;   // (screenshots) fingers mode
         if (const char* c = std::getenv("GUNSMITH_POSECAM")) std::sscanf(c, "%f %f %f", &A.yaw, &A.pitch, &A.dist);
         if (const char* c = std::getenv("GUNSMITH_BODYDRAG")) { void poseBodyDragTest(float); poseBodyDragTest((float)std::atof(c)); }   // (test) the body dragged sideways, px
-        if (const char* c = std::getenv("GUNSMITH_RINGTEST")) { int id = 0, ax = 0; double dg = 0; if (std::sscanf(c, "%d,%d,%lf", &id, &ax, &dg) == 3) poseRingTest(id, ax, dg); } }   // (screenshots) "yaw pitch dist" round the hand
+        if (const char* c = std::getenv("GUNSMITH_RINGTEST")) { int id = 0, ax = 0; double dg = 0; if (std::sscanf(c, "%d,%d,%lf", &id, &ax, &dg) == 3) poseRingTest(id, ax, dg); }
+        if (const char* c = std::getenv("GUNSMITH_ARROWTEST")) { int id = 0, ax = 0; double mm = 0; if (std::sscanf(c, "%d,%d,%lf", &id, &ax, &mm) == 3) poseArrowTest(id, ax, mm); } }   // (screenshots) "yaw pitch dist" round the hand
     A.showSettings = settingsArg; A.showPause = pauseArg; A.showBenchPicker = benchArg;
     settingsPageIndex(settingsPage);
     if (fireArg) fireDown();
-    if (charArg) enterCharacterEditor();
+    if (charArg) { enterCharacterEditor(); if (const char* e = std::getenv("GUNSMITH_NPCEND")) { NE.sel = std::atoi(e); NE.endPicked = true; } }
     if (careerArg) {
         enterCareer();
         if (const char* e = std::getenv("GUNSMITH_CAREERTAB")) careerSetTab(std::atoi(e));
@@ -317,7 +326,8 @@ int main(int argc, char** argv) {
         NE.npc = characterFromLook(L, &NE.npc);
         npcCommit();
     }
-    if (npcArg) { if (const char* k = std::getenv("GUNSMITH_NPC")) NE.npc = npcPreset(k); enterNpcEditor(); if (const char* k = std::getenv("GUNSMITH_NPC")) { NE.npc = npcPreset(k); NE.sel = 0; npcFrame(); } }
+    if (npcArg) { if (const char* k = std::getenv("GUNSMITH_NPC")) NE.npc = npcPreset(k); enterNpcEditor(); if (const char* k = std::getenv("GUNSMITH_NPC")) { NE.npc = npcPreset(k); NE.sel = 0; npcFrame(); }
+        if (const char* e = std::getenv("GUNSMITH_NPCEND")) { NE.sel = std::atoi(e); NE.endPicked = true; } }   // (screenshots) this bone's end picked
     if (!mapArg.empty()) {
         enterMapEditor();
         if (mapArg == "builtin") meLoadBuiltin(); else if (mapArg == "new") meNew(); else meOpen(mapArg);
@@ -560,6 +570,7 @@ int main(int argc, char** argv) {
         if (!demo.empty() && A.S && demo == "reload") A.S->magRelease = frame >= 5 && frame < 40;
         hintOverlay();
         layerStrip();
+        poseStrip();
         if (A.mode == Mode::Test) traceWindow();
         if (editedAny) A.uiDirty = true;
         if (A.uiDirty && !ImGui::IsAnyItemActive()) { commit(); A.uiDirty = false; }

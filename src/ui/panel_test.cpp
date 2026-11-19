@@ -12,6 +12,7 @@
 #include "app/keys.hpp"
 #include "ui/ui.hpp"
 #include "imgui.h"
+#include "extras/IconsFontAwesome6.h"
 
 #include <cstring>
 #include <algorithm>
@@ -647,4 +648,101 @@ void testPanel() {
     }
     ImGui::PopItemWidth();
     ImGui::End();
+}
+
+// ---------------------------------------------------------------- Pose and animations: switches over the view
+// Rings and arrows on or off (they can crowd a hand), and Fingers mode: only the fingertips to grab (pressed and dragged
+// at once, bigger), with each finger's curl and spread as sliders right here.
+void poseStrip() {
+    auto S = [] { return CFG.uiScale; };
+    if (!A.posing || A.screen != Screen::Workshop || (A.S && sim::animPlaying(*A.S))) return;
+    ImGui::SetNextWindowPos({12 * S(), TOOLBAR_H + 12 * S()}, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.85f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6 * S());
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, {8 * S(), 6 * S()});
+    ImGui::Begin("##posestrip", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_AlwaysAutoResize);
+    bool save = false;
+    if (accentButton(ICON_FA_ROTATE " Rings", CFG.poseRings)) { CFG.poseRings = !CFG.poseRings; save = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The rotation circles round a picked joint (on or off)");
+    ImGui::SameLine(0, 4 * S());
+    if (accentButton(ICON_FA_ARROWS_UP_DOWN_LEFT_RIGHT " Arrows", CFG.poseArrows)) { CFG.poseArrows = !CFG.poseArrows; save = true; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("The move arrows on a picked point: drag one to slide it that way only (on or off)");
+    ImGui::SameLine(0, 4 * S());
+    if (accentButton(ICON_FA_HAND " Fingers", A.poseFingers)) { A.poseFingers = !A.poseFingers; if (A.poseFingers && A.poseHand < 0) A.poseHand = 0; A.posePicked = -1; }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Fingers mode: only the fingertips to grab (drag one straight away),\nand each finger's curl and spread as sliders");
+    if (save) saveSettings();
+    if (A.poseFingers) {
+        const Pose P = viewPose();
+        bool sup = P.support.on || P.support.free;
+        if (accentButton("Firing hand", A.poseHand == 0)) { A.poseHand = 0; A.posePicked = -1; }
+        if (sup) { ImGui::SameLine(0, 4 * S()); if (accentButton("Support hand", A.poseHand == 1)) { A.poseHand = 1; A.posePicked = -1; } }
+        ImGui::SameLine(0, 8 * S());
+        if (ImGui::SmallButton("Zoom in")) poseFocusHand(A.poseHand == 1 ? 1 : 0);
+        int k = A.poseHand == 1 ? 1 : 0;
+        const char* which = k == 0 ? "firing" : "support";
+        const HandHold& view = k == 0 ? P.firing : P.support;
+        DigitPose dv[DIGIT_COUNT];
+        if (view.digitsSet) for (int d = 0; d < DIGIT_COUNT; d++) dv[d] = view.digits[d]; else digitsOf(view, which, dv);
+        ImGui::SetNextItemWidth(150 * S());
+        if (ImGui::BeginCombo("##fpreset", "Whole hand...")) {
+            const char* n = handPresets();
+            for (int i = 0; *n; i++, n += std::strlen(n) + 1) if (ImGui::Selectable(n)) { HandHold& h = *editHand(k); applyHandPreset(h, which, handPresetId(i)); commit(); }
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine(0, 6 * S());
+        {   // the whole hand's grip: every finger (not the thumb) curled together
+            double sum = 0; for (int d = 0; d < DIGIT_COUNT; d++) if (d != DIGIT_THUMB) sum += dv[d].bend[0] + dv[d].bend[1] + dv[d].bend[2];
+            float grip = (float)(sum / (DIGIT_COUNT - 1));
+            ImGui::SetNextItemWidth(140 * S());
+            if (ImGui::SliderFloat("##gripall", &grip, 0, 240, "Grip %.0f")) {
+                HandHold& h = *editHand(k);
+                if (!h.digitsSet) { digitsOf(h, which, h.digits); h.digitsSet = true; }
+                for (int d = 0; d < DIGIT_COUNT; d++) if (d != DIGIT_THUMB) {
+                    DigitPose& p = h.digits[d];
+                    double t = p.bend[0] + p.bend[1] + p.bend[2], add = grip - t;
+                    const double share[3] = {0.35, 0.4, 0.25};
+                    for (int s = 0; s < 3; s++) p.bend[s] += add * share[s];
+                    clampDigit(d, p);
+                }
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) commit();
+        }
+        if (ImGui::BeginTable("##fingers", 3, ImGuiTableFlags_SizingFixedFit)) {
+            for (int d = 0; d < DIGIT_COUNT; d++) {
+                ImGui::PushID(d);
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                bool picked = A.posePicked == 20 + d;
+                if (ImGui::Selectable(digitName(d), picked, 0, {60 * S(), 0})) { A.posePicked = 20 + d; A.poseDigit = d; }
+                ImGui::TableNextColumn();
+                float curl = (float)(dv[d].bend[0] + dv[d].bend[1] + dv[d].bend[2]);
+                ImGui::SetNextItemWidth(150 * S());
+                bool ch = ImGui::SliderFloat("##curl", &curl, d == DIGIT_THUMB ? -40.f : -30.f, 260, "Curl %.0f");
+                bool done = ImGui::IsItemDeactivatedAfterEdit();
+                ImGui::TableNextColumn();
+                float spread = (float)dv[d].spread;
+                ImGui::SetNextItemWidth(110 * S());
+                bool ch2 = ImGui::SliderFloat("##spread", &spread, -30, 60, "Spread %.0f");
+                done |= ImGui::IsItemDeactivatedAfterEdit();
+                if (ch || ch2) {
+                    HandHold& h = *editHand(k);
+                    if (!h.digitsSet) { digitsOf(h, which, h.digits); h.digitsSet = true; }
+                    DigitPose& p = h.digits[d];
+                    if (ch) {
+                        double t = p.bend[0] + p.bend[1] + p.bend[2], add = curl - t;
+                        const double share[3] = {0.35, 0.4, 0.25};
+                        for (int s = 0; s < 3; s++) p.bend[s] += add * share[s];
+                    }
+                    if (ch2) p.spread = spread;
+                    clampDigit(d, p);
+                }
+                if (done) commit();
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::TextDisabled("Drag a fingertip in the view (Shift: just curl it)");
+    }
+    ImGui::End();
+    ImGui::PopStyleVar(2);
 }

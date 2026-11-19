@@ -146,3 +146,79 @@ double ringsSolve(const std::function<Vector3(double)>& probe, Vector3 c, Vector
     }
     return v1;
 }
+
+// ---------------------------------------------------------------- move arrows
+namespace {
+bool hasA(const Arrows& g, int k) { return Vector3Length(g.ax[k]) > 0.5f; }
+Vector3 tipOf(const Arrows& g, int k) { return Vector3Add(g.c, Vector3Scale(g.ax[k], g.len)); }
+}  // namespace
+
+void arrowsFit(Arrows& g, const ToScreen& ts, float px) {
+    Vector2 c = ts(g.c);
+    float best = 0;   // pixels per world unit, from the axis that shows longest (an arrow pointing at you stays short)
+    for (int k = 0; k < 3; k++) {
+        if (!hasA(g, k)) continue;
+        Vector3 u, v; basis(g.ax[k], u, v);
+        for (Vector3 d : {g.ax[k], u, v}) { Vector2 s = ts(Vector3Add(g.c, d)); if (onScreen(s)) best = std::fmax(best, Vector2Distance(s, c)); }
+    }
+    g.len = best > 1e-4f ? px / best : 1;
+}
+
+int arrowsPick(const Arrows& g, const ToScreen& ts, Vector2 m) {
+    int best = -1; float bd = 8;
+    Vector2 c = ts(g.c);
+    for (int k = 0; k < 3; k++) {
+        if (!hasA(g, k)) continue;
+        Vector2 t = ts(tipOf(g, k));
+        if (!onScreen(t) || Vector2Distance(t, c) < 6) continue;   // (end on: can't be grabbed)
+        Vector2 a = Vector2Lerp(c, t, 0.18f);                       // (not right at the point: that's for picking it)
+        float d = segDist(m, a, t);
+        if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+}
+
+void arrowsBegin(Arrows& g, int axis, const ToScreen& ts, Vector2 m) {
+    g.axis = axis; g.press = m; g.moved = 0;
+    Vector2 a = ts(g.c), b = ts(Vector3Add(g.c, Vector3Scale(g.ax[axis], g.len)));
+    g.dir = Vector2Scale(Vector2Subtract(b, a), 1 / g.len);
+}
+
+double arrowsDrag(Arrows& g, Vector2 m, double snap) {
+    float l2 = Vector2LengthSqr(g.dir);
+    double d = l2 > 1e-6f ? Vector2DotProduct(Vector2Subtract(m, g.press), g.dir) / l2 : 0;
+    if (snap > 0) d = std::round(d / snap) * snap;
+    g.moved = d;
+    return d;
+}
+
+void arrowsDraw(const Arrows& g, const ToScreen& ts, const char* unit, double perUnit) {
+    Vector2 c = ts(g.c);
+    if (!onScreen(c)) return;
+    for (int k = 0; k < 3; k++) {
+        if (!hasA(g, k)) continue;
+        Vector2 t = ts(tipOf(g, k));
+        if (!onScreen(t)) continue;
+        Vector2 d = Vector2Subtract(t, c);
+        float l = Vector2Length(d);
+        if (l < 6) continue;
+        bool hot = g.axis == k || (g.axis < 0 && g.hot == k);
+        Color col = hot ? Color{255, 225, 90, 255} : COL[k];
+        if (g.axis >= 0 && g.axis != k) col.a = 70;   // (the others fade while one is dragged)
+        Vector2 u = Vector2Scale(d, 1 / l), n{-u.y, u.x};
+        float head = std::fmin(14.f, l * 0.35f);
+        Vector2 base = Vector2Subtract(t, Vector2Scale(u, head));
+        DrawLineEx(Vector2Add(c, Vector2Scale(u, 5)), base, hot ? 3.5f : 2.5f, col);
+        Vector2 p1 = Vector2Add(base, Vector2Scale(n, head * 0.42f)), p2 = Vector2Subtract(base, Vector2Scale(n, head * 0.42f));
+        DrawTriangle(t, p1, p2, col); DrawTriangle(t, p2, p1, col);   // (either winding)
+    }
+    DrawCircleV(c, 3.5f, Color{255, 255, 255, 220});
+    if (g.axis >= 0) {
+        char b[64];
+        if (unit) std::snprintf(b, sizeof b, "%s %+.1f %s", g.label[g.axis], g.moved * perUnit, unit);
+        else std::snprintf(b, sizeof b, "%s %+.3f", g.label[g.axis], g.moved * perUnit);
+        viewText(b, c.x + 14, c.y + 10, 13, COL[g.axis]);
+    } else if (g.hot >= 0) {
+        viewText(TextFormat("%s: drag along it", g.label[g.hot]), c.x + 14, c.y + 10, 12, COL[g.hot]);
+    }
+}

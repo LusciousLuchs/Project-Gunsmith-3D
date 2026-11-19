@@ -488,8 +488,11 @@ free_box((-5.99, 0.9, -10.6), (-5.96, 2.1, -7.6), "plywood", "C9A26B", 0.4)     
 for (z, y, h) in ((-10.2, 1.5, 0.35), (-9.7, 1.6, 0.25), (-9.1, 1.45, 0.4), (-8.4, 1.55, 0.3), (-7.9, 1.65, 0.2)):
     free_box((-5.96, y, z - 0.03), (-5.93, y + h, z + 0.03), "steel", "3E4247")      # tools hanging on it
 free_box((-5.99, 1.6, -11.6), (-5.9, 2.1, -11.2), "steel", "9EA2A6")                # the breaker panel
-free_box((3.2, 0.0, -5.75), (3.95, 1.75, -5.1), "paint_white", "E3E0D8")            # an old fridge
-free_box((3.21, 1.2, -5.77), (3.94, 1.22, -5.75), "steel", "8E9399")
+# an old fridge against the house wall, beside the shelving (clear of the door into the house at x 3.0..3.96), its door
+# split freezer / fridge with handles
+free_box((-0.95, 0.0, -5.75), (-0.2, 1.75, -5.1), "paint_white", "E3E0D8")
+free_box((-0.94, 1.2, -5.77), (-0.21, 1.22, -5.75), "steel", "8E9399")
+free_box((-0.3, 1.3, -5.8), (-0.26, 1.6, -5.75), "steel", "B8BCC0"); free_box((-0.3, 0.75, -5.8), (-0.26, 1.1, -5.75), "steel", "B8BCC0")
 for x in (-3.0, 2.5):   # ceiling lights (tubes), their lamps
     free_box((x - 0.65, 2.68, -8.62), (x + 0.65, 2.75, -8.38), "steel", "D9D6CF")
     free_box((x - 0.6, 2.665, -8.58), (x + 0.6, 2.68, -8.42), "paint_white", "FFFBEF")
@@ -497,6 +500,7 @@ for x in (-3.0, 2.5):   # ceiling lights (tubes), their lamps
 box((3.0, 0.0, -5.1), (3.96, 2.05, -5.08), "door_wood", "E8E3D8")   # the door into the house
 box((2.9, 0.0, -5.1), (3.0, 2.15, -5.06), "paint_white", TRIM); box((3.96, 0.0, -5.1), (4.06, 2.15, -5.06), "paint_white", TRIM); box((2.9, 2.05, -5.1), (4.06, 2.15, -5.06), "paint_white", TRIM)
 box((3.0, 0.0, -5.6), (3.96, 0.17, -5.1), "concrete", "A9A49A", 0.6)               # its step
+box((3.8, 0.98, -5.13), (3.86, 1.04, -5.1), "steel", "C9A94A")                      # its knob
 
 # the shop's things, as a new career has them (the player rearranges them in build mode)
 ent("player_start", (4.4, 0.0, -8.5), 180.0)

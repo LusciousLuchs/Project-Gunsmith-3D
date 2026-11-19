@@ -1762,6 +1762,18 @@ static void animTick(Sim& S) {
         if (!hd.on) {   // taking hold: of the part it's on, where the hand is
             Body* b = nullptr;
             for (auto& x : S.bodies) if (!x.gone && x.id == h.part) { b = &x; break; }
+            // the hand is "on" whichever part was listed on top where it was dropped: often the frame, or a barrel inside
+            // the slide. A gripping hand over the action (the breech's assembly: a slide, a bolt; or a charging handle)
+            // takes hold of that instead, unless its own part is a moving part of the action already
+            Body* BRr = S.BR ? (S.BR->root ? S.BR->root : S.BR) : nullptr;
+            auto actionPart = [&](const Body& x) { const Body* r = x.root ? x.root : &x; return (BRr && r == BRr) || (x.d && x.d->ctrl == "handle"); };
+            if (!b || b->fixed || !actionPart(*b)) {
+                for (auto& x : S.bodies) {
+                    if (x.gone || x.fixed || x.slice || !x.tmpl.empty() || !actionPart(x) || x.lp.size() < 3) continue;
+                    V2 l = lpt(x, target);
+                    if (inPoly(l.x, l.y, x.lp)) { b = &x; break; }
+                }
+            }
             if (!b || b->fixed) continue;   // (a fixed part: nothing to move, the hand just rests on it)
             hd.on = true; hd.b = b; hd.l = lpt(*b, target);
         }

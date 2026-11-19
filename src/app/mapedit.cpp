@@ -710,6 +710,9 @@ V3 gAxisO; double gAxisT0 = 0;    // where the arrows stood at the press, and ho
 Vector2 gBoxA;                    // a box-select's first corner (screen)
 int gCorner = -1, gCornerHot = -1;   // corner editing: the corner dragged, the one under the mouse
 std::vector<V3> gCornerPts;       // the block's corners at the press
+int gCornerPicked = -1, gCornerAxis = -1, gCornerAxisHot = -1;   // the corner clicked last (its move arrows), the arrow dragged, the one under the mouse
+double gCornerT0 = 0;
+V3 gCornerNow{};                  // where the dragged corner is now
 V3 rotPivot;
 double rotYaw0 = 0;               // a thing's yaw at the press
 gmap::Stance wantStance = gmap::Stance::Stand;
@@ -892,6 +895,49 @@ static void drawCorners() {
         DrawCircleLinesV(s, hot ? 7.f : 5.f, Color{255, 205, 60, 255});
     }
 }
+// the picked corner's move arrows (Sprocket-style): drag one to slide that corner along X, Y or Z only
+static bool cornerArrowsOn() {
+    if (!cornersOn() || !CFG.editArrows) return false;
+    auto v = gmap::brushVertices(ME.map.brushes[ME.sel[0]]);
+    return gCornerPicked >= 0 && gCornerPicked < (int)v.size();
+}
+static int cornerArrowPick(Vector2 m) {
+    if (!cornerArrowsOn()) return -1;
+    V3 at = gmap::brushVertices(ME.map.brushes[ME.sel[0]])[gCornerPicked];
+    double L = gizmoLen(at) * 0.8;
+    Vector2 a; if (!project(at, a)) return -1;
+    int best = -1; float bd = 9;
+    for (int k = 0; k < 3; k++) {
+        Vector2 e; if (!project(at + AXES[k] * L, e)) continue;
+        Vector2 ab = Vector2Subtract(e, a); float l2 = Vector2LengthSqr(ab);
+        if (l2 < 1) continue;
+        float t = std::clamp(Vector2DotProduct(Vector2Subtract(m, a), ab) / l2, 0.25f, 1.1f);
+        float d = Vector2Distance(m, Vector2Add(a, Vector2Scale(ab, t)));
+        if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+}
+static void drawCornerArrows() {
+    if (!cornerArrowsOn() && !(drag == Drag::Corner && gCornerAxis >= 0)) return;
+    if (ME.sel.size() != 1) return;
+    auto v = gmap::brushVertices(ME.map.brushes[ME.sel[0]]);
+    int idx = drag == Drag::Corner && gCorner >= 0 ? gCorner : gCornerPicked;
+    if (idx < 0 || idx >= (int)v.size()) return;
+    V3 at = drag == Drag::Corner && gCornerAxis >= 0 ? gCornerNow : v[idx];
+    double L = gizmoLen(at) * 0.8;
+    Vector2 a; if (!project(at, a)) return;
+    static const Color col[3] = {{235, 80, 70, 255}, {110, 210, 90, 255}, {80, 140, 240, 255}};
+    for (int k = 0; k < 3; k++) {
+        Vector2 e; if (!project(at + AXES[k] * L, e)) continue;
+        bool hot = k == gCornerAxisHot || k == gCornerAxis;
+        Color c = hot ? Color{255, 225, 90, 255} : col[k];
+        if (gCornerAxis >= 0 && k != gCornerAxis) c.a = 70;
+        Vector2 dir = Vector2Normalize(Vector2Subtract(e, a)), nrm{-dir.y, dir.x};
+        DrawLineEx(Vector2Add(a, Vector2Scale(dir, 6)), e, hot ? 3.5f : 2.5f, c);
+        DrawTriangle(Vector2Add(e, Vector2Scale(dir, 11)), Vector2Add(e, Vector2Scale(nrm, -5)), Vector2Add(e, Vector2Scale(nrm, 5)), c);
+        DrawTriangle(Vector2Add(e, Vector2Scale(dir, 11)), Vector2Add(e, Vector2Scale(nrm, 5)), Vector2Add(e, Vector2Scale(nrm, -5)), c);
+    }
+}
 // the rotation rings round the selection (Rotate mode): world X, Y, Z for blocks; a thing turns about Y only
 static Vector2 ringScreen(Vector3 p) { Vector2 s{-1e6f, -1e6f}; project(V3{p.x, p.y, p.z}, s); return s; }
 static bool ringsActive() {
@@ -942,12 +988,20 @@ static void toolInput() {
                     break;
                 }
             }
-            if (cornersOn()) {   // a corner of the selected block
+            if (cornersOn()) {   // the picked corner's arrows, else a corner of the selected block
+                int k = cornerArrowPick(m);
+                if (k >= 0) {
+                    beginDrag(Drag::Corner);
+                    gCorner = gCornerPicked; gCornerAxis = k; dragOrig = {ME.map.brushes[ME.sel[0]]}; gCornerPts = gmap::brushVertices(dragOrig[0]);
+                    dragHit = gCornerPts[gCorner]; gCornerNow = dragHit; dragVertical = false;
+                    gCornerT0 = axisParam(dragHit, AXES[k]);
+                    break;
+                }
                 int c = cornerPick(m);
                 if (c >= 0) {
                     beginDrag(Drag::Corner);
-                    gCorner = c; dragOrig = {ME.map.brushes[ME.sel[0]]}; gCornerPts = gmap::brushVertices(dragOrig[0]);
-                    dragHit = gCornerPts[c]; dragVertical = alt;
+                    gCorner = c; gCornerPicked = c; gCornerAxis = -1; dragOrig = {ME.map.brushes[ME.sel[0]]}; gCornerPts = gmap::brushVertices(dragOrig[0]);
+                    dragHit = gCornerPts[c]; gCornerNow = dragHit; dragVertical = alt;
                     break;
                 }
             }
@@ -1202,12 +1256,14 @@ static void toolInput() {
             if (std::fabs(t) > 1e-9) { dragChanged = true; ME.version++; }
         } else if (drag == Drag::Corner && gCorner >= 0 && !dragOrig.empty()) {
             V3 p; bool ok;
-            if (dragVertical || ME.top) {   // up and down (Alt), or across in the top view
+            if (gCornerAxis >= 0) { ok = true; p = dragHit + AXES[gCornerAxis] * snapG(axisParam(dragHit, AXES[gCornerAxis]) - gCornerT0); gCornerNow = p; }
+            else if (dragVertical || ME.top) {   // up and down (Alt), or across in the top view
                 if (ME.top) { ok = true; p = o + d * ((o.y - dragHit.y) / -d.y); }
                 else { CamB c = camBasis(); V3 nrm = norm({c.fwd.x, 0, c.fwd.z}); ok = rayPlane(o, d, nrm, dot(nrm, dragHit), p); if (ok) p = {dragHit.x, p.y, dragHit.z}; }
             } else ok = rayPlaneY(o, d, dragHit.y, p);
             if (ok) {
-                p = {snapG(p.x), dragVertical ? snapG(p.y) : dragHit.y, snapG(p.z)};
+                if (gCornerAxis < 0) p = {snapG(p.x), dragVertical ? snapG(p.y) : dragHit.y, snapG(p.z)};
+                gCornerNow = p;
                 auto pts = gCornerPts; pts[gCorner] = p;
                 gmap::Brush nb;
                 if (gmap::brushFromPoints(pts, ME.mat, nb, &dragOrig[0])) { ME.map.brushes[ME.sel[0]] = nb; ME.version++; dragChanged = gmap::len(p - gCornerPts[gCorner]) > 1e-9; }
@@ -1245,7 +1301,11 @@ static void toolInput() {
             drag = Drag::None;
             return;
         }
-        gAxis = -1; gCorner = -1;
+        if (gCorner >= 0 && ME.sel.size() == 1) {   // (the block is rebuilt from its corners: keep the moved one picked)
+            auto v = gmap::brushVertices(ME.map.brushes[ME.sel[0]]);
+            double bd = 1e18; for (size_t q = 0; q < v.size(); q++) { double dd = gmap::len(v[q] - gCornerNow); if (dd < bd) { bd = dd; gCornerPicked = (int)q; } }
+        }
+        gAxis = -1; gCorner = -1; gCornerAxis = -1;
         if (drag == Drag::Create) {
             double minW = std::max(ME.grid, 0.01) * 0.5;
             V3 mn{std::min(createA.x, createB.x), createY, std::min(createA.z, createB.z)};
@@ -1616,10 +1676,11 @@ static void drawEditor3D() {
 
 static void drawEditorOverlay() {
     VP v = viewRect();
-    if (drag == Drag::None && mouseInView()) { gAxisHot = gizmoPick(GetMousePosition()); gCornerHot = cornerPick(GetMousePosition()); }
+    if (drag == Drag::None && mouseInView()) { gAxisHot = gizmoPick(GetMousePosition()); gCornerHot = cornerPick(GetMousePosition()); gCornerAxisHot = cornerArrowPick(GetMousePosition()); if (gCornerAxisHot >= 0) gCornerHot = -1; }
     else if (drag == Drag::None) gAxisHot = gCornerHot = -1;
     drawGizmo();
     drawCorners();
+    drawCornerArrows();
     if (drag == Drag::Box) {
         Vector2 m = GetMousePosition();
         Rectangle r{std::min(gBoxA.x, m.x), std::min(gBoxA.y, m.y), std::fabs(m.x - gBoxA.x), std::fabs(m.y - gBoxA.y)};
@@ -1703,7 +1764,8 @@ void mapEditorUpdate(float dt, bool modal) {
             ME.map.brushes.push_back(gmap::makeBox(at + V3{0.6, 0, -0.4}, at + V3{1.6, 0.6, 0.4}, ME.mat));
             ME.sel = {(int)ME.map.brushes.size() - 1}; ME.ent = -1; ME.face = -1;
             ME.tool = MTool::Select; ME.rotateMode = true;
-            if (const char* md = std::getenv("GUNSMITH_MAPMODE")) { std::string mm = md; ME.rotateMode = mm == "rotate"; ME.cornerMode = mm == "corners"; }   // (move, rotate, corners)
+            if (const char* md = std::getenv("GUNSMITH_MAPMODE")) { std::string mm = md; ME.rotateMode = mm == "rotate"; ME.cornerMode = mm == "corners"; }
+            if (const char* mc = std::getenv("GUNSMITH_MAPCORNER")) gCornerPicked = std::atoi(mc);   // (screenshots) this corner picked   // (move, rotate, corners)
             V3 axis{ax == 0 ? 1.0 : 0.0, ax == 1 ? 1.0 : 0.0, ax == 2 ? 1.0 : 0.0};
             if (dg != 0) gmap::rotateAxis(ME.map.brushes.back(), axis, dg * DEG2RAD, selCentre());
             for (auto& f : ME.map.brushes.back().faces) f.color = 0x3E7CA8FFu;   // (painted blue: the colour too)

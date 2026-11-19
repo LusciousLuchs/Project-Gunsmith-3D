@@ -69,6 +69,7 @@ struct App {
     std::string animSlot = "reload";
     double animT = 0;
     int poseDrag = -1;                   // the pose handle being dragged
+    bool poseFingers = false;            // Pose: fingers mode (only the fingertips to grab, pressed and dragged at once; curl sliders in the view)
     int posePicked = -1;                 // the Pose dot clicked once: a second press drags it
     Vector2 posePress{};
     bool poseLive = false;

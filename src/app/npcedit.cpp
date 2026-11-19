@@ -58,6 +58,8 @@ Vector2 toScreenV(Vector3 w) {
 }
 // the bone nearest the ray, within its thickness
 Rings gRings;   // the selected bone's rotation rings
+Arrows gNArr;   // ...and its picked end's move arrows (red X, green up, blue Z)
+Vector3 gNArrE0{};
 int pickBone(Ray r) {
     auto P = npcPose(NE.npc);
     int best = -1; float bt = 1e30f;
@@ -254,6 +256,28 @@ void npcEditorUpdate(float dt, bool modal) {
         }
         gRings.hot = overUI || NE.aiming ? -1 : ringsPick(gRings, ts, m);
         if (gRings.hot >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { snap = NE.npc; ringsBegin(gRings, gRings.hot, ts, m); return; }
+    }
+    {   // the picked end's move arrows: drag one and the bone points at its end slid that way (Shift: and stretches)
+        ToScreen ts = [](Vector3 w) { return toScreenV(w); };
+        if (gNArr.axis >= 0) {
+            if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { gNArr.axis = -1; npcCommit(); return; }
+            double d = arrowsDrag(gNArr, m, IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL) ? 10 * S : 0);
+            Vector3 a = W(P[NE.sel].a), tgt = Vector3Add(gNArrE0, Vector3Scale(gNArr.ax[gNArr.axis], (float)d));
+            Vector3 dv = Vector3Subtract(tgt, a);
+            if (Vector3Length(dv) < 1e-4f) return;
+            double dir[3] = {dv.x, dv.y, dv.z};
+            npcAimBone(NE.npc, NE.sel, dir);
+            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) NE.npc.bones[NE.sel].len = std::max(5.0, (double)Vector3Length(dv) / S);
+            return;
+        }
+        gNArr.hot = -1;
+        if (NE.endPicked && !NE.aiming && CFG.editArrows) {
+            gNArr.c = W(P[NE.sel].b);
+            gNArr.ax[0] = {1, 0, 0}; gNArr.ax[1] = {0, 1, 0}; gNArr.ax[2] = {0, 0, 1};
+            arrowsFit(gNArr, ts, 60);
+            gNArr.hot = overUI ? -1 : arrowsPick(gNArr, ts, m);
+            if (gNArr.hot >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) { gNArrE0 = gNArr.c; arrowsBegin(gNArr, gNArr.hot, ts, m); return; }
+        }
     }
     Vector2 endS = toScreenV(W(P[NE.sel].b));
     if (NE.aiming) {   // the bone points at the mouse, in the plane through its end facing you (Shift: and stretches to it)
@@ -562,6 +586,11 @@ void npcEditorRender() {
         DrawText(NE.npc.bones[NE.sel].name.c_str(), (int)a.x + 10, (int)a.y + 6, 14, Color{230, 232, 236, 255});
     }
     if (NE.sel < (int)P.size()) ringsDraw(gRings, [](Vector3 w) { return toScreenV(w); }, cam.position);
+    if (NE.sel < (int)P.size() && CFG.editArrows && (gNArr.axis >= 0 || (NE.endPicked && !NE.aiming))) {
+        gNArr.c = W(P[NE.sel].b);
+        if (gNArr.axis < 0) arrowsFit(gNArr, [](Vector3 w) { return toScreenV(w); }, 60);
+        arrowsDraw(gNArr, [](Vector3 w) { return toScreenV(w); }, "mm", 1.0 / S);
+    }
     DrawText("Right drag: turn   Wheel: zoom   Middle drag: up and down   Click a bone to select it   Drag a ring to turn it (Ctrl: 15\xc2\xb0 steps)   Ctrl+Z: undo", 12, GetScreenHeight() - 26, 14, Color{170, 176, 186, 255});
     DrawText("1.8 m", (int)toScreenV({-12, 18.3f, 0}).x - 16, (int)toScreenV({-12, 18.3f, 0}).y - 16, 14, Color{220, 150, 90, 255});
 }

@@ -104,6 +104,70 @@ bool partRingsInput(bool overUI) {
     ringsBegin(gPartR, gPartR.hot, ts, GetMousePosition());
     return true;
 }
+// ---------------------------------------------------------------- move arrows on the picked corners (Select tool)
+// Red along the gun, green up, blue across it (only for a part shaped in depth: those corners' depth). Every picked
+// corner moves together; Ctrl or the snap steps by the grid.
+namespace {
+Arrows gCornerA;
+std::vector<V2> gCornerOrig;
+std::vector<double> gCornerZn, gCornerZf;
+bool cornerArrowsShown() {
+    if (!(A.mode == Mode::Build && A.tool == Tool::Select && !A.rotateMode && A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()
+          && !A.selVs.empty() && !A.faceDragging && !A.posing && CFG.editArrows)) return false;
+    const BodyDef& d = A.design.bodies[A.sel.idx];
+    return !meshShaped(d) && d.pts.size() >= 3;
+}
+void cornerArrowsSetup() {
+    int i = A.sel.idx;
+    const BodyDef& d = A.design.bodies[i];
+    V2 c{0, 0}; int n = 0;
+    for (int v : A.selVs) if (v >= 0 && v < (int)d.pts.size()) { c.x += d.pts[v].x; c.y += d.pts[v].y; n++; }
+    if (n) { c.x /= n; c.y /= n; }
+    gCornerA.c = W3(c, bodyFront(i));
+    gCornerA.ax[0] = {1, 0, 0}; gCornerA.ax[1] = {0, 1, 0};
+    gCornerA.ax[2] = d.depthZn.size() == d.pts.size() && d.depthZf.size() == d.pts.size() ? Vector3{0, 0, 1} : Vector3{0, 0, 0};
+    gCornerA.label[0] = "Along"; gCornerA.label[1] = "Up"; gCornerA.label[2] = "Depth";
+    arrowsFit(gCornerA, [](Vector3 w) { return toScreen(w); }, 64);
+}
+}  // namespace
+bool cornerArrowsInput(bool overUI) {
+    ToScreen ts = [](Vector3 w) { return toScreen(w); };
+    if (gCornerA.axis >= 0) {
+        int i = A.sel.idx;
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) || A.sel.kind != 1 || i < 0 || i >= (int)A.design.bodies.size()) { gCornerA.axis = -1; commit(); return true; }
+        BodyDef& d = A.design.bodies[i];
+        bool snap = (A.snapOn && !IsKeyDown(KEY_LEFT_ALT)) || IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        double mm = arrowsDrag(gCornerA, GetMousePosition()) / U;
+        if (snap) mm = snapv(mm, true);
+        gCornerA.moved = mm * U;
+        if (gCornerOrig.size() != d.pts.size()) return true;
+        for (int v : A.selVs) {
+            if (v < 0 || v >= (int)d.pts.size()) continue;
+            d.pts[v] = gCornerOrig[v];
+            if (gCornerA.axis == 0) d.pts[v].x += mm;
+            if (gCornerA.axis == 1) d.pts[v].y -= mm;   // (the designer's y runs down the screen)
+            if (gCornerA.axis == 2 && gCornerZn.size() == d.pts.size() && d.depthZn.size() == d.pts.size() && d.depthZf.size() == d.pts.size()) {
+                d.depthZn[v] = gCornerZn[v] + mm; d.depthZf[v] = gCornerZf[v] + mm;
+            }
+        }
+        return true;
+    }
+    gCornerA.hot = -1;
+    if (!cornerArrowsShown() || A.dragKind != 0) return false;
+    cornerArrowsSetup();
+    gCornerA.hot = overUI ? -1 : arrowsPick(gCornerA, ts, GetMousePosition());
+    if (gCornerA.hot < 0 || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return false;
+    const BodyDef& d = A.design.bodies[A.sel.idx];
+    gCornerOrig = d.pts; gCornerZn = d.depthZn; gCornerZf = d.depthZf;
+    arrowsBegin(gCornerA, gCornerA.hot, ts, GetMousePosition());
+    return true;
+}
+void cornerArrowsDraw() {
+    if (gCornerA.axis < 0 && (!cornerArrowsShown() || A.dragKind != 0)) return;
+    if (A.sel.kind != 1 || A.sel.idx < 0 || A.sel.idx >= (int)A.design.bodies.size()) return;
+    cornerArrowsSetup();   // (while dragging too: they follow the corners)
+    arrowsDraw(gCornerA, [](Vector3 w) { return toScreen(w); }, "mm", 1 / U);
+}
 void partRingTest(int axis, double deg) {   // (tests) as a drag of ring `axis` by `deg` would
     if (!partRingsShown()) { std::printf("PARTRING: nothing selected\n"); return; }
     partRingsSetup();
@@ -304,7 +368,9 @@ void buildInput(bool overUI) {
     {   // vertex selection belongs to one part: drop it when the selection moves elsewhere
         static std::string selVsPart;
         std::string cur = (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()) ? A.design.bodies[A.sel.idx].id : "";
-        if (cur != selVsPart) { A.selVs.clear(); if (!selVsPart.empty()) { A.selCarve = -1; A.selMount = -1; } selVsPart = cur; }
+        static bool started = false;   // (the first frame's selection isn't a change: corners picked at start stay picked)
+        if (cur != selVsPart) { if (started) A.selVs.clear(); if (!selVsPart.empty()) { A.selCarve = -1; A.selMount = -1; } selVsPart = cur; }
+        started = true;
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
     if (!A.carveDrag && !A.carveMove && attachHandlesInput(overUI)) return;   // (an attachment's sight line and mount spot)
@@ -316,6 +382,7 @@ void buildInput(bool overUI) {
     if (A.tool == Tool::Scale) { scaleInput(overUI); return; }
     if (A.tool == Tool::Faces || (A.faceDragging && A.tool != Tool::Select)) { facesInput(overUI); return; }
     if (partRingsInput(overUI)) return;   // the selected part's rotation rings
+    if (cornerArrowsInput(overUI)) return;   // the picked corners' move arrows
     if (selectFacesInput(overUI)) return;
     if (A.tool == Tool::Select && A.sel.kind == 1 && A.dragKind == 0 && IsKeyPressed(KEY_E)) { facesInput(overUI); if (A.faceDragging) return; }
     Vector2 m = GetMousePosition();

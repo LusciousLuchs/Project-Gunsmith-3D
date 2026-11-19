@@ -7,6 +7,8 @@ BodyDef makeBarrel(V2 rear, V2 muzzle, const Cartridge& cart);  // the Barrel to
 void rotateBody(int i, V2 centre, double deg);
 bool partRingsInput(bool overUI);   // the selected part's rotation rings (Select tool): true while they have the mouse
 void partRingsDraw();
+bool cornerArrowsInput(bool overUI);   // Select tool: move arrows on the picked corners (true while they have the mouse)
+void cornerArrowsDraw();
 void partRingTest(int axis, double deg);   // (tests)  // turn in the side view (about Z), with what's attached
 void moveBody(int i, double dx, double dy);
 void deleteSel();

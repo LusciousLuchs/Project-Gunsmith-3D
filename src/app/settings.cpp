@@ -39,6 +39,7 @@ void loadSettings() {
         CFG.userDir = g("userDir", d.userDir);
         CFG.poseCharacter = g("poseCharacter", d.poseCharacter);
         CFG.fpArms = g("fpArms", d.fpArms);
+        CFG.poseRings = g("poseRings", d.poseRings); CFG.poseArrows = g("poseArrows", d.poseArrows); CFG.editArrows = g("editArrows", d.editArrows);
         CFG.paperHelp = std::clamp(g("paperHelp", d.paperHelp), 0, 2);
         CFG.devTools = g("devTools", d.devTools);
         CFG.shadows = g("shadows", d.shadows);
@@ -95,7 +96,7 @@ void loadSettings() {
 void saveSettings() {
     json j = {
         {"windowMode", (int)CFG.windowMode}, {"resW", CFG.resW}, {"resH", CFG.resH}, {"monitor", CFG.monitor},
-        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"paperHelp", CFG.paperHelp}, {"devTools", CFG.devTools}, {"shadows", CFG.shadows}, {"mapUnit", CFG.mapUnit}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
+        {"vsync", CFG.vsync}, {"fpsCap", CFG.fpsCap}, {"perfOverlay", CFG.perfOverlay}, {"lastFullMode", CFG.lastFullMode}, {"userDir", CFG.userDir}, {"poseCharacter", CFG.poseCharacter}, {"fpArms", CFG.fpArms}, {"poseRings", CFG.poseRings}, {"poseArrows", CFG.poseArrows}, {"editArrows", CFG.editArrows}, {"paperHelp", CFG.paperHelp}, {"devTools", CFG.devTools}, {"shadows", CFG.shadows}, {"mapUnit", CFG.mapUnit}, {"cheatAutoFeed", CFG.cheatAutoFeed}, {"cheatBruteForce", CFG.cheatBruteForce}, {"uiScale", CFG.uiScale}, {"uiScaleAuto", CFG.uiScaleAuto}, {"msaa", CFG.msaa},
         {"backdrop", (int)CFG.backdrop}, {"solidColor", CFG.solidColor}, {"grid", CFG.grid}, {"workbench", CFG.workbench},
         {"volMaster", CFG.volMaster}, {"volGunfire", CFG.volGunfire}, {"volMechanical", CFG.volMechanical}, {"volRadio", CFG.volRadio},
         {"titleSplash", CFG.titleSplash}, {"menuPicture", CFG.menuPicture}, {"seenVersion", CFG.seenVersion},

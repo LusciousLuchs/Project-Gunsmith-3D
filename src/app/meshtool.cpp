@@ -8,6 +8,7 @@
 #include "app/app.hpp"
 #include "app/view.hpp"
 #include "app/settings.hpp"
+#include "app/gizmo.hpp"
 #include "raylib.h"
 #include "raymath.h"
 #include "imgui.h"
@@ -114,6 +115,46 @@ P3d middleOf(const MeshDef& m, const std::vector<int>& vs) {
 }
 }  // namespace
 
+// ---------------------------------------------------------------- move arrows on the picked corners (Sprocket-style)
+namespace {
+Arrows MA;
+std::vector<P3d> MAorig;
+bool meshArrowsShown(int i) { return i >= 0 && !M.sel.empty() && !M.dragging && CFG.editArrows; }
+void meshArrowsSetup(int i) {
+    MA.c = vw(i, middleOf(A.design.bodies[i].mesh, M.sel));
+    MA.ax[0] = {1, 0, 0}; MA.ax[1] = {0, 1, 0}; MA.ax[2] = {0, 0, 1};
+    MA.label[0] = "Along"; MA.label[1] = "Up"; MA.label[2] = "Depth";
+    arrowsFit(MA, [](Vector3 w) { return toScreen(w); }, 64);
+}
+// true while the arrows have the mouse
+bool meshArrowsInput(int i, bool overUI) {
+    ToScreen ts = [](Vector3 w) { return toScreen(w); };
+    if (MA.axis >= 0) {
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) || i < 0) { MA.axis = -1; commit(); return true; }
+        MeshDef& m = A.design.bodies[i].mesh;
+        bool snap = (A.snapOn && !IsKeyDown(KEY_LEFT_ALT)) || IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        double mm = snapv(arrowsDrag(MA, GetMousePosition()) / U, snap);
+        MA.moved = mm * U;
+        if (MAorig.size() != m.v.size()) return true;
+        m.v = MAorig;
+        for (int v : M.sel) if (v >= 0 && v < (int)m.v.size()) {
+            if (MA.axis == 0) m.v[v].x += mm;
+            if (MA.axis == 1) m.v[v].y -= mm;   // (y runs down in the designer's numbers)
+            if (MA.axis == 2) m.v[v].z += mm;
+        }
+        return true;
+    }
+    MA.hot = -1;
+    if (!meshArrowsShown(i)) return false;
+    meshArrowsSetup(i);
+    MA.hot = overUI ? -1 : arrowsPick(MA, ts, GetMousePosition());
+    if (MA.hot < 0 || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return false;
+    MAorig = A.design.bodies[i].mesh.v;
+    arrowsBegin(MA, MA.hot, ts, GetMousePosition());
+    return true;
+}
+}  // namespace
+
 std::vector<int>& meshSel() { return M.sel; }
 std::vector<int>& meshFaces() { return M.faces; }
 double& meshExtrudeBy() { return M.extrude; }
@@ -211,6 +252,7 @@ void meshInput(bool overUI) {
         if (M.live) commit();
         return;
     }
+    if (meshArrowsInput(i, overUI)) { M.hoverV = M.hoverF = -1; return; }
     hover(i, overUI);
     bool typing = ImGui::GetIO().WantCaptureKeyboard;
     if (i >= 0 && !typing) {
@@ -290,6 +332,7 @@ void drawMeshTool() {
         DrawCircleV(s[v], r, on ? Color{255, 205, 60, 255} : Color{20, 24, 32, 220});
         DrawCircleLinesV(s[v], r, on ? Color{255, 240, 180, 255} : Color{120, 200, 255, 255});
     }
+    if (MA.axis >= 0 || meshArrowsShown(i)) { meshArrowsSetup(i); arrowsDraw(MA, [](Vector3 w) { return toScreen(w); }, "mm", 1 / U); }
     if (M.dragging && M.live && !M.sel.empty()) {
         P3d c = middleOf(m, M.sel);
         std::string t = TextFormat("X %.1f  Y %.1f  Z %.1f mm", c.x, -c.y, c.z);

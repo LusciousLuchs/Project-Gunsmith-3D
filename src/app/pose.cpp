@@ -777,6 +777,7 @@ void drawFirstPersonArms(Vector3 eye, Vector3 fwd, Vector3 up) {
 }
 
 static void poseRingsDraw();   // (below)
+namespace { void poseArrowsDraw(); }
 // the gun's own handles in an animation: its middle (move it) and its muzzle (aim it)
 static Vector3 gunMidWorld() {
     double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
@@ -823,6 +824,7 @@ void drawPoseOverlay() {
     const Pose P = viewPose();
     Vector2 m = GetMousePosition();
     auto dot = [&](Vector2 s, int id, Color c, const char* label) {
+        if (A.poseFingers) return;   // (fingers mode: only the fingertips)
         bool hot = Vector2Distance(s, m) < 10 || A.poseDrag == id || A.posePicked == id;
         DrawCircleV(s, hot ? 7.f : 5.f, Color{20, 24, 32, 230});
         DrawCircleLinesV(s, hot ? 7.f : 5.f, c);
@@ -852,8 +854,10 @@ void drawPoseOverlay() {
                     bool picked = b.digit == A.poseDigit;
                     Color c = picked ? Color{255, 205, 60, 255} : Color{240, 196, 150, 255};
                     bool hot = Vector2Distance(s, m) < 8 || A.poseDrag == 20 + b.digit || A.posePicked == 20 + b.digit;
-                    DrawCircleV(s, hot || picked ? 5.f : 3.5f, c);
-                    if (hot) viewText(TextFormat(A.posePicked == 20 + b.digit ? "%s: drag it anywhere (Shift: curl)" : "%s: click to pick it, then drag", digitName(b.digit)), s.x + 8, s.y - 16 * CFG.uiScale, 11, c);
+                    float rr = A.poseFingers ? (hot || picked ? 8.f : 6.f) : (hot || picked ? 5.f : 3.5f);
+                    if (A.poseFingers) DrawCircleV(s, rr + 2, Color{20, 24, 32, 200});
+                    DrawCircleV(s, rr, c);
+                    if (hot) viewText(TextFormat(A.poseFingers || A.posePicked == 20 + b.digit ? "%s: drag it anywhere (Shift: curl)" : "%s: click to pick it, then drag", digitName(b.digit)), s.x + 10, s.y - 18 * CFG.uiScale, 12, c);
                     handles.push_back({s, 20 + b.digit});
                 }
     }
@@ -888,6 +892,7 @@ void drawPoseOverlay() {
         viewText("Line of sight", s.x + 6, s.y - 18 * CFG.uiScale, 11, Color{255, 120, 110, 255});
     }
     poseRingsDraw();
+    poseArrowsDraw();
 }
 
 // ---------------------------------------------------------------- rotation rings
@@ -985,6 +990,7 @@ bool jointFor(int id, Rings& g, PJ& J) {
 ToScreen poseTS() { return [](Vector3 w) { return toScreen(w); }; }
 // true while the rings have the mouse
 bool poseRingsInput(bool overUI) {
+    if (!CFG.poseRings && gPR.axis < 0) return false;
     if (gPR.axis >= 0) {
         if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { gPR.axis = -1; commit(); return true; }
         double deg = ringsDrag(gPR, GetMousePosition(), IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL));
@@ -1013,8 +1019,135 @@ bool poseRingsInput(bool overUI) {
     ringsBegin(gPR, a, poseTS(), GetMousePosition());
     return true;
 }
+
+// ---------------------------------------------------------------- move arrows (Sprocket-style)
+// The picked point's arrows along the gun's length, height and across it: a fingertip (its finger reaches there), a
+// hand on the gun (slid along the gun's side), a hand off the gun, and the gun in an animation.
+Arrows gPA;
+Vector3 gPAp0;
+// where the arrows sit for `id`, and which axes it can move along; false if it has none
+bool arrowsFor(int id, Arrows& g) {
+    g.ax[0] = g.ax[1] = g.ax[2] = {0, 0, 0};
+    const Pose P = viewPose();
+    Frame F = bodyFrame();
+    Vector3 O = gunPt({0, 0}, 0);
+    Vector3 X = Vector3Normalize(Vector3Subtract(gunPt({10, 0}, 0), O)), Y = Vector3Normalize(Vector3Subtract(gunPt({0, -10}, 0), O)),
+            Z = Vector3Normalize(Vector3Subtract(gunPt({0, 0}, 10), O));
+    g.label[0] = "Along the gun"; g.label[1] = "Up"; g.label[2] = "Across";
+    if (id >= 20 && A.poseHand >= 0) {
+        int k = A.poseHand == 0 ? 0 : 1;
+        Limb L = limbFor(F, k == 0 ? P.firing : P.support, k == 0 ? 1 : -1);
+        if (!L.g.on) return false;
+        g.c = tipOf(L.g, id - 20);
+        g.ax[0] = X; g.ax[1] = Y; g.ax[2] = Z;
+        return true;
+    }
+    if (id == 0 || id == 2 || id == 4) {
+        const HandHold& h = id == 0 ? P.firing : id == 2 ? P.support : P.butt;
+        if (!h.on) return false;
+        g.c = gunPt(h.at, partZ(h.part));
+        g.ax[0] = X; g.ax[1] = Y;   // (it stays on the part's side)
+        return true;
+    }
+    if (id == 10 || id == 11) {
+        ViewHands VH = viewHands();
+        const HandHold& h = id == 10 ? VH.P.firing : VH.P.support;
+        if (h.on) return false;
+        g.c = sideLimb(F, VH, id - 10).g.wrist;
+        g.ax[0] = X; g.ax[1] = Y; g.ax[2] = Z;
+        return true;
+    }
+    if (id == 12 && A.animEdit) {
+        g.c = gunMidWorld();
+        g.ax[0] = {1, 0, 0}; g.ax[1] = {0, 1, 0}; g.ax[2] = {0, 0, 1};   // (the key's move is in the view's own directions)
+        g.label[0] = "Forward"; g.label[1] = "Up"; g.label[2] = "Right";
+        return true;
+    }
+    return false;
+}
+// put `id` at `q` (world)
+void arrowsApply(int id, Vector3 q) {
+    Frame F = bodyFrame();
+    if (id >= 20 && A.poseHand >= 0) {
+        int k = A.poseHand == 0 ? 0 : 1, digit = id - 20;
+        HandHold& h = *editHand(k);
+        if (!h.digitsSet) { digitsOf(h, k == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
+        HandGeo g = limbFor(F, h, k == 0 ? 1 : -1).g;
+        if (!g.on) return;
+        Vector3 o = handPt(g.f, {0, 0, 0});
+        Vector3 cx = Vector3Subtract(handPt(g.f, {1, 0, 0}), o), cy = Vector3Subtract(handPt(g.f, {0, 1, 0}), o), cz = Vector3Subtract(handPt(g.f, {0, 0, 1}), o);
+        Matrix Mi = MatrixInvert(Matrix{cx.x, cy.x, cz.x, o.x, cx.y, cy.y, cz.y, o.y, cx.z, cy.z, cz.z, o.z, 0, 0, 0, 1});
+        Vector3 l = Vector3Transform(q, Mi);
+        for (int i = 0; i < 3; i++) reachDigit(h.digits, digit, {l.x, l.y, l.z});   // (a few goes: it reaches in steps)
+        return;
+    }
+    if (id == 0 || id == 2 || id == 4) {
+        HandHold& h = *editHand(id / 2);
+        Vector3 g = Vector3Transform(q, MatrixInvert(poseGunMatrix()));
+        h.at = {std::round(g.x / U * 2) / 2, std::round(-g.y / U * 2) / 2};
+        return;
+    }
+    if (id == 10 || id == 11) {
+        HandHold& h = *editHand(id - 10);
+        Vector3 d = Vector3Scale(Vector3Subtract(q, F.o), 1 / U);
+        h.on = false; h.free = true;
+        h.pos[0] = std::round(Vector3DotProduct(d, F.f)); h.pos[1] = std::round(Vector3DotProduct(d, F.u)); h.pos[2] = std::round(Vector3DotProduct(d, F.r));
+        return;
+    }
+    if (id == 12) {
+        AnimKey* k = editKey();
+        if (!k) return;
+        Vector3 d = Vector3Scale(Vector3Subtract(q, gPAp0), 1 / U);
+        k->gun[0] = std::round(dragStart[0] + d.x); k->gun[1] = std::round(dragStart[1] + d.y); k->gun[2] = std::round(dragStart[2] + d.z);
+    }
+}
+bool poseArrowsInput(bool overUI) {
+    if (!CFG.poseArrows && gPA.axis < 0) return false;
+    if (gPA.axis >= 0) {
+        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT)) { gPA.axis = -1; commit(); return true; }
+        bool snap = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        double d = arrowsDrag(gPA, GetMousePosition(), snap ? 5 * U : 0);
+        arrowsApply(A.posePicked, Vector3Add(gPAp0, Vector3Scale(gPA.ax[gPA.axis], (float)d)));
+        return true;
+    }
+    gPA.hot = -1;
+    if (A.poseDrag >= 0 || A.posePicked < 0 || !arrowsFor(A.posePicked, gPA)) return false;
+    arrowsFit(gPA, poseTS(), 60);
+    gPA.hot = overUI ? -1 : arrowsPick(gPA, poseTS(), GetMousePosition());
+    if (gPA.hot < 0 || !IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) return false;
+    gPAp0 = gPA.c;
+    if (A.posePicked == 12) { double g[6]; viewGun(g); for (int q = 0; q < 6; q++) dragStart[q] = g[q]; }
+    if (A.posePicked >= 20 || A.posePicked <= 5) editHand(A.posePicked >= 20 ? (A.poseHand == 0 ? 0 : 1) : A.posePicked / 2);   // (an animation's key at this moment)
+    arrowsBegin(gPA, gPA.hot, poseTS(), GetMousePosition());
+    return true;
+}
+void poseArrowsDraw() {
+    if (!CFG.poseArrows && gPA.axis < 0) return;
+    if (A.S && sim::animPlaying(*A.S)) return;
+    if (gPA.axis < 0) {
+        if (A.poseDrag >= 0 || A.posePicked < 0 || !arrowsFor(A.posePicked, gPA)) return;
+        arrowsFit(gPA, poseTS(), 60);
+    } else gPA.c = Vector3Add(gPAp0, Vector3Scale(gPA.ax[gPA.axis], (float)gPA.moved));
+    arrowsDraw(gPA, poseTS(), "mm", 1 / U);
+}
 }  // namespace
 
+// (tests) slide point `id` along arrow `axis` by `mm`, as a drag would; prints how far it really went that way
+void poseArrowTest(int id, int axis, double mm) {
+    A.posePicked = id;
+    if (id >= 20 && A.poseHand < 0) A.poseHand = 0;
+    if (!arrowsFor(id, gPA) || Vector3Length(gPA.ax[axis]) < 0.5f) { std::printf("ARROWTEST: no arrow %d on %d\n", axis, id); return; }
+    if (id <= 5 || id >= 20) editHand(id >= 20 ? (A.poseHand == 0 ? 0 : 1) : id / 2);
+    if (id == 12) { double g[6]; viewGun(g); for (int q = 0; q < 6; q++) dragStart[q] = g[q]; }
+    gPAp0 = gPA.c;
+    Vector3 ax = gPA.ax[axis];
+    arrowsApply(id, Vector3Add(gPAp0, Vector3Scale(ax, (float)(mm * U))));
+    Arrows after; arrowsFor(id, after);
+    Vector3 d = Vector3Subtract(after.c, gPAp0);
+    float along = Vector3DotProduct(d, ax) / U, off = Vector3Length(Vector3Subtract(d, Vector3Scale(ax, Vector3DotProduct(d, ax)))) / U;
+    std::printf("ARROWTEST point %d arrow %d (%s): asked %+.1f mm, moved %+.1f mm along it, %.1f mm off it\n", id, axis, gPA.label[axis], mm, along, off);
+    commit();
+}
 // (tests) turn joint `id`'s ring `axis` by `deg`, as a drag would
 void poseRingTest(int id, int axis, double deg) {
     A.posePicked = id;
@@ -1038,6 +1171,7 @@ void poseRingTest(int id, int axis, double deg) {
     commit();
 }
 static void poseRingsDraw() {
+    if (!CFG.poseRings && gPR.axis < 0) return;
     if (A.S && sim::animPlaying(*A.S)) return;
     PJ J;
     if (gPR.axis < 0) {   // (what's picked now: its rings, where it is now)
@@ -1047,6 +1181,7 @@ static void poseRingsDraw() {
     ringsDraw(gPR, poseTS(), A.cam.position);
 }
 void poseInput(bool overUI) {
+    if (!(A.S && sim::animPlaying(*A.S)) && poseArrowsInput(overUI)) return;
     if (!(A.S && sim::animPlaying(*A.S)) && poseRingsInput(overUI)) return;
     auto& P = A.design.pose;
     if (A.S && sim::animPlaying(*A.S)) return;   // playing on the gun
@@ -1060,7 +1195,8 @@ void poseInput(bool overUI) {
         if (id == 2) A.poseHand = 1;
         if (id >= 20) A.poseDigit = id - 20;
         // the first click picks a dot; press on it again to drag it, so picking never moves anything
-        if (id < 0 || id != A.posePicked) { A.posePicked = id; return; }
+        if (id < 0 || (id != A.posePicked && !(A.poseFingers && id >= 20))) { A.posePicked = id; return; }   // (fingers mode: a fingertip drags at once)
+        A.posePicked = id;
         A.poseDrag = id; A.posePress = m; A.poseLive = false;
         {   // a free drag starts: the plane facing the camera through what's dragged
             Ray r = mouseRay();
