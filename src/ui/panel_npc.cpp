@@ -53,6 +53,12 @@ void npcToolbar() {
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_ROTATE_RIGHT)) npcRedo();
     if (tipHover()) ImGui::SetTooltip("Redo (Ctrl+Y)");
+    ImGui::SameLine(0, 18 * CFG.uiScale);
+    if (accentButton(ICON_FA_ARROWS_ROTATE "  Rings", CFG.editRings)) { CFG.editRings = !CFG.editRings; saveSettings(); }
+    if (tipHover()) ImGui::SetTooltip("The rotation circles round the picked bone's joint (on or off)");
+    ImGui::SameLine(0, 4 * CFG.uiScale);
+    if (accentButton(ICON_FA_ARROWS_TO_CIRCLE "  Arrows", CFG.editArrows)) { CFG.editArrows = !CFG.editArrows; saveSettings(); }
+    if (tipHover()) ImGui::SetTooltip("Move arrows on a picked bone end: drag one to aim the bone that way only (on or off)");
     ImGui::End();
     if (showOpen) { ImGui::OpenPopup("Open an NPC"); showOpen = false; }
     ImGui::SetNextWindowSize({420 * CFG.uiScale, 0});

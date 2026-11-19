@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.51-alpha
+
+- **Rings and arrows switch on and off right in the editors**, not in Settings: the designer's top bar (next to Move, Rotate, Scale), the character maker's and NPC editor's top bar (Rings, Arrows), the Level editor's tool bar (next to Corners), and the Pose view's own strip.
+
 ## 0.8.50-alpha
 
 Animations that rack the slide, move arrows everywhere, easier fingers.

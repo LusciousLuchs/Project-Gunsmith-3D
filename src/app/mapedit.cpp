@@ -824,7 +824,7 @@ static void applyClip(bool split) {
 
 // ---- move arrows: X (red), Y (green, up), Z (blue) from the selection's middle; drag one to slide along it
 static bool gizmoOn() {
-    if (ME.tool != MTool::Select || ME.rotateMode || ME.cornerMode || ME.walking) return false;
+    if (ME.tool != MTool::Select || ME.rotateMode || ME.cornerMode || ME.walking || !CFG.editArrows) return false;
     if (ME.ent >= 0) return true;
     return !ME.sel.empty() && ME.face < 0 && !selLocked();
 }

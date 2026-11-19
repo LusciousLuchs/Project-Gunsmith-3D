@@ -24,7 +24,8 @@ struct Settings {
     int mapUnit = 0;                     // the Level editor's lengths: 0 m, 1 cm, 2 ft (and inches), 3 in, 4 yd
     bool shadows = true;                 // sun shadows on maps (Settings > Display)
     bool poseRings = true, poseArrows = true;
-    bool editArrows = true;              // the designer, NPC editor and level editor: move arrows on picked corners and points   // Pose and animations: the rotation rings and move arrows on a picked point
+    bool editArrows = true;              // the designer, NPC editor and level editor: move arrows on picked corners and points (their toolbars' switch)
+    bool editRings = true;               // the NPC editor and character maker: the picked bone's rotation rings (its toolbar's switch)   // Pose and animations: the rotation rings and move arrows on a picked point
     bool fpArms = true;                  // the range: your arms and hands on the gun
     bool devTools = false;               // developer tools (the owner's, Settings > Files): set the game's built-in maps and new players' settings
     int paperHelp = 0;                   // career counter paperwork: 0 by hand, 1 filled in and problems spelled out, 2 done for you

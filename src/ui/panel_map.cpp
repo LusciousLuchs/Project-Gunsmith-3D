@@ -142,6 +142,8 @@ void mapToolbar() {
             if (iconBtn(ICON_FA_DRAW_POLYGON, "Corners: drag the selected block's corners to any shape (Alt: up and down). Snaps to the grid", ME.tool == MTool::Select && ME.cornerMode)) {
                 ME.tool = MTool::Select; ME.cornerMode = true; ME.rotateMode = false; ME.clipPts.clear();
             }
+            gap(3);
+            if (iconBtn(ICON_FA_ARROWS_TO_CIRCLE, CFG.editArrows ? "Move arrows: on (on the selection, and the picked corner in Corners). Click to hide them" : "Move arrows: off. Click to show them", CFG.editArrows)) { CFG.editArrows = !CFG.editArrows; saveSettings(); }
         }
         gap(t.t == MTool::Select || t.t == MTool::Clip ? 12 : 3);
         i++;

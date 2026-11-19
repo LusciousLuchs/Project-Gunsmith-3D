@@ -311,6 +311,9 @@ void toolbar() {
             ImGui::SameLine(0, 2);
             if (iconButton(ICON_FA_MAXIMIZE, "Scale: a box round the selected part. Drag a corner to make it bigger or smaller (Shift: stretch freely),\nor an edge to stretch it one way. Ctrl scales about its middle. Pins, slots and springs on it go with it.\nOr type exact sizes in its panel. With corners picked, only those corners are scaled.", sc)) { A.tool = Tool::Scale; A.rotateMode = false; }
             tutAnchor("tool:Scale");
+            ImGui::SameLine(0, 8);
+            if (iconButton(ICON_FA_ARROWS_TO_CIRCLE, CFG.editArrows ? "Move arrows: on. Picked corners and 3D vertices get red, green and blue arrows;\ndrag one to slide them that way only. Click to switch them off."
+                                                                 : "Move arrows: off. Click to show arrows on picked corners and 3D vertices.", CFG.editArrows)) { CFG.editArrows = !CFG.editArrows; saveSettings(); }
         }
         gap(16);
         snapControls(sz);

@@ -239,7 +239,8 @@ void npcEditorUpdate(float dt, bool modal) {
     {   // the selected bone's rotation rings, at its joint: drag one to turn the bone about that axis
         static NpcDef snap;
         ToScreen ts = [](Vector3 w) { return toScreenV(w); };
-        if (gRings.axis < 0) {
+        if (!CFG.editRings && gRings.axis < 0) gRings.ax[0] = gRings.ax[1] = gRings.ax[2] = {0, 0, 0};
+        else if (gRings.axis < 0) {
             gRings.c = W(P[NE.sel].a);
             gRings.ax[0] = Vector3Normalize(V(P[NE.sel].x)); gRings.ax[1] = Vector3Normalize(V(P[NE.sel].y)); gRings.ax[2] = Vector3Normalize(V(P[NE.sel].z));
             gRings.label[0] = "Bend "; gRings.label[1] = "Twist "; gRings.label[2] = "Swing ";
@@ -585,7 +586,7 @@ void npcEditorRender() {
         Vector2 a = toScreenV(W(P[NE.sel].a));
         DrawText(NE.npc.bones[NE.sel].name.c_str(), (int)a.x + 10, (int)a.y + 6, 14, Color{230, 232, 236, 255});
     }
-    if (NE.sel < (int)P.size()) ringsDraw(gRings, [](Vector3 w) { return toScreenV(w); }, cam.position);
+    if (NE.sel < (int)P.size() && (CFG.editRings || gRings.axis >= 0)) ringsDraw(gRings, [](Vector3 w) { return toScreenV(w); }, cam.position);
     if (NE.sel < (int)P.size() && CFG.editArrows && (gNArr.axis >= 0 || (NE.endPicked && !NE.aiming))) {
         gNArr.c = W(P[NE.sel].b);
         if (gNArr.axis < 0) arrowsFit(gNArr, [](Vector3 w) { return toScreenV(w); }, 60);
