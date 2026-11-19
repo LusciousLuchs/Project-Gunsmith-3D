@@ -100,7 +100,7 @@ void redo() {
     A.sel = {};
     save();
 }
-void toast(const std::string& t) { A.toast = t; A.toastT = 2.5f + t.size() / 40.f; }  // longer messages stay up longer
+void toast(const std::string& t) { A.toast = t; A.toastT = std::min(8.f, 2.5f + t.size() / 40.f); }  // longer messages stay up longer (8 s at most)
 
 float bodyDepth(const BodyDef& b) { return (float)std::max(1.0, b.thick) * U; }
 // a hair's nudge in depth so two parts with faces in the same plane don't flicker through each other. Kept tiny and

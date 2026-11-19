@@ -14,7 +14,7 @@ std::string textureName(const std::string& file);      // what to call it in the
 bool isImageFile(const std::string& path);
 std::string importTexture(const std::string& path);   // copy a picture into user/textures; returns its file name, "" on failure
 void handleDroppedFiles();                            // pictures dropped on the window are imported
-bool pickImageFile(std::string& out);                 // the system's open-file box (Windows); false if cancelled or not available
+bool pickImageFile(std::string& out);                 // the system's open-file box (Windows; Linux: zenity or kdialog); false if cancelled or not available
 void openTexturesFolder();
-void installCrashHandler();                           // Windows: a crash leaves a report in user/crashes
+void installCrashHandler();                           // a crash leaves a report in the Crashes folder (Windows and Linux)
 void openFolder(const std::string& path);                // in the system's file browser

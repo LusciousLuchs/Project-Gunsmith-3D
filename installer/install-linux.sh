@@ -12,8 +12,8 @@
 #   the menu entry  ~/.local/share/applications/gunsmith3d.desktop (and its icon)
 #   your files      Documents/OAB Foundry/Gunsmith  (designs, maps, settings: never touched by any of this)
 #
-# Each time you start it, it looks for a newer version first (a few seconds at most) and updates itself, like the
-# Windows version. Updates aren't optional; offline, the version you have starts.
+# Each time you start it, it looks for a newer version first (a few seconds at most) and updates itself; the game
+# also checks, updates and restarts itself from inside (Check for updates on the main menu), like the Windows version. Updates aren't optional; offline, the version you have starts.
 set -euo pipefail
 
 REPOS="LusciousLuchs/Gunsmith3D-Releases LusciousLuchs/Project-Gunsmith-3D"   # (the downloads page, then the code's own)
@@ -36,8 +36,9 @@ newer() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sed 's/-.*//' |
 latest() {
     local best="" bestRepo="" r tag
     for r in $REPOS; do
-        tag=$(curl -fsSL --max-time "${1:-15}" -H "Accept: application/vnd.github+json" "$API/repos/$r/releases/latest" 2>/dev/null |
-              sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1) || true
+        body=$(curl -fsSL --max-time "${1:-15}" -H "Accept: application/vnd.github+json" "$API/repos/$r/releases/latest" 2>/dev/null) || body=""
+        case "$body" in *"$ASSET"*) ;; *) continue ;; esac   # (only a release that has the Linux download)
+        tag=$(printf '%s' "$body" | tr ',' '\n' | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -n1) || true
         [ -z "$tag" ] && continue
         if [ -z "$best" ] || newer "${tag#v}" "${best#v}"; then best="$tag"; bestRepo="$r"; fi
     done

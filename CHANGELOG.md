@@ -8,6 +8,15 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.48-alpha
+
+Linux catches up with Windows, block colours, and leaving the garage.
+
+- **Linux**: the game now updates itself from inside, like on Windows: it checks when it starts, downloads and installs a new version, then restarts. **Check for updates** is on the main menu and in Settings. *Add a picture...* and choosing your files folder open your desktop's file box (zenity or kdialog), and a crash leaves a report in your Crashes folder. `gunsmith3d --update` works again.
+- **Colour blocks in the Level editor**: in the Texture section, pick a colour (or a swatch) for the selected blocks, or one face (Ctrl+click it first). None goes back to the plain texture.
+- Messages at the bottom of the screen (like "Saved") now go away after a few seconds everywhere; before, outside the designer they could stay up for good. The Level editor's status line clears after 8 seconds too.
+- **Career**: your home garage is only where you start. Buy a strip-mall unit or a warehouse and you move out of it, straight into the new place.
+
 ## 0.8.47-alpha
 
 Career: money from day one, and easier paperwork. Level editor: windows and rotation rings.

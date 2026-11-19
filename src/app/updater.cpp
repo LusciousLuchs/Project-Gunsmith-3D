@@ -1,4 +1,4 @@
-// Gunsmith3D - updates itself from the GitHub releases (see updater.hpp). Kept apart from raylib: Windows' headers
+// Gunsmith3D - updates itself from the GitHub releases (see updater.hpp), on Windows and Linux. Kept apart from raylib: Windows' headers
 // clash with its names.
 #include "app/updater.hpp"
 #include "version.hpp"
@@ -274,11 +274,125 @@ void cleanup() {
 }
 }  // namespace update
 
-#else   // other systems: updates come from the zip (the game ships for Windows)
+#else   // Linux: the same steps with the system's curl and tar; the release's Gunsmith3D-Linux.tar.gz
+#include <csignal>
+#include <fstream>
+#include <sstream>
+#include <unistd.h>
+#include <sys/stat.h>
 namespace update {
-void start() {}
-void checkNow() {}
-bool restart() { return false; }
-void cleanup() {}
+namespace fs = std::filesystem;
+namespace {
+std::string quoted(const std::string& s) { std::string o = "'"; for (char c : s) { if (c == '\'') o += "'\\''"; else o += c; } return o + "'"; }
+// a URL's body, through curl (redirects followed, a time limit); false if curl isn't there or it failed
+bool httpGet(const std::string& url, std::string& out, const char* accept, int seconds = 15) {
+    std::string cmd = "curl -fsSL --max-time " + std::to_string(seconds) + " -H " + quoted(std::string("Accept: ") + accept) + " " + quoted(url) + " 2>/dev/null";
+    FILE* f = popen(cmd.c_str(), "r");
+    if (!f) return false;
+    out.clear();
+    char buf[65536];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof buf, f)) > 0) out.append(buf, n);
+    return pclose(f) == 0 && !out.empty();
+}
+bool download(const std::string& url, const fs::path& to) {
+    std::string cmd = "curl -fsSL --max-time 600 -o " + quoted(to.string()) + " " + quoted(url) + " >/dev/null 2>&1";
+    return std::system(cmd.c_str()) == 0;
+}
+fs::path exePath() { std::error_code ec; return fs::read_symlink("/proc/self/exe", ec); }
+fs::path gExe;
+
+void work() {
+    set(State::Checking);
+    std::vector<std::string> apis;
+    if (const char* over = std::getenv("GUNSMITH_UPDATE_API")) apis = {over};
+    else for (const char* r : {REPO, CODE_REPO}) apis.push_back(std::string("https://api.github.com/repos/") + r + "/releases/latest");
+    std::string latest, url;
+    bool reached = false;
+    for (auto& api : apis) {
+        std::string body;
+        if (!httpGet(api, body, "application/vnd.github+json", 8)) continue;
+        nlohmann::json j = nlohmann::json::parse(body, nullptr, false);
+        if (!j.is_object() || !j.contains("tag_name")) continue;
+        reached = true;
+        std::string tag = j.value("tag_name", "");
+        std::string v = tag.size() && (tag[0] == 'v' || tag[0] == 'V') ? tag.substr(1) : tag;
+        std::string u;
+        for (auto& a : j.value("assets", nlohmann::json::array()))
+            if (a.is_object() && a.value("name", "") == "Gunsmith3D-Linux.tar.gz") { u = a.value("browser_download_url", ""); break; }
+        if (u.empty()) continue;
+        if (latest.empty() || newer(v, latest)) { latest = v; url = u; }
+    }
+    if (!reached) { set(State::Failed, "Couldn't reach the update server (offline, or curl isn't installed)."); return; }
+    if (latest.empty() || !newer(latest, version::text())) { set(State::UpToDate, "", latest.empty() ? version::text() : latest); return; }
+    set(State::Downloading, "", latest);
+    std::error_code ec;
+    fs::path tmp = fs::temp_directory_path(ec) / ("gunsmith3d-update-" + std::to_string(getpid()));
+    fs::remove_all(tmp, ec);
+    fs::create_directories(tmp / "files", ec);
+    if (!download(url, tmp / "g.tar.gz")) { fs::remove_all(tmp, ec); set(State::Failed, "The download didn't finish."); return; }
+    set(State::Installing, "", latest);
+    if (std::system(("tar -xzf " + quoted((tmp / "g.tar.gz").string()) + " -C " + quoted((tmp / "files").string()) + " >/dev/null 2>&1").c_str()) != 0) {
+        fs::remove_all(tmp, ec); set(State::Failed, "Couldn't unpack the download."); return;
+    }
+    fs::path root = tmp / "files" / "Gunsmith3D";
+    if (!fs::exists(root / "gunsmith3d", ec)) { fs::remove_all(tmp, ec); set(State::Failed, "The download didn't hold the game."); return; }
+    fs::path exe = gExe, dir = exe.parent_path();
+    if (access(dir.c_str(), W_OK) != 0) { fs::remove_all(tmp, ec); set(State::Failed, "The game folder can't be written to: download the new version from GitHub."); return; }
+    for (auto it = fs::recursive_directory_iterator(root, ec); it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (ec) break;
+        if (!it->is_regular_file()) continue;
+        fs::path rel = fs::relative(it->path(), root, ec), dst = dir / rel;
+        bool userFile = !rel.empty() && *rel.begin() == "user";
+        if (userFile && fs::exists(dst)) continue;   // the player's own files: only add missing examples
+        fs::create_directories(dst.parent_path(), ec);
+        // copied beside it, then renamed over it: the running program keeps its old file until it quits
+        fs::path part = dst; part += ".new";
+        fs::copy_file(it->path(), part, fs::copy_options::overwrite_existing, ec);
+        if (ec) { fs::remove_all(tmp, ec); set(State::Failed, "Couldn't copy the new files."); return; }
+        fs::permissions(part, fs::status(it->path(), ec).permissions(), ec);
+        fs::rename(part, dst, ec);
+        if (ec) { fs::remove_all(tmp, ec); set(State::Failed, "Couldn't replace the game's files."); return; }
+    }
+    // the launcher (installed with install-linux.sh) and its version note, so it agrees with what's here now
+    if (fs::exists(dir / "install-linux.sh", ec)) fs::copy_file(dir / "install-linux.sh", dir / ".launcher.sh", fs::copy_options::overwrite_existing, ec);
+    std::ofstream(dir / "VERSION") << latest << "\n";
+    fs::remove_all(tmp, ec);
+    set(State::Installed);
+}
+}  // namespace
+
+void checkNow() {
+    {
+        std::lock_guard<std::mutex> l(gMu);
+        if (gStatus.state == State::Checking || gStatus.state == State::Downloading || gStatus.state == State::Installing || gStatus.state == State::Installed) return;
+        gStatus = Status{};
+    }
+    start();
+}
+void start() {
+    if (std::getenv("GUNSMITH_NO_UPDATE")) return;
+    {
+        std::lock_guard<std::mutex> l(gMu);
+        if (gStatus.state != State::Off) return;
+        gStatus.state = State::Checking;
+    }
+    if (gExe.empty()) gExe = exePath();
+    if (gExe.empty()) { set(State::Failed, "Couldn't find the game's own file."); return; }
+    std::thread(work).detach();
+}
+bool restart() {   // a fresh copy of the (new) program, on its own, then this one quits
+    if (status().state != State::Installed || gExe.empty()) return false;
+    pid_t p = fork();
+    if (p < 0) return false;
+    if (p == 0) {
+        setsid();
+        if (chdir(gExe.parent_path().c_str()) != 0) _exit(1);
+        execl(gExe.c_str(), gExe.c_str(), (char*)nullptr);
+        _exit(1);
+    }
+    return true;
+}
+void cleanup() { if (gExe.empty()) gExe = exePath(); }
 }  // namespace update
 #endif

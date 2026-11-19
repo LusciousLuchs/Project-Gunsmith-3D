@@ -236,7 +236,6 @@ void aboutWindow() {
 // waits behind this screen, and once it's installed the game restarts into it. Offline (or the check fails, or takes
 // more than 8 seconds), you can play the version you have.
 static bool forcedUpdateScreen() {
-#ifdef _WIN32
     update::Status u = update::status();
     static double since = -1;
     if (u.state == update::State::Checking && since < 0) since = GetTime();
@@ -276,9 +275,6 @@ static bool forcedUpdateScreen() {
     ImGui::TextDisabled("Your designs, maps and settings aren't touched.");
     ImGui::End();
     return true;
-#else
-    return false;   // (Linux: the gunsmith3d command updates the game before it starts it)
-#endif
 }
 
 void mainMenu() {
@@ -335,7 +331,6 @@ void mainMenu() {
             ImGui::Unindent(40 * S());
         }
     }
-#ifdef _WIN32
     {   // ask for a new version now (one found downloads and installs behind the Updating card, then restarts)
         update::Status u = update::status();
         const char* note = u.state == update::State::Checking ? "looking..." : u.state == update::State::UpToDate ? "you have the newest"
@@ -344,7 +339,6 @@ void mainMenu() {
         if (menuItem(ICON_FA_ROTATE, "Check for updates", u.state != update::State::Checking && u.state != update::State::Downloading && u.state != update::State::Installing, note))
             update::checkNow();
     }
-#endif
     if (menuItem(ICON_FA_GEAR, "Settings")) A.showSettings = true;
     if (menuItem(ICON_FA_COMMENTS, "Discord")) OpenURL(DISCORD_URL);
     if (menuItem(ICON_FA_CIRCLE_INFO, "About")) A.showAbout = true;
@@ -352,7 +346,6 @@ void mainMenu() {
     ImGui::EndGroup();
     ImGui::SetCursorPos({x, H - 34 * S()});
     ImGui::TextDisabled("Gunsmith 3D  v%s", version::text());
-#ifdef _WIN32
     {   // only when an update couldn't be fetched (offline): say so, and offer another go
         update::Status u = update::status();
         if (u.state == update::State::Failed) {
@@ -361,7 +354,6 @@ void mainMenu() {
             ImGui::SameLine(); if (ImGui::SmallButton("Try again")) update::checkNow();
         }
     }
-#endif
     ImGui::End();
     whatsNew();
 }
@@ -662,9 +654,6 @@ void interfacePage() {
         if (ImGui::Combo("##menupic", &k, "The workshop\0Your gun in 3D\0")) { CFG.menuPicture = k == 0; saveSettings(); }
     }
     ImGui::SeparatorText("Updates");
-#ifndef _WIN32
-    if (false)
-#endif
     {
     row("Check for updates", "The game always updates itself when it starts. This looks for a new version right now.");
     if (ImGui::Button("Check now##updnow")) update::checkNow();

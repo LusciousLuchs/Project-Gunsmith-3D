@@ -355,6 +355,12 @@ int main(int argc, char** argv) {
     int frame = 0;
     while (!WindowShouldClose() && !A.quit) {
         perf::frameStart();
+        A.toastT = std::max(0.f, A.toastT - GetFrameTime());   // (messages fade on every screen, not only the workshop's)
+        {   // the Level editor's status line goes after 8 seconds too
+            static std::string lastStatus; static double statusAt = 0;
+            if (ME.status != lastStatus) { lastStatus = ME.status; statusAt = GetTime(); }
+            else if (!ME.status.empty() && GetTime() - statusAt > 8) { ME.status.clear(); lastStatus.clear(); }
+        }
         cursorGuard();
         radioTick();
         if (actPressed(Act::PerfOverlay)) perf::toggle();

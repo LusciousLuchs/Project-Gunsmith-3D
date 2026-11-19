@@ -108,13 +108,11 @@ bool texturePicker(std::string& file) {
         ImGui::EndCombo();
     }
     float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-#ifdef _WIN32
     if (ImGui::Button("Add a picture...", {w2, 0})) {
         std::string p;
         if (pickImageFile(p)) { std::string n = importTexture(p); if (!n.empty()) { file = n; ch = true; } else toast("That file isn't a picture the game can read."); }
     }
     ImGui::SameLine();
-#endif
     if (ImGui::Button("Open textures folder", {w2, 0})) { scanUserTextures(); openTexturesFolder(); }
     if (tipHover()) ImGui::SetTooltip("Pictures in your Textures folder show up here (.png, .jpg, .bmp, .tga).\nYou can also drag pictures onto the game window.");
     return ch;

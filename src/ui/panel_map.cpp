@@ -610,13 +610,11 @@ static void texturesTab() {
     {   // the player's own pictures: add one, or open the folder they live in
         std::string none;
         float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
-#ifdef _WIN32
         if (ImGui::Button("Add a picture...", {w2, 0})) {
             std::string p;
             if (pickImageFile(p)) { std::string n = importTexture(p); if (!n.empty()) toast("Added " + n + "."); else toast("That file isn't a picture the game can read."); }
         }
         ImGui::SameLine();
-#endif
         if (ImGui::Button("Open textures folder", {w2, 0})) { scanUserTextures(); openTexturesFolder(); }
         ImGui::PushTextWrapPos(0);
         ImGui::TextDisabled("Your pictures (your Textures folder) come after the built-in ones. You can drag pictures onto the window too.");

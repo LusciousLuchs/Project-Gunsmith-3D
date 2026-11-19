@@ -118,8 +118,39 @@ void installCrashHandler() { SetUnhandledExceptionFilter(onCrash); }
 void openFolder(const std::string& p) { CreateDirectoryA(p.c_str(), nullptr); ShellExecuteA(nullptr, "open", p.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }
 #else
 #include <cstdlib>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
 #include <fstream>
-bool pickImageFile(std::string&) { return false; }  // (the game ships for Windows; on Linux, drop files on the window)
+#include <csignal>
+#include <execinfo.h>
+#include <fcntl.h>
+#include <unistd.h>
+// Linux file boxes: the desktop's own (zenity on GNOME and most others, kdialog on KDE), run as a child; its answer
+// is the path it prints. False if cancelled or neither is installed (then a message says what to install).
+void toast(const std::string& t);   // (app.cpp)
+static void linuxDialogMissing() { toast("No file box on this desktop: install zenity (or kdialog) with your package manager, or drag files onto the window."); }
+static bool have(const char* tool) { return std::system((std::string("command -v ") + tool + " >/dev/null 2>&1").c_str()) == 0; }
+static bool askDialog(const std::string& zenityArgs, const std::string& kdialogArgs, std::string& out) {
+    std::string cmd;
+    bool kde = std::getenv("KDE_FULL_SESSION") && have("kdialog");
+    if (!kde && have("zenity")) cmd = "zenity " + zenityArgs;
+    else if (have("kdialog")) cmd = "kdialog " + kdialogArgs;
+    else { linuxDialogMissing(); return false; }
+    FILE* f = popen((cmd + " 2>/dev/null").c_str(), "r");
+    if (!f) return false;
+    char buf[4096]; std::string got;
+    while (fgets(buf, sizeof buf, f)) got += buf;
+    int rc = pclose(f);
+    while (!got.empty() && (got.back() == '\n' || got.back() == '\r')) got.pop_back();
+    if (rc != 0 || got.empty()) return false;
+    out = got;
+    return true;
+}
+bool pickImageFile(std::string& out) {
+    return askDialog("--file-selection --title='Add a texture' --file-filter='Pictures | *.png *.jpg *.jpeg *.bmp *.tga' --file-filter='All files | *'",
+                     "--title 'Add a texture' --getopenfilename ~ 'Pictures (*.png *.jpg *.jpeg *.bmp *.tga)'", out);
+}
 // Linux: the desktop's Documents folder (XDG_DOCUMENTS_DIR from ~/.config/user-dirs.dirs, else ~/Documents), so the
 // player's files sit in Documents/OAB Foundry/Gunsmith as on Windows. GUNSMITH_PORTABLE keeps them in the game folder.
 std::string documentsFolder() {
@@ -139,9 +170,34 @@ std::string documentsFolder() {
     }
     return h + "/Documents";
 }
-bool pickFolder(std::string&, const char*) { return false; }
-void setCrashFolder(const std::string&) {}
-void installCrashHandler() {}
+bool pickFolder(std::string& out, const char* title) {
+    std::string t = title; for (auto& c : t) if (c == '\'') c = ' ';
+    return askDialog("--file-selection --directory --title='" + t + "'", "--title '" + t + "' --getexistingdirectory ~", out);
+}
+// If the game crashes, leave a report in the Crashes folder (what went wrong and the call stack), as on Windows
+static char gCrashDir[2048] = "user/crashes";
+void setCrashFolder(const std::string& dir) { std::snprintf(gCrashDir, sizeof gCrashDir, "%s", dir.c_str()); }
+static void onCrash(int sig) {
+    std::signal(sig, SIG_DFL);
+    std::string mk = std::string("mkdir -p '") + gCrashDir + "'";
+    if (std::system(mk.c_str())) {}
+    char path[2300];
+    std::snprintf(path, sizeof path, "%s/crash-%ld.txt", gCrashDir, (long)std::time(nullptr));
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd >= 0) {
+        char head[256];
+        int n = std::snprintf(head, sizeof head, "Gunsmith3D crashed (signal %d: %s).\nCall stack:\n", sig, strsignal(sig));
+        if (write(fd, head, n) < 0) {}
+        void* frames[64];
+        int k = backtrace(frames, 64);
+        backtrace_symbols_fd(frames, k, fd);
+        close(fd);
+    }
+    std::fprintf(stderr, "Gunsmith3D crashed. A crash report was saved in %s. Please send it to the developer.\n", gCrashDir);
+    if (have("zenity")) { std::string m = std::string("zenity --error --title=Gunsmith3D --text='Gunsmith3D crashed. A crash report was saved in:\n") + gCrashDir + "\nPlease send it to the developer.' >/dev/null 2>&1"; if (std::system(m.c_str())) {} }
+    std::raise(sig);
+}
+void installCrashHandler() { for (int s : {SIGSEGV, SIGABRT, SIGFPE, SIGILL, SIGBUS}) std::signal(s, onCrash); }
 void openFolder(const std::string& p) {
     std::error_code ec; std::filesystem::create_directories(p, ec);
     std::string cmd = "xdg-open \"" + p + "\" >/dev/null 2>&1 &";

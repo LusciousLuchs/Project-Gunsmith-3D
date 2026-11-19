@@ -153,7 +153,6 @@ void stepSim(float dt) {
 void stepEffects(float dt) {
     A.flash = std::max(0.f, A.flash - dt);
     A.clickT = std::max(0.f, A.clickT - dt);
-    A.toastT = std::max(0.f, A.toastT - dt);
     float py = plateY();
     for (auto& s : A.shells) {
         s.v.y -= 60 * dt;
