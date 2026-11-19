@@ -767,7 +767,7 @@ void contacts(Body& A, Body& B, double mu) {  // push B's boundary samples out o
     double lx0 = 1e9, ly0 = 1e9, lx1 = -1e9, ly1 = -1e9;
     for (auto& q : A.lp) { lx0 = std::min(lx0, q.x); lx1 = std::max(lx1, q.x); ly0 = std::min(ly0, q.y); ly1 = std::max(ly1, q.y); }
     const size_t n = A.lp.size();
-    const bool fast = A.acc.n == n && n > 0;
+    const bool fast = A.acc.n == n && n > 0 && A.cav.empty();   // (a cut's wall can be within reach where the outline's edges aren't)
     double cB = std::cos(B.a), sB = std::sin(B.a), cA = std::cos(A.a), sA = std::sin(A.a);
     for (auto& s : B.samples) {
         V2 w{B.x + cB * s.x - sB * s.y, B.y + sB * s.x + cB * s.y};

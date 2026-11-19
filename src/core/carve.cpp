@@ -181,6 +181,23 @@ static bool same(const std::vector<std::vector<V2>>& A, const std::vector<std::v
     return true;
 }
 
+// two sets of outlines with the same corners (within tol mm, in any order): a straight-sided stretch of a 3D shape
+static bool sameCorners(const std::vector<std::vector<V2>>& A, const std::vector<std::vector<V2>>& B, double tol) {
+    if (A.size() != B.size()) return false;
+    for (size_t i = 0; i < A.size(); i++) {
+        if (A[i].size() != B[i].size()) return false;
+        for (int pass = 0; pass < 2; pass++) {
+            const auto &P = pass ? B[i] : A[i], &Q = pass ? A[i] : B[i];
+            for (auto& p : P) {
+                bool hit = false;
+                for (auto& q : Q) if (std::fabs(p.x - q.x) <= tol && std::fabs(p.y - q.y) <= tol) { hit = true; break; }
+                if (!hit) return false;
+            }
+        }
+    }
+    return true;
+}
+
 bool tilted(const BodyDef& b) { return std::fabs(b.tiltX) > 1e-6 || std::fabs(b.tiltY) > 1e-6; }
 void tiltMatrix(const BodyDef& b, double R[3][3]) {
     // + X leans the top (-y) toward the near side (+z); + Y swings the front (+x) toward the near side
@@ -395,7 +412,12 @@ std::vector<Slice> slices(const BodyDef& b, int maxSlices) {
             double zm = (sl.z0 + sl.z1) / 2;
             sl.outlines = meshed ? meshSection(b.mesh, zm) : depthSection(b, zm);
             sl.cav = cutsAt(zm);
-            if (!sl.outlines.empty()) out.push_back(sl);
+            if (sl.outlines.empty()) continue;
+            // (0.8.57) the same shape as the slab before it (a straight-sided stretch, no cut changing): one slab, not
+            // several identical ones: the physics checks every slab against every part it meets
+            if (!out.empty() && std::fabs(out.back().z1 - sl.z0) < 1e-6 && sameCorners(out.back().outlines, sl.outlines, 0.02) && same(out.back().cav, sl.cav, 0.02))
+                out.back().z1 = sl.z1;
+            else out.push_back(sl);
         }
         return out;
     }

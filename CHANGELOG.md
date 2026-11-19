@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.57-alpha
+
+- **Faster physics for detailed guns.** Parts shaped freely in 3D with straight sides are no longer split into many identical slices for the physics, and cut parts are checked faster. A detailed pistol with a 3D-shaped frame, grip and bolt and 50 cuts on its slide went from 25 ms to 13 ms of physics a frame, so the frame rate roughly doubles on the test bench and range.
+- The performance overlay (F3) now counts each part's real physics slices in its "heaviest parts" list.
+
 ## 0.8.56-alpha
 
 - **Magazine tab** (next to Layers and Firing): every setting for the gun's magazines in one place. With several magazines, pick one at the top. A gun with no magazine says it's loaded by hand, and can turn the selected part into one. The part's own panel just points here now.

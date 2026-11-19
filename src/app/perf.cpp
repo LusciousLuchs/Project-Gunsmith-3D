@@ -1,4 +1,5 @@
 // Gunsmith3D - the performance overlay (see perf.hpp).
+#include <map>
 #include "app/perf.hpp"
 #include "app/app.hpp"
 #include "app/mapedit.hpp"
@@ -53,9 +54,21 @@ void line(const char* k, const std::string& v) {
     ImGui::TextUnformatted(v.c_str());
 }
 // What makes a part costly to simulate: its corners, checked in every slice it's cut into through its depth
-int sliceGuess(const BodyDef& b) {
-    if (!b.carves.empty() || b.round || carve::tilted(b) || !b.depthOff.empty()) return 16;
-    return 1;
+int sliceGuess(const BodyDef& b) {   // (the slices the physics really makes; cached by shape)
+    static std::map<std::string, int> cache;
+    if (b.carves.empty() && !b.round && !carve::tilted(b) && b.depthOff.empty() && !meshShaped(b) && !b.hollow.on) return 1;
+    std::string key;   // (its shape: corners, depth, cuts, mesh)
+    auto num = [&](double v) { key += std::to_string((long long)std::llround(v * 100)); key += ','; };
+    for (auto& p : b.pts) { num(p.x); num(p.y); }
+    num(b.z); num(b.thick); num(b.round); num(b.tiltX); num(b.tiltY); num(b.hollow.on ? b.hollow.wall : -1);
+    for (auto& c : b.carves) { num(c.at.x); num(c.at.y); num(c.atZ); num(c.w); num(c.h); num(c.depth); num(c.dx); num(c.dy); num(c.dz); num(c.spin); }
+    for (auto& v : b.mesh.v) { num(v.x); num(v.y); num(v.z); }
+    for (double v : b.depthZn) num(v);
+    for (double v : b.depthZf) num(v);
+    auto it = cache.find(key);
+    if (it != cache.end()) return it->second;
+    if (cache.size() > 400) cache.clear();
+    return cache[key] = std::max(1, (int)carve::slices(b).size());
 }
 // The parts of a gun that cost the physics most: many corners, cut into many slices
 void heaviestParts(const Design& D) {
