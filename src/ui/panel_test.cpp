@@ -835,7 +835,32 @@ void poseStrip() {
             }
             ImGui::EndTable();
         }
-        ImGui::TextDisabled("Drag a fingertip in the view (Shift: just curl it)");
+        {   // the picked finger joint by joint: each bend on its own (and the thumb's swing across the palm)
+            int d = std::clamp(A.poseDigit, 0, DIGIT_COUNT - 1);
+            ImGui::TextDisabled("%s, joint by joint:", digitName(d));
+            double lo[5], hi[5];
+            digitLimits(d, lo, hi);
+            const char* names[4] = {"Base %.0f", "Middle %.0f", "End %.0f", "Across the palm %.0f"};
+            bool done = false;
+            for (int j = 0; j < (d == DIGIT_THUMB ? 4 : 3); j++) {
+                ImGui::PushID(100 + j);
+                float v = (float)(j < 3 ? dv[d].bend[j] : dv[d].oppose);
+                if (j) ImGui::SameLine();
+                ImGui::SetNextItemWidth((d == DIGIT_THUMB ? 92 : 124) * S());
+                bool ch = ImGui::SliderFloat("##j", &v, (float)lo[j < 3 ? j + 1 : 4], (float)hi[j < 3 ? j + 1 : 4], names[j]);
+                done |= ImGui::IsItemDeactivatedAfterEdit();
+                if (ch) {
+                    HandHold& h = *editHand(k);
+                    if (!h.digitsSet) { digitsOf(h, which, h.digits); h.digitsSet = true; }
+                    DigitPose& p = h.digits[d];
+                    if (j < 3) p.bend[j] = v; else p.oppose = v;
+                    clampDigit(d, p);
+                }
+                ImGui::PopID();
+            }
+            if (done) commit();
+        }
+        ImGui::TextDisabled("In the view: drag a fingertip (orange) or a knuckle (blue), or roll the wheel over one to bend\nthat joint (Shift+wheel spreads it). Shift+drag just curls.");
     }
     ImGui::End();
     ImGui::PopStyleVar(2);

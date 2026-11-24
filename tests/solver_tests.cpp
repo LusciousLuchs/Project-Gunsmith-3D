@@ -3567,6 +3567,44 @@ static void autoAnimTest() {
     CHECK(!r3.ok && !r3.note.empty(), "a gun with no magazine says so instead");
 }
 
+
+// (0.8.58) the hand's skin is one smooth closed surface; a knuckle can be placed on its own
+static void handSkinTest() {
+    std::printf("\n== hand skin and joints\n");
+    for (const char* pr : {"grip", "trigger", "open", "fist"}) {
+        HandHold h; applyHandPreset(h, "firing", pr);
+        HandSurface s = handSurface(h.digits);
+        double vol = 0;
+        for (size_t t = 0; t + 2 < s.idx.size(); t += 3) {
+            const float *a = &s.v[s.idx[t] * 3], *b = &s.v[s.idx[t + 1] * 3], *c = &s.v[s.idx[t + 2] * 3];
+            vol += (a[0] * (b[1] * c[2] - b[2] * c[1]) - a[1] * (b[0] * c[2] - b[2] * c[0]) + a[2] * (b[0] * c[1] - b[1] * c[0])) / 6;
+        }
+        std::map<long long, int> edges;
+        for (size_t t = 0; t + 2 < s.idx.size(); t += 3)
+            for (int e = 0; e < 3; e++) { unsigned a = s.idx[t + e], b = s.idx[t + (e + 1) % 3]; edges[(long long)std::min(a, b) * 1000000 + std::max(a, b)]++; }
+        int loose = 0;
+        for (auto& kv : edges) if (kv.second != 2) loose++;
+        int fingers[DIGIT_COUNT] = {0};
+        for (auto d : s.digit) if (d >= 0) fingers[(int)d]++;
+        std::printf("  (%s: %zu corners, %.0f cm3, %d odd edges of %zu)\n", pr, s.v.size() / 3, vol / 1000, loose, edges.size());
+        CHECK(vol > 150000 && vol < 500000, "the hand's skin encloses about a hand's volume, wound outward");
+        CHECK(loose * 200 < (int)edges.size(), "the skin is closed: almost every edge is shared by two faces");
+        CHECK(s.v.size() / 3 < 65535, "few enough corners to draw in one piece");
+        bool all = true; for (int d = 0; d < DIGIT_COUNT; d++) if (fingers[d] < 100) all = false;
+        CHECK(all, "every finger has its own skin");
+    }
+    HandHold h; applyHandPreset(h, "firing", "grip");
+    DigitPose before = h.digits[DIGIT_INDEX];
+    HV want;
+    {   // somewhere it can reach: where it is with the base joint straightened 30 degrees and spread 10
+        HandHold t = h; t.digits[DIGIT_INDEX].bend[0] -= 30; t.digits[DIGIT_INDEX].spread += 10;
+        want = digitJoint(t.digits, DIGIT_INDEX, 0);
+    }
+    double left = reachJoint(h.digits, DIGIT_INDEX, 0, want);
+    std::printf("  (index's first knuckle moved: %.1f mm left; end joints %.0f/%.0f -> %.0f/%.0f)\n", left, before.bend[1], before.bend[2], h.digits[DIGIT_INDEX].bend[1], h.digits[DIGIT_INDEX].bend[2]);
+    CHECK(left < 1.0, "a knuckle reaches where it's dragged");
+    CHECK(h.digits[DIGIT_INDEX].bend[1] == before.bend[1] && h.digits[DIGIT_INDEX].bend[2] == before.bend[2], "the joints past it keep their bend");
+}
 int main() {
     if (const char* only = std::getenv("GUNSMITH_TESTONLY")) {   // (one quick group while working on it)
         std::string o = only;
@@ -3594,10 +3632,12 @@ int main() {
         else if (o == "garage") garageStreet();
         else if (o == "autoanim") autoAnimTest();
         else if (o == "animversions") animVersionsTest();
+        else if (o == "hand") handSkinTest();
         std::printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
         return failures ? 1 : 0;
     }
     shotSounds();
+    handSkinTest();
     fittingAttachments();
     attachmentsData();
     railsAndMounts();

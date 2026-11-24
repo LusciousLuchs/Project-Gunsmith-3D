@@ -32,6 +32,16 @@ void clampDigit(int digit, DigitPose& p);
 // moves are preferred, so the rest of its pose is kept where it doesn't need to change. Returns the distance left (mm).
 double reachDigit(DigitPose digits[DIGIT_COUNT], int digit, HV target, int iterations = 30);
 HV digitTip(const DigitPose digits[DIGIT_COUNT], int digit);
+// The same for any joint: the end of bone `seg` (0 the first knuckle past the base, 2 the tip), moving only the joints
+// before it (and the spread; the thumb's swing too), so a knuckle can be placed and the rest of the finger kept.
+double reachJoint(DigitPose digits[DIGIT_COUNT], int digit, int seg, HV target, int iterations = 30);
+HV digitJoint(const DigitPose digits[DIGIT_COUNT], int digit, int seg);
+
+// The hand's skin as one smooth surface (hand space, mm): the palm and every finger blended where they meet, each
+// finger tapering to a rounded tip, the fingers kept apart from each other. Triangles wound outward; `digit` says which
+// digit each corner belongs to (-1 the palm), for highlighting one. Built in a few milliseconds; cache it by pose.
+struct HandSurface { std::vector<float> v, n; std::vector<unsigned> idx; std::vector<signed char> digit; };
+HandSurface handSurface(const DigitPose digits[DIGIT_COUNT], double cell = 2.5);
 
 // ---------------------------------------------------------------- the hand on the gun (gun millimetres, 3D)
 // The hand's frame where a HandHold puts it: the palm against the side of whatever is held there, the knuckles along

@@ -27,7 +27,10 @@ double frameT0 = -1, workEnd = -1;
 float plotFrame[N], plotFps[N];
 }  // namespace
 
+static unsigned long long gFrameNo = 0;
+unsigned long long frameNo() { return gFrameNo; }
 void frameStart() {
+    gFrameNo++;
     double t = now();
     if (frameT0 >= 0) {   // the frame that just ended
         cur.total = (float)(t - frameT0);

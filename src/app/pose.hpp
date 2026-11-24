@@ -20,6 +20,7 @@ void drawPoseBody();             // the mannequin, its arms and hands (call outs
 void drawFirstPersonArms(Vector3 eye, Vector3 fwd, Vector3 up);   // the range: your arms on the gun (in the gun's frame)
 void drawPoseOverlay();          // handles and labels
 void poseInput(bool overUI);
+bool poseWantsWheel();   // the mouse is over a finger joint: the wheel bends it, not the view
 PoseReport poseReport();
 void poseDefaultHands();
 void poseBedShoulder();          // move the current hold's shoulder pocket onto the butt

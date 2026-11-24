@@ -1,5 +1,7 @@
 // Gunsmith3D - the pose editor (see pose.hpp).
+#include <map>
 #include "app/pose.hpp"
+#include "app/perf.hpp"
 #include "app/charmodel.hpp"
 #include "app/app.hpp"
 #include "app/fonts.hpp"
@@ -168,9 +170,16 @@ WF worldFrame(const HandFrame& f) {
     return {o, Vector3Subtract(G({f.o.x + f.X.x, f.o.y + f.X.y, f.o.z + f.X.z}), o), Vector3Subtract(G({f.o.x + f.Y.x, f.o.y + f.Y.y, f.o.z + f.Y.z}), o),
             Vector3Subtract(G({f.o.x + f.Z.x, f.o.y + f.Z.y, f.o.z + f.Z.z}), o)};
 }
-struct HandGeo { bool on = false; Vector3 c, wrist; WF f; std::vector<HandBone> bones; };
+// The finger handles: 20 + digit is a fingertip; 40 + digit x 2 + joint a knuckle (0 the one past the base, 1 the next)
+bool fingerId(int id, int& digit, int& seg) {
+    if (id >= 20 && id < 20 + DIGIT_COUNT) { digit = id - 20; seg = 2; return true; }
+    if (id >= 40 && id < 40 + DIGIT_COUNT * 2) { digit = (id - 40) / 2; seg = (id - 40) % 2; return true; }
+    return false;
+}
+bool isFinger(int id) { int d, s; return fingerId(id, d, s); }
+struct HandGeo { bool on = false; Vector3 c, wrist; WF f; std::vector<HandBone> bones; DigitPose dg[DIGIT_COUNT]; };
 void finishGeo(HandGeo& g, const HandHold& h, int side) {
-    DigitPose dg[DIGIT_COUNT];
+    DigitPose* dg = g.dg;
     digitsOf(h, side > 0 ? "firing" : "support", dg);
     g.bones = handBones(dg);
     g.c = handPt(g.f, {0, 0, 0});
@@ -185,6 +194,77 @@ HandGeo handGeo(const HandHold& h, int side) {   // a hand on the gun
     return g;
 }
 void capsule(Vector3 a, Vector3 b, float r, Color c) { drawCyl(a, b, r, c); drawSphereLit(a, r, c); drawSphereLit(b, r, c); }
+
+// ---- the hand's skin: one smooth mesh round the finger bones (core handSurface), cached by pose. Building one takes a
+// few milliseconds, so at most two are built a frame; a hand whose pose isn't built yet shows its last one meanwhile.
+struct SkinMesh { Mesh m{}; unsigned long long used = 0; };
+std::map<std::string, SkinMesh> gSkins;
+unsigned long long gSkinTick = 0;
+int gSkinBuilt = 0;
+std::string gSkinLast[2];   // (each hand's last mesh)
+std::string skinKey(const DigitPose* dg, int picked) {
+    std::string k;
+    for (int d = 0; d < DIGIT_COUNT; d++) {
+        const DigitPose& p = dg[d];
+        for (double v : {p.bend[0], p.bend[1], p.bend[2], p.spread, p.oppose}) { k += std::to_string((long)std::lround(v / 1.5)); k += ','; }
+    }
+    k += "p" + std::to_string(picked);
+    return k;
+}
+const Mesh* skinMesh(const DigitPose* dg, int picked, int slot) {
+    {   // (the budget starts again each frame)
+        static unsigned long long lastF = ~0ull;
+        if (perf::frameNo() != lastF) { lastF = perf::frameNo(); gSkinBuilt = 0; }
+    }
+    std::string key = skinKey(dg, picked);
+    auto it = gSkins.find(key);
+    if (it == gSkins.end()) {
+        if (gSkinBuilt >= 2) {   // (over this frame's budget: the hand's last mesh, if it has one)
+            auto last = gSkins.find(gSkinLast[slot & 1]);
+            if (last != gSkins.end()) { last->second.used = ++gSkinTick; return &last->second.m; }
+        }
+        gSkinBuilt++;
+        HandSurface hs = handSurface(dg);
+        if (hs.idx.empty() || hs.v.size() / 3 > 65535) return nullptr;
+        Mesh m{};
+        m.vertexCount = (int)(hs.v.size() / 3);
+        m.triangleCount = (int)(hs.idx.size() / 3);
+        m.vertices = (float*)MemAlloc((unsigned)(hs.v.size() * sizeof(float)));
+        m.normals = (float*)MemAlloc((unsigned)(hs.n.size() * sizeof(float)));
+        m.colors = (unsigned char*)MemAlloc((unsigned)(m.vertexCount * 4));
+        m.indices = (unsigned short*)MemAlloc((unsigned)(hs.idx.size() * sizeof(unsigned short)));
+        std::copy(hs.v.begin(), hs.v.end(), m.vertices);
+        std::copy(hs.n.begin(), hs.n.end(), m.normals);
+        for (int i = 0; i < m.vertexCount; i++) {   // the picked finger warmer, the rest as they are
+            bool hi = picked >= 0 && hs.digit[(size_t)i] == picked;
+            unsigned char* c = m.colors + i * 4;
+            c[0] = 255; c[1] = hi ? 222 : 255; c[2] = hi ? 170 : 255; c[3] = 255;
+        }
+        for (size_t i = 0; i < hs.idx.size(); i++) m.indices[i] = (unsigned short)hs.idx[i];
+        UploadMesh(&m, false);
+        if (gSkins.size() >= 48) {   // (the least lately used goes)
+            auto old = gSkins.begin();
+            for (auto j = gSkins.begin(); j != gSkins.end(); ++j) if (j->second.used < old->second.used && j->first != gSkinLast[0] && j->first != gSkinLast[1]) old = j;
+            UnloadMesh(old->second.m);
+            gSkins.erase(old);
+        }
+        it = gSkins.emplace(key, SkinMesh{m, 0}).first;
+    }
+    it->second.used = ++gSkinTick;
+    gSkinLast[slot & 1] = key;
+    return &it->second.m;
+}
+// the hand drawn as its skin, where its frame puts it (a mirrored frame draws with culling off: its triangles turn over)
+void drawHandSkin(const HandGeo& g, Color c, int picked, int slot) {
+    const Mesh* m = skinMesh(g.dg, picked, slot);
+    if (!m) return;
+    const WF& f = g.f;
+    Matrix M{f.x.x, f.y.x, f.z.x, f.o.x, f.x.y, f.y.y, f.z.y, f.o.y, f.x.z, f.y.z, f.z.z, f.o.z, 0, 0, 0, 1};
+    bool mirrored = Vector3DotProduct(f.x, Vector3CrossProduct(f.y, f.z)) < 0;
+    if (mirrored) rlDisableBackfaceCulling();
+    drawMesh(*m, M, c);
+    if (mirrored) rlEnableBackfaceCulling();
+}
 
 // ---- the mannequin's shapes: smooth tubes through rings (each a rounded-square section: a half-width across, a
 // half-depth front to back), in millimetres. Built once.
@@ -647,25 +727,7 @@ void drawPoseBody() {
         }
         const Color SKIN = handCol;   // (the hand: the character's hand colour)
         if (g.on) {
-            const HandBone *thumb = nullptr, *palmIndex = nullptr;
-            for (auto& b : g.bones) {
-                bool picked = A.poseHand == side && b.digit == A.poseDigit && b.digit >= 0;
-                Color col = picked ? Color{240, 196, 150, 255} : SKIN;
-                if (b.digit == DIGIT_THUMB && b.seg == 0) {   // the ball of the thumb: fat at the wrist, narrowing to its knuckle
-                    thumb = &b;
-                    HV m{(b.a.x + b.b.x) / 2, (b.a.y + b.b.y) / 2, (b.a.z + b.b.z) / 2};
-                    capsule(handPt(g.f, b.a), handPt(g.f, m), (float)b.radius * U, col);
-                    capsule(handPt(g.f, m), handPt(g.f, b.b), (float)(b.radius * 0.8) * U, col);
-                    continue;
-                }
-                if (b.name == "palm_index") palmIndex = &b;
-                capsule(handPt(g.f, b.a), handPt(g.f, b.b), (float)b.radius * U, col);
-            }
-            if (thumb && palmIndex) {   // the web of skin between the thumb and the index finger
-                auto lerp = [](HV a, HV b, double t) { return HV{a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t}; };
-                for (double t : {0.35, 0.7})
-                    capsule(handPt(g.f, lerp(thumb->a, thumb->b, t)), handPt(g.f, lerp(palmIndex->a, palmIndex->b, 0.25 + 0.5 * t)), 9 * U, SKIN);
-            }
+            drawHandSkin(g, SKIN, A.poseHand == side ? A.poseDigit : -1, side);
         } else drawSphereLit(a.w, 45 * U, SKIN);
         if (side == 1) drawHeldClip(g, clipShown());
     }
@@ -705,23 +767,7 @@ void drawFirstPersonArms(Vector3 eye, Vector3 fwd, Vector3 up) {
         limb(SH.fore, a.e, a.w, skin);
         if (!g.on) { drawSphereLit(a.w, 45 * U, skin); continue; }
         if (side == 1) drawHeldClip(g, clipShown());
-        const HandBone *thumb = nullptr, *palmIndex = nullptr;
-        for (auto& b : g.bones) {
-            if (b.digit == DIGIT_THUMB && b.seg == 0) {
-                thumb = &b;
-                HV m{(b.a.x + b.b.x) / 2, (b.a.y + b.b.y) / 2, (b.a.z + b.b.z) / 2};
-                capsule(handPt(g.f, b.a), handPt(g.f, m), (float)b.radius * U, skin);
-                capsule(handPt(g.f, m), handPt(g.f, b.b), (float)(b.radius * 0.8) * U, skin);
-                continue;
-            }
-            if (b.name == "palm_index") palmIndex = &b;
-            capsule(handPt(g.f, b.a), handPt(g.f, b.b), (float)b.radius * U, skin);
-        }
-        if (thumb && palmIndex) {
-            auto lerp = [](HV p, HV q, double t) { return HV{p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t, p.z + (q.z - p.z) * t}; };
-            for (double t : {0.35, 0.7})
-                capsule(handPt(g.f, lerp(thumb->a, thumb->b, t)), handPt(g.f, lerp(palmIndex->a, palmIndex->b, 0.25 + 0.5 * t)), 9 * U, skin);
-        }
+        drawHandSkin(g, skin, -1, side);
     }
     gFP = false;
     A.poseHold = keepHold;
@@ -799,7 +845,17 @@ void drawPoseOverlay() {
     if (A.poseHand >= 0) {
         HandGeo g = sideLimb(bodyFrame(), viewHands(), A.poseHand == 0 ? 0 : 1).g;
         if (g.on)
-            for (auto& b : g.bones)
+            for (auto& b : g.bones) {
+                if (b.digit >= 0 && b.seg < 2) {   // the knuckles: drag one to bend the finger up to there; the wheel bends it
+                    int kid = 40 + b.digit * 2 + b.seg;
+                    Vector2 s = toScreen(handPt(g.f, b.b));
+                    bool hot = Vector2Distance(s, m) < 7 || A.poseDrag == kid || A.posePicked == kid;
+                    float rr = hot ? 5.f : (A.poseFingers ? 4.f : 3.f);
+                    DrawCircleV(s, rr + 1.5f, Color{20, 24, 32, 200});
+                    DrawCircleV(s, rr, hot ? Color{255, 205, 60, 255} : Color{150, 210, 255, 255});
+                    if (hot) viewText(TextFormat("%s, %s joint: drag to bend up to here (wheel bends it, Shift+wheel spreads)", digitName(b.digit), b.seg == 0 ? "middle" : "end"), s.x + 10, s.y - 18 * CFG.uiScale, 12, Color{150, 210, 255, 255});
+                    handles.push_back({s, kid});
+                }
                 if (b.digit >= 0 && b.seg == 2) {
                     Vector2 s = toScreen(handPt(g.f, b.b));
                     bool picked = b.digit == A.poseDigit;
@@ -808,9 +864,10 @@ void drawPoseOverlay() {
                     float rr = A.poseFingers ? (hot || picked ? 8.f : 6.f) : (hot || picked ? 5.f : 3.5f);
                     if (A.poseFingers) DrawCircleV(s, rr + 2, Color{20, 24, 32, 200});
                     DrawCircleV(s, rr, c);
-                    if (hot) viewText(TextFormat(A.poseFingers || A.posePicked == 20 + b.digit ? "%s: drag it anywhere (Shift: curl)" : "%s: click to pick it, then drag", digitName(b.digit)), s.x + 10, s.y - 18 * CFG.uiScale, 12, c);
+                    if (hot) viewText(TextFormat(A.poseFingers || A.posePicked == 20 + b.digit ? "%s: drag it anywhere (Shift: curl; wheel: bend the tip)" : "%s: click to pick it, then drag", digitName(b.digit)), s.x + 10, s.y - 18 * CFG.uiScale, 12, c);
                     handles.push_back({s, 20 + b.digit});
                 }
+            }
     }
     Frame F = bodyFrame();
     {   // the elbows (drag one to swing it round), and hands off the gun (drag one to place it anywhere: a pouch, the
@@ -912,7 +969,33 @@ bool jointFor(int id, Rings& g, PJ& J) {
         J.probe = [](int a) { return a == 0 ? bp(bodyFrame(), 300, 0, 0) : gunPt({5000, 0}, 0); };   // (far down the bore: where the pivot is hardly matters)
         return true;
     }
-    if (id >= 20 && A.poseHand >= 0) {   // a finger: curled (all its joints together) and spread
+    if (int kd, ks; fingerId(id, kd, ks) && ks < 2 && A.poseHand >= 0) {   // a knuckle: that joint bent on its own (the base one spreads too)
+        int digit = kd, seg = ks, k = A.poseHand == 0 ? 0 : 1, side = k == 0 ? 1 : -1;
+        Limb L = limbFor(F, k == 0 ? P.firing : P.support, side);
+        if (!L.g.on) return false;
+        const HandBone* b0 = nullptr;
+        for (auto& b : L.g.bones) if (b.digit == digit && b.seg == seg) b0 = &b;
+        if (!b0) return false;
+        HV dir{b0->b.x - b0->a.x, b0->b.y - b0->a.y, b0->b.z - b0->a.z}, up = b0->up;
+        HV side3{dir.y * up.z - dir.z * up.y, dir.z * up.x - dir.x * up.z, dir.x * up.y - dir.y * up.x};
+        g.c = handPt(L.g.f, b0->a);
+        g.ax[0] = nrm(Vector3Subtract(handPt(L.g.f, {b0->a.x + side3.x, b0->a.y + side3.y, b0->a.z + side3.z}), g.c)); g.label[0] = "Bend ";
+        if (seg == 0) { g.ax[1] = nrm(Vector3Subtract(handPt(L.g.f, {b0->a.x + up.x, b0->a.y + up.y, b0->a.z + up.z}), g.c)); g.label[1] = "Spread "; }
+        J.set = [k, digit, seg](int a, double d) {
+            HandHold& h = *editHand(k);
+            if (!h.digitsSet) { digitsOf(h, k == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
+            DigitPose& p = h.digits[digit];
+            if (a == 0) p.bend[seg] += d; else p.spread += d;
+            clampDigit(digit, p);
+        };
+        J.probe = [k, side, digit, seg](int) {
+            HandGeo hg = limbFor(bodyFrame(), *editHand(k), side).g;
+            for (auto& b : hg.bones) if (b.digit == digit && b.seg == seg) return handPt(hg.f, b.b);
+            return Vector3{0, 0, 0};
+        };
+        return true;
+    }
+    if (id >= 20 && id < 20 + DIGIT_COUNT && A.poseHand >= 0) {   // a finger: curled (all its joints together) and spread
         int digit = id - 20, k = A.poseHand == 0 ? 0 : 1, side = k == 0 ? 1 : -1;
         Limb L = limbFor(F, k == 0 ? P.firing : P.support, side);
         if (!L.g.on) return false;
@@ -985,11 +1068,12 @@ bool arrowsFor(int id, Arrows& g) {
     Vector3 X = Vector3Normalize(Vector3Subtract(gunPt({10, 0}, 0), O)), Y = Vector3Normalize(Vector3Subtract(gunPt({0, -10}, 0), O)),
             Z = Vector3Normalize(Vector3Subtract(gunPt({0, 0}, 10), O));
     g.label[0] = "Along the gun"; g.label[1] = "Up"; g.label[2] = "Across";
-    if (id >= 20 && A.poseHand >= 0) {
+    if (int fd, fs; fingerId(id, fd, fs) && A.poseHand >= 0) {
         int k = A.poseHand == 0 ? 0 : 1;
         Limb L = limbFor(F, k == 0 ? P.firing : P.support, k == 0 ? 1 : -1);
         if (!L.g.on) return false;
-        g.c = tipOf(L.g, id - 20);
+        g.c = tipOf(L.g, fd);
+        for (auto& b : L.g.bones) if (b.digit == fd && b.seg == fs) g.c = handPt(L.g.f, b.b);
         g.ax[0] = X; g.ax[1] = Y; g.ax[2] = Z;
         return true;
     }
@@ -1019,8 +1103,8 @@ bool arrowsFor(int id, Arrows& g) {
 // put `id` at `q` (world)
 void arrowsApply(int id, Vector3 q) {
     Frame F = bodyFrame();
-    if (id >= 20 && A.poseHand >= 0) {
-        int k = A.poseHand == 0 ? 0 : 1, digit = id - 20;
+    if (int fd, fs; fingerId(id, fd, fs) && A.poseHand >= 0) {
+        int k = A.poseHand == 0 ? 0 : 1, digit = fd;
         HandHold& h = *editHand(k);
         if (!h.digitsSet) { digitsOf(h, k == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
         HandGeo g = limbFor(F, h, k == 0 ? 1 : -1).g;
@@ -1029,7 +1113,7 @@ void arrowsApply(int id, Vector3 q) {
         Vector3 cx = Vector3Subtract(handPt(g.f, {1, 0, 0}), o), cy = Vector3Subtract(handPt(g.f, {0, 1, 0}), o), cz = Vector3Subtract(handPt(g.f, {0, 0, 1}), o);
         Matrix Mi = MatrixInvert(Matrix{cx.x, cy.x, cz.x, o.x, cx.y, cy.y, cz.y, o.y, cx.z, cy.z, cz.z, o.z, 0, 0, 0, 1});
         Vector3 l = Vector3Transform(q, Mi);
-        for (int i = 0; i < 3; i++) reachDigit(h.digits, digit, {l.x, l.y, l.z});   // (a few goes: it reaches in steps)
+        for (int i = 0; i < 3; i++) reachJoint(h.digits, digit, fs, {l.x, l.y, l.z});   // (a few goes: it reaches in steps)
         return;
     }
     if (id == 0 || id == 2 || id == 4) {
@@ -1086,9 +1170,9 @@ void poseArrowsDraw() {
 // (tests) slide point `id` along arrow `axis` by `mm`, as a drag would; prints how far it really went that way
 void poseArrowTest(int id, int axis, double mm) {
     A.posePicked = id;
-    if (id >= 20 && A.poseHand < 0) A.poseHand = 0;
+    if (isFinger(id) && A.poseHand < 0) A.poseHand = 0;
     if (!arrowsFor(id, gPA) || Vector3Length(gPA.ax[axis]) < 0.5f) { std::printf("ARROWTEST: no arrow %d on %d\n", axis, id); return; }
-    if (id <= 5 || id >= 20) editHand(id >= 20 ? (A.poseHand == 0 ? 0 : 1) : id / 2);
+    if (id <= 5 || isFinger(id)) editHand(isFinger(id) ? (A.poseHand == 0 ? 0 : 1) : id / 2);
     if (id == 12) { double g[6]; viewGun(g); for (int q = 0; q < 6; q++) dragStart[q] = g[q]; }
     gPAp0 = gPA.c;
     Vector3 ax = gPA.ax[axis];
@@ -1131,7 +1215,29 @@ static void poseRingsDraw() {
     }
     ringsDraw(gPR, poseTS(), A.cam.position);
 }
+// the finger dot under the mouse (-1: none)
+static int fingerUnderMouse() {
+    Vector2 m = GetMousePosition();
+    int id = -1; float best = 9;
+    for (auto& h : handles) if (isFinger(h.id)) { float d = Vector2Distance(h.s, m); if (d < best) { best = d; id = h.id; } }
+    return id;
+}
+bool poseWantsWheel() { return A.posing && A.poseHand >= 0 && fingerUnderMouse() >= 0; }
 void poseInput(bool overUI) {
+    if (!overUI && GetMouseWheelMove() != 0 && !(A.S && sim::animPlaying(*A.S))) {   // the wheel over a finger's dot bends that joint
+        int id = fingerUnderMouse(), fd, fs;
+        if (id >= 0 && fingerId(id, fd, fs)) {
+            HandHold& h = *editHand(A.poseHand == 0 ? 0 : 1);
+            if (!h.digitsSet) { digitsOf(h, A.poseHand == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
+            DigitPose& d = h.digits[fd];
+            float w = GetMouseWheelMove() * 5.f;
+            if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) d.spread += w;
+            else d.bend[fs] += w;
+            clampDigit(fd, d);
+            A.poseDigit = fd;
+            commit();
+        }
+    }
     if (!(A.S && sim::animPlaying(*A.S)) && poseArrowsInput(overUI)) return;
     if (!(A.S && sim::animPlaying(*A.S)) && poseRingsInput(overUI)) return;
     auto& P = A.design.pose;
@@ -1144,9 +1250,10 @@ void poseInput(bool overUI) {
         for (auto& h : handles) { float d = Vector2Distance(h.s, m); if (d < best) { best = d; id = h.id; } }
         if (id == 0) A.poseHand = 0;
         if (id == 2) A.poseHand = 1;
-        if (id >= 20) A.poseDigit = id - 20;
-        // the first click picks a dot; press on it again to drag it, so picking never moves anything
-        if (id < 0 || (id != A.posePicked && !(A.poseFingers && id >= 20))) { A.posePicked = id; return; }   // (fingers mode: a fingertip drags at once)
+        if (int fd, fs; fingerId(id, fd, fs)) A.poseDigit = fd;
+        // the first click picks a dot; press on it again to drag it, so picking never moves anything; a finger's dots
+        // drag at once (the hand is already picked, and fingers are what's posed most)
+        if (id < 0 || (id != A.posePicked && !isFinger(id))) { A.posePicked = id; return; }
         A.posePicked = id;
         A.poseDrag = id; A.posePress = m; A.poseLive = false;
         {   // a free drag starts: the plane facing the camera through what's dragged
@@ -1164,15 +1271,16 @@ void poseInput(bool overUI) {
         if (Vector2Distance(GetMousePosition(), A.posePress) < 5 * CFG.uiScale) return;
         A.poseLive = true;
     }
-    if (A.poseDrag >= 20) {
-        int side = A.poseHand == 0 ? 1 : -1, digit = A.poseDrag - 20;
+    if (int fd, fs; fingerId(A.poseDrag, fd, fs)) {
+        int side = A.poseHand == 0 ? 1 : -1, digit = fd;
         HandHold& h = *editHand(A.poseHand == 0 ? 0 : 1);
         if (!h.digitsSet) { digitsOf(h, A.poseHand == 0 ? "firing" : "support", h.digits); h.digitsSet = true; }
         DigitPose& d = h.digits[digit];
         if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {   // Shift: just curl it, up opens, down closes
             float dy = GetMouseDelta().y;
             const double share[3] = {0.35, 0.4, 0.25};
-            for (int s = 0; s < 3; s++) d.bend[s] += dy * share[s] * 1.2;
+            if (fs < 2) d.bend[fs] += dy * 0.8;   // (a knuckle: only that joint)
+            else for (int s = 0; s < 3; s++) d.bend[s] += dy * share[s] * 1.2;
             clampDigit(digit, d);
             return;
         }
@@ -1185,9 +1293,9 @@ void poseInput(bool overUI) {
         Matrix Mi = MatrixInvert(Matrix{cx.x, cy.x, cz.x, o.x, cx.y, cy.y, cz.y, o.y, cx.z, cy.z, cz.z, o.z, 0, 0, 0, 1});
         Ray r = mouseRay();
         Vector3 ro = Vector3Transform(r.position, Mi), rd = Vector3Normalize(Vector3Subtract(Vector3Transform(Vector3Add(r.position, r.direction), Mi), ro));
-        HV tip = digitTip(h.digits, digit), root{};
+        HV tip = digitJoint(h.digits, digit, fs), root{};
         double reach = 0;
-        for (auto& b : g.bones) if (b.digit == digit) { if (b.seg == 0) root = b.a; reach += std::sqrt((b.b.x - b.a.x) * (b.b.x - b.a.x) + (b.b.y - b.a.y) * (b.b.y - b.a.y) + (b.b.z - b.a.z) * (b.b.z - b.a.z)); }
+        for (auto& b : g.bones) if (b.digit == digit && b.seg <= fs) { if (b.seg == 0) root = b.a; reach += std::sqrt((b.b.x - b.a.x) * (b.b.x - b.a.x) + (b.b.y - b.a.y) * (b.b.y - b.a.y) + (b.b.z - b.a.z) * (b.b.z - b.a.z)); }
         reach *= 0.95;
         auto along = [&](HV p) { return (p.x - ro.x) * rd.x + (p.y - ro.y) * rd.y + (p.z - ro.z) * rd.z; };
         double t = along(tip), tr = along(root);
@@ -1197,7 +1305,7 @@ void poseInput(bool overUI) {
         else t = tr;
         if (t <= 0) return;
         Vector3 hp = Vector3Add(ro, Vector3Scale(rd, (float)t));
-        reachDigit(h.digits, digit, {hp.x, hp.y, hp.z});
+        reachJoint(h.digits, digit, fs, {hp.x, hp.y, hp.z});
         return;
     }
     if (A.poseDrag >= 8 && A.poseDrag <= 13) {

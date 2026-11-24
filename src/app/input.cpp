@@ -23,7 +23,7 @@ static void cameraInput(bool overUI) {
     Vector2 m = GetMousePosition();
     if (!overUI) {
         float wheel = GetMouseWheelMove() * (CFG.invertZoom ? -1.f : 1.f);
-        if (wheel != 0) {
+        if (wheel != 0 && !(A.mode == Mode::Test && poseWantsWheel())) {
             float step = std::pow(1.12f, CFG.zoomSpeed), f = wheel > 0 ? 1 / step : step;
             if (A.ortho) A.orthoH = std::clamp(A.orthoH * f, 2.f, 400.f);
             else A.dist = std::clamp(A.dist * f, 3.f, 600.f);

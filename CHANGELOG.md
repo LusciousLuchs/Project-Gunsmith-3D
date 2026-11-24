@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.58-alpha
+
+- **Hands are one smooth shape.** No more chains of cylinders: the palm, thumb and fingers are a single skin that blends where the fingers meet the palm, with tapered, rounded fingertips. Used everywhere hands show: posing, animations and first person on the range. The finger you've picked is tinted.
+- **Easier finger posing.** Every joint now has its own dot. Drag a blue knuckle dot to bend the finger up to that joint only (the rest stays as it was), or roll the mouse wheel over any finger dot to bend that joint (Shift + wheel spreads the finger). Finger dots drag straight away, no need to click them first. In Fingers mode, the picked finger has a slider for each joint, and the thumb one more for swinging across the palm.
+
 ## 0.8.57-alpha
 
 - **Faster physics for detailed guns.** Parts shaped freely in 3D with straight sides are no longer split into many identical slices for the physics, and cut parts are checked faster. A detailed pistol with a 3D-shaped frame, grip and bolt and 50 cuts on its slide went from 25 ms to 13 ms of physics a frame, so the frame rate roughly doubles on the test bench and range.

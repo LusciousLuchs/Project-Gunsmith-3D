@@ -9,6 +9,7 @@
 namespace perf {
 enum Slot { Physics, Npcs, Scene, SlotCount };
 void frameStart();                    // at the top of every frame
+unsigned long long frameNo();         // how many frames so far (changes once a frame)
 struct Scope {                        // times what runs while it exists, into a slot
     Slot s; double t0;
     explicit Scope(Slot s);
