@@ -120,7 +120,7 @@ is up to them, and the game's own examples stay original.
 
 ## From the owner (0.8.56)
 
-- [ ] **Ugly lines on barrels**: a barrel seen from the muzzle shows streaky lines across its turned outside face and diagonal lines inside the bore (the rifling's helical lines and the turned mesh's facets catching the light). Make the bore and a turned part's faces draw clean.
+- [x] **Ugly lines on barrels** (0.8.60): a barrel seen from the muzzle shows streaky lines across its turned outside face and diagonal lines inside the bore (the rifling's helical lines and the turned mesh's facets catching the light). Make the bore and a turned part's faces draw clean.
 - [x] **Low frame rate on a detailed pistol**: physics about twice as fast in 0.8.57 (straight-sided 3D parts in fewer slices, faster cut checks).
 
 ## Next

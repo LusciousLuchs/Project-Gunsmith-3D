@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.60-alpha
+
+- **Fixed: lines all over barrels.** Barrels (and any round part or round hole) no longer show stripes down their sides or hatching inside the bore. Edge lines are only drawn at real corners now, not between the small flat strips a round surface is made of, which got lines when smooth shading was set to a low angle.
+- **Better-looking rifling.** The grooves are now narrow strips spiralling down the bore in a slightly darker shade of the barrel, instead of thin dark lines. Looking down the muzzle you see the twist.
+
 ## 0.8.59-alpha
 
 - **Fixed: the ugly wrist.** The hand no longer ends in a round knob stuck on the forearm. The wrist now bends to follow the arm, a little wider than the forearm's end so there's no step, and blends into it.

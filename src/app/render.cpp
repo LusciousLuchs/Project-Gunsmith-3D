@@ -324,31 +324,60 @@ static void ensureMeshes() {
 // A barrel's rifling: its grooves as lines spiralling down the bore, one turn per twist length, from the chamber's
 // mouth to the muzzle. (Drawn rather than cut: a spiral cut would be slow, and only the eye sees it.)
 static void drawRifling(int tmpl, Matrix M) {
+    // the grooves as narrow lit strips just inside the bore, spiralling one turn per twist length (they used to be
+    // single dark lines, which looked like scratches drawn through the bore)
     const BodyDef& d = A.design.bodies[tmpl];
     V2 rear, muz;
     if (!d.barrel.on || !d.barrel.rifled || !barrelEnds(d, rear, muz)) return;
     const Cartridge& ct = d.barrel.cart;
     double L = std::hypot(muz.x - rear.x, muz.y - rear.y);
-    if (L <= ct.caseLen + 1) return;
+    if (L <= ct.caseLen + 1 || d.barrel.grooves < 1) return;
     V2 u{(muz.x - rear.x) / L, (muz.y - rear.y) / L}, c = centroidOf(d);
-    auto local = [&](double s, double ang, double r) {   // a point s mm from the breech end, at angle ang round the bore, radius r
-        V2 p{rear.x + u.x * s, rear.y + u.y * s};
-        V2 nI{-u.y, u.x};                                 // across the bore in the side view
-        double cy = std::cos(ang) * r, cz = std::sin(ang) * r;
-        return Vector3{(float)((p.x + nI.x * cy - c.x) * U), (float)(-(p.y + nI.y * cy - c.y) * U), (float)(cz * U)};
-    };
-    double r = ct.bulletDia / 2 * 0.985, twist = std::max(20.0, d.barrel.twist);
-    int steps = (int)std::clamp((L - ct.caseLen) / 2.0, 8.0, 400.0);
-    Color col{28, 30, 34, 255};
-    for (int g = 0; g < d.barrel.grooves; g++) {
-        double a0 = 2 * PI * g / d.barrel.grooves;
-        for (int k = 0; k < steps; k++) {
-            double s0 = ct.caseLen + (L - ct.caseLen) * k / steps, s1 = ct.caseLen + (L - ct.caseLen) * (k + 1) / steps;
-            Vector3 p0 = Vector3Transform(local(s0, a0 + 2 * PI * (s0 - ct.caseLen) / twist, r), M);
-            Vector3 p1 = Vector3Transform(local(s1, a0 + 2 * PI * (s1 - ct.caseLen) / twist, r), M);
-            DrawLine3D(p0, p1, col);
-        }
+    double r = ct.bulletDia / 2 * 0.975, twist = std::max(20.0, d.barrel.twist);
+    int G = d.barrel.grooves;
+    double half = PI * ct.bulletDia / G * 0.22 / r / 2;   // half a groove's width, as an angle
+    char keyb[256];
+    std::snprintf(keyb, sizeof keyb, "%.3f %.3f %.3f %.3f %.3f %.3f %.3f %.3f %d", rear.x, rear.y, muz.x, muz.y, c.x, c.y, r, twist, G);
+    struct Strips { Mesh m{}; bool ok = false; };
+    static std::map<std::string, Strips> cache;
+    Strips& S = cache[keyb];
+    if (!S.ok) {
+        auto local = [&](double s, double ang, double rr) {
+            V2 p{rear.x + u.x * s, rear.y + u.y * s};
+            V2 nI{-u.y, u.x};
+            double cy = std::cos(ang) * rr, cz = std::sin(ang) * rr;
+            return Vector3{(float)((p.x + nI.x * cy - c.x) * U), (float)(-(p.y + nI.y * cy - c.y) * U), (float)(cz * U)};
+        };
+        auto inward = [&](double ang) {   // toward the bore's middle (the strip faces the eye looking down the bore)
+            V2 nI{-u.y, u.x};
+            double cy = -std::cos(ang), cz = -std::sin(ang);
+            return Vector3{(float)(nI.x * cy), (float)(-(nI.y * cy)), (float)cz};
+        };
+        int steps = (int)std::clamp((L - ct.caseLen) / 2.0, 8.0, 400.0);
+        std::vector<float> v, n;
+        auto put = [&](Vector3 p, Vector3 q) { v.insert(v.end(), {p.x, p.y, p.z}); n.insert(n.end(), {q.x, q.y, q.z}); };
+        for (int g = 0; g < G; g++)
+            for (int k = 0; k < steps; k++) {
+                double s0 = ct.caseLen + (L - ct.caseLen) * k / steps, s1 = ct.caseLen + (L - ct.caseLen) * (k + 1) / steps;
+                double a0 = 2 * PI * g / G + 2 * PI * (s0 - ct.caseLen) / twist, a1 = 2 * PI * g / G + 2 * PI * (s1 - ct.caseLen) / twist;
+                Vector3 p00 = local(s0, a0 - half, r), p01 = local(s0, a0 + half, r), p10 = local(s1, a1 - half, r), p11 = local(s1, a1 + half, r);
+                Vector3 n0 = inward(a0), n1 = inward(a1);
+                put(p00, n0); put(p10, n1); put(p11, n1);
+                put(p00, n0); put(p11, n1); put(p01, n0);
+            }
+        S.m = Mesh{};
+        S.m.vertexCount = (int)(v.size() / 3); S.m.triangleCount = S.m.vertexCount / 3;
+        S.m.vertices = (float*)MemAlloc((unsigned)(v.size() * sizeof(float)));
+        S.m.normals = (float*)MemAlloc((unsigned)(n.size() * sizeof(float)));
+        std::copy(v.begin(), v.end(), S.m.vertices); std::copy(n.begin(), n.end(), S.m.normals);
+        UploadMesh(&S.m, false);
+        S.ok = true;
     }
+    Color pc = hexColor(d.color);
+    Color col{(unsigned char)(pc.r * 0.72), (unsigned char)(pc.g * 0.72), (unsigned char)(pc.b * 0.72), 255};
+    rlDisableBackfaceCulling();   // (seen from either side of the strip)
+    drawMesh(S.m, M, col);
+    rlEnableBackfaceCulling();
 }
 float plateY() { return -(float)groundLevelMM(A.design) * U; }
 static void drawOutline(int i, Matrix M, Color c) {
@@ -361,7 +390,9 @@ static void drawOutline(int i, Matrix M, Color c) {
         struct Cached { unsigned vao = 0; int vc = -1; double deg = 0; std::vector<Vector3> segs; };
         static std::map<int, Cached> cache;
         const Mesh& m = A.meshes[i].mesh;
-        double deg = d.shade > 0 ? d.shade : 30;
+        // (lines only where faces really meet at a corner: a round surface is drawn as narrow facets a few degrees
+        // apart, and with a low smooth-shading angle every facet got a line: stripes down barrels and through bores)
+        double deg = std::max(35.0, d.shade);
         Cached& ce = cache[i];
         if (ce.vao != m.vaoId || ce.vc != m.vertexCount || ce.deg != deg) { ce.vao = m.vaoId; ce.vc = m.vertexCount; ce.deg = deg; ce.segs = featureEdges(m, deg); }
         for (size_t k = 0; k + 1 < ce.segs.size(); k += 2) DrawLine3D(Vector3Transform(ce.segs[k], M), Vector3Transform(ce.segs[k + 1], M), c);
