@@ -41,7 +41,8 @@ HV digitJoint(const DigitPose digits[DIGIT_COUNT], int digit, int seg);
 // finger tapering to a rounded tip, the fingers kept apart from each other. Triangles wound outward; `digit` says which
 // digit each corner belongs to (-1 the palm), for highlighting one. Built in a few milliseconds; cache it by pose.
 struct HandSurface { std::vector<float> v, n; std::vector<unsigned> idx; std::vector<signed char> digit; };
-HandSurface handSurface(const DigitPose digits[DIGIT_COUNT], double cell = 2.5);
+// armDir: the way the forearm leaves the wrist (hand space, toward the elbow): the wrist bends to meet it.
+HandSurface handSurface(const DigitPose digits[DIGIT_COUNT], double cell = 2.5, HV armDir = {-1, 0, 0});
 
 // ---------------------------------------------------------------- the hand on the gun (gun millimetres, 3D)
 // The hand's frame where a HandHold puts it: the palm against the side of whatever is held there, the knuckles along

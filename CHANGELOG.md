@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.59-alpha
+
+- **Fixed: the ugly wrist.** The hand no longer ends in a round knob stuck on the forearm. The wrist now bends to follow the arm, a little wider than the forearm's end so there's no step, and blends into it.
+
 ## 0.8.58-alpha
 
 - **Hands are one smooth shape.** No more chains of cylinders: the palm, thumb and fingers are a single skin that blends where the fingers meet the palm, with tapered, rounded fingertips. Used everywhere hands show: posing, animations and first person on the range. The finger you've picked is tinted.

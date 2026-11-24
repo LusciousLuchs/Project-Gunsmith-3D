@@ -202,8 +202,9 @@ std::map<std::string, SkinMesh> gSkins;
 unsigned long long gSkinTick = 0;
 int gSkinBuilt = 0;
 std::string gSkinLast[2];   // (each hand's last mesh)
-std::string skinKey(const DigitPose* dg, int picked) {
+std::string skinKey(const DigitPose* dg, int picked, HV arm) {
     std::string k;
+    for (double v : {arm.x, arm.y, arm.z}) { k += std::to_string((long)std::lround(v * 12)); k += ','; }   // (about 5 degrees)
     for (int d = 0; d < DIGIT_COUNT; d++) {
         const DigitPose& p = dg[d];
         for (double v : {p.bend[0], p.bend[1], p.bend[2], p.spread, p.oppose}) { k += std::to_string((long)std::lround(v / 1.5)); k += ','; }
@@ -211,12 +212,12 @@ std::string skinKey(const DigitPose* dg, int picked) {
     k += "p" + std::to_string(picked);
     return k;
 }
-const Mesh* skinMesh(const DigitPose* dg, int picked, int slot) {
+const Mesh* skinMesh(const DigitPose* dg, int picked, int slot, HV arm) {
     {   // (the budget starts again each frame)
         static unsigned long long lastF = ~0ull;
         if (perf::frameNo() != lastF) { lastF = perf::frameNo(); gSkinBuilt = 0; }
     }
-    std::string key = skinKey(dg, picked);
+    std::string key = skinKey(dg, picked, arm);
     auto it = gSkins.find(key);
     if (it == gSkins.end()) {
         if (gSkinBuilt >= 2) {   // (over this frame's budget: the hand's last mesh, if it has one)
@@ -224,7 +225,8 @@ const Mesh* skinMesh(const DigitPose* dg, int picked, int slot) {
             if (last != gSkins.end()) { last->second.used = ++gSkinTick; return &last->second.m; }
         }
         gSkinBuilt++;
-        HandSurface hs = handSurface(dg);
+        HV qa{std::lround(arm.x * 12) / 12.0, std::lround(arm.y * 12) / 12.0, std::lround(arm.z * 12) / 12.0};   // (as keyed)
+        HandSurface hs = handSurface(dg, 2.5, qa);
         if (hs.idx.empty() || hs.v.size() / 3 > 65535) return nullptr;
         Mesh m{};
         m.vertexCount = (int)(hs.v.size() / 3);
@@ -255,11 +257,18 @@ const Mesh* skinMesh(const DigitPose* dg, int picked, int slot) {
     return &it->second.m;
 }
 // the hand drawn as its skin, where its frame puts it (a mirrored frame draws with culling off: its triangles turn over)
-void drawHandSkin(const HandGeo& g, Color c, int picked, int slot) {
-    const Mesh* m = skinMesh(g.dg, picked, slot);
-    if (!m) return;
+void drawHandSkin(const HandGeo& g, Color c, int picked, int slot, Vector3 elbow) {
     const WF& f = g.f;
     Matrix M{f.x.x, f.y.x, f.z.x, f.o.x, f.x.y, f.y.y, f.z.y, f.o.y, f.x.z, f.y.z, f.z.z, f.o.z, 0, 0, 0, 1};
+    HV arm{-1, 0, 0};   // the forearm's way from the wrist, in hand space
+    {
+        Vector3 l = Vector3Transform(elbow, MatrixInvert(M));
+        HV w = handWrist(), d{l.x - w.x, l.y - w.y, l.z - w.z};
+        double len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
+        if (len > 1) arm = {d.x / len, d.y / len, d.z / len};
+    }
+    const Mesh* m = skinMesh(g.dg, picked, slot, arm);
+    if (!m) return;
     bool mirrored = Vector3DotProduct(f.x, Vector3CrossProduct(f.y, f.z)) < 0;
     if (mirrored) rlDisableBackfaceCulling();
     drawMesh(*m, M, c);
@@ -727,7 +736,7 @@ void drawPoseBody() {
         }
         const Color SKIN = handCol;   // (the hand: the character's hand colour)
         if (g.on) {
-            drawHandSkin(g, SKIN, A.poseHand == side ? A.poseDigit : -1, side);
+            drawHandSkin(g, SKIN, A.poseHand == side ? A.poseDigit : -1, side, a.e);
         } else drawSphereLit(a.w, 45 * U, SKIN);
         if (side == 1) drawHeldClip(g, clipShown());
     }
@@ -767,7 +776,7 @@ void drawFirstPersonArms(Vector3 eye, Vector3 fwd, Vector3 up) {
         limb(SH.fore, a.e, a.w, skin);
         if (!g.on) { drawSphereLit(a.w, 45 * U, skin); continue; }
         if (side == 1) drawHeldClip(g, clipShown());
-        drawHandSkin(g, skin, -1, side);
+        drawHandSkin(g, skin, -1, side, a.e);
     }
     gFP = false;
     A.poseHold = keepHold;

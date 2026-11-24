@@ -258,7 +258,7 @@ double roundCone(const Cone& c, HV p) {   // signed distance to a cone with roun
 double smin(double a, double b, double k) { double h = std::max(k - std::fabs(a - b), 0.0) / k; return std::min(a, b) - h * h * k * 0.25; }
 }  // namespace
 
-HandSurface handSurface(const DigitPose digits[DIGIT_COUNT], double cell) {
+HandSurface handSurface(const DigitPose digits[DIGIT_COUNT], double cell, HV armDir) {
     HandSurface out;
     std::vector<HandBone> bones = handBones(digits);
     // the shapes: the palm from its long bones (flattened by keeping them thin and blending them wide), each digit's
@@ -284,8 +284,15 @@ HandSurface handSurface(const DigitPose digits[DIGIT_COUNT], double cell) {
         box(c);
         dig[b.digit].push_back(c);
     }
-    // the wrist: a short round cone back toward the forearm, so the hand doesn't end in a ball
-    { HV w = handWrist(); Cone c{{w.x + 18, 1.5, 0}, {w.x - 14, 1.5, 0}, 19, 17}; box(c); palm.push_back(c); }
+    // the wrist: a round cone just wider than the forearm's end where they meet (so the forearm's flat end is
+    // covered), tapering back inside the forearm (which widens toward the elbow), so the hand and arm join smoothly
+    // instead of meeting in a step round a ball
+    {
+        HV w = handWrist(), d = norm(armDir);
+        if (d.x > 0.2) d = norm({0.2, d.y, d.z});   // (never folded back over the palm)
+        Cone heel{{w.x + 12, 1, 0}, w, 22, 25.2}; box(heel); palm.push_back(heel);                 // palm to wrist
+        Cone fore{w, {w.x + d.x * 30, w.y + d.y * 30, w.z + d.z * 30}, 25.2, 24.2}; box(fore); palm.push_back(fore);   // into the forearm
+    }
     const double kPalm = 14, kDigit[DIGIT_COUNT] = {12, 7, 7, 7, 7}, M = 1e9;
     auto field = [&](HV p, int* which = nullptr) {
         double pd = M;
