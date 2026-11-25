@@ -552,7 +552,7 @@ int main(int argc, char** argv) {
         if (demo.empty() && !modal && !A.modalAtFrameStart) handleViewportInput();
         toolbar();
         toolRail();
-        if (A.mode == Mode::Test) testPanel(); else { buildPanel(); cartridgeDesigner(); }
+        if (A.mode == Mode::Test) testPanel(); else { buildPanel(); cartridgeDesigner(); refWindow(); }
         tutorialPanel();
         if (A.showTutorials) tutorialsWindow();
         else if (A.showPause || A.showSettings) pauseMenu();

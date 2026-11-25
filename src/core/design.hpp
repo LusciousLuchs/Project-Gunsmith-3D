@@ -506,6 +506,19 @@ struct NpcGunDef {
 // the receiver round them). Layers are only for editing: the bench, the physics and the range always use every part.
 struct EdLayer;
 void magazineLayer(struct Design& d);   // a gun with a magazine keeps it in a layer of its own, "Magazine" (made when needed; parts in Main are moved there)
+// A reference picture (0.8.62, the owner's: modelling real guns): a photo or drawing of the real gun laid behind the
+// designer's side view (or under its top view), scaled to the gun's real size, to trace over. Looks only, for editing.
+struct RefPicture {
+    bool on = false;
+    std::string file;            // in the user folder's References
+    double x = 0, y = 0;         // the picture's top-left corner: side view design mm (x, y); top view (x, z)
+    double mm = 0.2;             // millimetres per pixel
+    double angle = 0;            // degrees it's turned (+ clockwise on screen in the side view)
+    double opacity = 0.55;
+    bool front = false;          // drawn over the parts (faint) instead of behind them
+    bool flip = false;           // mirrored left to right (a photo of the other side)
+    bool shown = true;
+};
 struct EdLayer { int id = 0; std::string name = "Main"; bool visible = true, locked = false, faint = false; };   // (faint: shown see-through, can't be picked)
 struct Design {
     std::string name = "Untitled action";
@@ -517,6 +530,7 @@ struct Design {
     Pose pose;                           // how it's held (nothing placed in older blueprints)
     NpcGunDef npcGun;                    // made for NPCs only (off in older blueprints)
     std::vector<EdLayer> layers;         // editor layers (none in older blueprints: everything in Main)
+    RefPicture refSide, refTop;          // reference pictures to trace (off in older blueprints)
     bool fcgRequired = false;            // built-in fire control needs a part marked as the fire control group (new guns
                                          // since 0.8.39; older blueprints fire as they always did)
     AttachDef attach;                    // this is an attachment, not a gun (the attachment designer)

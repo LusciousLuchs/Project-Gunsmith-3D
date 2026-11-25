@@ -1007,6 +1007,19 @@ std::string designToJson(const Design& d, bool pretty) {
         for (auto& l : d.layers) { json jl = {{"id", l.id}, {"name", l.name}}; if (!l.visible) jl["hidden"] = true; if (l.locked) jl["locked"] = true; if (l.faint) jl["faint"] = true; ls.push_back(jl); }
         o["layers"] = ls;
     }
+    {
+        json rs;
+        auto put = [&](const char* k, const RefPicture& r) {
+            if (!r.on) return;
+            json j = {{"file", r.file}, {"x", r.x}, {"y", r.y}, {"mm", r.mm}, {"angle", r.angle}, {"opacity", r.opacity}};
+            if (r.front) j["front"] = true;
+            if (r.flip) j["flip"] = true;
+            if (!r.shown) j["hidden"] = true;
+            rs[k] = j;
+        };
+        put("side", d.refSide); put("top", d.refTop);
+        if (!rs.empty()) o["refs"] = rs;
+    }
     o["friction"] = d.friction;
     o["bodies"] = json::array();
     for (auto& b : d.bodies) {
@@ -1285,6 +1298,17 @@ bool designFromJson(const std::string& text, Design& out, std::string* err) {
             EdLayer l; l.id = std::max(0, jl.value("id", 0)); l.name = jl.value("name", std::string("Layer")); l.visible = !jl.value("hidden", false); l.locked = jl.value("locked", false); l.faint = jl.value("faint", false);
             d.layers.push_back(l);
         }
+    d.refSide = RefPicture{}; d.refTop = RefPicture{};
+    if (o.contains("refs") && o["refs"].is_object()) {
+        auto get = [&](const char* k, RefPicture& r) {
+            if (!o["refs"].contains(k) || !o["refs"][k].is_object()) return;
+            const json& j = o["refs"][k];
+            r.on = true; r.file = j.value("file", std::string());
+            r.x = j.value("x", 0.0); r.y = j.value("y", 0.0); r.mm = std::max(1e-4, j.value("mm", 0.2)); r.angle = j.value("angle", 0.0);
+            r.opacity = j.value("opacity", 0.55); r.front = j.value("front", false); r.flip = j.value("flip", false); r.shown = !j.value("hidden", false);
+        };
+        get("side", d.refSide); get("top", d.refTop);
+    }
     d.friction = opt<double>(o, "friction", 0.12);
     int n = 0;
     for (auto& jb : o["bodies"]) {

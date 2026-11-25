@@ -82,6 +82,8 @@ void testPanel();
 void buildPanel();
 // cartridge_designer.cpp
 void cartridgeDesigner();
+void refWindow();          // the designer's Reference pictures window
+extern bool gShowRefs;
 // panel_map.cpp
 void mapToolbar();
 void careerScreen();   // career mode's office (panel_career.cpp)

@@ -347,8 +347,15 @@ void toolbar() {
     }
 rightSide:
     // view toggles on the right
-    float right = 5 * (sz + 4 * CFG.uiScale) + 10 * CFG.uiScale;
+    bool refBtn = A.mode == Mode::Build && !A.design.attach.on;
+    float right = (refBtn ? 6 : 5) * (sz + 4 * CFG.uiScale) + 10 * CFG.uiScale;
     ImGui::SameLine(GetScreenWidth() - right);
+    if (refBtn) {
+        if (gShowRefs) ImGui::PushStyleColor(ImGuiCol_Button, colAccent());
+        if (iconButton(ICON_FA_IMAGE, "Reference pictures: a photo of the real gun to trace over")) gShowRefs = !gShowRefs;
+        if (gShowRefs) ImGui::PopStyleColor();
+        ImGui::SameLine();
+    }
     if (iconButton(ICON_FA_PALETTE, "Workspace background")) ImGui::OpenPopup("##backdrop");
     if (ImGui::BeginPopup("##backdrop")) {
         ImGui::TextDisabled("Background");

@@ -1,4 +1,5 @@
 // Gunsmith3D - Build mode: editing operations and the drawing tools.
+#include "app/refpics.hpp"
 #include "app/app.hpp"
 #include "app/settings.hpp"
 #include "carve.hpp"
@@ -373,6 +374,7 @@ void buildInput(bool overUI) {
         started = true;
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
+    if (refInput(overUI)) return;   // (marking or moving a reference picture)
     if (!A.carveDrag && !A.carveMove && attachHandlesInput(overUI)) return;   // (an attachment's sight line and mount spot)
     if (A.tool == Tool::Mesh) { meshInput(overUI); return; }   // the 3D vertices tool
     if (A.tool == Tool::Carve || A.carveDrag || A.carveMove) { carveInput(overUI); return; }

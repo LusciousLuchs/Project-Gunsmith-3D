@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.62-alpha
+
+- **Reference pictures**: a new button on the designer's top bar (the picture icon) puts a photo or drawing of the real gun behind your work, one for the side view and one under the top view. Set its real size by clicking both ends of something you know and typing the length, level it by clicking two points along the bore, drag it into place, then trace over it. Fade it, flip it, or show it in front of the parts. Pictures are kept in your References folder and saved with the blueprint. You can also drop a picture on the window.
+
 ## 0.8.61-alpha
 
 - **Fixed: the line across the bore.** A round part with smooth shading off still drew its flat side-on outline through its middle, which showed as a straight line across the barrel's end and bore when seen from the front. Round parts now only outline their real edges (the rims at each end and any shoulders).

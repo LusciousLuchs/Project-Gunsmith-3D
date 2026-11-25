@@ -8,6 +8,7 @@
 #include "app/usertex.hpp"
 #include "app/scene.hpp"
 #include "app/engrave.hpp"
+#include "app/refpics.hpp"
 #include "rlgl.h"
 
 #include <algorithm>
@@ -1010,6 +1011,7 @@ static void drawSceneImpl(bool gunOnly) {
         float back = 0;
         for (size_t i = 0; i < D.bodies.size(); i++) back = std::min(back, bodyZ((int)i) - bodyDepth(D.bodies[i]) / 2);
         drawBoard(back - 0.6f);
+        refDrawBehind();   // (reference pictures of the real gun, to trace over)
     }
     auto list = renderList();
     auto isGhost = [&](const RB& r) {
@@ -1218,6 +1220,7 @@ static void drawSceneImpl(bool gunOnly) {
         bool hov = !building && r.sb && r.sb == A.hover;
         drawOutline(r.tmpl, r.M, (selB || hov) ? Color{255, 205, 60, 255} : isGhost(r) ? look.ink : Color{18, 22, 30, 170});
     }
+    if (building && !gunOnly) refDrawFront();
     // muzzle flash (unlit)
     // (at the muzzle of the chamber that fired last)
     std::string fc = br.chamber; V2 fm = br.muzzle; bool fh = br.hasMuzzle;
