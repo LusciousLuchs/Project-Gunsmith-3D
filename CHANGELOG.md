@@ -8,6 +8,10 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.8.61-alpha
+
+- **Fixed: the line across the bore.** A round part with smooth shading off still drew its flat side-on outline through its middle, which showed as a straight line across the barrel's end and bore when seen from the front. Round parts now only outline their real edges (the rims at each end and any shoulders).
+
 ## 0.8.60-alpha
 
 - **Fixed: lines all over barrels.** Barrels (and any round part or round hole) no longer show stripes down their sides or hatching inside the bore. Edge lines are only drawn at real corners now, not between the small flat strips a round surface is made of, which got lines when smooth shading was set to a low angle.
