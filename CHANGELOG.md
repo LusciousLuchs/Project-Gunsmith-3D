@@ -8,6 +8,16 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.9.0-alpha
+
+The building rework, part 1: push and pull.
+
+- **Push/pull is the main tool** (top of the left rail, and where the designer starts). Press on any face of any part and drag: no more picking a face first. Ctrl-drag pulls out a new piece.
+- **Exact numbers**: type a number while dragging, or just after, and press Enter. The box at the bottom right shows the last push. Inches work too (4.5 in, 4 1/2").
+- **Size labels**: the selected part shows its length, height and thickness beside it. Click one and type the real size.
+- **A shorter tool rail**: Push/pull, Move, then Block, Outline, Circle, Barrel, Holes, Measure and the joins. The rest (3D vertices, knife, mirror, engraving, rails, mounts) is under More.
+- Drawing a block, circle or outline goes straight to Push/pull, ready to shape.
+
 ## 0.8.62-alpha
 
 - **Reference pictures**: a new button on the designer's top bar (the picture icon) puts a photo or drawing of the real gun behind your work, one for the side view and one under the top view. Set its real size by clicking both ends of something you know and typing the length, level it by clicking two points along the bore, drag it into place, then trace over it. Fade it, flip it, or show it in front of the parts. Pictures are kept in your References folder and saved with the blueprint. You can also drop a picture on the window.

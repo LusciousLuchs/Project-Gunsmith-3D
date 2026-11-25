@@ -4,6 +4,7 @@
 void facesInput(bool overUI);   // the Faces tool, and E (extrude) on the selected part's face in the Select tool
 bool facesActive();             // a face is being pushed or extruded
 void drawFaces();               // the face under the mouse, and the one being moved
+void drawPushBox();             // Push and pull: the measurements box (the last push, or a number being typed)
 bool selectFacesInput(bool overUI);   // Select tool: the selected part's faces and far corners (true: the mouse was used)
 #include "app/app.hpp"
 void facePushStart(const App::FacePick& f, bool extrude);   // start pushing (or extruding) that face; the mouse is down

@@ -304,7 +304,7 @@ void finishBody() {
         A.sel = {1, (int)A.design.bodies.size() - 1, -1};
         commit();
     }
-    A.drafting = false; A.draft.clear(); A.tool = Tool::Select;
+    A.drafting = false; A.draft.clear(); A.tool = Tool::Faces;   // (then push and pull it into shape)
 }
 void finishRoundPath() {
     auto& D = A.design;
@@ -742,7 +742,7 @@ void buildInput(bool overUI) {
             A.sel = {1, (int)A.design.bodies.size() - 1, -1};
             commit();
         }
-        A.tool = Tool::Select;
+        A.tool = Tool::Faces;   // (then push and pull it into shape)
         return;
     }
     if (A.dragKind == 1 || A.dragKind == 2) {

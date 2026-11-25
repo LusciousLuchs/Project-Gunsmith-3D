@@ -6,15 +6,39 @@
 #include "app/settings.hpp"
 #include "app/view.hpp"
 #include "app/editor.hpp"
+#include "app/units.hpp"
 #include "carve.hpp"
 #include "raylib.h"
 #include "raymath.h"
 #include "imgui.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdio>
+#include <cstdlib>
 #include <cmath>
 
 Ray mouseRay();   // (view.cpp)
+
+// ---------------------------------------------------------------- typed numbers (0.9.0, the building rework)
+// While a face is pushed, or right after, typing a number and Enter sets how far, exactly (like SketchUp's
+// measurements box). `gLast` keeps the push just done: the design before it, the face, extrude or not.
+namespace {
+std::string gTyped;
+struct LastPush { bool on = false; std::string before, after; App::FacePick f; bool extrude = false; double amount = 0; } gLast;
+bool typedValue(double& out) { return !gTyped.empty() && parseQ(Q::Length, gTyped.c_str(), out); }
+// digits, a point, a minus, unit letters, a space or a slash (fractions), Backspace; true when Enter was pressed
+bool typeKeys() {
+    if (ImGui::GetIO().WantCaptureKeyboard) return false;
+    for (int c = GetCharPressed(); c; c = GetCharPressed()) {
+        bool digit = c >= '0' && c <= '9';
+        if (!digit && gTyped.empty() && c != '-' && c != '.') continue;   // (a letter key alone is a shortcut, not a number)
+        if (digit || c == '.' || c == '-' || c == '/' || c == ' ' || c == '"' || (c >= 'a' && c <= 'z')) if (gTyped.size() < 24) gTyped += (char)c;
+    }
+    if (IsKeyPressed(KEY_BACKSPACE) && !gTyped.empty()) gTyped.pop_back();
+    return (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && !gTyped.empty();
+}
+}  // namespace
 
 namespace {
 bool editable(const BodyDef& d) { return !d.round && !carve::tilted(d) && !meshShaped(d) && d.pts.size() >= 3; }
@@ -120,11 +144,10 @@ double pushed(const App::FacePick& f) {
     return l2 > 0 ? (m.x * v.x + m.y * v.y) / l2 : 0;
 }
 
-void apply() {
+void applyPush(double p) {
     auto& f = A.faceDrag;
     if (f.body < 0 || f.body >= (int)A.design.bodies.size()) return;
     BodyDef& d = A.design.bodies[f.body];
-    double p = snapv(pushed(f), A.snapOn);
     if (f.kind == 0) {
         int n = (int)d.pts.size();
         if ((int)A.faceOrig.size() != n) return;
@@ -145,7 +168,16 @@ void apply() {
     }
 }
 
+double pushNow() {   // how far: the number typed, else the mouse
+    double v;
+    if (typedValue(v)) return v;
+    return snapv(pushed(A.faceDrag), A.snapOn);
+}
+void apply() { applyPush(pushNow()); }
+App::FacePick gBeganOn; bool gBeganExtrude = false;   // the face the push began on (an extrusion moves to its new piece)
+
 void begin(const App::FacePick& f, bool follow, bool extrude) {
+    gBeganOn = f; gBeganExtrude = extrude; gTyped.clear();
     BodyDef& d0 = A.design.bodies[f.body];
     A.faceDrag = f; A.faceDragging = true; A.faceFollow = follow; A.faceExtruded = false; A.faceExtrudedWall = false; A.faceLive = false;
     A.faceStart = GetMousePosition();
@@ -187,6 +219,13 @@ void begin(const App::FacePick& f, bool follow, bool extrude) {
 
 void finish(bool keep) {
     A.faceDragging = false; A.faceFollow = false;
+    double amount = pushNow();
+    gTyped.clear();
+    if (keep && !A.faceLive && !A.faceFollow && !A.faceExtruded && !A.faceExtrudedWall) {   // a click, not a push: nothing changed
+        Design back;
+        if (designFromJson(A.lastSnap, back)) { int sel = A.sel.idx; A.design = back; A.sel = {1, sel, -1}; }
+        return;
+    }
     if (!keep) {   // put everything back as it was
         Design back;
         if (designFromJson(A.lastSnap, back)) A.design = back;
@@ -206,7 +245,25 @@ void finish(bool keep) {
         toast("Extruded. Its new face is picked: drag it again to push it further, or drag its corners (or Scale them) to taper it.");
     }
     A.faceExtruded = false; A.faceExtrudedWall = false;
+    std::string before = A.lastSnap;
     commit();
+    gLast = {true, before, A.lastSnap, gBeganOn, gBeganExtrude, amount};
+}
+// do the last push again from where it began, by exactly `v` mm (it replaces the push in the undo history)
+void redoLast(double v) {
+    if (!gLast.on || A.lastSnap != gLast.after) return;
+    Design back;
+    if (!designFromJson(gLast.before, back)) return;
+    A.design = back;
+    if (!A.hist.empty() && A.hist.back() == gLast.before) A.hist.pop_back();
+    A.lastSnap = gLast.before;
+    LastPush keep = gLast;
+    begin(keep.f, false, keep.extrude);
+    A.faceLive = true;
+    applyPush(v);
+    gTyped = typedQ(Q::Length, v);   // (so finish() records this amount)
+    finish(true);
+    if (!gLast.on) gLast = keep;   // (a zero extrusion makes nothing)
 }
 }  // namespace
 
@@ -284,7 +341,25 @@ void cornerApply() {
 }
 }  // namespace
 
+static void pushTestHook() {   // GUNSMITH_PUSHTEST="edge,mm[,x]": push the selected part's side wall roughly, then type mm (x: extrude)
+    static int frames = 0;
+    const char* e = getenv("GUNSMITH_PUSHTEST");
+    if (!e || ++frames != 20 || A.sel.kind != 1 || A.sel.idx < 0) return;
+    int edge = 0; double mm = 0; char x = 0;
+    sscanf(e, "%d,%lf,%c", &edge, &mm, &x);
+    auto box = [](const BodyDef& d) { double a = 1e9, b = -1e9, c = 1e9, f = -1e9; for (auto& p : d.pts) { a = std::min(a, p.x); b = std::max(b, p.x); c = std::min(c, p.y); f = std::max(f, p.y); } return std::array<double, 4>{a, b, c, f}; };
+    auto b0 = box(A.design.bodies[A.sel.idx]);
+    size_t n0 = A.design.bodies.size(), h0 = A.hist.size();
+    begin({A.sel.idx, 0, edge, {}}, false, x == 'x');
+    A.faceLive = true; applyPush(7.3); finish(true);
+    auto b1 = box(A.design.bodies[A.sel.idx]);
+    redoLast(mm);
+    auto b2 = box(A.design.bodies[A.sel.idx]);
+    printf("PUSHTEST before x %.2f..%.2f y %.2f..%.2f | dragged x %.2f..%.2f y %.2f..%.2f | typed %.2f: x %.2f..%.2f y %.2f..%.2f | parts %zu->%zu corners %zu undo +%zu\n",
+           b0[0], b0[1], b0[2], b0[3], b1[0], b1[1], b1[2], b1[3], mm, b2[0], b2[1], b2[2], b2[3], n0, A.design.bodies.size(), A.design.bodies[A.sel.idx].pts.size(), A.hist.size() - h0);
+}
 void facesInput(bool overUI) {
+    pushTestHook();
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     if (A.cornerDragging) {
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
@@ -313,7 +388,7 @@ void facesInput(bool overUI) {
         if (A.cornerPicked && !(A.sel.kind == 1 && A.sel.idx == A.cornerDrag.body)) A.cornerPicked = false;
         if (A.cornerHover.body >= 0 && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             const auto& hv = A.cornerHover;
-            if (!(A.cornerPicked && A.cornerDrag.body == hv.body && A.cornerDrag.idx == hv.idx && A.cornerDrag.far == hv.far)) {
+            if (A.tool != Tool::Faces && !(A.cornerPicked && A.cornerDrag.body == hv.body && A.cornerDrag.idx == hv.idx && A.cornerDrag.far == hv.far)) {
                 A.cornerDrag = hv; A.cornerPicked = true; A.facePicked = {};   // picked: its X, Y, Z show in the panel
                 return;
             }
@@ -333,26 +408,39 @@ void facesInput(bool overUI) {
     if (A.faceDragging) {
         // a click that wobbles a little isn't a push: nothing moves until the mouse has gone a few pixels
         if (!A.faceFollow && !A.faceLive && Vector2Distance(GetMousePosition(), A.faceStart) >= 5 * CFG.uiScale) A.faceLive = true;
+        bool enter = typeKeys();
+        if (!gTyped.empty()) A.faceLive = true;
         if (A.faceFollow || A.faceLive) apply();
+        if (enter) { finish(true); return; }
         bool cancel = IsMouseButtonPressed(MOUSE_BUTTON_RIGHT) || IsKeyPressed(KEY_ESCAPE);
         if (cancel) { finish(false); return; }
         if (A.faceFollow ? IsMouseButtonPressed(MOUSE_BUTTON_LEFT) : !IsMouseButtonDown(MOUSE_BUTTON_LEFT)) finish(true);
         return;
     }
+    if (A.tool == Tool::Faces) {   // a number typed now changes the push just done
+        if (!gLast.on || A.lastSnap != gLast.after) { gLast.on = false; gTyped.clear(); }
+        else if (typeKeys()) { double v; if (typedValue(v)) redoLast(v); gTyped.clear(); }
+        if (IsKeyPressed(KEY_ESCAPE)) gTyped.clear();
+    }
     A.faceHover = overUI ? App::FacePick{} : pick(mouseRay(), A.tool == Tool::Faces ? -1 : (A.sel.kind == 1 ? A.sel.idx : -2));
-    if (A.faceHover.body < 0) return;
+    if (A.faceHover.body < 0) {
+        if (A.tool == Tool::Faces && !overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {   // a part with no faces to push (round, sculpted, leaned), or nothing
+            auto hits = bodiesUnderMouse();
+            A.facePicked = {}; A.cornerPicked = false; A.selVs.clear();
+            if (hits.empty()) A.sel = {};
+            else {
+                A.sel = {1, hits[0].body, -1};
+                toast("This part's faces can't be pushed (it's round, sculpted or leaned): change its size with the numbers beside it, or reshape it in More tools.");
+            }
+        }
+        return;
+    }
     if (IsKeyPressed(KEY_E) && !ImGui::GetIO().WantCaptureKeyboard) { begin(A.faceHover, true, true); return; }
     if (A.tool == Tool::Faces && !overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        if (!(A.sel.kind == 1 && A.sel.idx == A.faceHover.body)) {   // the first click picks the part and that face together
-            A.sel = {1, A.faceHover.body, -1}; A.selVs.clear(); A.facePicked = A.faceHover; A.cornerPicked = false;
-            return;
-        }
-        const auto& fp = A.facePicked;
-        if (!(fp.body == A.faceHover.body && fp.kind == A.faceHover.kind && fp.edge == A.faceHover.edge)) {
-            A.facePicked = A.faceHover; A.cornerPicked = false;
-            return;
-        }
-        begin(A.faceHover, false, shift);
+        // push and pull: press on any face of any part and drag it straight away (Ctrl or Shift: pull out a new piece)
+        bool ctrl = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
+        A.sel = {1, A.faceHover.body, -1}; A.selVs.clear(); A.facePicked = A.faceHover; A.cornerPicked = false;
+        begin(A.faceHover, false, shift || ctrl);
     }
 }
 
@@ -472,10 +560,30 @@ void drawFaces() {
     }
     if (A.faceDragging) {   // how far
         const BodyDef& b = A.design.bodies[A.faceDrag.body];
-        std::string t = A.faceDrag.kind == 0 ? TextFormat("%+.1f mm", snapv(pushed(A.faceDrag), A.snapOn)) : TextFormat("%.1f mm thick", b.thick);
+        std::string t = !gTyped.empty() ? "Typed: " + gTyped + "   (Enter)"
+                      : A.faceDrag.kind == 0 ? std::string(TextFormat("%+.1f mm   (or type a number)", snapv(pushed(A.faceDrag), A.snapOn))) : std::string(TextFormat("%.1f mm thick   (or type a number)", b.thick));
         Vector2 m = GetMousePosition();   // above and left of the cursor, clear of the part's name
         int tw = MeasureText(t.c_str(), 16) + 10, x = (int)m.x - tw - 12, y = (int)m.y - 34;
         DrawRectangle(x, y, tw, 22, Color{20, 24, 32, 220});
         DrawText(t.c_str(), x + 5, y + 3, 16, line);
     }
+}
+
+// the measurements box at the bottom right of the view (Push and pull): the last push's amount, or what's being typed
+void drawPushBox() {
+    if (A.mode != Mode::Build || A.tool != Tool::Faces) return;
+    bool live = A.faceDragging;
+    bool last = gLast.on && A.lastSnap == gLast.after;
+    std::string label, value;
+    if (live) { label = "Pushing"; value = gTyped.empty() ? fmtQ(Q::Length, snapv(pushed(A.faceDrag), A.snapOn)) : gTyped; }
+    else if (!gTyped.empty()) { label = "Make it"; value = gTyped + "   Enter"; }
+    else if (last) { label = gLast.extrude ? "Pulled out" : "Pushed"; value = fmtQ(Q::Length, gLast.amount) + "   type to change"; }
+    else { label = "Push and pull"; value = "drag any face, then type a number"; }
+    int fs = 16, pad = 8;
+    std::string t = label + ":  " + value;
+    int tw = MeasureText(t.c_str(), fs) + 2 * pad;
+    int x = A.vw - tw - 16, y = TOOLBAR_H + A.vh - 84;
+    DrawRectangleRounded({(float)x, (float)y, (float)tw, (float)(fs + 2 * pad)}, 0.25f, 6, Color{20, 24, 32, 225});
+    DrawRectangleRoundedLines({(float)x, (float)y, (float)tw, (float)(fs + 2 * pad)}, 0.25f, 6, Color{238, 122, 32, (unsigned char)(live || !gTyped.empty() ? 255 : 120)});
+    DrawText(t.c_str(), x + pad, y + pad, fs, Color{235, 235, 240, 255});
 }

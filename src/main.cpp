@@ -184,7 +184,7 @@ int main(int argc, char** argv) {
     A.vh = GetScreenHeight() - (int)TOOLBAR_H;
     fitView();
     if (sideArg) sideView();
-    if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; }
+    if (!selectArg.empty()) { int i = A.design.bodyIndex(selectArg); if (i >= 0) A.sel = {1, i, -1}; A.tool = getenv("GUNSMITH_PUSHTOOL") ? Tool::Faces : Tool::Select; }
     if (!cartArg.empty()) for (auto& c : cartridgePresets()) if (c.name == cartArg) { A.design.breech.cart = c; A.design.breech.cartImpulse = true; applyCartridge(A.design.breech); }
     if (magCapArg > 0 || magCurveArg > -999 || !cartArg.empty()) {
         for (size_t i = 0; i < A.design.bodies.size(); i++) if (A.design.bodies[i].magazine && A.design.bodies[i].gen.on) {
@@ -552,7 +552,7 @@ int main(int argc, char** argv) {
         if (demo.empty() && !modal && !A.modalAtFrameStart) handleViewportInput();
         toolbar();
         toolRail();
-        if (A.mode == Mode::Test) testPanel(); else { buildPanel(); cartridgeDesigner(); refWindow(); }
+        if (A.mode == Mode::Test) testPanel(); else { buildPanel(); cartridgeDesigner(); refWindow(); sizeLabels(); }
         tutorialPanel();
         if (A.showTutorials) tutorialsWindow();
         else if (A.showPause || A.showSettings) pauseMenu();

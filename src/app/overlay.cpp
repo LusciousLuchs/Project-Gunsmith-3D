@@ -23,6 +23,7 @@
 
 void drawOverlay() {
     drawFaces();
+    drawPushBox();
     drawMeshTool();
     if (A.mode == Mode::Build) { partRingsDraw(); cornerArrowsDraw(); refOverlay(); }
     auto& D = A.design;

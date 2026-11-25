@@ -133,28 +133,42 @@ bool backdropGrid(const char* label) {
 // The designer's tools down the left of the view: each with its icon and name, in three groups —
 // Draw (make a part), Shape (change parts) and Join (connect them). Short windows fall back to icons only.
 struct RailTool { const char* icon; const char* label; const char* tip; Tool t; int act; };
-static const RailTool RAIL_SELECT = {ICON_FA_ARROW_POINTER, "Select", "Click parts and joints to select them, drag to move.\nSquares are corners, diamonds are edges.", Tool::Select, -1};
+// 0.9.0 (the building rework, the owner's "the editor is fighting me"): push and pull first, a short rail of the
+// everyday tools, and the rest under More tools (still all there, as they were)
+static const RailTool RAIL_SELECT = {ICON_FA_CUBE, "Push/pull", "Press on any face of any part and drag to push or pull it.\nCtrl-drag pulls out a new piece. Type a number while dragging (or just after)\nand press Enter to make it exact. Click a part's size numbers to type its real size.", Tool::Faces, -1};
+static const RailTool RAIL_MOVE = {ICON_FA_ARROW_POINTER, "Move", "Click parts and joints to select them, drag to move.\nSquares are corners, diamonds are edges. Rotate and Scale are on the top bar.", Tool::Select, -1};
 static const RailTool RAIL_DRAW[] = {
-    {ICON_FA_DRAW_POLYGON, "Polygon", "Click corners to draw any outline. Click the first corner again, or press Enter, to close it.", Tool::Body, -1},
-    {ICON_FA_SQUARE, "Rectangle", "Drag out a rectangle.", Tool::Rect, -1},
-    {ICON_FA_GRIP_LINES, "Barrel", "Drag from the breech end to the muzzle. A round barrel with a bore, and a chamber at the\nbreech end cut for the cartridge you choose (in its panel). Rifled or smoothbore.", Tool::Barrel, -1},
-    {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius.", Tool::Circle, -1},
-    {ICON_FA_BARS, "Rail", "A Picatinny rail: drag along the top of a part, as long as you want it.\nSlotted to the standard (10 mm apart) and welded to the part; attachments clamp on anywhere.\nIt makes a handy ruler too.", Tool::Rail, -1}};
+    {ICON_FA_SQUARE, "Block", "Drag out a block. Then push and pull its faces into shape.", Tool::Rect, -1},
+    {ICON_FA_DRAW_POLYGON, "Outline", "Click corners to draw any outline (trace a reference picture). Click the first\ncorner again, or press Enter, to close it.", Tool::Body, -1},
+    {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius: a round plate (pins, buttons, wheels).", Tool::Circle, -1},
+    {ICON_FA_GRIP_LINES, "Barrel", "Drag from the breech end to the muzzle. A round barrel with a bore, and a chamber at the\nbreech end cut for the cartridge you choose (in its panel). Rifled or smoothbore.", Tool::Barrel, -1}};
 static const RailTool RAIL_SHAPE[] = {
-    {ICON_FA_DICE_D6, "3D vertices", "Shape a part freely in 3D (G with a part selected): drag any corner anywhere, pick faces\n(Shift: more) and push them out together (E), join corners (M), connect them (J),\nadd rings of corners round it to cave its sides in or bulge them out.", Tool::Mesh, -1},
-    {ICON_FA_CUBE, "Faces", "Point at any face of a part (front, back, top, bottom, ends) and drag to push or pull it.\nE extrudes the face: move the mouse to draw it out, click to finish.", Tool::Faces, -1},
-    {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
-    {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.\nIt stays a live mirror: change either one and the other follows.", Tool::Mirror, -1},
-    {ICON_FA_RULER, "Measure", "Drag between two points to measure: the length, how far across and up, and the angle.\nSnaps to corners and joints. The line stays until you measure again;\ntick Keep it shown (right) to see it while you move parts.", Tool::Measure, -1},
-    {ICON_FA_CIRCLE_MINUS, "Carve", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1},
-    {ICON_FA_PEN_NIB, "Engrave", "An engraving pen: draw designs or write text on any face of a part,\nlike roll marks, serial numbers or scrollwork. Looks only.", Tool::Engrave, -1}};
+    {ICON_FA_CIRCLE_MINUS, "Holes", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1},
+    {ICON_FA_RULER, "Measure", "Drag between two points to measure: the length, how far across and up, and the angle.\nSnaps to corners and joints. The line stays until you measure again;\ntick Keep it shown (right) to see it while you move parts.", Tool::Measure, -1}};
 static const RailTool RAIL_JOIN[] = {
     {ICON_FA_THUMBTACK, "Pin", "A pivot: two parts share a point and can turn (triggers, hammers, levers).", Tool::Pin, -1},
-    {ICON_FA_LINK, "Weld", "Click two parts to make them one solid piece. Nothing is added to the gun:\nthey just move as one. Unweld from the part's panel.", Tool::Weld, -1},
     {ICON_FA_ROUTE, "Track", "A point on one part rides a slot or rail in another (cam slots, guide rails).", Tool::Track, -1},
     {ICON_FA_WAVE_SQUARE, "Spring", "A coil or leaf spring between two parts (recoil, striker and sear springs).", Tool::Spring, -1},
+    {ICON_FA_LINK, "Weld", "Click two parts to make them one solid piece. Nothing is added to the gun:\nthey just move as one. Unweld from the part's panel.", Tool::Weld, -1}};
+static const RailTool RAIL_MORE[] = {
+    {ICON_FA_DICE_D6, "3D vertices", "Shape a part freely in 3D (G with a part selected): drag any corner anywhere, pick faces\n(Shift: more) and push them out together (E), join corners (M), connect them (J),\nadd rings of corners round it to cave its sides in or bulge them out.", Tool::Mesh, -1},
+    {ICON_FA_CUBES, "Faces (pick first)", "The older face tool: click a face to pick it, then drag it. E extrudes the face.", Tool::Faces, -2},
+    {ICON_FA_SCISSORS, "Knife", "Drag a line across parts to cut them into separate pieces.", Tool::Knife, (int)Act::Knife},
+    {ICON_FA_LEFT_RIGHT, "Mirror", "Drag a line to make a mirrored copy of the selected part.\nIt stays a live mirror: change either one and the other follows.", Tool::Mirror, -1},
+    {ICON_FA_PEN_NIB, "Engrave", "An engraving pen: draw designs or write text on any face of a part,\nlike roll marks, serial numbers or scrollwork. Looks only.", Tool::Engrave, -1},
+    {ICON_FA_BARS, "Rail", "A Picatinny rail: drag along the top of a part, as long as you want it.\nSlotted to the standard (10 mm apart) and welded to the part; attachments clamp on anywhere.\nIt makes a handy ruler too.", Tool::Rail, -1},
     {ICON_FA_PLUG, "Mount", "An attachment point: click a part's surface to put one there, of a kind you name\n(bayonet lug, side rail, muzzle thread, your own). Attachments fit points of the same kind.", Tool::Mount, -1}};
 
+// the tutorials point at tools by these names (kept from before the rework)
+static const char* anchorOf(Tool t) {
+    switch (t) {
+        case Tool::Select: return "Select"; case Tool::Faces: return "Faces"; case Tool::Rect: return "Rectangle"; case Tool::Body: return "Polygon";
+        case Tool::Circle: return "Circle"; case Tool::Barrel: return "Barrel"; case Tool::Carve: return "Carve"; case Tool::Measure: return "Measure";
+        case Tool::Pin: return "Pin"; case Tool::Track: return "Track"; case Tool::Spring: return "Spring"; case Tool::Weld: return "Weld";
+        case Tool::Knife: return "Knife"; case Tool::Engrave: return "Engrave"; case Tool::Mirror: return "Mirror"; case Tool::Mesh: return "3D vertices";
+        case Tool::Rail: return "Rail"; case Tool::Mount: return "Mount"; default: return "";
+    }
+}
 static void railTip(const RailTool& t) {
     if (!tipHover()) return;
     ImGui::BeginTooltip();
@@ -171,7 +185,7 @@ static void railButton(const RailTool& t, float w, float h, bool labels) {
     bool on = A.tool == t.t;
     ImGui::PushID(t.label);
     bool click = ImGui::InvisibleButton("##t", {w, h});
-    tutAnchor((std::string("tool:") + t.label).c_str());
+    tutAnchor((std::string("tool:") + anchorOf(t.t)).c_str());
     bool hov = ImGui::IsItemHovered(), held = ImGui::IsItemActive();
     ImVec2 a = ImGui::GetItemRectMin(), c = ImGui::GetItemRectMax();
     auto* dl = ImGui::GetWindowDrawList();
@@ -198,7 +212,7 @@ void toolRail() {
     float s = CFG.uiScale, m = 10 * s;
     float availH = GetScreenHeight() - TOOLBAR_H - 2 * m - 40 * s;   // keep clear of the hint strip at the bottom
     // how tall it is: every tool (counted, so a new tool can't push one off the bottom), three captions, padding
-    const int tools = 1 + (int)(sizeof RAIL_DRAW / sizeof RAIL_DRAW[0]) + (int)(sizeof RAIL_SHAPE / sizeof RAIL_SHAPE[0]) + (int)(sizeof RAIL_JOIN / sizeof RAIL_JOIN[0]);
+    const int tools = 3 + (int)(sizeof RAIL_DRAW / sizeof RAIL_DRAW[0]) + (int)(sizeof RAIL_SHAPE / sizeof RAIL_SHAPE[0]) + (int)(sizeof RAIL_JOIN / sizeof RAIL_JOIN[0]);
     float pad = 5 * s, gapY = 2 * s;
     auto railH = [&](bool lab) {
         float bh = lab ? 50 * s : 36 * s;
@@ -234,12 +248,52 @@ void toolRail() {
         }
     };
     railButton(RAIL_SELECT, w, h, labels);
-    caption("DRAW");
+    railButton(RAIL_MOVE, w, h, labels);
+    caption("ADD");
     for (auto& t : RAIL_DRAW) railButton(t, w, h, labels);
     caption("SHAPE");
     for (auto& t : RAIL_SHAPE) railButton(t, w, h, labels);
     caption("JOIN");
     for (auto& t : RAIL_JOIN) railButton(t, w, h, labels);
+    {   // More tools: everything else, as it was
+        const RailTool* cur = nullptr;
+        for (auto& t : RAIL_MORE) if (A.tool == t.t && t.act != -2) cur = &t;
+        RailTool more = {ICON_FA_ELLIPSIS, "More", "More tools: 3D vertices, knife, mirror, engraving, rails, mounts.", Tool::Count, -1};
+        if (cur) { more.icon = cur->icon; more.label = cur->label; }
+        bool on = cur != nullptr;
+        ImGui::PushID("more");
+        bool click = ImGui::InvisibleButton("##m", {w, h});
+        for (auto& t : RAIL_MORE) if (t.act != -2) tutAnchor((std::string("tool:") + anchorOf(t.t)).c_str());   // (lessons point here for these)
+        bool hov = ImGui::IsItemHovered();
+        ImVec2 a = ImGui::GetItemRectMin(), c = ImGui::GetItemRectMax();
+        auto* dl = ImGui::GetWindowDrawList();
+        float rr = 5 * CFG.uiScale;
+        if (on) dl->AddRectFilled(a, c, IM_COL32(233, 161, 59, 56), rr);
+        else if (hov) dl->AddRectFilled(a, c, IM_COL32(255, 255, 255, 20), rr);
+        ImU32 col = on ? ImGui::GetColorU32(colAccent()) : ImGui::GetColorU32(ImGuiCol_Text);
+        ImVec2 is = ImGui::CalcTextSize(more.icon);
+        if (labels) {
+            float fs = ImGui::GetFontSize() * 0.82f;
+            ImVec2 ls = ImGui::GetFont()->CalcTextSizeA(fs, FLT_MAX, 0, more.label);
+            float top = a.y + (h - is.y - ls.y - 3 * CFG.uiScale) / 2;
+            dl->AddText({(a.x + c.x - is.x) / 2, top}, col, more.icon);
+            dl->AddText(ImGui::GetFont(), fs, {(a.x + c.x - ls.x) / 2, top + is.y + 3 * CFG.uiScale}, ImGui::GetColorU32(ImGuiCol_TextDisabled), more.label);
+        } else dl->AddText({(a.x + c.x - is.x) / 2, (a.y + c.y - is.y) / 2}, col, more.icon);
+        if (hov && tipHover()) ImGui::SetTooltip("More tools: 3D vertices, knife, mirror, engraving, rails, mounts");
+        if (click) ImGui::OpenPopup("##moretools");
+        ImGui::SetNextWindowPos({c.x + 6 * CFG.uiScale, a.y}, ImGuiCond_Appearing, {0, 0.6f});
+        if (ImGui::BeginPopup("##moretools")) {
+            ImGui::TextDisabled("More tools");
+            for (auto& t : RAIL_MORE) {
+                if (t.act == -2) continue;   // (the old pick-first face tool is Push/pull now)
+                std::string l = std::string(t.icon) + "   " + t.label;
+                if (ImGui::Selectable(l.c_str(), A.tool == t.t)) setTool(t.t);
+                railTip(t);
+            }
+            ImGui::EndPopup();
+        }
+        ImGui::PopID();
+    }
     ImGui::End();
     ImGui::PopStyleVar(4);
 }

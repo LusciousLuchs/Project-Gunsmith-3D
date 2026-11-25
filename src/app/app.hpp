@@ -46,7 +46,7 @@ struct App {
     Mode mode = Mode::Build;
     std::unique_ptr<sim::Sim> S;
     bool running = false;
-    Tool tool = Tool::Select;
+    Tool tool = Tool::Faces;             // (0.9.0: push and pull is where the designer starts)
     std::string gripKind = "firing", gripStyle;  // the Grip tool places this kind (and style) of grip
     int chamberEdit = -1;
     V2 measureA, measureB; bool measured = false;  // the Measure tool's last line (mm)

@@ -82,7 +82,8 @@ void testPanel();
 void buildPanel();
 // cartridge_designer.cpp
 void cartridgeDesigner();
-void refWindow();          // the designer's Reference pictures window
+void refWindow();
+void sizeLabels();         // the selected part's length, height and thickness, click to type them          // the designer's Reference pictures window
 extern bool gShowRefs;
 // panel_map.cpp
 void mapToolbar();
