@@ -732,6 +732,15 @@ void buildInput(bool overUI) {
         if (A.tool == Tool::Rect) {
             double x0 = std::min(a.x, w.x), x1 = std::max(a.x, w.x), y0 = std::min(a.y, w.y), y1 = std::max(a.y, w.y);
             if (x1 - x0 >= 1 && y1 - y0 >= 1) b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+        } else if (A.circleLong) {   // lengthwise: drag out its side view; it's round along the longer side
+            double x0 = std::min(a.x, w.x), x1 = std::max(a.x, w.x), y0 = std::min(a.y, w.y), y1 = std::max(a.y, w.y);
+            if (x1 - x0 >= 1 && y1 - y0 >= 1) {
+                b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+                b.round = true;
+                b.roundAxis = x1 - x0 >= y1 - y0 ? 0 : 1;
+                b.thick = std::min(x1 - x0, y1 - y0);
+                b.name = "Rod " + std::to_string(A.design.bodies.size() + 1);
+            }
         } else {
             double r = std::hypot(w.x - a.x, w.y - a.y);
             if (r >= 1) b.pts = circlePts(a, r, &b.bulge);

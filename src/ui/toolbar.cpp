@@ -140,7 +140,7 @@ static const RailTool RAIL_MOVE = {ICON_FA_ARROW_POINTER, "Move", "Click parts a
 static const RailTool RAIL_DRAW[] = {
     {ICON_FA_SQUARE, "Block", "Drag out a block. Then push and pull its faces into shape.", Tool::Rect, -1},
     {ICON_FA_DRAW_POLYGON, "Outline", "Click corners to draw any outline (trace a reference picture). Click the first\ncorner again, or press Enter, to close it.", Tool::Body, -1},
-    {ICON_FA_CIRCLE, "Circle", "Click the centre and drag out the radius: a round plate (pins, buttons, wheels).", Tool::Circle, -1},
+    {ICON_FA_CIRCLE, "Circle", "Round parts, two ways (pick one in the strip beside the tools):\nLengthwise: drag out its side view, and it's round along its longer side (rods, pins, tubes, a barrel's shape).\nAcross: click the centre and drag the radius, a round plate across the gun (buttons, wheels, discs).\nPush and pull its ends and its round side like any part.", Tool::Circle, -1},
     {ICON_FA_GRIP_LINES, "Barrel", "Drag from the breech end to the muzzle. A round barrel with a bore, and a chamber at the\nbreech end cut for the cartridge you choose (in its panel). Rifled or smoothbore.", Tool::Barrel, -1}};
 static const RailTool RAIL_SHAPE[] = {
     {ICON_FA_CIRCLE_MINUS, "Holes", "Cut a hole, slot or pocket into a part from any side: circles, half circles,\nrectangles and triangles, to any depth.", Tool::Carve, -1},
@@ -294,8 +294,20 @@ void toolRail() {
         }
         ImGui::PopID();
     }
+    ImVec2 railPos = ImGui::GetWindowPos(), railSize = ImGui::GetWindowSize();
     ImGui::End();
     ImGui::PopStyleVar(4);
+    if (A.tool == Tool::Circle) {   // which way round: lengthwise (a rod) or across (a plate)
+        ImGui::SetNextWindowPos({railPos.x + railSize.x + 6 * s, railPos.y});
+        ImGui::SetNextWindowBgAlpha(0.88f);
+        ImGui::Begin("##circleway", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoMove);
+        ImGui::TextDisabled("Circle");
+        if (accentButton(ICON_FA_GRIP_LINES "  Lengthwise", A.circleLong)) A.circleLong = true;
+        if (tipHover()) ImGui::SetTooltip("Drag out its side view: round along its longer side (rods, pins, tubes)");
+        if (accentButton(ICON_FA_CIRCLE "  Across", !A.circleLong)) A.circleLong = false;
+        if (tipHover()) ImGui::SetTooltip("Click the centre and drag the radius: a round plate across the gun");
+        ImGui::End();
+    }
 }
 
 void toolbar() {

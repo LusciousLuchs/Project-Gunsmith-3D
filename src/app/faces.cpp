@@ -43,6 +43,111 @@ bool typeKeys() {
 namespace {
 bool editable(const BodyDef& d) { return !d.round && !carve::tilted(d) && !meshShaped(d) && d.pts.size() >= 3; }
 
+// ---- round (turned) parts: push and pull their two ends (kind 3, edge 0 the back end, 1 the front end) and their round
+// side (kind 4: wider or narrower about its middle line), 0.9.1 (the owner's: circles lengthwise, worked like the rest)
+bool roundPushable(const BodyDef& d) { return d.round && !carve::tilted(d) && !meshShaped(d) && d.pts.size() >= 3 && d.roundSweep >= 359.9; }
+struct RoundFrame { carve::RoundAxis ax; double u0 = 0, u1 = 0; std::vector<V2> q; };   // the outline along (u) and across (v) the axis
+RoundFrame roundFrame(const BodyDef& d) {
+    RoundFrame f; f.ax = carve::roundAxis(d);
+    f.u0 = 1e9; f.u1 = -1e9;
+    for (auto& p : outlineOf(d)) {
+        double dx = p.x - f.ax.o.x, dy = p.y - f.ax.o.y;
+        V2 uv{f.ax.dir.x * dx + f.ax.dir.y * dy, f.ax.dir.x * dy - f.ax.dir.y * dx};
+        f.q.push_back(uv); f.u0 = std::min(f.u0, uv.x); f.u1 = std::max(f.u1, uv.x);
+    }
+    return f;
+}
+double radiusAt(const RoundFrame& f, double u) {
+    double r = 0;
+    for (size_t i = 0; i < f.q.size(); i++) {
+        const V2 &a = f.q[i], &b = f.q[(i + 1) % f.q.size()];
+        if ((a.x <= u && u <= b.x) || (b.x <= u && u <= a.x)) {
+            double t = std::fabs(b.x - a.x) < 1e-12 ? 0.5 : (u - a.x) / (b.x - a.x);
+            r = std::max(r, std::fabs(a.y + t * (b.y - a.y)));
+        }
+    }
+    return r;
+}
+// a point on the axis at u, in the world; the axis and the across directions in the world
+Vector3 axisW(int i, const RoundFrame& f, double u) { return W3({f.ax.o.x + f.ax.dir.x * u, f.ax.o.y + f.ax.dir.y * u}, bodyZ(i)); }
+Vector3 dirW(const RoundFrame& f) { return {(float)f.ax.dir.x, (float)-f.ax.dir.y, 0}; }
+Vector3 acrossW(const RoundFrame& f) { return {(float)-f.ax.dir.y, (float)-f.ax.dir.x, 0}; }   // (v: down the side view when level)
+// where a ray first meets the round part: its end (kind 3) or round side (kind 4); t along the world ray
+bool roundHit(int i, Ray r, App::FacePick& out, float& tOut) {
+    const BodyDef& d = A.design.bodies[i];
+    RoundFrame f = roundFrame(d);
+    if (f.u1 - f.u0 < 1e-6) return false;
+    Vector3 o = axisW(i, f, 0), D = dirW(f), V = acrossW(f), Z{0, 0, 1};
+    auto local = [&](Vector3 w, double& u, double& rad) {   // design mm along the axis, and out from it
+        Vector3 rel = Vector3Subtract(w, o);
+        u = Vector3DotProduct(rel, D) / U;
+        double a = Vector3DotProduct(rel, V) / U, b = Vector3DotProduct(rel, Z) / U;
+        rad = std::sqrt(a * a + b * b);
+    };
+    float best = 1e30f; bool hit = false;
+    for (int e : {0, 1}) {   // the two ends: flat discs across the axis
+        double ue = e ? f.u1 : f.u0;
+        float den = Vector3DotProduct(r.direction, D);
+        if (std::fabs(den) < 1e-6f) continue;
+        Vector3 c = axisW(i, f, ue);
+        float t = Vector3DotProduct(Vector3Subtract(c, r.position), D) / den;
+        if (t <= 0 || t >= best) continue;
+        double u, rad;
+        local(Vector3Add(r.position, Vector3Scale(r.direction, t)), u, rad);
+        if (rad > radiusAt(f, ue + (e ? -1e-4 : 1e-4)) + 1e-3) continue;
+        best = t; hit = true; out = {i, 3, e, Vector3Add(r.position, Vector3Scale(r.direction, t))};
+    }
+    // the round side: walk the ray through the largest cylinder, to the first point inside the turned outline
+    double R = f.ax.R;
+    Vector3 w0 = Vector3Subtract(r.position, o);
+    Vector3 pd = Vector3Subtract(r.direction, Vector3Scale(D, Vector3DotProduct(r.direction, D)));
+    Vector3 pw = Vector3Subtract(w0, Vector3Scale(D, Vector3DotProduct(w0, D)));
+    double qa = Vector3DotProduct(pd, pd), qb = 2 * Vector3DotProduct(pd, pw), qc = Vector3DotProduct(pw, pw) - (R * U) * (R * U);
+    double disc = qb * qb - 4 * qa * qc;
+    if (qa > 1e-12 && disc >= 0) {
+        double t0 = (-qb - std::sqrt(disc)) / (2 * qa), t1 = (-qb + std::sqrt(disc)) / (2 * qa);
+        t0 = std::max(t0, 0.0);
+        const int N = 160;
+        for (int k = 0; k <= N && t0 < t1; k++) {
+            double t = t0 + (t1 - t0) * k / N;
+            if (t >= best) break;
+            double u, rad;
+            local(Vector3Add(r.position, Vector3Scale(r.direction, (float)t)), u, rad);
+            if (u < f.u0 || u > f.u1) continue;
+            if (rad <= radiusAt(f, u) + 1e-3) { best = (float)t; hit = true; out = {i, 4, -1, Vector3Add(r.position, Vector3Scale(r.direction, (float)t))}; break; }
+        }
+    }
+    tOut = best;
+    return hit;
+}
+// the world normal of a round part's face at its point
+Vector3 roundNormal(const App::FacePick& f) {
+    const BodyDef& d = A.design.bodies[f.body];
+    RoundFrame fr = roundFrame(d);
+    Vector3 D = dirW(fr);
+    if (f.kind == 3) return f.edge ? D : Vector3Negate(D);
+    Vector3 rel = Vector3Subtract(f.at, axisW(f.body, fr, 0));
+    Vector3 out = Vector3Subtract(rel, Vector3Scale(D, Vector3DotProduct(rel, D)));
+    float l = Vector3Length(out);
+    return l > 1e-9f ? Vector3Scale(out, 1 / l) : acrossW(fr);
+}
+// a ring round the axis at u (screen points), for drawing a round part's faces
+std::vector<Vector2> roundRing(int i, const RoundFrame& f, double u, double rad) {
+    std::vector<Vector2> out;
+    Vector3 c = axisW(i, f, u), V = acrossW(f);
+    for (int k = 0; k <= 40; k++) {
+        double a = 2 * PI * k / 40;
+        Vector3 w = Vector3Add(c, Vector3Add(Vector3Scale(V, (float)(std::cos(a) * rad * U)), Vector3{0, 0, (float)(std::sin(a) * rad * U)}));
+        out.push_back(toScreen(w));
+    }
+    return out;
+}
+bool circleLike(const BodyDef& d) {   // a flat part drawn as a circle (every edge curved): its edge pushes as one
+    if (d.round || d.bulge.size() != d.pts.size() || d.pts.size() < 3) return false;
+    for (double b : d.bulge) if (std::fabs(b) < 1e-9) return false;
+    return true;
+}
+
 V2 outward(const BodyDef& d, int e) {   // the side wall's outward direction in the side view (design mm)
     const auto& P = d.pts;
     V2 a = P[e], b = P[(e + 1) % P.size()];
@@ -53,6 +158,7 @@ V2 outward(const BodyDef& d, int e) {   // the side wall's outward direction in 
     return n;
 }
 Vector3 worldNormal(const BodyDef& d, const App::FacePick& f) {
+    if (f.kind >= 3) return roundNormal(f);
     if (f.kind == 1) return {0, 0, 1};
     if (f.kind == 2) return {0, 0, -1};
     V2 n = outward(d, f.edge);
@@ -75,6 +181,11 @@ App::FacePick pick(Ray r, int only = -1) {
     for (int i = 0; i < (int)A.design.bodies.size(); i++) {
         if (only >= 0 && i != only) continue;
         const BodyDef& d = A.design.bodies[i];
+        if (roundPushable(d) && partPickable(A.design, d)) {   // a round part: its ends and round side
+            App::FacePick rf; float t;
+            if (roundHit(i, r, rf, t) && t < bt) { bt = t; best = rf; }
+            continue;
+        }
         if (!editable(d) || !partPickable(A.design, d)) continue;   // (a hidden, locked or faint layer's faces can't be pushed)
         if (depthShaped(d)) {   // its faces are pieces between the corners: test each triangle
             std::vector<P3d> v; std::vector<int> tri, tag;
@@ -148,6 +259,43 @@ void applyPush(double p) {
     auto& f = A.faceDrag;
     if (f.body < 0 || f.body >= (int)A.design.bodies.size()) return;
     BodyDef& d = A.design.bodies[f.body];
+    if (f.kind >= 3) {   // a round part
+        BodyDef was = d; was.pts = A.faceOrig;
+        RoundFrame fr = roundFrame(was);
+        d.pts = A.faceOrig;
+        const auto& ax = fr.ax;
+        if (f.kind == 3) {   // an end: its corners along the axis (never shorter than 0.5 mm)
+            double ue = f.edge ? fr.u1 : fr.u0, len = fr.u1 - fr.u0;
+            double pp = std::max(p, 0.5 - len);
+            double tol = std::max(0.01, 1e-4 * len);
+            for (auto& pt : d.pts) {
+                double u = ax.dir.x * (pt.x - ax.o.x) + ax.dir.y * (pt.y - ax.o.y);
+                if (std::fabs(u - ue) <= tol) { double s = f.edge ? pp : -pp; pt.x += ax.dir.x * s; pt.y += ax.dir.y * s; }
+            }
+        } else {   // the round side: every corner out from the middle line, so the radius grows by p
+            double R = ax.R;
+            if (R < 1e-6) return;
+            double k = std::max(0.25, R + p) / R;
+            for (auto& pt : d.pts) {
+                double dx = pt.x - ax.o.x, dy = pt.y - ax.o.y;
+                double u = ax.dir.x * dx + ax.dir.y * dy, v = ax.dir.x * dy - ax.dir.y * dx;
+                v *= k;
+                pt = {ax.o.x + ax.dir.x * u - ax.dir.y * v, ax.o.y + ax.dir.y * u + ax.dir.x * v};
+            }
+            d.thick = std::max(0.5, A.faceOrigThick * k);
+        }
+        return;
+    }
+    if (f.kind == 0 && circleLike(d) && (int)A.faceOrig.size() == (int)d.pts.size()) {   // a circle's edge: bigger or smaller all round
+        double cx = 0, cy = 0;
+        for (auto& q : A.faceOrig) { cx += q.x; cy += q.y; }
+        cx /= A.faceOrig.size(); cy /= A.faceOrig.size();
+        double R = std::hypot(A.faceOrig[0].x - cx, A.faceOrig[0].y - cy);
+        if (R < 1e-6) return;
+        double k = std::max(0.25, R + p) / R;
+        for (size_t v = 0; v < d.pts.size(); v++) d.pts[v] = {cx + (A.faceOrig[v].x - cx) * k, cy + (A.faceOrig[v].y - cy) * k};
+        return;
+    }
     if (f.kind == 0) {
         int n = (int)d.pts.size();
         if ((int)A.faceOrig.size() != n) return;
@@ -181,6 +329,8 @@ void begin(const App::FacePick& f, bool follow, bool extrude) {
     BodyDef& d0 = A.design.bodies[f.body];
     A.faceDrag = f; A.faceDragging = true; A.faceFollow = follow; A.faceExtruded = false; A.faceExtrudedWall = false; A.faceLive = false;
     A.faceStart = GetMousePosition();
+    if (f.kind >= 3) extrude = false;   // (a round part's faces push and pull; they don't pull out new pieces)
+    if (extrude && f.kind == 0 && circleLike(d0)) extrude = false;
     if (extrude && f.kind == 0) {   // a side wall: two new corners where the edge was, drawn out as a new wall
         BodyDef& d = d0;
         fixShape(d);
@@ -358,8 +508,32 @@ static void pushTestHook() {   // GUNSMITH_PUSHTEST="edge,mm[,x]": push the sele
     printf("PUSHTEST before x %.2f..%.2f y %.2f..%.2f | dragged x %.2f..%.2f y %.2f..%.2f | typed %.2f: x %.2f..%.2f y %.2f..%.2f | parts %zu->%zu corners %zu undo +%zu\n",
            b0[0], b0[1], b0[2], b0[3], b1[0], b1[1], b1[2], b1[3], mm, b2[0], b2[1], b2[2], b2[3], n0, A.design.bodies.size(), A.design.bodies[A.sel.idx].pts.size(), A.hist.size() - h0);
 }
+static void rodTestHook() {   // GUNSMITH_RODTEST: a lengthwise round part; pick its end and side with rays, push both
+    static int frames = 0;
+    if (!getenv("GUNSMITH_RODTEST") || ++frames != 20) return;
+    BodyDef b; b.id = uid(); b.name = "Rod"; b.pts = {{60, -40}, {120, -40}, {120, -30}, {60, -30}}; b.round = true; b.thick = 10; b.z = 0;
+    fixShape(b);
+    A.design.bodies.push_back(b); commit();
+    int i = (int)A.design.bodies.size() - 1;
+    A.sel = {1, i, -1};
+    auto report = [&](const char* what) {
+        RoundFrame f = roundFrame(A.design.bodies[i]);
+        printf("RODTEST %s: length %.2f radius %.2f axis y %.2f\n", what, f.u1 - f.u0, f.ax.R, f.ax.o.y);
+    };
+    report("made");
+    Ray endRay{W3({200, -35}, bodyZ(i)), {-1, 0, 0}}, sideRay{Vector3Add(W3({90, -35}, bodyZ(i)), {0, 1, 0}), {0, -1, 0}};
+    Ray capBack{W3({-50, -35}, bodyZ(i)), {1, 0, 0}};
+    App::FacePick fe = pick(endRay), fs = pick(sideRay), fb = pick(capBack);
+    printf("RODTEST picks: front end kind %d edge %d | side kind %d | back end kind %d edge %d\n", fe.kind, fe.edge, fs.kind, fb.kind, fb.edge);
+    begin(fe, false, false); A.faceLive = true; applyPush(15); finish(true); report("front end +15");
+    begin(fb, false, false); A.faceLive = true; applyPush(5); finish(true); report("back end +5");
+    fs = pick(sideRay);
+    begin(fs, false, false); A.faceLive = true; applyPush(3); finish(true); report("side +3");
+    redoLast(-2); report("side typed -2");
+}
 void facesInput(bool overUI) {
     pushTestHook();
+    rodTestHook();
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     if (A.cornerDragging) {
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
@@ -430,7 +604,7 @@ void facesInput(bool overUI) {
             if (hits.empty()) A.sel = {};
             else {
                 A.sel = {1, hits[0].body, -1};
-                toast("This part's faces can't be pushed (it's round, sculpted or leaned): change its size with the numbers beside it, or reshape it in More tools.");
+                toast("This part's faces can't be pushed (it's sculpted or leaned): change its size with the numbers beside it, or reshape it in More tools.");
             }
         }
         return;
@@ -453,7 +627,7 @@ bool selectFacesInput(bool overUI) {
     if (!selPart || A.facePicked.body != A.sel.idx) A.facePicked = {};
     if (A.cornerDragging || A.faceDragging) { facesInput(overUI); return true; }
     A.faceHover = {};
-    if (!selPart || overUI || A.dragKind != 0 || !editable(A.design.bodies[A.sel.idx])) { A.cornerHover = {}; return false; }
+    if (!selPart || overUI || A.dragKind != 0 || !(editable(A.design.bodies[A.sel.idx]) || roundPushable(A.design.bodies[A.sel.idx]))) { A.cornerHover = {}; return false; }
     // the far face's corners
     A.cornerHover = {};
     Vector2 m = GetMousePosition();
@@ -470,6 +644,27 @@ bool selectFacesInput(bool overUI) {
     return false;
 }
 void facePushStart(const App::FacePick& f, bool extrude) { begin(f, false, extrude); }
+
+namespace {
+void drawRoundFace(const App::FacePick& f, Color line, Color wash, bool thin) {
+    const BodyDef& d = A.design.bodies[f.body];
+    RoundFrame fr = roundFrame(d);
+    float w = thin ? 2.f : 2.5f;
+    auto ringAt = [&](double u) {
+        auto ring = roundRing(f.body, fr, u, radiusAt(fr, u + (u <= fr.u0 ? 1e-4 : -1e-4)));
+        for (size_t k = 0; k + 1 < ring.size(); k++) DrawLineEx(ring[k], ring[k + 1], w, line);
+        return ring;
+    };
+    if (f.kind == 3) {
+        auto ring = ringAt(f.edge ? fr.u1 : fr.u0);
+        Vector2 c = toScreen(axisW(f.body, fr, f.edge ? fr.u1 : fr.u0));
+        for (size_t k = 0; k + 1 < ring.size(); k++) { DrawTriangle(c, ring[k], ring[k + 1], wash); DrawTriangle(c, ring[k + 1], ring[k], wash); }
+    } else {   // the round side: both ends' rings and lines along it
+        auto a = ringAt(fr.u0), b = ringAt(fr.u1);
+        for (size_t k = 0; k + 1 < a.size(); k += 5) DrawLineEx(a[k], b[k], 1.2f, line);
+    }
+}
+}  // namespace
 
 void drawFaces() {
     if (A.mode != Mode::Build) return;
@@ -508,7 +703,8 @@ void drawFaces() {
         const BodyDef& d = A.design.bodies[h.body];
         std::vector<P3d> RN, RF; depthRings(d, RN, RF);
         Color thin{255, 205, 60, 200}, wash{255, 205, 60, 34};
-        if (h.kind == 0 && h.edge >= 0 && h.edge < (int)RN.size()) {
+        if (h.kind >= 3) drawRoundFace(h, thin, wash, true);
+        else if (h.kind == 0 && h.edge >= 0 && h.edge < (int)RN.size()) {
             int e2 = (h.edge + 1) % (int)RN.size();
             Vector2 q[4] = {toScreen(ringW(h.body, RN[h.edge])), toScreen(ringW(h.body, RN[e2])), toScreen(ringW(h.body, RF[e2])), toScreen(ringW(h.body, RF[h.edge]))};
             DrawTriangle(q[0], q[1], q[2], wash); DrawTriangle(q[0], q[2], q[1], wash);
@@ -528,7 +724,8 @@ void drawFaces() {
     Color fill{255, 205, 60, 70}, line{255, 205, 60, 255};
     std::vector<P3d> RN, RF;
     depthRings(d, RN, RF);
-    if (f.kind == 0) {
+    if (f.kind >= 3) drawRoundFace(f, line, fill, false);
+    else if (f.kind == 0) {
         int n = (int)d.pts.size();
         if (f.edge < 0 || f.edge >= n || (int)RN.size() != n) return;
         int e2 = (f.edge + 1) % n;
@@ -561,7 +758,7 @@ void drawFaces() {
     if (A.faceDragging) {   // how far
         const BodyDef& b = A.design.bodies[A.faceDrag.body];
         std::string t = !gTyped.empty() ? "Typed: " + gTyped + "   (Enter)"
-                      : A.faceDrag.kind == 0 ? std::string(TextFormat("%+.1f mm   (or type a number)", snapv(pushed(A.faceDrag), A.snapOn))) : std::string(TextFormat("%.1f mm thick   (or type a number)", b.thick));
+                      : A.faceDrag.kind == 0 || A.faceDrag.kind >= 3 ? std::string(TextFormat("%+.1f mm   (or type a number)", snapv(pushed(A.faceDrag), A.snapOn))) : std::string(TextFormat("%.1f mm thick   (or type a number)", b.thick));
         Vector2 m = GetMousePosition();   // above and left of the cursor, clear of the part's name
         int tw = MeasureText(t.c_str(), 16) + 10, x = (int)m.x - tw - 12, y = (int)m.y - 34;
         DrawRectangle(x, y, tw, 22, Color{20, 24, 32, 220});
@@ -569,21 +766,13 @@ void drawFaces() {
     }
 }
 
-// the measurements box at the bottom right of the view (Push and pull): the last push's amount, or what's being typed
+// Push and pull: a number being typed just after a push shows by the cursor (the owner had the old box at the bottom
+// right taken away in 0.9.1)
 void drawPushBox() {
-    if (A.mode != Mode::Build || A.tool != Tool::Faces) return;
-    bool live = A.faceDragging;
-    bool last = gLast.on && A.lastSnap == gLast.after;
-    std::string label, value;
-    if (live) { label = "Pushing"; value = gTyped.empty() ? fmtQ(Q::Length, snapv(pushed(A.faceDrag), A.snapOn)) : gTyped; }
-    else if (!gTyped.empty()) { label = "Make it"; value = gTyped + "   Enter"; }
-    else if (last) { label = gLast.extrude ? "Pulled out" : "Pushed"; value = fmtQ(Q::Length, gLast.amount) + "   type to change"; }
-    else { label = "Push and pull"; value = "drag any face, then type a number"; }
-    int fs = 16, pad = 8;
-    std::string t = label + ":  " + value;
-    int tw = MeasureText(t.c_str(), fs) + 2 * pad;
-    int x = A.vw - tw - 16, y = TOOLBAR_H + A.vh - 84;
-    DrawRectangleRounded({(float)x, (float)y, (float)tw, (float)(fs + 2 * pad)}, 0.25f, 6, Color{20, 24, 32, 225});
-    DrawRectangleRoundedLines({(float)x, (float)y, (float)tw, (float)(fs + 2 * pad)}, 0.25f, 6, Color{238, 122, 32, (unsigned char)(live || !gTyped.empty() ? 255 : 120)});
-    DrawText(t.c_str(), x + pad, y + pad, fs, Color{235, 235, 240, 255});
+    if (A.mode != Mode::Build || A.tool != Tool::Faces || A.faceDragging || gTyped.empty()) return;
+    std::string t = "Make it " + gTyped + "   (Enter)";
+    Vector2 m = GetMousePosition();
+    int tw = MeasureText(t.c_str(), 16) + 10, x = (int)m.x - tw - 12, y = (int)m.y - 34;
+    DrawRectangle(x, y, tw, 22, Color{20, 24, 32, 220});
+    DrawText(t.c_str(), x + 5, y + 3, 16, Color{255, 205, 60, 255});
 }

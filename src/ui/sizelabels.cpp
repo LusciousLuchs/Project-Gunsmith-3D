@@ -69,10 +69,11 @@ void sizeLabels() {
     float gap = 18 * CFG.uiScale;
     Vector2 bottom = toScreen(W3({(x0 + x1) / 2, y1}, zN)), right = toScreen(W3({x1, (y0 + y1) / 2}, zN)), corner = toScreen(W3({x1, y0}, zN));
     bool thickOk = !d.round;
+    bool upright = d.round && (y1 - y0) > (x1 - x0) && d.roundAxis != 0;   // a round part standing up: its length is its height
     double typed = 0;
     int which = -1;
-    if (label(0, {bottom.x, bottom.y + gap}, "Length", x1 - x0)) which = 0;
-    if (label(1, {right.x + gap * 2.6f, right.y}, "Height", y1 - y0)) which = 1;
+    if (label(0, {bottom.x, bottom.y + gap}, d.round && upright ? "Across" : "Length", x1 - x0)) which = 0;
+    if (label(1, {right.x + gap * 2.6f, right.y}, d.round && !upright ? "Across" : "Height", y1 - y0)) which = 1;
     if (thickOk && label(2, {corner.x + gap * 2.6f, corner.y - gap * 2.2f}, "Thick", d.thick)) which = 2;
     if (which < 0) return;
     gEdit = -1;
@@ -82,7 +83,11 @@ void sizeLabels() {
     double k = typed / now;
     if (std::fabs(k - 1) < 1e-9) return;
     // from its back (length), its top (height); thickness about its middle
-    scaleParts(A.design, {i}, {x0, y0}, which == 0 ? k : 1, which == 1 ? k : 1, which == 2 ? k : 1);
+    // a round part's width across is about its middle line (it stays on its axis); the rest from the back or top
+    bool across = d.round && ((which == 1 && !upright) || (which == 0 && upright));
+    V2 about = across ? V2{(x0 + x1) / 2, (y0 + y1) / 2} : V2{x0, y0};
+    scaleParts(A.design, {i}, about, which == 0 ? k : 1, which == 1 ? k : 1, which == 2 ? k : 1);
+    if (across) A.design.bodies[i].thick = std::max(0.5, A.design.bodies[i].thick * k);
     commit();
     toast(std::string(which == 0 ? "Length" : which == 1 ? "Height" : "Thickness") + " set to " + fmtQ(Q::Length, typed) + ".");
 }

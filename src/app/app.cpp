@@ -243,7 +243,7 @@ const char* TOOL_HINT[] = {
     "Click where the cartridge head sits against the bolt or slide.",
     "Click the muzzle.",
     "Drag out a rectangle.",
-    "Click the centre and drag out the radius.",
+    "Circle: Lengthwise (strip beside the tools): drag out its side view, it is round along its longer side. Across: click the centre and drag the radius. Then push and pull its ends and round side.",
     "Click where the finger presses this control.",
     "Click the tip of the striker or firing pin.",
     "Drag a line across a part to cut it into pieces.",

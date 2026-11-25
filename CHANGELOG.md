@@ -8,6 +8,13 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.9.1-alpha
+
+- **Circles go lengthwise too**: the Circle tool has a choice beside the tools. Lengthwise: drag out its side view and it's round along its longer side (rods, pins, tubes). Across: a round plate, as before.
+- **Round parts push and pull like the rest**: drag either end to make it longer or shorter, drag its round side to make it thicker or thinner (it stays on its middle line). Type a number for an exact size. A round plate's edge grows or shrinks all round.
+- Size labels on round parts show Length and Across; typing Across keeps it on its middle line.
+- The box at the bottom right is gone; a number you type shows by the cursor instead.
+
 ## 0.9.0-alpha
 
 The building rework, part 1: push and pull.

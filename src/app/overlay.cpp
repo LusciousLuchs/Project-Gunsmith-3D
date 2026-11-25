@@ -219,10 +219,19 @@ void drawOverlay() {
                 for (size_t k = 0; k < pv.pts.size(); k++) DrawLineEx(toScreen(W3(pv.pts[k], 0)), toScreen(W3(pv.pts[(k + 1) % pv.pts.size()], 0)), 2, Color{255, 205, 60, 255});
             }
             viewText((fmtQ(Q::Length, std::hypot(w.x - a.x, w.y - a.y)) + "  breech  \xe2\x86\x92  muzzle").c_str(), m.x + 14, m.y + 12, 12, RAYWHITE);
-        } else if (A.tool == Tool::Rect) {
+        } else if (A.tool == Tool::Rect || (A.tool == Tool::Circle && A.circleLong)) {
+            if (A.tool == Tool::Circle) {   // a rod: its middle line along the longer side
+                double cx = (a.x + w.x) / 2, cy = (a.y + w.y) / 2;
+                bool lev = std::fabs(w.x - a.x) >= std::fabs(w.y - a.y);
+                V2 p0 = lev ? V2{a.x, cy} : V2{cx, a.y}, p1 = lev ? V2{w.x, cy} : V2{cx, w.y};
+                DrawLineEx(toScreen(W3(p0, 0)), toScreen(W3(p1, 0)), 1, Color{255, 205, 60, 160});
+            }
             Vector2 p[4] = {toScreen(W3({a.x, a.y}, 0)), toScreen(W3({w.x, a.y}, 0)), toScreen(W3({w.x, w.y}, 0)), toScreen(W3({a.x, w.y}, 0))};
             for (int k = 0; k < 4; k++) DrawLineEx(p[k], p[(k + 1) % 4], 2, Color{255, 205, 60, 255});
-            viewText((fmtQ(Q::Length, std::fabs(w.x - a.x)) + "  x  " + fmtQ(Q::Length, std::fabs(w.y - a.y))).c_str(), m.x + 14, m.y + 12, 12, RAYWHITE);
+            if (A.tool == Tool::Circle) {
+                double L = std::max(std::fabs(w.x - a.x), std::fabs(w.y - a.y)), D = std::min(std::fabs(w.x - a.x), std::fabs(w.y - a.y));
+                viewText(("Round, " + fmtQ(Q::Length, D) + " across, " + fmtQ(Q::Length, L) + " long").c_str(), m.x + 14, m.y + 12, 12, RAYWHITE);
+            } else viewText((fmtQ(Q::Length, std::fabs(w.x - a.x)) + "  x  " + fmtQ(Q::Length, std::fabs(w.y - a.y))).c_str(), m.x + 14, m.y + 12, 12, RAYWHITE);
         } else {
             double r = std::hypot(w.x - a.x, w.y - a.y);
             Vector2 prev{};

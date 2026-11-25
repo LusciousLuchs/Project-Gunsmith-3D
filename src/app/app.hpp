@@ -46,6 +46,7 @@ struct App {
     Mode mode = Mode::Build;
     std::unique_ptr<sim::Sim> S;
     bool running = false;
+    bool circleLong = true;              // the Circle tool: a long round part lengthwise (a rod), or a round plate across the gun
     Tool tool = Tool::Faces;             // (0.9.0: push and pull is where the designer starts)
     std::string gripKind = "firing", gripStyle;  // the Grip tool places this kind (and style) of grip
     int chamberEdit = -1;
