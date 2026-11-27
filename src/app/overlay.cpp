@@ -24,6 +24,8 @@
 void drawOverlay() {
     drawFaces();
     drawPushBox();
+    drawMoveGuides();
+    drawHoverHelp();
     drawMeshTool();
     if (A.mode == Mode::Build) { partRingsDraw(); cornerArrowsDraw(); refOverlay(); }
     auto& D = A.design;

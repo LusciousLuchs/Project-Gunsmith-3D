@@ -1,5 +1,8 @@
 // Gunsmith3D - Build mode: editing operations and the drawing tools.
 #include "app/refpics.hpp"
+#include "app/units.hpp"
+#include "imgui.h"
+#include "app/settings.hpp"
 #include "app/app.hpp"
 #include "app/settings.hpp"
 #include "carve.hpp"
@@ -77,15 +80,34 @@ void partRingsApply(int axis, double deg) {
     else rotateBody(i, centroidOf(gPartSnap.bodies[i]), deg * gPartSign);
 }
 }  // namespace
+bool gPartEnterHold = false;   // (Enter ended a turn: the held button does nothing more until let go)
+std::string gRotTyped;   // degrees typed while turning a part on its rings (0.9.2)
 bool partRingsInput(bool overUI) {
     ToScreen ts = [](Vector3 w) { return toScreen(w); };
     if (gPartR.axis >= 0) {
-        if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT) || A.sel.kind != 1 || A.sel.idx >= (int)gPartSnap.bodies.size()) { gPartR.axis = -1; commit(); return true; }
+        bool enter = false;
+        if (!ImGui::GetIO().WantCaptureKeyboard) {
+            for (int c = GetCharPressed(); c; c = GetCharPressed())
+                if (((c >= '0' && c <= '9') || c == '.' || (c == '-' && gRotTyped.empty())) && gRotTyped.size() < 12) gRotTyped += (char)c;
+            if (IsKeyPressed(KEY_BACKSPACE) && !gRotTyped.empty()) gRotTyped.pop_back();
+            enter = (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && !gRotTyped.empty();
+        }
         double deg = ringsDrag(gPartR, GetMousePosition(), IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL));
-        A.design = gPartSnap;
-        partRingsApply(gPartR.axis, deg);
+        if (!gRotTyped.empty()) {   // exactly the typed angle, the way the mouse turned it
+            double v = std::atof(gRotTyped.c_str());
+            deg = deg < 0 && v > 0 ? -v : v;
+        }
+        bool done = enter || !IsMouseButtonDown(MOUSE_BUTTON_LEFT) || A.sel.kind != 1 || A.sel.idx >= (int)gPartSnap.bodies.size();
+        if (A.sel.kind == 1 && A.sel.idx < (int)gPartSnap.bodies.size()) { A.design = gPartSnap; partRingsApply(gPartR.axis, deg); }
+        if (done) {
+            static const char* axn[3] = {"Leaned", "Swung", "Turned"};
+            if (A.sel.kind == 1 && A.sel.idx < (int)A.design.bodies.size()) A.nextLabel = std::string(axn[std::clamp(gPartR.axis, 0, 2)]) + " " + A.design.bodies[A.sel.idx].name + TextFormat(" %.1f\xc2\xb0", deg);
+            gPartR.axis = -1; gRotTyped.clear(); commit();
+            if (enter) gPartEnterHold = true;
+        }
         return true;
     }
+    if (gPartEnterHold) { if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) return true; gPartEnterHold = false; }
     gPartR.hot = -1;
     if (!partRingsShown()) return false;
     partRingsSetup();
@@ -365,6 +387,182 @@ void makeMagwell(const BodyDef& b) {  // give a magazine a straight well, slidin
     A.design.joints.push_back(j);
 }
 
+// ---- moving parts (0.9.2): snapping a dragged piece's edges and middle onto other parts' (within 7 px; Alt: free), and
+// a typed distance (while dragging, or just after: a number and Enter moves it exactly that far along the drag)
+namespace {
+struct MoveGuide { bool x = false, y = false; double gx = 0, gy = 0; double y0 = 0, y1 = 0, x0 = 0, x1 = 0; } gMoveGuide;
+std::string gMoveTyped;
+bool gMoveEnter = false;   // Enter while dragging with a typed number: the move ends there
+struct LastMove { bool on = false; std::string before, after; std::vector<std::string> ids; V2 dir{1, 0}; double dist = 0; } gLastMove;
+struct Box2 { double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; };
+Box2 boxOf(const std::vector<int>& parts) {
+    Box2 b;
+    for (int k : parts) for (auto& p : outlineOf(A.design.bodies[k])) { b.x0 = std::min(b.x0, p.x); b.x1 = std::max(b.x1, p.x); b.y0 = std::min(b.y0, p.y); b.y1 = std::max(b.y1, p.y); }
+    return b;
+}
+double pxPerMm() {   // at the selected part, in the view
+    Vector3 a = W3({0, 0}, 0), b = W3({10, 0}, 0);
+    if (A.sel.kind == 1 && A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size()) { V2 c = centroidOf(A.design.bodies[A.sel.idx]); a = W3(c, bodyZ(A.sel.idx)); b = W3({c.x + 10, c.y}, bodyZ(A.sel.idx)); }
+    return Vector2Distance(toScreen(a), toScreen(b)) / 10;
+}
+// d: the move so far (mm); snapped so the group's left, middle or right lines up with another part's, and the same up and down
+V2 snapMove(V2 d, const std::vector<int>& group, V2 already) {
+    gMoveGuide = {};
+    if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) return d;
+    double ppm = pxPerMm();
+    if (ppm < 1e-6) return d;
+    Box2 g = boxOf(group);   // where it is now, less the move already made: where it started
+    g.x0 -= already.x; g.x1 -= already.x; g.y0 -= already.y; g.y1 -= already.y;
+    double xs[3] = {g.x0, (g.x0 + g.x1) / 2, g.x1}, ys[3] = {g.y0, (g.y0 + g.y1) / 2, g.y1};
+    double bx = 3 / ppm, by = 3 / ppm, gotx = d.x, goty = d.y;
+    for (int k = 0; k < (int)A.design.bodies.size(); k++) {
+        if (std::find(group.begin(), group.end(), k) != group.end() || !partShown(A.design, A.design.bodies[k])) continue;
+        Box2 o = boxOf({k});
+        // only parts near where it's going (within 15 mm of its box): on a busy gun every far part's edge matched something
+        if (o.x0 > g.x1 + d.x + 15 || o.x1 < g.x0 + d.x - 15 || o.y0 > g.y1 + d.y + 15 || o.y1 < g.y0 + d.y - 15) continue;
+        double ox[3] = {o.x0, (o.x0 + o.x1) / 2, o.x1}, oy[3] = {o.y0, (o.y0 + o.y1) / 2, o.y1};
+        // edges to edges, middle to middle (not an edge to a middle: too many lines on a busy gun)
+        for (int ia = 0; ia < 3; ia++) for (int it = 0; it < 3; it++) { if ((ia == 1) != (it == 1)) continue; double a = xs[ia], t = ox[it]; if (std::fabs(a + d.x - t) < bx) { bx = std::fabs(a + d.x - t); gotx = t - a; gMoveGuide.x = true; gMoveGuide.gx = t; gMoveGuide.y0 = std::min(o.y0, g.y0 + d.y); gMoveGuide.y1 = std::max(o.y1, g.y1 + d.y); } }
+        for (int ia = 0; ia < 3; ia++) for (int it = 0; it < 3; it++) { if ((ia == 1) != (it == 1)) continue; double a = ys[ia], t = oy[it]; if (std::fabs(a + d.y - t) < by) { by = std::fabs(a + d.y - t); goty = t - a; gMoveGuide.y = true; gMoveGuide.gy = t; gMoveGuide.x0 = std::min(o.x0, g.x0 + d.x); gMoveGuide.x1 = std::max(o.x1, g.x1 + d.x); } }
+    }
+    return {gotx, goty};
+}
+// digits, a point, a minus (and unit letters after a digit); true on Enter
+bool moveTypeKeys() {
+    if (ImGui::GetIO().WantCaptureKeyboard) return false;
+    for (int c = GetCharPressed(); c; c = GetCharPressed()) {
+        bool digit = c >= '0' && c <= '9';
+        if (digit || c == '.' || (c == '-' && gMoveTyped.empty()) || (!gMoveTyped.empty() && (c == ' ' || c == '/' || c == '"' || (c >= 'a' && c <= 'z' && c != 'x' && c != 'y' && c != 'z'))))
+            if (gMoveTyped.size() < 24) gMoveTyped += (char)c;
+    }
+    if (IsKeyPressed(KEY_BACKSPACE) && !gMoveTyped.empty()) gMoveTyped.pop_back();
+    if (IsKeyPressed(KEY_ESCAPE)) gMoveTyped.clear();
+    return (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) && !gMoveTyped.empty();
+}
+}  // namespace
+void drawMoveGuides() {   // (overlay) the lines a dragged part snapped to, and a number being typed
+    Color gc{90, 220, 255, 220};
+    if (A.dragKind == 2 && A.dragLive) {
+        float z = A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size() ? bodyZ(A.sel.idx) : 0;
+        if (gMoveGuide.x) DrawLineEx(toScreen(W3({gMoveGuide.gx, gMoveGuide.y0 - 8}, z)), toScreen(W3({gMoveGuide.gx, gMoveGuide.y1 + 8}, z)), 1.5f, gc);
+        if (gMoveGuide.y) DrawLineEx(toScreen(W3({gMoveGuide.x0 - 8, gMoveGuide.gy}, z)), toScreen(W3({gMoveGuide.x1 + 8, gMoveGuide.gy}, z)), 1.5f, gc);
+    }
+    if (gPartR.axis >= 0) {   // turning on a ring: the angle, or what's being typed
+        std::string t = gRotTyped.empty() ? std::string("(or type the angle)") : "Turn " + gRotTyped + "\xc2\xb0   (Enter)";
+        Vector2 m = GetMousePosition();
+        int tw = MeasureText(t.c_str(), 14) + 10, x = (int)m.x - tw - 12, y = (int)m.y - 30;
+        DrawRectangle(x, y, tw, 20, Color{20, 24, 32, 200});
+        DrawText(t.c_str(), x + 5, y + 3, 14, Color{255, 205, 60, 255});
+    }
+    bool after = gLastMove.on && A.lastSnap == gLastMove.after && A.tool == Tool::Select;
+    if (!gMoveTyped.empty() && ((A.dragKind == 2 && A.dragLive) || after)) {
+        std::string t = (A.dragKind == 2 ? "Move " : "Make the move ") + gMoveTyped + "   (Enter)";
+        Vector2 m = GetMousePosition();
+        int tw = MeasureText(t.c_str(), 16) + 10, x = (int)m.x - tw - 12, y = (int)m.y - 34;
+        DrawRectangle(x, y, tw, 22, Color{20, 24, 32, 220});
+        DrawText(t.c_str(), x + 5, y + 3, 16, Color{255, 205, 60, 255});
+    } else if (A.dragKind == 2 && A.dragLive) {
+        V2 dl = A.dragLast;
+        std::string t = fmtQ(Q::Length, std::hypot(dl.x, dl.y)) + "   (or type a number)";
+        Vector2 m = GetMousePosition();
+        int tw = MeasureText(t.c_str(), 14) + 10, x = (int)m.x - tw - 12, y = (int)m.y - 30;
+        DrawRectangle(x, y, tw, 20, Color{20, 24, 32, 200});
+        DrawText(t.c_str(), x + 5, y + 3, 14, Color{255, 205, 60, 255});
+    }
+}
+// hover help (0.9.2): when the mouse rests a moment over the view, what a click or drag will do there
+void drawHoverHelp() {
+    static Vector2 last{}; static double since = 0;
+    Vector2 m = GetMousePosition();
+    if (Vector2Distance(m, last) > 2 || IsMouseButtonDown(MOUSE_BUTTON_LEFT) || IsMouseButtonDown(MOUSE_BUTTON_RIGHT) || IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) { last = m; since = GetTime(); return; }
+    if (!CFG.hoverHelp || A.mode != Mode::Build || A.benchOnly || GetTime() - since < 0.7 || ImGui::GetIO().WantCaptureMouse || !mouseInViewport()) return;
+    if (A.faceDragging || A.dragKind != 0 || A.drafting) return;
+    std::string t;
+    auto nm = [](int i) { const auto& b = A.design.bodies[i]; return b.name.empty() ? std::string("this part") : b.name; };
+    if (A.tool == Tool::Faces) {
+        const auto& h = A.faceHover;
+        if (A.cornerHover.body >= 0) t = "Drag this corner on its own (squares are the front, circles the back): it shapes the part in depth";
+        else if (h.body >= 0 && h.body < (int)A.design.bodies.size()) {
+            std::string n = nm(h.body);
+            if (h.kind == 0) t = "Drag: push or pull this side of " + n + ". Ctrl-drag pulls out a new piece. Type a number for an exact size";
+            else if (h.kind == 1 || h.kind == 2) t = "Drag: make " + n + " thicker or thinner (this face moves). Ctrl-drag pulls out a new piece";
+            else if (h.kind == 3) t = "Drag: make " + n + " longer or shorter from this end";
+            else t = "Drag: make " + n + " thicker or thinner all round (it stays on its middle line)";
+        } else {
+            auto hits = bodiesUnderMouse();
+            if (!hits.empty()) t = "Click to select " + nm(hits[0].body) + " (its faces can't be pushed: use the size numbers by it)";
+        }
+    } else if (A.tool == Tool::Select && !A.rotateMode) {
+        auto hits = bodiesUnderMouse();
+        if (!hits.empty()) {
+            int i = hits[0].body;
+            bool sel = A.sel.kind == 1 && weldedWith(A.design, A.sel.idx).size() && std::find(weldedWith(A.design, A.sel.idx).begin(), weldedWith(A.design, A.sel.idx).end(), i) != weldedWith(A.design, A.sel.idx).end();
+            t = sel ? "Drag: move " + nm(i) + " (and what's welded to it). It snaps to other parts' edges and middles (Alt: free). Type a number while dragging for an exact distance"
+                    : "Click to select " + nm(i) + ", then drag to move it";
+        }
+    }
+    if (t.empty()) return;
+    int fs = 14, tw = MeasureText(t.c_str(), fs) + 12;
+    int x = (int)m.x + 18, y = (int)m.y + 20;
+    if (x + tw > A.vw - 6) x = std::max(6, A.vw - 6 - tw);
+    DrawRectangle(x, y, tw, fs + 10, Color{20, 24, 32, 215});
+    DrawText(t.c_str(), x + 6, y + 5, fs, Color{225, 228, 235, 255});
+}
+static V2* gDemoW = nullptr;   // (GUNSMITH_SHAPEDEMO: where the next shape is dragged to)
+bool moveTypingOpen() { return (A.dragKind == 2 && A.dragLive) || (A.tool == Tool::Select && gLastMove.on && A.lastSnap == gLastMove.after); }
+// after a move, with Move: a typed number and Enter does it again, exactly that far the same way
+static void moveTestHook() {   // GUNSMITH_MOVETEST: sweep the selected piece along the gun, print where it snaps; then a typed move
+    static int frames = 0;
+    if (!getenv("GUNSMITH_MOVETEST") || ++frames != 20 || A.sel.kind != 1) return;
+    auto group = weldedWith(A.design, A.sel.idx);
+    double prev = 1e9; int n = 0;
+    for (double x = -40; x <= 40; x += 0.25) {
+        V2 d = snapMove({x, 0}, group, {0, 0});
+        if (gMoveGuide.x && std::fabs(d.x - prev) > 1e-6) { n++; if (n <= 12) printf("MOVETEST drag %.2f -> %.2f\n", x, d.x); prev = d.x; }
+    }
+    printf("MOVETEST %d snap spots in 80 mm\n", n);
+    // a move, then 12.5 typed and Enter
+    std::string before = A.lastSnap;
+    std::vector<std::string> ids; for (int k : group) ids.push_back(A.design.bodies[k].id);
+    V2 c0 = centroidOf(A.design.bodies[A.sel.idx]);
+    for (int k : group) moveBody(k, 7, 0);
+    A.nextLabel = "Moved test"; commit();
+    gLastMove = {true, before, A.lastSnap, ids, {1, 0}, 7};
+    gMoveTyped = "12.5";
+    double v; parseQ(Q::Length, gMoveTyped.c_str(), v);
+    Design back; designFromJson(gLastMove.before, back); A.design = back;
+    if (!A.hist.empty() && A.hist.back() == gLastMove.before) { A.hist.pop_back(); A.histLabel.resize(A.hist.size()); }
+    A.lastSnap = gLastMove.before;
+    for (auto& id : ids) { int k = A.design.bodyIndex(id); if (k >= 0) moveBody(k, v, 0); }
+    A.nextLabel = "Moved exactly"; commit(); gMoveTyped.clear();
+    V2 c1 = centroidOf(A.design.bodies[A.sel.idx]);
+    printf("MOVETEST typed 12.5: moved %.3f mm; history: %s (%zu steps)\n", c1.x - c0.x, A.histLabel.back().c_str(), A.hist.size());
+}
+bool moveTypedAfter() {
+    moveTestHook();
+    if (A.tool != Tool::Select || A.dragKind != 0) return false;
+    if (!gLastMove.on || A.lastSnap != gLastMove.after) { gLastMove.on = false; gMoveTyped.clear(); return false; }
+    if (!moveTypeKeys()) return false;
+    double v;
+    if (parseQ(Q::Length, gMoveTyped.c_str(), v)) {
+        Design back;
+        if (designFromJson(gLastMove.before, back)) {
+            A.design = back;
+            if (!A.hist.empty() && A.hist.back() == gLastMove.before) { A.hist.pop_back(); A.histLabel.resize(A.hist.size()); }
+            A.lastSnap = gLastMove.before;
+            for (auto& id : gLastMove.ids) { int k = A.design.bodyIndex(id); if (k >= 0) moveBody(k, gLastMove.dir.x * v, gLastMove.dir.y * v); }
+            std::string nm = gLastMove.ids.empty() ? "" : A.design.bodies[std::max(0, A.design.bodyIndex(gLastMove.ids[0]))].name;
+            A.nextLabel = "Moved " + nm + " " + fmtQ(Q::Length, v);
+            std::string before = gLastMove.before;
+            commit();
+            gLastMove.after = A.lastSnap; gLastMove.dist = v; gLastMove.before = before;
+            toast("Moved exactly " + fmtQ(Q::Length, v) + ".");
+        }
+    }
+    gMoveTyped.clear();
+    return true;
+}
+
 void buildInput(bool overUI) {
     {   // vertex selection belongs to one part: drop it when the selection moves elsewhere
         static std::string selVsPart;
@@ -374,7 +572,20 @@ void buildInput(bool overUI) {
         started = true;
         if (!cur.empty()) { int n = (int)A.design.bodies[A.sel.idx].pts.size(); A.selVs.erase(std::remove_if(A.selVs.begin(), A.selVs.end(), [n](int v) { return v < 0 || v >= n; }), A.selVs.end()); }
     }
+    {   // GUNSMITH_SHAPEDEMO: a rounded block, a wedge, a slotted block and a tube above the gun, one a frame from frame 15
+        static int frames = 0, step = 0;
+        if (getenv("GUNSMITH_SHAPEDEMO") && ++frames >= 15 && step < 4) {
+            struct S { Tool t; int kind; bool tube; V2 a, b; } demo[4] = {
+                {Tool::Rect, 1, false, {-10, -70}, {30, -50}}, {Tool::Rect, 2, false, {40, -70}, {80, -50}},
+                {Tool::Rect, 3, false, {90, -70}, {140, -50}}, {Tool::Circle, 0, true, {-10, -40}, {80, -30}}};
+            auto& d = demo[step++];
+            A.tool = d.t; A.blockKind = d.kind; A.circleLong = true; A.circleTube = d.tube;
+            A.shaping = true; A.shapeStart = d.a; static V2 dw; dw = d.b; gDemoW = &dw;
+            if (step == 4) A.circleTube = false;
+        }
+    }
     if (refInput(overUI)) return;   // (marking or moving a reference picture)
+    if (moveTypedAfter()) return;   // (a number typed just after a move: made exact)
     if (!A.carveDrag && !A.carveMove && attachHandlesInput(overUI)) return;   // (an attachment's sight line and mount spot)
     if (A.tool == Tool::Mesh) { meshInput(overUI); return; }   // the 3D vertices tool
     if (A.tool == Tool::Carve || A.carveDrag || A.carveMove) { carveInput(overUI); return; }
@@ -389,6 +600,7 @@ void buildInput(bool overUI) {
     if (A.tool == Tool::Select && A.sel.kind == 1 && A.dragKind == 0 && IsKeyPressed(KEY_E)) { facesInput(overUI); if (A.faceDragging) return; }
     Vector2 m = GetMousePosition();
     V2 w = snapMM(mouseMM(0));
+    if (gDemoW) { w = *gDemoW; gDemoW = nullptr; }
     if (!overUI && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         float now = (float)GetTime();
         bool dbl = now - A.lastClickT < 0.32f && Vector2Distance(m, A.lastClickPos) < 6;
@@ -731,7 +943,17 @@ void buildInput(bool overUI) {
         }
         if (A.tool == Tool::Rect) {
             double x0 = std::min(a.x, w.x), x1 = std::max(a.x, w.x), y0 = std::min(a.y, w.y), y1 = std::max(a.y, w.y);
-            if (x1 - x0 >= 1 && y1 - y0 >= 1) b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+            if (x1 - x0 >= 1 && y1 - y0 >= 1) {
+                double L = x1 - x0, H = y1 - y0;
+                b.pts = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
+                if (A.blockKind == 1) { b.rad.assign(4, std::round(std::min(L, H) * 0.25 * 2) / 2); b.name = "Rounded block " + std::to_string(A.design.bodies.size() + 1); }
+                if (A.blockKind == 2) { b.pts = {{x0, y0 + H * 0.6}, {x1, y0}, {x1, y1}, {x0, y1}}; b.name = "Wedge " + std::to_string(A.design.bodies.size() + 1); }
+                if (A.blockKind == 3) {   // a slot right through it, side to side, in the middle
+                    CarveDef cv; cv.shape = "rect"; cv.at = {(x0 + x1) / 2, (y0 + y1) / 2}; cv.atZ = b.thick / 2; cv.dx = 0; cv.dy = 0; cv.dz = -1;
+                    cv.w = std::round(L * 0.6 * 2) / 2; cv.h = std::max(1.0, std::round(H * 0.3 * 2) / 2); cv.depth = 0; cv.name = "Slot";
+                    b.carves.push_back(cv); b.name = "Slotted block " + std::to_string(A.design.bodies.size() + 1);
+                }
+            }
         } else if (A.circleLong) {   // lengthwise: drag out its side view; it's round along the longer side
             double x0 = std::min(a.x, w.x), x1 = std::max(a.x, w.x), y0 = std::min(a.y, w.y), y1 = std::max(a.y, w.y);
             if (x1 - x0 >= 1 && y1 - y0 >= 1) {
@@ -740,6 +962,13 @@ void buildInput(bool overUI) {
                 b.roundAxis = x1 - x0 >= y1 - y0 ? 0 : 1;
                 b.thick = std::min(x1 - x0, y1 - y0);
                 b.name = "Rod " + std::to_string(A.design.bodies.size() + 1);
+                if (A.circleTube) {   // a hole down its middle, end to end, 60% across
+                    bool lev = b.roundAxis == 0;
+                    CarveDef cv; cv.shape = "circle"; cv.at = lev ? V2{x0, (y0 + y1) / 2} : V2{(x0 + x1) / 2, y0};
+                    cv.atZ = 0; cv.dx = lev ? 1 : 0; cv.dy = lev ? 0 : 1; cv.dz = 0;
+                    cv.w = cv.h = std::max(0.5, std::round(b.thick * 0.6 * 2) / 2); cv.depth = 0; cv.name = "Bore";
+                    b.carves.push_back(cv); b.name = "Tube " + std::to_string(A.design.bodies.size() + 1);
+                }
             }
         } else {
             double r = std::hypot(w.x - a.x, w.y - a.y);
@@ -777,7 +1006,7 @@ void buildInput(bool overUI) {
             A.dragExtrude = false;
         }
         if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !A.dragLive) {}
-        else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        else if (IsMouseButtonDown(MOUSE_BUTTON_LEFT) && !gMoveEnter) {
             // X, Y or Z while dragging: keep to one axis (press it again to free it). Z moves a part in depth.
             for (auto [key, ax] : {std::pair{KEY_X, 1}, std::pair{KEY_Y, 2}, std::pair{KEY_Z, 3}})
                 if (IsKeyPressed(key)) {
@@ -796,8 +1025,20 @@ void buildInput(bool overUI) {
             }
             if (A.dragKind == 2 && A.axisLock != 3) {
                 V2 d{snapv(w.x - A.dragStart.x, A.snapOn), snapv(w.y - A.dragStart.y, A.snapOn)};
+                auto group = weldedWith(A.design, A.sel.idx);
+                bool enter = moveTypeKeys();
+                double tv;
+                if (!gMoveTyped.empty() && parseQ(Q::Length, gMoveTyped.c_str(), tv)) {   // a typed distance, the way the mouse went
+                    double dl = std::hypot(w.x - A.dragStart.x, w.y - A.dragStart.y);
+                    V2 u = dl > 1e-9 ? V2{(w.x - A.dragStart.x) / dl, (w.y - A.dragStart.y) / dl} : V2{1, 0};
+                    if (A.axisLock == 1) u = {u.x >= 0 ? 1.0 : -1.0, 0};
+                    if (A.axisLock == 2) u = {0, u.y >= 0 ? 1.0 : -1.0};
+                    d = {u.x * tv, u.y * tv};
+                    gMoveGuide = {};
+                } else d = snapMove(d, group, A.dragLast);
                 if (A.axisLock == 1) d.y = 0;
                 if (A.axisLock == 2) d.x = 0;
+                if (enter) gMoveEnter = true;
                 double ddx = d.x - A.dragLast.x, ddy = d.y - A.dragLast.y;
                 if (ddx != 0 || ddy != 0) { for (int k : weldedWith(A.design, A.sel.idx)) moveBody(k, ddx, ddy); A.dragLast = d; A.dragMoved = true; }
             } else if (A.dragKind == 1) {
@@ -831,7 +1072,17 @@ void buildInput(bool overUI) {
                 if (h.kind != 0 && h.kind != 7) A.dragMoved = true;   // (kind 8: a magazine's round path point)
             }
         } else {
-            if (A.dragMoved) commit();
+            if (A.dragMoved && A.dragKind == 2) {   // remember the move, so a typed number can make it exact
+                std::string before = A.lastSnap;
+                std::vector<std::string> ids;
+                for (int k : weldedWith(A.design, A.sel.idx)) ids.push_back(A.design.bodies[k].id);
+                double dl = std::hypot(A.dragLast.x, A.dragLast.y);
+                A.nextLabel = "Moved " + (A.sel.idx >= 0 && A.sel.idx < (int)A.design.bodies.size() ? A.design.bodies[A.sel.idx].name : std::string("a part")) + " " + fmtQ(Q::Length, dl);
+                commit();
+                gLastMove = {dl > 1e-9, before, A.lastSnap, ids, dl > 1e-9 ? V2{A.dragLast.x / dl, A.dragLast.y / dl} : V2{1, 0}, dl};
+                gMoveTyped.clear(); gMoveGuide = {};
+            }
+            else if (A.dragMoved) commit();
             else if (A.dragKind == 2 && (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT) || A.pressFace.body < 0) &&
                      A.pressNext >= 0 && A.pressNext < (int)A.design.bodies.size()) {  // an Alt-click (or not on a face): the next one behind
                 A.sel = {1, A.pressNext, -1}; A.selVs.clear(); A.selCarve = -1;
@@ -841,7 +1092,7 @@ void buildInput(bool overUI) {
                 if (!told) { told = true; toast("Face picked. Press it again and drag to push or pull it (Shift: extrude a new step)."); }
             }
             A.pressNext = -1;
-            A.dragKind = 0; A.axisLock = 0;
+            A.dragKind = 0; A.axisLock = 0; gMoveEnter = false;
         }
     }
 }

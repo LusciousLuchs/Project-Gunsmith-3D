@@ -316,10 +316,89 @@ void applyPush(double p) {
     }
 }
 
-double pushNow() {   // how far: the number typed, else the mouse
+// Snapping a push onto other parts (0.9.2): the face clicks to where it lines up with another part's corner or face,
+// within 7 px, and a guide shows what it lined up with. Alt pushes freely.
+struct Guide { bool on = false; Vector3 a{}, b{}; std::string what; } gGuide;
+double snapToParts(double p) {
+    gGuide.on = false;
+    if (IsKeyDown(KEY_LEFT_ALT) || IsKeyDown(KEY_RIGHT_ALT)) return p;
+    const auto& f = A.faceDrag;
+    if (f.body < 0 || f.body >= (int)A.design.bodies.size()) return p;
+    Vector2 os = outOnScreen(f);
+    double pxPerMm = std::sqrt(os.x * os.x + os.y * os.y);
+    if (pxPerMm < 1e-6) return p;
+    double best = 5 / pxPerMm, got = p; bool hit = false;
+    std::vector<int> mine = weldedWith(A.design, f.body);
+    auto isMine = [&](int k) { return std::find(mine.begin(), mine.end(), k) != mine.end(); };
+    BodyDef was = A.design.bodies[f.body]; was.pts = A.faceOrig;
+    if (f.kind == 0 || f.kind == 3) {   // a side wall or a round part's end: lines up with other parts' corners along its way out
+        V2 at, out;
+        if (f.kind == 0) {
+            int n = (int)A.faceOrig.size();
+            if (f.edge < 0 || f.edge >= n) return p;
+            if (circleLike(was)) return p;
+            at = A.faceOrig[f.edge]; out = outward(was, f.edge);
+        } else {
+            RoundFrame fr = roundFrame(was);
+            double ue = f.edge ? fr.u1 : fr.u0;
+            at = {fr.ax.o.x + fr.ax.dir.x * ue, fr.ax.o.y + fr.ax.dir.y * ue};
+            out = f.edge ? fr.ax.dir : V2{-fr.ax.dir.x, -fr.ax.dir.y};
+        }
+        // only nearby: a corner within 30 mm of the face's sides, across the way it moves (the face's own span, as
+        // the push starts); and only drawn corners, not the points along curves (on a detailed gun every curve point
+        // matched something: it snapped almost everywhere)
+        V2 side{-out.y, out.x};
+        double s0 = 0, s1 = 0;
+        if (f.kind == 0) {
+            V2 bq = A.faceOrig[(f.edge + 1) % (int)A.faceOrig.size()];
+            s1 = (bq.x - at.x) * side.x + (bq.y - at.y) * side.y;
+        } else { RoundFrame fr = roundFrame(was); s0 = -fr.ax.R; s1 = fr.ax.R; }
+        double lo = std::min(s0, s1) - 30, hi = std::max(s0, s1) + 30;
+        for (int k = 0; k < (int)A.design.bodies.size(); k++) {
+            if (isMine(k)) continue;
+            const BodyDef& o = A.design.bodies[k];
+            if (!partShown(A.design, o)) continue;
+            for (auto& q : o.pts) {
+                double across = (q.x - at.x) * side.x + (q.y - at.y) * side.y;
+                if (across < lo || across > hi) continue;
+                double sv = (q.x - at.x) * out.x + (q.y - at.y) * out.y;
+                if (std::fabs(sv - p) < best) {
+                    best = std::fabs(sv - p); got = sv; hit = true;
+                    V2 fp{at.x + out.x * sv, at.y + out.y * sv};
+                    gGuide = {true, W3(fp, bodyZ(f.body)), W3(q, bodyZ(k)), o.name};
+                }
+            }
+        }
+    } else if (f.kind == 1 || f.kind == 2) {   // the near or far face: lines up with other parts' near and far faces
+        double sgn = f.kind == 1 ? 1 : -1;
+        double face0 = A.faceExtruded ? A.faceOrigZ : A.faceOrigZ + sgn * A.faceOrigThick / 2;
+        for (int k = 0; k < (int)A.design.bodies.size(); k++) {
+            if (isMine(k) || k == f.body) continue;
+            const BodyDef& o = A.design.bodies[k];
+            if (!partShown(A.design, o)) continue;
+            {   // only parts beside it in the side view (their boxes overlap, give or take 10 mm)
+                double ax0 = 1e9, ax1 = -1e9, ay0 = 1e9, ay1 = -1e9, bx0 = 1e9, bx1 = -1e9, by0 = 1e9, by1 = -1e9;
+                for (auto& q : A.faceOrig) { ax0 = std::min(ax0, q.x); ax1 = std::max(ax1, q.x); ay0 = std::min(ay0, q.y); ay1 = std::max(ay1, q.y); }
+                for (auto& q : o.pts) { bx0 = std::min(bx0, q.x); bx1 = std::max(bx1, q.x); by0 = std::min(by0, q.y); by1 = std::max(by1, q.y); }
+                if (bx0 > ax1 + 10 || bx1 < ax0 - 10 || by0 > ay1 + 10 || by1 < ay0 - 10) continue;
+            }
+            for (double zf : {o.z + o.thick / 2, o.z - o.thick / 2}) {
+                double pv = (zf - face0) * sgn;
+                if (std::fabs(pv - p) < best) {
+                    best = std::fabs(pv - p); got = pv; hit = true;
+                    V2 c = centroidOf(o);
+                    gGuide = {true, f.at, W3(c, (float)(zf * U)), o.name + (zf > o.z ? " (near face)" : " (far face)")};
+                }
+            }
+        }
+    }
+    if (!hit) gGuide.on = false;
+    return got;
+}
+double pushNow() {   // how far: the number typed, else the mouse (snapped to the grid, then to other parts)
     double v;
-    if (typedValue(v)) return v;
-    return snapv(pushed(A.faceDrag), A.snapOn);
+    if (typedValue(v)) { gGuide.on = false; return v; }
+    return snapToParts(snapv(pushed(A.faceDrag), A.snapOn));
 }
 void apply() { applyPush(pushNow()); }
 App::FacePick gBeganOn; bool gBeganExtrude = false;   // the face the push began on (an extrusion moves to its new piece)
@@ -369,6 +448,7 @@ void begin(const App::FacePick& f, bool follow, bool extrude) {
 
 void finish(bool keep) {
     A.faceDragging = false; A.faceFollow = false;
+    if (!keep) gGuide.on = false;
     double amount = pushNow();
     gTyped.clear();
     if (keep && !A.faceLive && !A.faceFollow && !A.faceExtruded && !A.faceExtrudedWall) {   // a click, not a push: nothing changed
@@ -396,6 +476,13 @@ void finish(bool keep) {
     }
     A.faceExtruded = false; A.faceExtrudedWall = false;
     std::string before = A.lastSnap;
+    {
+        const BodyDef& pb = A.design.bodies[A.faceDrag.body];
+        std::string nm = pb.name.empty() ? "a part" : pb.name;
+        const char* what = gBeganExtrude ? "Pulled out " : gBeganOn.kind == 1 || gBeganOn.kind == 2 ? "Thickened " : gBeganOn.kind == 3 ? "Lengthened " : gBeganOn.kind == 4 ? "Widened " : "Pushed ";
+        A.nextLabel = std::string(what) + nm + " " + fmtQ(Q::Length, amount);
+    }
+    gGuide.on = false;
     commit();
     gLast = {true, before, A.lastSnap, gBeganOn, gBeganExtrude, amount};
 }
@@ -405,7 +492,7 @@ void redoLast(double v) {
     Design back;
     if (!designFromJson(gLast.before, back)) return;
     A.design = back;
-    if (!A.hist.empty() && A.hist.back() == gLast.before) A.hist.pop_back();
+    if (!A.hist.empty() && A.hist.back() == gLast.before) { A.hist.pop_back(); A.histLabel.resize(A.hist.size()); }
     A.lastSnap = gLast.before;
     LastPush keep = gLast;
     begin(keep.f, false, keep.extrude);
@@ -531,8 +618,25 @@ static void rodTestHook() {   // GUNSMITH_RODTEST: a lengthwise round part; pick
     begin(fs, false, false); A.faceLive = true; applyPush(3); finish(true); report("side +3");
     redoLast(-2); report("side typed -2");
 }
+static void snapTestHook() {   // GUNSMITH_SNAPTEST=edge: sweep a push of the selected part's side wall, print where it snaps
+    static int frames = 0;
+    const char* e = getenv("GUNSMITH_SNAPTEST");
+    if (!e || ++frames != 20 || A.sel.kind != 1 || A.sel.idx < 0) return;
+    begin({A.sel.idx, 0, atoi(e), {}}, false, false);
+    double prev = 1e9;
+    for (double p = -20; p <= 60; p += 0.25) {
+        double g = snapToParts(p);
+        if (gGuide.on && std::fabs(g - prev) > 1e-6) printf("SNAPTEST push %.2f -> %.2f lined up with %s\n", p, g, gGuide.what.c_str());
+        if (gGuide.on) prev = g;
+    }
+    finish(false);
+    // and the history's words for a push
+    begin({A.sel.idx, 0, atoi(e), {}}, false, false); A.faceLive = true; applyPush(4); gTyped = "4"; finish(true);
+    printf("SNAPTEST history: %s\n", A.histLabel.empty() ? "(none)" : A.histLabel.back().c_str());
+}
 void facesInput(bool overUI) {
     pushTestHook();
+    snapTestHook();
     rodTestHook();
     bool shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
     if (A.cornerDragging) {
@@ -755,6 +859,17 @@ void drawFaces() {
             DrawCircleV(s0, 4, line);
         }
     }
+    if (A.faceDragging && gGuide.on) {   // what the push lined up with
+        Vector2 ga = toScreen(gGuide.a), gb = toScreen(gGuide.b);
+        Color gc{90, 220, 255, 255};
+        float len = Vector2Distance(ga, gb);
+        for (float t = 0; t < len; t += 10) {   // dashed
+            Vector2 u = Vector2Scale(Vector2Subtract(gb, ga), 1 / std::max(1.f, len));
+            DrawLineEx(Vector2Add(ga, Vector2Scale(u, t)), Vector2Add(ga, Vector2Scale(u, std::min(len, t + 6))), 1.5f, gc);
+        }
+        DrawCircleV(gb, 4, gc);
+        DrawText(("Lined up with " + gGuide.what).c_str(), (int)gb.x + 8, (int)gb.y + 6, 14, gc);
+    }
     if (A.faceDragging) {   // how far
         const BodyDef& b = A.design.bodies[A.faceDrag.body];
         std::string t = !gTyped.empty() ? "Typed: " + gTyped + "   (Enter)"
@@ -776,3 +891,6 @@ void drawPushBox() {
     DrawRectangle(x, y, tw, 22, Color{20, 24, 32, 220});
     DrawText(t.c_str(), x + 5, y + 3, 16, Color{255, 205, 60, 255});
 }
+
+// a number can be typed for a push now (numpad keys shouldn't turn the view meanwhile)
+bool pushTypingOpen() { return A.faceDragging || (A.tool == Tool::Faces && gLast.on && A.lastSnap == gLast.after); }

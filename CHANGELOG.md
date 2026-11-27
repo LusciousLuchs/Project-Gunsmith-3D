@@ -8,6 +8,19 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.9.2-alpha
+
+The building rework, part 2: easier to get right.
+
+- **Snapping**: a face you push clicks into line with nearby parts' corners and faces, and a dashed line shows what it lined up with. Moving a part snaps its edges and middle to nearby parts'. Hold Alt for free movement.
+- **Exact moves and turns**: while moving a part, type a number and press Enter to move it exactly that far (or type it just after the move). On the Rotate rings, type the angle.
+- **A shorter part panel**: the everyday settings first. *Every setting* at the bottom shows the rest.
+- **How it moves**: a new section on every part. One click makes it part of the frame, slide in a slot, turn on a pin, or spring back home, joined to the part around it. It also lists what it's joined to, each with a button to select or remove.
+- **Trace a part**: in Reference pictures, *Trace a part over it* looks flat at the side and picks Outline, so you can click round a part on the photo and get it at real size.
+- **More starter shapes**: Block has Plain, Rounded, Wedge and Slotted; Circle has Lengthwise, Tube and Across.
+- **History**: a clock button beside undo/redo lists every step in words ("Pushed Slide 4.0 mm", "Moved Trigger 12.5 mm"). Click one to go back to it.
+- **Hover help**: rest the mouse a moment and a line tells you what a click or a drag will do there. Turn it off in Settings > Interface.
+
 ## 0.9.1-alpha
 
 - **Circles go lengthwise too**: the Circle tool has a choice beside the tools. Lengthwise: drag out its side view and it's round along its longer side (rods, pins, tubes). Across: a round plate, as before.

@@ -58,6 +58,13 @@ static void refViewPanel(int view) {
     step("2  Level it: mark a line that runs straight", 3, view == 0 ? "Click two points along the bore or the top of the slide." : "Click two points along the barrel.");
     step("3  Move it: drag it into place", 1, view == 0 ? "Drag it so the bore sits on your barrel, the breech\nface on your breech. Right-click or Esc when done." : "Drag it so the barrel lines up. Right-click or Esc when done.");
     ImGui::Separator();
+    if (view == 0 && accentButton(ICON_FA_PEN "  Trace a part over it", A.tool == Tool::Body, {-1, 0})) {
+        snapView(View::Right);
+        setOrtho(true);   // (flat on: the corners land right over the picture, wherever they are on the screen)
+        setTool(Tool::Body);
+        toast("Click round the outline of a part on the picture, corner by corner. Click the first corner again (or Enter) to close it: it's a part at the picture's real size.");
+    }
+    if (view == 0 && tipHover()) ImGui::SetTooltip("Looks straight at the side and picks Outline: click round a part on the picture (the slide, the grip, the trigger)\nand it becomes a part at its real size. Then push and pull its thickness.");
     if (ImGui::Button(view == 0 ? ICON_FA_EYE "  Look from the side" : ICON_FA_EYE "  Look from above")) snapView(view == 0 ? View::Right : View::Top);
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_TRASH "  Remove the picture")) { r = RefPicture{}; refSetMode(view, 0); ch = true; }

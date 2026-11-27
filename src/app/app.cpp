@@ -52,6 +52,49 @@ void autosaveTick() {
     double every = CFG.autosave == AutosaveEvery::Minute ? 60 : CFG.autosave == AutosaveEvery::FiveMinutes ? 300 : -1;
     if (CFG.autosave == AutosaveEvery::Change || (every > 0 && GetTime() - A.lastSave >= every)) save();
 }
+// what a step did, in words, from the design before it and after (for the History list when nothing named it)
+static std::string partWord(const BodyDef& b) { return b.name.empty() ? std::string("a part") : b.name; }
+std::string stepLabel(const std::string& beforeJson, const Design& now) {
+    Design was;
+    if (!designFromJson(beforeJson, was)) return "Changed the gun";
+    auto& P = was.bodies; auto& N = now.bodies;
+    if (N.size() > P.size()) {
+        for (auto& b : N) { bool old = false; for (auto& o : P) if (o.id == b.id) { old = true; break; } if (!old) return "Added " + partWord(b) + (N.size() - P.size() > 1 ? " (and more)" : ""); }
+        return "Added parts";
+    }
+    if (N.size() < P.size()) {
+        for (auto& o : P) { bool kept = false; for (auto& b : N) if (o.id == b.id) { kept = true; break; } if (!kept) return "Removed " + partWord(o) + (P.size() - N.size() > 1 ? " (and more)" : ""); }
+        return "Removed parts";
+    }
+    int moved = 0; std::string movedName;
+    for (size_t i = 0; i < N.size(); i++) {
+        const BodyDef &o = P[i], &b = N[i];
+        if (o.pts.size() != b.pts.size()) return "Reshaped " + partWord(b);
+        bool same = true, shifted = b.pts.size() > 0;
+        double dx = b.pts.empty() ? 0 : b.pts[0].x - o.pts[0].x, dy = b.pts.empty() ? 0 : b.pts[0].y - o.pts[0].y;
+        for (size_t k = 0; k < b.pts.size(); k++) {
+            if (std::fabs(b.pts[k].x - o.pts[k].x) > 1e-6 || std::fabs(b.pts[k].y - o.pts[k].y) > 1e-6) same = false;
+            if (std::fabs(b.pts[k].x - o.pts[k].x - dx) > 1e-6 || std::fabs(b.pts[k].y - o.pts[k].y - dy) > 1e-6) shifted = false;
+        }
+        if (!same && shifted) { if (!moved++) movedName = partWord(b); continue; }
+        if (!same) return "Reshaped " + partWord(b);
+        if (std::fabs(o.z - b.z) > 1e-9 && std::fabs(o.thick - b.thick) < 1e-9) { if (!moved++) movedName = partWord(b); continue; }
+        if (std::fabs(o.thick - b.thick) > 1e-9) return "Changed the thickness of " + partWord(b);
+        if (o.carves.size() != b.carves.size()) return (b.carves.size() > o.carves.size() ? "Cut into " : "Filled a cut in ") + partWord(b);
+        if (o.color != b.color || o.material != b.material || o.texture != b.texture) return "Changed the look of " + partWord(b);
+        if (o.name != b.name) return "Renamed " + partWord(b);
+        if (o.round != b.round || o.mesh.v.size() != b.mesh.v.size() || o.tiltX != b.tiltX || o.tiltY != b.tiltY) return "Reshaped " + partWord(b);
+    }
+    if (moved) return "Moved " + movedName + (moved > 1 ? " (and its piece)" : "");
+    if (now.joints.size() > was.joints.size()) return "Added a " + now.joints.back().type;
+    if (now.joints.size() < was.joints.size()) return "Removed a joint";
+    for (size_t i = 0; i < now.joints.size(); i++) {
+        const auto &o = was.joints[i], &j = now.joints[i];
+        if (o.p.x != j.p.x || o.p.y != j.p.y || o.pa.x != j.pa.x || o.pa.y != j.pa.y || o.pb.x != j.pb.x || o.pb.y != j.pb.y || o.path.size() != j.path.size()) return "Moved a " + j.type;
+        if (o.k != j.k || o.rest != j.rest) return "Changed a " + j.type;
+    }
+    return "Changed a setting";
+}
 void commit() {
     {   // new parts go into the layer you're working on (if it's still there and not locked)
         EdLayer al = layerOf(A.design, A.activeLayer);
@@ -76,15 +119,23 @@ void commit() {
         for (size_t k = 0; same && k < b.pts.size(); k++) same = std::fabs(b.pts[k].x - b.gen.pts0[k].x) < 0.02 && std::fabs(b.pts[k].y - b.gen.pts0[k].y) < 0.02;
         if (!same) { freezeMagazine(b, A.design.breech.cart); toast("Reshaped by hand: the magazine keeps this shape, and its rounds keep their place (drag their dots to move them)."); }
     }
+    std::string label = A.nextLabel;
+    A.nextLabel.clear();
+    if (label.empty()) label = stepLabel(A.lastSnap, A.design);
     A.hist.push_back(A.lastSnap);
-    if (A.hist.size() > 120) A.hist.erase(A.hist.begin());
-    A.future.clear();
+    A.histLabel.resize(A.hist.size() - 1);
+    A.histLabel.push_back(label);
+    if (A.hist.size() > 120) { A.hist.erase(A.hist.begin()); A.histLabel.erase(A.histLabel.begin()); }
+    A.future.clear(); A.futureLabel.clear();
     A.lastSnap = designToJson(A.design);
     A.saveDue = true;
     autosaveTick();
 }
 void undo() {
     if (A.hist.empty()) return;
+    A.histLabel.resize(A.hist.size());
+    A.futureLabel.resize(A.future.size());
+    A.futureLabel.push_back(A.histLabel.back()); A.histLabel.pop_back();
     A.future.push_back(A.lastSnap);
     designFromJson(A.hist.back(), A.design);
     A.hist.pop_back();
@@ -94,6 +145,9 @@ void undo() {
 }
 void redo() {
     if (A.future.empty()) return;
+    A.histLabel.resize(A.hist.size());
+    A.futureLabel.resize(A.future.size());
+    A.histLabel.push_back(A.futureLabel.back()); A.futureLabel.pop_back();
     A.hist.push_back(A.lastSnap);
     designFromJson(A.future.back(), A.design);
     A.future.pop_back();

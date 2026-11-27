@@ -1,4 +1,5 @@
 // Gunsmith3D - Camera controls, routing viewport input, keyboard shortcuts.
+#include "app/faces.hpp"
 #include "app/pieces.hpp"
 #include "app/pose.hpp"
 #include "app/app.hpp"
@@ -162,7 +163,7 @@ void handleKeys() {
     if (actPressed(Act::ToggleMode) && !A.benchOnly) setMode(A.mode == Mode::Build ? Mode::Test : Mode::Build);
     if (actPressed(Act::FitView)) fitView();
     if (actPressed(Act::SideView)) { if (A.ortho && std::fabs(A.yaw) < 1e-3f && std::fabs(A.pitch) < 1e-3f) setOrtho(false); else sideView(); }
-    {   // number pad, as in most 3D programs: 5 orthographic on/off; 1 front, 3 side, 7 top (with Ctrl: the opposite side)
+    if (!(A.mode == Mode::Build && (pushTypingOpen() || moveTypingOpen()))) {   // number pad, as in most 3D programs: 5 orthographic on/off; 1 front, 3 side, 7 top (with Ctrl: the opposite side). Not while a number can be typed for a push or a move
         bool c = IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL);
         if (IsKeyPressed(KEY_KP_5)) setOrtho(!A.ortho);
         if (IsKeyPressed(KEY_KP_1)) snapView(c ? View::Back : View::Front);

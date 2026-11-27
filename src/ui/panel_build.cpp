@@ -55,7 +55,8 @@ void openDesignInEditor(const Design& d, const std::string& msg) { loadDesign(d,
 static void loadDesign(const Design& nd, const std::string& msg) {
     A.fitItems.clear(); A.fitSel = -1;   // (attachments belong with the gun they were fitted to)
     A.hist.push_back(designToJson(A.design));
-    A.future.clear();
+    A.histLabel.resize(A.hist.size() - 1); A.histLabel.push_back("Opened " + (nd.name.empty() ? std::string("another design") : nd.name));
+    A.future.clear(); A.futureLabel.clear();
     A.design = nd; syncBarrels(A.design); A.lastSnap = designToJson(A.design); A.sel = {}; A.selVs.clear();
     A.saveName[0] = 0;  // saves under its own name until told otherwise
     save(); fitView();
@@ -768,8 +769,121 @@ static void magazineEditor(BodyDef& b) {
         }
     }
 }
+static void motionSection(BodyDef& b);   // (below: how it moves, set up in a click)
+// ---------------------------------------------------------------- how it moves (0.9.2, the owner's "making it work")
+// One click to make a part slide, turn on a pin, or spring back, instead of drawing a track, a pin and a spring by hand.
+// It joins the part to what holds it (the fixed part under its middle, else the nearest fixed part, else the ground), and
+// the new joint is left selected, its dots ready to drag.
+static int holderOf(const Design& D, int me) {
+    auto piece = weldedWith(D, me);
+    auto mine = [&](int k) { return std::find(piece.begin(), piece.end(), k) != piece.end(); };
+    V2 c = centroidOf(D.bodies[me]);
+    int best = -1; double bd = 1e18;
+    for (int pass = 0; pass < 2 && best < 0; pass++)
+        for (int k = 0; k < (int)D.bodies.size(); k++) {
+            if (mine(k) || D.bodies[k].magazine) continue;
+            if (pass == 0 && !D.bodies[k].fixed) continue;   // (a fixed part first: the frame)
+            if (sim::inPoly(c.x, c.y, outlineOf(D.bodies[k]))) return k;
+            V2 o = centroidOf(D.bodies[k]);
+            double d = std::hypot(o.x - c.x, o.y - c.y);
+            if (pass == 0 && d < bd) { bd = d; best = k; }
+        }
+    return best;
+}
+static void motionSection(BodyDef& b) {
+    auto& D = A.design;
+    if (b.magazine) return;   // (a magazine moves in its well: the Magazine tab)
+    if (!section("How it moves", true)) return;
+    int me = D.bodyIndex(b.id);
+    auto piece = weldedWith(D, me);
+    std::vector<std::string> ids;
+    for (int k : piece) ids.push_back(D.bodies[k].id);
+    auto ours = [&](const std::string& id) { return std::find(ids.begin(), ids.end(), id) != ids.end(); };
+    auto nameOf = [&](const std::string& id) { if (id == "world") return std::string("the ground"); int k = D.bodyIndex(id); return k >= 0 ? D.bodies[k].name : id; };
+    // what it does now
+    bool any = false;
+    for (int ji = 0; ji < (int)D.joints.size(); ji++) {
+        auto& j = D.joints[ji];
+        if (j.type == "weld") continue;
+        bool a = ours(j.a), bb = ours(j.b);
+        if (!a && !bb) continue;
+        std::string other = nameOf(a ? j.b : j.a), line;
+        if (j.type == "track") line = a ? "Slides in a slot in " + other : other + " slides in a slot in it";
+        else if (j.type == "pin") line = a ? "Turns on a pin in " + other : other + " turns on a pin in it";
+        else if (j.type == "spring") line = "A spring to " + other;
+        else if (j.type == "magwell") line = a ? "Sits in a magazine well in " + other : "Holds " + other + " (magazine well)";
+        else line = "A " + j.type + " with " + other;
+        any = true;
+        ImGui::PushID(ji);
+        ImGui::AlignTextToFramePadding();
+        if (ImGui::SmallButton(ICON_FA_ARROW_POINTER)) { A.sel = {2, ji, -1}; ImGui::PopID(); return; }
+        if (tipHover()) ImGui::SetTooltip("Select it (drag its dots in the view)");
+        ImGui::SameLine();
+        ImGui::TextWrapped("%s", line.c_str());
+        if (j.type != "magwell") {
+            ImGui::SameLine(ImGui::GetContentRegionAvail().x + ImGui::GetCursorPosX() - 24 * S());
+            if (ImGui::SmallButton(ICON_FA_XMARK)) { A.nextLabel = "Removed a " + j.type; D.joints.erase(D.joints.begin() + ji); commit(); ImGui::PopID(); return; }
+            if (tipHover()) ImGui::SetTooltip("Take it off");
+        }
+        ImGui::PopID();
+    }
+    if (b.fixed) { ImGui::TextDisabled(ICON_FA_LOCK "  Fixed: part of the frame, it doesn't move."); any = true; }
+    if (!any) ImGui::TextDisabled("Loose: nothing holds it yet (it will fall on the bench).");
+    // set it up in a click
+    float w2 = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2;
+    int h = holderOf(D, me);
+    std::string hid = h >= 0 ? D.bodies[h].id : "world", hname = h >= 0 ? D.bodies[h].name : "the ground";
+    V2 c = centroidOf(b);
+    double x0 = 1e9, x1 = -1e9;
+    for (auto& p : outlineOf(b)) { x0 = std::min(x0, p.x); x1 = std::max(x1, p.x); }
+    auto unfix = [&]() { for (int k : piece) D.bodies[k].fixed = false; };
+    if (ImGui::Button(b.fixed ? ICON_FA_LOCK_OPEN "  Let it move" : ICON_FA_LOCK "  Part of the frame", {w2, 0})) {
+        bool f = !b.fixed;
+        for (int k : piece) D.bodies[k].fixed = f;
+        A.nextLabel = f ? "Fixed " + b.name + " to the frame" : "Let " + b.name + " move";
+        commit();
+    }
+    if (tipHover()) ImGui::SetTooltip(b.fixed ? "It stops being part of the frame, so it can move (give it a way to move below)." : "It becomes part of the frame: it doesn't move (receivers, frames, grips).");
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_ARROWS_LEFT_RIGHT "  Slides", {w2, 0})) {
+        double travel = std::clamp((x1 - x0) * 0.5, 5.0, 80.0);
+        JointDef j; j.type = "track"; j.a = b.id; j.b = hid; j.p = {std::round(c.x * 2) / 2, std::round(c.y * 2) / 2};
+        j.path = {j.p, {j.p.x - travel, j.p.y}};
+        unfix();
+        D.joints.push_back(j); A.sel = {2, (int)D.joints.size() - 1, -1};
+        A.nextLabel = b.name + " slides in " + hname;
+        commit();
+        toast(b.name + " slides back up to " + fmtQ(Q::Length, travel) + " in " + hname + ". Drag the slot's end dot to change how far, or which way.");
+        return;
+    }
+    if (tipHover()) ImGui::SetTooltip("It slides back and forth in a slot in %s (slides, bolts, carriers, triggers that slide).\nThe slot starts where it is and runs back; drag its dots to change it.", hname.c_str());
+    if (ImGui::Button(ICON_FA_ROTATE "  Turns on a pin", {w2, 0})) {
+        JointDef j; j.type = "pin"; j.a = b.id; j.b = hid; j.p = {std::round(c.x * 2) / 2, std::round(c.y * 2) / 2};
+        unfix();
+        D.joints.push_back(j); A.sel = {2, (int)D.joints.size() - 1, -1};
+        A.nextLabel = b.name + " turns on a pin";
+        commit();
+        toast(b.name + " turns on a pin in " + hname + ". Drag the pin's dot to where it should turn.");
+        return;
+    }
+    if (tipHover()) ImGui::SetTooltip("It turns about a pin in %s (triggers, hammers, sears, levers). The pin starts at its middle: drag it.", hname.c_str());
+    ImGui::SameLine();
+    if (ImGui::Button(ICON_FA_WAVE_SQUARE "  Springs back", {w2, 0})) {
+        JointDef j; j.type = "spring"; j.a = b.id; j.b = hid;
+        j.pa = {x0, c.y}; j.pb = {x0 - 15, c.y};
+        j.rest = 22; j.k = 1; j.kind = "coil"; j.coilDia = 6; j.wire = 0.8; j.turns = 5;
+        D.joints.push_back(j); A.sel = {2, (int)D.joints.size() - 1, -1};
+        A.nextLabel = "A spring on " + b.name;
+        commit();
+        toast("A spring pushes " + b.name + " forward, home. Drag its ends to place it; its strength is in its panel.");
+        return;
+    }
+    if (tipHover()) ImGui::SetTooltip("A spring from %s pushes it forward, back home after it moves (recoil, striker, trigger springs).", hname.c_str());
+}
+
 static void inspectPart(BodyDef& b) {
     auto& D = A.design;
+    const bool all = CFG.panelAll || A.tutLesson >= 0;   // every setting (tutorials point at them), else the everyday ones
     // colour swatch and name on one line
     Color c = hexColor(b.color);
     float col[3] = {c.r / 255.f, c.g / 255.f, c.b / 255.f};
@@ -795,6 +909,7 @@ static void inspectPart(BodyDef& b) {
             if (tipHover()) ImGui::SetTooltip("Makes this part separate again. The rest stay welded together.");
         }
     }
+    motionSection(b);
     if (section("Part", true)) {
         if (!D.layers.empty()) {   // which editor layer it's in
             prop("Layer", "The editor layer it's in (the Layers tab hides or locks whole layers).");
@@ -887,6 +1002,7 @@ static void inspectPart(BodyDef& b) {
             if (!hasFireControl(D, &why)) ImGui::TextColored(colWarn(), "%s", why.c_str());
         }
         tutAnchor("part:fixed");
+        if (all) {
         pCheck("See-through", b.ghost, "Drawn as a ghost while X-ray is on (the eye button, or X), so you can see what's inside it.\nOnly parts you tick (and magazines, so their rounds show) are see-through.");
         bool solid = b.layer != "none";
         bool solidHit = pCheck("Solid", solid, "Solid parts push on each other wherever they overlap, in the side view and in depth.\nParts that aren't solid (grip panels, covers) pass through everything.");
@@ -938,6 +1054,7 @@ static void inspectPart(BodyDef& b) {
         }
         pNumU("Z (offset)", b.z, 0.5, Q::Length, -1, "Where the part sits across the gun: 0 is on the bore, + is the gun's right side (toward you in the side view).\nParts only touch where they overlap across the gun too.\nWhile dragging a part, Z moves it this way.", SIGNED);
         tutAnchor("part:depth");
+        }   // (all)
         {   // what it's made of: its weight, how it slides on other parts, (career) its cost
             const MaterialInfo& mt = materialOf(b.material);
             prop("Material", "What the part is made of. It sets how heavy the part is (and so how the gun kicks and how fast its parts move),\nhow it slides against other parts, and what it costs to make in career mode.");
@@ -953,13 +1070,13 @@ static void inspectPart(BodyDef& b) {
                 }
                 ImGui::EndCombo();
             }
-            {   // how solid it looks: see-through parts (glass, a clear magazine) show what's behind and inside them
+            if (all) {   // how solid it looks: see-through parts (glass, a clear magazine) show what's behind and inside them
                 float pct = (float)(b.opacity * 100);
                 prop("Opacity", "How solid it looks. Lower it for glass, a see-through magazine, a window: what's behind and inside shows through.\nLooks only: it doesn't change how it moves or collides.");
                 ImGui::SetNextItemWidth(-1);
                 if (ImGui::SliderFloat("##opacity", &pct, 5, 100, "%.0f%%")) { b.opacity = std::clamp(pct / 100.0, 0.05, 1.0); editedAny = true; }
             }
-            {   // smooth shading: gently angled faces lit as one smooth surface (curves, a turned barrel, a sculpted grip)
+            if (all) {   // smooth shading: gently angled faces lit as one smooth surface (curves, a turned barrel, a sculpted grip)
                 bool on = b.shade > 0;
                 if (pCheck("Smooth shading", on, "Lights the part as a smooth surface where its faces meet at a gentle angle,\nso curves and 3D-shaped parts look round instead of faceted. Corners sharper than\nthe angle below stay crisp. Looks only.")) { b.shade = on ? 40 : 0; editedAny = true; }
                 if (b.shade > 0) {
@@ -987,7 +1104,7 @@ static void inspectPart(BodyDef& b) {
                 if (tipHover()) ImGui::SetTooltip("Make every part welded to this one %s too (%d parts): a slide is often several.", mt.name, (int)piece.size());
             }
         }
-        if (!b.fixed) {
+        if (all && !b.fixed) {
             double autoMass;
             {   // (carved volume takes a moment to work out: only when the shape changes)
                 static std::string key; static double vol = 0;
@@ -1003,7 +1120,7 @@ static void inspectPart(BodyDef& b) {
             tutAnchor("part:mass");
             if (b.mass <= 0) muted("Worked out from the shape: %s.", fmtQ(Q::PartMass, autoMass).c_str());
         }
-        {   // where it is: its middle, as X and Y (+ up). Typing moves it, with its welded piece and what's attached
+        if (all) {   // where it is: its middle, as X and Y (+ up). Typing moves it, with its welded piece and what's attached
             V2 c = centroidOf(b);
             double px = c.x, py = -c.y;
             bool mx = pNumU("Position X", px, 0.5, Q::Length, lenDec(), "Where its middle is along the gun (+ toward the muzzle). Moves its welded piece with it.", SIGNED);
@@ -1014,7 +1131,7 @@ static void inspectPart(BodyDef& b) {
                 for (int k : weldedWith(D, D.bodyIndex(b.id))) moveBody(k, dx, dy);
             }
         }
-        {   // turn it: in the side view (Z, the whole welded piece about this part's middle), or lean it out of it (X, Y)
+        if (all) {   // turn it: in the side view (Z, the whole welded piece about this part's middle), or lean it out of it (X, Y)
             prop("Turn (Z)", "Turns it in the side view, about its middle (a welded piece turns together).\nWhat's attached to it (pins, slots, hands) turns with it.");
             float w4 = (ImGui::GetContentRegionAvail().x - 3 * ImGui::GetStyle().ItemSpacing.x) / 4;
             double turn = 0;
@@ -1086,11 +1203,14 @@ static void inspectPart(BodyDef& b) {
             return;
         }
         if (partner < 0 && tipHover()) ImGui::SetTooltip("Makes the matching part on the far side of the gun (side walls, rails, grip panels),\nkept as a live mirror: change either one and the other follows.");
-        if (combineSection(b)) return;   // parts went away: this frame's references are stale
+        if (all && combineSection(b)) return;   // parts went away: this frame's references are stale
+        ImGui::Dummy({0, 2 * S()});
+        if (A.tutLesson < 0 && ImGui::Button(CFG.panelAll ? ICON_FA_MINUS "  Fewer settings" : ICON_FA_SLIDERS "  Every setting (shape, thickness, mass, position...)", {-1, 0})) { CFG.panelAll = !CFG.panelAll; saveSettings(); }
+        if (tipHover()) ImGui::SetTooltip(CFG.panelAll ? "Show only the everyday settings. The rest stay as they are." : "Show every setting for this part: see-through, solid, thickness, round,\nposition, turning, mass, hollow, shape, surface, motion, control...");
     }
 
     fixShape(b);
-    if (!b.round && !b.magazine && section("Hollow", b.hollow.on)) {   // a shell with walls (0.8.27)
+    if (all && !b.round && !b.magazine && section("Hollow", b.hollow.on)) {   // a shell with walls (0.8.27)
         if (pCheck("Hollow", b.hollow.on, "Makes the part a shell: walls round an empty inside that other parts can sit and move in.\nLighter, and much quicker for the physics than carving the inside out with many cuts.")) commit();
         if (b.hollow.on) {
             if (carve::tilted(b)) muted("Leaned parts can't be hollow yet: set Tilt X and Y back to 0.");
@@ -1120,7 +1240,7 @@ static void inspectPart(BodyDef& b) {
             if (!carve::tilted(b) && carve::hollowInside(b).empty()) ImGui::TextColored({1, 0.7f, 0.35f, 1}, "The walls are thicker than the part: nothing's hollow.");
         }
     }
-    if (section("Shape", !b.gen.on)) {
+    if (all && section("Shape", !b.gen.on)) {
         if (A.sel.v >= 0 && A.sel.v < (int)b.pts.size()) {
             int v = A.sel.v;
             pNumU("X", b.pts[v].x, 0.5, Q::Length, lenDec(), "Along the gun: + toward the muzzle.", SIGNED);
@@ -1274,10 +1394,10 @@ static void inspectPart(BodyDef& b) {
     }
 
     railSection(b);
-    mountsSection(b);
-    carvesSection(b);
+    if (all || !b.mounts.empty()) mountsSection(b);
+    if (all || !b.carves.empty() || A.tool == Tool::Carve) carvesSection(b);
 
-    bool surfOpen = section("Surface", !b.texture.empty());
+    bool surfOpen = all && section("Surface", !b.texture.empty());
     tutAnchor("part:surface");
     if (surfOpen) {
         prop("Texture", "A picture laid over the part. Its colour tints the picture: white shows it as it is.");
@@ -1292,7 +1412,7 @@ static void inspectPart(BodyDef& b) {
         muted("Looks only. Drag pictures onto the game window to add them.");
     }
 
-    if (section("Motion", b.rollOn || b.damp > 0)) {
+    if (all && section("Motion", b.rollOn || b.damp > 0)) {
         pCheck("Turns on the bore", b.rollOn, "For rotating bolts: the part can also turn about the bore axis.");
         if (b.rollOn) {
             pNum("From", b.rollMin, 5, "%.0f\xc2\xb0");
@@ -1344,7 +1464,7 @@ static void inspectPart(BodyDef& b) {
         if (ImGui::Button("Not a barrel", {w2, 0})) { R.on = false; editedAny = true; }
         if (tipHover()) ImGui::SetTooltip("Keeps the shape as a plain round part.");
     }
-    if (section("Control", b.ctrl != "none")) {
+    if ((all || b.ctrl != "none") && section("Control", b.ctrl != "none")) {
         const char* kinds[] = {"none", "button", "lever", "trigger", "handle"};
         int ki = 0;
         for (int i = 0; i < 5; i++) if (b.ctrl == kinds[i]) ki = i;
@@ -1399,7 +1519,7 @@ static void inspectPart(BodyDef& b) {
         if (ImGui::Button(ICON_FA_BOX_ARCHIVE "  Edit it in the Magazine tab", {-1, 0})) gPanelTab = 4;
     }
 
-    if (section("Advanced", false)) {
+    if (all && section("Advanced", false)) {
         if (b.layer != "none") {
             prop("Collision groups", "Solid parts only touch if they share a group. Depth usually does this job better.");
             bool la = b.layer.find('A') != std::string::npos, lb = b.layer.find('B') != std::string::npos, lc = b.layer.find('C') != std::string::npos;

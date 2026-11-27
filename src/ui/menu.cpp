@@ -661,6 +661,8 @@ void audioPage() {
 
 void interfacePage() {
     ImGui::SeparatorText("Look");
+    row("Hover help", "In the designer, when the mouse rests a moment, a line by it says what a click or a drag will do there.");
+    if (ImGui::Checkbox("##hoverhelp", &CFG.hoverHelp)) saveSettings();
     row("Title splash", "The Gunsmith 3D picture when the game starts (after the studio's). A key or a click skips it.");
     if (ImGui::Checkbox("##titlesplash", &CFG.titleSplash)) saveSettings();
     row("Main menu background", "The workshop picture, or your last gun turning in 3D.");

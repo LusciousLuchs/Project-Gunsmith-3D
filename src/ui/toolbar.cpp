@@ -297,19 +297,64 @@ void toolRail() {
     ImVec2 railPos = ImGui::GetWindowPos(), railSize = ImGui::GetWindowSize();
     ImGui::End();
     ImGui::PopStyleVar(4);
+    if (A.tool == Tool::Rect) {   // which kind of block
+        ImGui::SetNextWindowPos({railPos.x + railSize.x + 6 * s, railPos.y});
+        ImGui::SetNextWindowBgAlpha(0.88f);
+        ImGui::Begin("##blockkind", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoMove);
+        ImGui::TextDisabled("Block");
+        static const char* kinds[4][2] = {{ICON_FA_SQUARE "  Plain", "A plain block: push and pull it into shape"},
+                                          {ICON_FA_SQUARE_FULL "  Rounded", "Rounded corners (a quarter of its smaller side): grips, slides, triggers"},
+                                          {ICON_FA_CARET_RIGHT "  Wedge", "Sloped along its top: ramps, sears, a slide's front"},
+                                          {ICON_FA_BARS "  Slotted", "A slot right through it, side to side: guides, tracks, a frame's window"}};
+        for (int k = 0; k < 4; k++) {
+            if (accentButton(kinds[k][0], A.blockKind == k)) A.blockKind = k;
+            if (tipHover()) ImGui::SetTooltip("%s", kinds[k][1]);
+        }
+        ImGui::End();
+    }
     if (A.tool == Tool::Circle) {   // which way round: lengthwise (a rod) or across (a plate)
         ImGui::SetNextWindowPos({railPos.x + railSize.x + 6 * s, railPos.y});
         ImGui::SetNextWindowBgAlpha(0.88f);
         ImGui::Begin("##circleway", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoMove);
         ImGui::TextDisabled("Circle");
-        if (accentButton(ICON_FA_GRIP_LINES "  Lengthwise", A.circleLong)) A.circleLong = true;
-        if (tipHover()) ImGui::SetTooltip("Drag out its side view: round along its longer side (rods, pins, tubes)");
+        if (accentButton(ICON_FA_GRIP_LINES "  Lengthwise", A.circleLong && !A.circleTube)) { A.circleLong = true; A.circleTube = false; }
+        if (tipHover()) ImGui::SetTooltip("Drag out its side view: round along its longer side (rods, pins, firing pins)");
+        if (accentButton(ICON_FA_RING "  Tube", A.circleLong && A.circleTube)) { A.circleLong = true; A.circleTube = true; }
+        if (tipHover()) ImGui::SetTooltip("A round tube lengthwise: a hole down its middle, end to end (barrel shrouds, spring tubes, magazine tubes)");
         if (accentButton(ICON_FA_CIRCLE "  Across", !A.circleLong)) A.circleLong = false;
         if (tipHover()) ImGui::SetTooltip("Click the centre and drag the radius: a round plate across the gun");
         ImGui::End();
     }
 }
 
+// the History list (0.9.2): every step in words; a click steps back (or forward) to just after it
+static void historyPopup() {
+    if (!ImGui::BeginPopup("##history")) return;
+    A.histLabel.resize(A.hist.size()); A.futureLabel.resize(A.future.size());
+    ImGui::TextDisabled("History (oldest at the top)");
+    ImGui::Separator();
+    ImGui::BeginChild("##histlist", {360 * CFG.uiScale, std::min(420.f * CFG.uiScale, (A.hist.size() + A.future.size() + 2) * ImGui::GetFrameHeightWithSpacing())});
+    int n = (int)A.hist.size(), target = -1, forward = -1;
+    if (ImGui::Selectable("Where you started", false)) target = 0;
+    for (int i = 0; i < n; i++) {   // step i made hist[i+1] (or the design now)
+        std::string l = A.histLabel[i].empty() ? "A change" : A.histLabel[i];
+        bool now = i == n - 1;
+        if (now) ImGui::PushStyleColor(ImGuiCol_Text, colAccent());
+        if (ImGui::Selectable((l + (now ? "   (now)" : "") + "##h" + std::to_string(i)).c_str(), now)) target = i + 1;
+        if (now) ImGui::PopStyleColor();
+        if (now) ImGui::SetScrollHereY(1.0f);
+    }
+    for (int k = (int)A.future.size() - 1; k >= 0; k--) {   // undone steps, the next one first
+        std::string l = A.futureLabel[k].empty() ? "A change" : A.futureLabel[k];
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        if (ImGui::Selectable(("(undone) " + l + "##f" + std::to_string(k)).c_str(), false)) forward = (int)A.future.size() - k;
+        ImGui::PopStyleColor();
+    }
+    ImGui::EndChild();
+    if (target >= 0) { for (int k = n; k > target; k--) undo(); ImGui::CloseCurrentPopup(); }
+    if (forward > 0) { for (int k = 0; k < forward; k++) redo(); ImGui::CloseCurrentPopup(); }
+    ImGui::EndPopup();
+}
 void toolbar() {
     {   // Ctrl + / Ctrl - : interface scale, anywhere
         ImGuiIO& io = ImGui::GetIO();
@@ -367,6 +412,9 @@ void toolbar() {
         ImGui::BeginDisabled(A.future.empty());
         if (iconButton(ICON_FA_ROTATE_RIGHT, "Redo (Ctrl+Y)")) redo();
         ImGui::EndDisabled();
+        ImGui::SameLine(0, 2);
+        if (iconButton(ICON_FA_CLOCK_ROTATE_LEFT, "History: every step you've made, in words. Click one to go back to just after it.")) ImGui::OpenPopup("##history");
+        historyPopup();
         gap(16);
         {   // what dragging the selected part does: move it, turn it (rings), or scale it (a box)
             bool sel = A.tool == Tool::Select, mv = sel && !A.rotateMode, rt = sel && A.rotateMode, sc = A.tool == Tool::Scale;

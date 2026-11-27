@@ -19,3 +19,8 @@ void makeMagwell(const BodyDef& b);
 void buildInput(bool overUI);
 bool splitReady();          // false if the last edge split was a moment ago (hammering can't pile up corners)
 void cornerLimitToast();    // "a part can have at most MAX_CORNERS corners"
+
+void drawMoveGuides();   // (overlay) the lines a dragged part snapped to, and a number being typed for a move
+bool moveTypedAfter();   // (Move) a number typed just after a move, then Enter: that move made exact
+bool moveTypingOpen();   // a number can be typed for a move now
+void drawHoverHelp();     // (overlay) what a click or drag will do where the mouse rests

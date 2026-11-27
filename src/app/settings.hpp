@@ -24,6 +24,8 @@ struct Settings {
     int mapUnit = 0;                     // the Level editor's lengths: 0 m, 1 cm, 2 ft (and inches), 3 in, 4 yd
     bool shadows = true;                 // sun shadows on maps (Settings > Display)
     bool poseRings = true, poseArrows = true;
+    bool panelAll = false;               // the designer's part panel: every setting (false: the everyday ones, the rest under More settings)
+    bool hoverHelp = true;               // the designer: what a click or drag will do, by the mouse after it rests a moment
     bool editArrows = true;              // the designer, NPC editor and level editor: move arrows on picked corners and points (their toolbars' switch)
     bool editRings = true;               // the NPC editor and character maker: the picked bone's rotation rings (its toolbar's switch)   // Pose and animations: the rotation rings and move arrows on a picked point
     bool fpArms = true;                  // the range: your arms and hands on the gun

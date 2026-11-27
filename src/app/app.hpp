@@ -41,11 +41,15 @@ struct App {
     bool modalAtFrameStart = false;      // a menu was open when this frame began (its Escape shouldn't reach the bench)
     Design design;
     std::vector<std::string> hist;
+    std::vector<std::string> histLabel, futureLabel;   // what each step in hist / future did, in words (the History list)
+    std::string nextLabel;               // set just before commit() to name the step ("" = worked out from what changed)
     std::vector<std::string> future;     // undone designs, for redo
     std::string lastSnap;
     Mode mode = Mode::Build;
     std::unique_ptr<sim::Sim> S;
     bool running = false;
+    int blockKind = 0;                   // the Block tool: 0 a plain block, 1 rounded corners, 2 a wedge, 3 with a slot through it
+    bool circleTube = false;             // the Circle tool, lengthwise: a tube (a hole down its middle)
     bool circleLong = true;              // the Circle tool: a long round part lengthwise (a rod), or a round plate across the gun
     Tool tool = Tool::Faces;             // (0.9.0: push and pull is where the designer starts)
     std::string gripKind = "firing", gripStyle;  // the Grip tool places this kind (and style) of grip
@@ -182,6 +186,7 @@ void enterWorkshop(bool benchOnly);
 void enterBenchWith(const Design& d);  // put another gun on the bench, keeping the sandbox design aside
 void backToMenu();
 void commit();
+std::string stepLabel(const std::string& beforeJson, const Design& now);   // what a step did, in words (History)
 void undo();
 int trackHolderAt(V2 w);     // part a track's slot would be cut in at w (-1 = the ground)
 std::string trackHint();     // step-by-step prompt while a track is drawn
