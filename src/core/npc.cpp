@@ -163,8 +163,8 @@ void npcHeadPoint(const NpcBone& h, double t, double ang, double& x, double& z) 
     const double R = (h.r0 + h.r1) / 2, cx = std::sin(ang), cz = std::cos(ang);
     // a fuller egg than a ball: a round crown, the jaw narrowing to the chin
     // round at the crown, squarer at the jaw
-    double u = 2 * t - 1, r = R * std::pow(std::max(0.0, 1 - u * u), t > 0.5 ? 0.5 : 0.42) * (1 + h.bulge * std::sin(PI_ * t));
-    double wx = h.width * (0.8 + 0.2 * sstep(0.08, 0.5, t));   // (the jaw a little narrower than the cheekbones)
+    double u = 2 * t - 1, r = R * std::pow(std::max(0.0, 1 - u * u), t > 0.5 ? 0.5 : 0.36) * (1 + h.bulge * std::sin(PI_ * t));
+    double wx = h.width * (0.87 + 0.13 * sstep(0.05, 0.5, t));   // (the jaw a little narrower than the cheekbones; 0.9.3: wider, it came to a point)
     double dz = h.depth;
     double fz = cz;
     if (cz < 0) dz *= (0.55 + 0.45 * sstep(0.1, 0.5, t)) * (1 + 0.08 * sstep(0.4, 0.7, t) * (1 - sstep(0.85, 1.0, t)));   // the skull's base tucks in above the neck, the back of the crown swells
@@ -175,18 +175,19 @@ void npcHeadPoint(const NpcBone& h, double t, double ang, double& x, double& z) 
     const double ax = x / std::max(1e-6, R * h.width);   // across the face, -1..1
     const double fade = sstep(0.0, 0.35, cz);             // (features only on the front)
     double d = 0;
-    d += R * 0.05 * gauss((t - 0.11) / 0.07) * gauss(ax / 0.38);                         // the chin
+    d += R * 0.085 * gauss((t - 0.12) / 0.075) * gauss(ax / 0.42);                       // the chin (0.9.3: it receded)
     d += R * 0.05 * gauss((t - 0.645) / 0.035) * gauss(ax / 0.6);                        // the brow
     d += R * 0.035 * gauss((t - 0.48) / 0.06) * gauss((std::fabs(ax) - 0.55) / 0.15);    // cheekbones
-    d -= R * 0.09 * gauss((t - 0.565) / 0.05) * gauss((std::fabs(ax) - 0.4) / 0.16);     // eye sockets
-    d += R * 0.07 * gauss((t - 0.598) / 0.015) * gauss((std::fabs(ax) - 0.4) / 0.13);   // the upper lids (over the top of the eye)
-    d += R * 0.045 * gauss((t - 0.53) / 0.013) * gauss((std::fabs(ax) - 0.4) / 0.12);    // and the lower
+    d -= R * 0.06 * gauss((t - 0.565) / 0.05) * gauss((std::fabs(ax) - 0.33) / 0.15);    // eye sockets (0.9.3: shallower, the eyes sat deep in shadow)
+    d += R * 0.045 * gauss((t - 0.594) / 0.014) * gauss((std::fabs(ax) - 0.33) / 0.11);  // the upper lids (over the top of the eye)
+    d += R * 0.028 * gauss((t - 0.535) / 0.012) * gauss((std::fabs(ax) - 0.33) / 0.10);  // and the lower
     const double tip = 0.445;   // the nose: a ridge from the brow to its tip, wider at the bottom, tucked in under
-    double nh = t >= tip ? R * (0.06 + 0.2 * std::pow(sstep(0.64, tip, t), 1.6)) * sstep(0.68, 0.62, t)
-                         : R * 0.26 * sstep(0.395, tip, t);
-    double nw = 0.085 + 0.1 * sstep(0.6, 0.41, t);
+    double nh = t >= tip ? R * (0.05 + 0.17 * std::pow(sstep(0.64, tip, t), 1.5)) * sstep(0.68, 0.62, t)
+                         : R * 0.22 * sstep(0.4, tip, t);
+    double nw = 0.11 + 0.09 * sstep(0.6, 0.42, t);   // (0.9.3: a broader, softer bridge: it read as a sharp ridge)
     d += nh * gauss(ax / nw);
-    d += R * 0.05 * gauss((t - 0.31) / 0.1) * gauss(ax / 0.45);     // the mouth's fullness (the face isn't flat below the nose)
+    d += R * 0.03 * gauss((t - 0.445) / 0.025) * gauss((std::fabs(ax) - 0.12) / 0.055);   // the nostrils' wings
+    d += R * 0.075 * gauss((t - 0.3) / 0.11) * gauss(ax / 0.5);     // the mouth's fullness (the face isn't flat below the nose)
     d += R * 0.03 * gauss((t - 0.37) / 0.03) * gauss(ax / 0.12);   // the groove under the nose, filled
     d += R * 0.05 * gauss((t - 0.318) / 0.022) * gauss(ax / 0.32);   // the upper lip
     d += R * 0.05 * gauss((t - 0.262) / 0.022) * gauss(ax / 0.28);   // the lower lip
@@ -442,10 +443,15 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
     // the one-piece body, npcHeadPoint)
     auto front = [&](double t, double across) { return npcHeadFront(head, t, across * H) / H; };
     for (int s : {-1, 1}) {   // eyes set into their sockets
-        double x = s * 0.39 * hw;
-        int e = add("Head", piece(s < 0 ? "Eye (left)" : "Eye (right)", 0.565, x, front(0.565, x) - 7, 11, 9.5, 9.5, 90, 0, "#ddd6cc", "ball"));
-        NpcBone iris = piece(s < 0 ? "Iris (left)" : "Iris (right)", 0.62, 0, 0, 5, 5.2, 5.2, 0, 0, L.eyes, "ball");   // (just showing out of the white)
+        double x = s * 0.33 * hw;
+        // (0.9.3: the white brighter and showing more, the iris a flat disc on its front, a dark pupil in it; they were
+        // small blue balls deep in shadow)
+        int e = add("Head", piece(s < 0 ? "Eye (left)" : "Eye (right)", 0.565, x, front(0.565, x) - 7.5, 12, 9.6, 9.6, 90, 0, "#efebe4", "ball"));
+        NpcBone iris = piece(s < 0 ? "Iris (left)" : "Iris (right)", 1 - 2.6 / 12, 0, 0, 3.2, 5.2, 5.2, 0, 0, L.eyes, "ball");
         iris.parent = e; iris.gen = true; n.bones.push_back(iris);
+        int ii = (int)n.bones.size() - 1;
+        NpcBone pupil = piece(s < 0 ? "Pupil (left)" : "Pupil (right)", 0.55, 0, 0, 2.2, 2.5, 2.5, 0, 0, "#141414", "ball");
+        pupil.parent = ii; pupil.gen = true; n.bones.push_back(pupil);
     }
     for (int s : {-1, 1}) {   // ears: flat, a little behind the middle, their tops level with the brow
         double px = 0, pz = 0;

@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.9.3-alpha
+
+- **Better faces** for your character, customers and staff: a real forehead (the hairline sat almost on the eyebrows), bigger eyes with a white, an iris and a pupil, set closer together and less sunken, a softer nose, a fuller chin and mouth, and a wider jaw.
+- The face's paint (eyebrows, lips, lash lines) now sits where it belongs: it was stretched sideways, so lips and lash lines landed off their shapes. It's twice as sharp too.
+
 ## 0.9.2-alpha
 
 The building rework, part 2: easier to get right.

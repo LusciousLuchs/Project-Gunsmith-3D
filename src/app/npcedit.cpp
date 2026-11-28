@@ -688,15 +688,16 @@ std::map<std::string, HeadMesh> gHeads;
 
 double hairline(double ang) {   // how far up the head (t) the hair starts, all the way round: high on the forehead, low at the back
     double f = std::fabs(ang) / PI;
-    if (f < 0.2) return 0.745 - 0.03 * f / 0.2;
-    if (f < 0.42) return 0.715 - 0.115 * (f - 0.2) / 0.22;   // (the temples down to above the ears)
-    return 0.6 - 0.27 * std::min(1.0, (f - 0.42) / 0.5);
+    // (0.9.3: the front raised from 0.745 to 0.82: the hair came down nearly to the eyebrows, no forehead)
+    if (f < 0.16) return 0.82 - 0.02 * f / 0.16;
+    if (f < 0.42) return 0.80 - 0.19 * (f - 0.16) / 0.26;   // (the temples down to above the ears)
+    return 0.61 - 0.27 * std::min(1.0, (f - 0.42) / 0.5);
 }
 double ssf(double a, double b, double x) { double t = std::clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3 - 2 * t); }
 
 // the paint: u round the head (0 and 1 at the back, 0.5 straight ahead), v up it (= t)
 Image headPaint(const NpcBone& h, const CharLook& L) {
-    const int W = 512, H = 256;
+    const int W = 1024, H = 512;   // (0.9.3: twice as fine: the lips and brows were blurry)
     Image img = GenImageColor(W, H, WHITE);
     Color* px = (Color*)img.data;
     const Color skin = hexColor(L.skin), hair = hexColor(L.hairColor);
@@ -706,8 +707,8 @@ Image headPaint(const NpcBone& h, const CharLook& L) {
     const double R = (h.r0 + h.r1) / 2;
     for (int j = 0; j < H; j++) {
         double t = (j + 0.5) / H;
-        double u = 2 * t - 1, prof = std::pow(std::max(0.0, 1 - u * u), t > 0.5 ? 0.5 : 0.42) * (1 + h.bulge * std::sin(PI * t));
-        double wx = 0.8 + 0.2 * ssf(0.08, 0.5, t);
+        double u = 2 * t - 1, prof = std::pow(std::max(0.0, 1 - u * u), t > 0.5 ? 0.5 : 0.36) * (1 + h.bulge * std::sin(PI * t));
+        double wx = 0.87 + 0.13 * ssf(0.05, 0.5, t);   // (as npcHeadPoint)
         for (int i = 0; i < W; i++) {
             double ang = ((i + 0.5) / W - 0.5) * 2 * PI;
             double ax = std::sin(ang) * prof * wx * (R / R), fax = std::fabs(ax);
@@ -716,18 +717,23 @@ Image headPaint(const NpcBone& h, const CharLook& L) {
             if (std::cos(ang) > 0.2) {
                 // a touch of colour on the cheeks and the nose's tip; shade under the brow
                 blend(Color{200, 110, 100, 255}, 0.07 * std::exp(-std::pow((t - 0.46) / 0.06, 2)) * std::exp(-std::pow((fax - 0.5) / 0.15, 2)));
+                // the underside of the nose catches little light: a touch lighter there, so it doesn't read as a smudge
+                blend(Color{255, 236, 222, 255}, 0.18 * std::exp(-std::pow((t - 0.43) / 0.03, 2)) * std::exp(-std::pow(fax / 0.16, 2)));
                 // the lips, soft-edged, the upper one a bow
-                double lw = 0.33 - 0.08 * std::fabs(t - 0.29) / 0.05;
+                double lw = 0.21 - 0.05 * std::fabs(t - 0.29) / 0.05;   // (0.9.3: narrower once the paint sat where it belongs)
                 double inLip = ssf(0.016, 0.0, std::fabs(t - 0.29) - 0.042) * ssf(0.03, 0.0, fax - lw);
                 blend(lips, inLip * (fem ? 1.0 : 0.8));
                 blend(Color{90, 45, 42, 255}, 0.4 * ssf(0.004, 0.0, std::fabs(t - 0.29)) * ssf(0.03, 0.0, fax - lw * 0.95));   // (where they meet)
                 // lash lines round the eyes (over the socket's shade)
-                double ex = (fax - 0.39) / 0.13, et = (t - 0.565) / 0.05, er = std::sqrt(ex * ex + et * et);
-                blend(lid, 0.55 * ssf(0.3, 0.0, std::fabs(er - 0.95)) * ssf(-0.1, 0.5, et));   // (the upper lid only)
+                // a thin lash line along the upper lid, right over the eye (0.9.3: it was a wide arc round the socket,
+                // which read as a second pair of brows)
+                double ex = (fax - 0.33) / 0.09, et = (t - 0.566) / 0.026, er = std::sqrt(ex * ex + et * et);
+                blend(lid, 0.7 * ssf(0.18, 0.0, std::fabs(er - 1.0)) * ssf(0.0, 0.4, et));
                 // eyebrows: an arch over each eye, soft at the ends
-                double arch = 0.643 + 0.016 * (1 - std::pow((fax - 0.4) / 0.24, 2)) + (fem ? 0.008 : 0);
-                double bw = fem ? 0.008 : 0.013;
-                blend(brows, 0.92 * ssf(0.005, 0.0, std::fabs(t - arch) - bw) * ssf(0.04, 0.0, std::fabs(fax - 0.42) - 0.24));
+                double bx = (fax - 0.34) / 0.17;   // (-1 at the inner end, +1 at the outer)
+                double arch = 0.636 + 0.018 * (1 - bx * bx) + 0.006 * bx + (fem ? 0.008 : 0);
+                double bw = (fem ? 0.007 : 0.011) * (1.15 - 0.45 * std::max(0.0, bx));   // (thicker inside, tapering out)
+                blend(brows, 0.92 * ssf(0.005, 0.0, std::fabs(t - arch) - bw) * ssf(0.05, 0.0, std::fabs(bx) - 0.95));
             }
             if (L.hair != "none") {
                 double hl = hairline(ang);
@@ -779,7 +785,7 @@ const HeadMesh& headMesh(const NpcBone& h, const CharLook& L) {
             pos.insert(pos.end(), {Q[i][k].x, Q[i][k].y, Q[i][k].z});
             nrm.insert(nrm.end(), {N[i][k].x, N[i][k].y, N[i][k].z});
             if (allHair) uv.insert(uv.end(), {0.01f, 0.97f});   // (the back of the crown: hair)
-            else uv.insert(uv.end(), {(float)k / COLS, (float)tOf(i0 + i)});
+            else uv.insert(uv.end(), {(float)(angOf(k) / (2 * PI) + 0.5), (float)tOf(i0 + i)});   // (0.9.3: by its real angle round the head; k / COLS stretched the paint sideways, the columns being closer round the face)
         };
         for (int i = 0; i + 1 < (int)Q.size(); i++)
             for (int k = 0; k < COLS; k++) {

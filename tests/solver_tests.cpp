@@ -2383,7 +2383,7 @@ static void mapsCarryNpcs() {
         const NpcBone* hd = nullptr; for (auto& b : ch.bones) if (b.name == "Head") hd = &b;
         bool sculpted = hd && hd->body && !has(ch, "Nose") && !has(ch, "Hair");
         double nose = hd ? npcHeadFront(*hd, 0.445, 0) : 0, cheek = hd ? npcHeadFront(*hd, 0.445, 30) : 0;
-        double socket = hd ? npcHeadFront(*hd, 0.565, 0.39 * hd->r0 * hd->width) : 0, brow = hd ? npcHeadFront(*hd, 0.645, 0.39 * hd->r0 * hd->width) : 0;
+        double socket = hd ? npcHeadFront(*hd, 0.565, 0.33 * hd->r0 * hd->width) : 0, brow = hd ? npcHeadFront(*hd, 0.645, 0.33 * hd->r0 * hd->width) : 0;
         double back = 0, sideX = 0, frontZ = 0; if (hd) { npcHeadPoint(*hd, 0.5, 3.14159265, sideX, back); npcHeadPoint(*hd, 0.5, 0, sideX, frontZ); }
         std::printf("  (head: nose tip %.0f mm forward, cheek beside it %.0f, eye socket %.0f under the brow %.0f, back of the head %.0f)\n", nose, cheek, socket, brow, back);
         CHECK(sculpted && nose > cheek + 15 && socket < brow - 5 && back < 0 && frontZ > 0, "the head is sculpted: the nose stands out, the eyes sit in sockets under the brow");
