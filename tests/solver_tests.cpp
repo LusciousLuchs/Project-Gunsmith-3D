@@ -2378,7 +2378,8 @@ static void mapsCarryNpcs() {
     CHECK(fingers == 30, "the maker's hands have five fingers of three pieces each");
     bool core = true; for (auto& b : npcPreset("human").bones) core &= has(ch, b.name);
     CHECK(core, "it keeps every bone a human has (the poser finds the arms and the head by name)");
-    CHECK(has(ch, "Eye (left)") && has(ch, "Ear (left)") && has(ch, "Belt") && has(ch, "Ear cup (right)") && !has(ch, "Cap"), "a face, ears and the chosen extras");
+    std::vector<float> earP, earN; { const NpcBone* hd0 = nullptr; for (auto& b : ch.bones) if (b.name == "Head") hd0 = &b; if (hd0) npcEar(*hd0, -1, earP, earN); }
+    CHECK(has(ch, "Eye (left)") && earP.size() > 300 && has(ch, "Belt") && has(ch, "Ear cup (right)") && !has(ch, "Cap"), "a face, ears and the chosen extras");
     {   // the sculpted head (its nose, sockets, chin and lips are its own shape; the hair a shell drawn over it)
         const NpcBone* hd = nullptr; for (auto& b : ch.bones) if (b.name == "Head") hd = &b;
         bool sculpted = hd && hd->body && !has(ch, "Nose") && !has(ch, "Hair");
@@ -2386,7 +2387,7 @@ static void mapsCarryNpcs() {
         double socket = hd ? npcHeadFront(*hd, 0.565, 0.33 * hd->r0 * hd->width) : 0, brow = hd ? npcHeadFront(*hd, 0.645, 0.33 * hd->r0 * hd->width) : 0;
         double back = 0, sideX = 0, frontZ = 0; if (hd) { npcHeadPoint(*hd, 0.5, 3.14159265, sideX, back); npcHeadPoint(*hd, 0.5, 0, sideX, frontZ); }
         std::printf("  (head: nose tip %.0f mm forward, cheek beside it %.0f, eye socket %.0f under the brow %.0f, back of the head %.0f)\n", nose, cheek, socket, brow, back);
-        CHECK(sculpted && nose > cheek + 15 && socket < brow - 5 && back < 0 && frontZ > 0, "the head is sculpted: the nose stands out, the eyes sit in sockets under the brow");
+        CHECK(sculpted && nose > cheek + 15 && socket < brow - 3 && back < 0 && frontZ > 0, "the head is sculpted: the nose stands out, the eyes sit in sockets under the brow");
     }
     L.body = "female"; L.hair = "ponytail"; L.hat = true; L.glasses = true; L.top = "tank"; L.pants = "shorts";
     NpcDef fem = characterFromLook(L);

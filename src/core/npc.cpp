@@ -1,4 +1,7 @@
 // Gunsmith3D - NPC designs (see npc.hpp).
+#include <array>
+#include <tuple>
+#include <map>
 #include "npc.hpp"
 #include "json.hpp"
 
@@ -203,6 +206,90 @@ double npcHeadFront(const NpcBone& h, double t, double x) {
     }
     npcHeadPoint(h, t, (lo + hi) / 2, px, pz);
     return pz;
+}
+
+namespace {
+struct EarFrame { double B[3], n[3], bd[3], up[3] = {0, 1, 0}, k = 1; };
+EarFrame earFrame(const NpcBone& h, int side) {
+    EarFrame f;
+    const double tc = 0.49, a = side * (1.5707963 + 0.16), dA = 0.01;
+    double x, z, x1, z1, x2, z2;
+    npcHeadPoint(h, tc, a, x, z);
+    npcHeadPoint(h, tc, a + dA, x1, z1);
+    npcHeadPoint(h, tc, a - dA, x2, z2);
+    double tx = x1 - x2, tz = z1 - z2, tl = std::hypot(tx, tz);
+    tx /= tl; tz /= tl;
+    double nx = tz, nz = -tx;                                  // (horizontal, square to the surface)
+    if (nx * x + nz * z < 0) { nx = -nx; nz = -nz; }            // (out of the head)
+    double bx = tx, bz = tz;
+    if (bz > 0) { bx = -bx; bz = -bz; }                         // (toward the back)
+    f.B[0] = x; f.B[1] = tc * h.len; f.B[2] = z;
+    f.n[0] = nx; f.n[1] = 0; f.n[2] = nz;
+    f.bd[0] = bx; f.bd[1] = 0; f.bd[2] = bz;
+    f.k = h.len / 225.0 * 1.08;
+    return f;
+}
+// a point of the ear: rho 0 its middle .. 1 its edge, th round it (0 back, pi/2 up), on the front sheet or the back
+void earPoint(const EarFrame& f, double rho, double th, bool front, double p[3]) {
+    const double k = f.k, ct = std::cos(th), st = std::sin(th);
+    double ax = 15 * k * ct * (st < 0 ? 1 - 0.3 * -st : 1 + 0.08 * st), ay = 29 * k * st;   // (narrower at the lobe)
+    double u = 6 * k + rho * ax, v = rho * ay;
+    double flare = std::max(0.0, u + 4 * k) * 0.3;              // (the back edge stands off the head)
+    double off = 1.0 * k + flare;
+    if (front) {
+        double th_ = 1.8 + 4.2 * std::exp(-std::pow((rho - 0.84) / 0.11, 2))               // the rim, rolled
+                   - 1.3 * std::exp(-std::pow((rho - 0.35) / 0.25, 2)) * (ct < 0.3 ? 1 : 0.4)  // the bowl
+                   + 3.0 * std::exp(-std::pow((st + 0.85) / 0.25, 2)) * std::exp(-std::pow((rho - 0.6) / 0.3, 2));   // the lobe
+        off += std::max(0.8, th_) * k;
+    }
+    for (int i = 0; i < 3; i++) p[i] = f.B[i] + f.bd[i] * u + f.up[i] * v + f.n[i] * off;
+}
+}  // namespace
+void npcEar(const NpcBone& h, int side, std::vector<float>& pos, std::vector<float>& nrm) {
+    EarFrame f = earFrame(h, side);
+    const int NR = 12, NT = 40;
+    auto P = [&](int i, int j, bool front, double out[3]) { earPoint(f, (double)i / NR, 2 * 3.14159265358979 * j / NT, front, out); };
+    auto tri = [&](const double* a, const double* b, const double* c, const double* away) {
+        double e1[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]}, e2[3] = {c[0] - a[0], c[1] - a[1], c[2] - a[2]};
+        double n[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+        double l = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+        if (l < 1e-12) return;
+        bool flip = n[0] * away[0] + n[1] * away[1] + n[2] * away[2] < 0;
+        const double* q[3] = {a, flip ? c : b, flip ? b : c};
+        for (auto* v : q) { pos.insert(pos.end(), {(float)v[0], (float)v[1], (float)v[2]}); }
+        for (int k = 0; k < 3; k++) nrm.insert(nrm.end(), {(float)(n[0] / l * (flip ? -1 : 1)), (float)(n[1] / l * (flip ? -1 : 1)), (float)(n[2] / l * (flip ? -1 : 1))});
+    };
+    double out[3] = {f.n[0], f.n[1], f.n[2]}, in[3] = {-f.n[0], -f.n[1], -f.n[2]};
+    for (int fr = 0; fr < 2; fr++)
+        for (int i = 0; i < NR; i++)
+            for (int j = 0; j < NT; j++) {
+                double a[3], b[3], c[3], d[3];
+                P(i, j, fr == 0, a); P(i + 1, j, fr == 0, b); P(i + 1, j + 1, fr == 0, c); P(i, j + 1, fr == 0, d);
+                tri(a, b, c, fr == 0 ? out : in); tri(a, c, d, fr == 0 ? out : in);
+            }
+    for (int j = 0; j < NT; j++) {   // the edge: front to back all round
+        double a[3], b[3], c[3], d[3];
+        P(NR, j, true, a); P(NR, j + 1, true, b); P(NR, j + 1, false, c); P(NR, j, false, d);
+        double th = 2 * 3.14159265358979 * (j + 0.5) / NT;
+        double rad[3] = {f.bd[0] * std::cos(th) + f.up[0] * std::sin(th), f.bd[1] * std::cos(th) + f.up[1] * std::sin(th), f.bd[2] * std::cos(th) + f.up[2] * std::sin(th)};
+        tri(a, b, c, rad); tri(a, c, d, rad);
+    }
+    // (smooth the normals: average each position's from all its triangles)
+    std::map<std::tuple<long, long, long>, std::array<double, 3>> acc;
+    auto key = [&](size_t i) { return std::make_tuple(std::lround(pos[i] * 1000), std::lround(pos[i + 1] * 1000), std::lround(pos[i + 2] * 1000)); };
+    for (size_t i = 0; i < pos.size(); i += 3) { auto& s = acc[key(i)]; s[0] += nrm[i]; s[1] += nrm[i + 1]; s[2] += nrm[i + 2]; }
+    for (size_t i = 0; i < pos.size(); i += 3) {
+        auto& s = acc[key(i)];
+        double l = std::sqrt(s[0] * s[0] + s[1] * s[1] + s[2] * s[2]);
+        double dot = (s[0] * nrm[i] + s[1] * nrm[i + 1] + s[2] * nrm[i + 2]) / std::max(1e-9, l);
+        if (l > 1e-9 && dot > 0.5) { nrm[i] = (float)(s[0] / l); nrm[i + 1] = (float)(s[1] / l); nrm[i + 2] = (float)(s[2] / l); }   // (not across the sharp edge)
+    }
+}
+void npcEarTop(const NpcBone& h, int side, double out, double& x, double& y, double& z) {
+    EarFrame f = earFrame(h, side);
+    double p[3];
+    earPoint(f, 0.92, 1.5707963 + 0.35, false, p);   // (the top, a little toward the front, where it joins the head)
+    x = p[0] + f.n[0] * out; y = p[1] + 2.5 * f.k; z = p[2] + f.n[2] * out;
 }
 
 double npcBoneReach(const NpcBone& b) {
@@ -453,11 +540,7 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
         NpcBone pupil = piece(s < 0 ? "Pupil (left)" : "Pupil (right)", 0.55, 0, 0, 2.2, 2.5, 2.5, 0, 0, "#141414", "ball");
         pupil.parent = ii; pupil.gen = true; n.bones.push_back(pupil);
     }
-    for (int s : {-1, 1}) {   // ears: flat, a little behind the middle, their tops level with the brow
-        double px = 0, pz = 0;
-        npcHeadPoint(head, 0.5, s * 1.5707963, px, pz);
-        add("Head", piece(s < 0 ? "Ear (left)" : "Ear (right)", 0.43, px / H - s * 3, -hr * 0.12, 62, 15, 18, -8, 0, L.skin, "capsule", 0.38, 0.75));
-    }
+    // (ears: part of the sculpted head, drawn by the app with it: npcEar. 0.9.3: they were flat pills)
     // (a woman's chest is shaped in the one-piece body: drawCharacterBody in the app)
     // (sleeves, shorts and a tank top are colours on the one-piece body: see drawCharacterBody in the app)
     // fingers: three pieces each, from the end of the palm, a little curled; the thumb from the side of the palm
@@ -539,16 +622,36 @@ NpcDef characterFromLook(const CharLook& L, const NpcDef* keep) {
             double bend = std::asin(std::clamp(dz / l, -1.0, 1.0)) * 57.2957795, turn = std::atan2(dx, dy) * 57.2957795;
             add("Head", piece(name, y0 / (head.len / H), x0, z0, l, r, r, bend, turn, L.glassesColor, shape, w, dpt));
         };
-        const double Lh = head.len / H, y = 0.56 * Lh, ex = 0.36 * hw, lw = 23;   // lens half-width
-        const double zl = front(0.56, ex) + 9;   // just in front of the eyes
+        // (0.9.3: the lenses round the eyes where they are now, clear of the face; the arms along the side of the head,
+        // just off it, to rest on the tops of the ears; they went into them)
+        const double Lh = head.len / H, y = 0.567 * Lh, ex = 0.33 * hw, lw = std::clamp(ex - 6, 12.0, 22.0);   // lens half-width
+        double zl = 0;
+        for (double tt : {0.54, 0.567, 0.6}) for (int q = 0; q <= 8; q++) zl = std::max(zl, front(tt, (ex + lw) * q / 8.0));
+        zl += 3;   // (in front of the brow, cheeks and nose at the lenses' height)
         for (int s : {-1, 1}) {
             // a lens: a short wide cylinder facing forward (its width across, a little less tall)
             add("Head", piece(s < 0 ? "Lens (left)" : "Lens (right)", y / Lh, s * ex, zl - 2, 4, lw / 1.15, lw / 1.15, 90, 0, L.glassesColor, "cylinder", 1.15, 1));
-            double xo = s * (ex + lw), xs = s * (hw + 3), zs = front(0.56, hw * 0.92) + 8;
-            between(s < 0 ? "Glasses hinge (left)" : "Glasses hinge (right)", xo, y + 4, zl, xs, y + 4, zs, 2.6, "cylinder", 1, 1);
-            between(s < 0 ? "Glasses arm (left)" : "Glasses arm (right)", xs, y + 4, zs, s * (hw + 1), y - 6, -hr * 0.25, 2.6, "cylinder", 1, 1);
+            // the arm: from the lens's outer edge round the side of the head, off the skin and the hair, to the ear's top
+            double ex2, ey2, ez2;
+            npcEarTop(head, s, (L.hair == "none" || L.hair == "buzz" ? 2.0 : 5.5) * H, ex2, ey2, ez2);
+            ex2 /= H; ey2 /= H; ez2 /= H;
+            std::vector<std::array<double, 3>> path = {{s * (ex + lw), y + 4, zl}};
+            const double clear = (L.hair == "none" || L.hair == "buzz" ? 2.5 : 6.0) * H;
+            for (int q = 0; q <= 4; q++) {   // round the temple, its height easing down to the ear's top
+                double ang = s * (0.95 + (1.5707963 + 0.05 - 0.95) * q / 4.0);
+                double tt = (y + 4 + (ey2 - y - 4) * q / 5.0) / Lh;
+                double px, pz;
+                npcHeadPoint(head, tt, ang, px, pz);
+                double r = std::hypot(px, pz);
+                path.push_back({px * (1 + clear / r) / H, tt * Lh, pz * (1 + clear / r) / H});
+            }
+            path.push_back({ex2, ey2, ez2});
+            path.push_back({ex2 - s * 0.5, ey2 - 9, ez2 - 8});   // (and down behind the ear a little)
+            for (size_t q = 0; q + 1 < path.size(); q++)
+                between(q == 0 ? (s < 0 ? "Glasses hinge (left)" : "Glasses hinge (right)") : (s < 0 ? "Glasses arm (left)" : "Glasses arm (right)"),
+                        path[q][0], path[q][1], path[q][2], path[q + 1][0], path[q + 1][1], path[q + 1][2], 2.4, "cylinder", 1, 1);
         }
-        between("Glasses bridge", -(ex - lw) - 3, y + 6, zl + 1, (ex - lw) + 3, y + 6, zl + 1, 2.6, "cylinder", 1, 1);
+        between("Glasses bridge", -(ex - lw) - 3, y + 6, zl, (ex - lw) + 3, y + 6, zl, 2.4, "cylinder", 1, 1);
     }
     // the joints as you turned them (the rotation rings): each body bone keeps its bend, turn and twist
     if (keep)

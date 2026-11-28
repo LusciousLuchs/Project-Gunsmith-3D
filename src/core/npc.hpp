@@ -97,4 +97,10 @@ double npcBoneRadius(const NpcBone& b, double t);
 // ahead, +pi/2 its +x side). npcHeadFront: how far forward the surface is at t, `x` across.
 void npcHeadPoint(const NpcBone& head, double t, double ang, double& x, double& z);
 double npcHeadFront(const NpcBone& head, double t, double x);
+// The character maker's ears (0.9.3): a curled rim, a hollow bowl and a lobe, standing out from the side of the head
+// behind the jaw, between the brow's and the nose's heights. Triangles in the head bone's frame (x across, y up the
+// head = t x its length, z forward), mm; side -1 or +1. npcEarTop: where the top of the ear meets the head (glasses
+// arms rest there), pushed `out` mm off the skin.
+void npcEar(const NpcBone& head, int side, std::vector<float>& pos, std::vector<float>& nrm);
+void npcEarTop(const NpcBone& head, int side, double out, double& x, double& y, double& z);
 double npcBoneReach(const NpcBone& b);      // the most it sticks out from its middle line anywhere (mm), for hits

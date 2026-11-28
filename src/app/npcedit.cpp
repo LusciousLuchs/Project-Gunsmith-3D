@@ -683,7 +683,7 @@ Color mix(Color a, Color b, float t) {
 
 // the head: its sculpted surface with its skin painted on (lips, eyebrows, the hairline, a buzz cut's stubble) and a
 // shell of hair over the top; in the head bone's frame (mm), kept per look
-struct HeadMesh { Mesh head{}, hair{}, drape{}; bool hasHair = false, hasDrape = false; Texture2D tex{}; double used = 0; };
+struct HeadMesh { Mesh head{}, hair{}, drape{}, ears{}; bool hasHair = false, hasDrape = false, hasEars = false; Texture2D tex{}; double used = 0; };
 std::map<std::string, HeadMesh> gHeads;
 
 double hairline(double ang) {   // how far up the head (t) the hair starts, all the way round: high on the forehead, low at the back
@@ -754,7 +754,7 @@ const HeadMesh& headMesh(const NpcBone& h, const CharLook& L) {
     if (gHeads.size() > 96) {   // (the longest unused go)
         auto old = gHeads.begin();
         for (auto i = gHeads.begin(); i != gHeads.end(); ++i) if (i->second.used < old->second.used) old = i;
-        UnloadMesh(old->second.head); if (old->second.hasHair) UnloadMesh(old->second.hair); if (old->second.hasDrape) UnloadMesh(old->second.drape); UnloadTexture(old->second.tex);
+        UnloadMesh(old->second.head); if (old->second.hasEars) UnloadMesh(old->second.ears); if (old->second.hasHair) UnloadMesh(old->second.hair); if (old->second.hasDrape) UnloadMesh(old->second.drape); UnloadTexture(old->second.tex);
         gHeads.erase(old);
     }
     const int ROWS = 46, COLS = 44;   // (the last column is the first again, its u 1 instead of 0)
@@ -805,6 +805,20 @@ const HeadMesh& headMesh(const NpcBone& h, const CharLook& L) {
     };
     HeadMesh hm; hm.used = GetTime();
     hm.head = build(P, normals(P), 0, [](int, int) { return true; });
+    {   // the ears (0.9.3): a rim, a bowl and a lobe each, painted with plain skin from the cheek
+        std::vector<float> pos, nrm;
+        npcEar(h, -1, pos, nrm); npcEar(h, 1, pos, nrm);
+        if (!pos.empty()) {
+            Mesh m{};
+            m.vertexCount = (int)pos.size() / 3; m.triangleCount = m.vertexCount / 3;
+            m.vertices = (float*)RL_MALLOC(pos.size() * sizeof(float)); std::copy(pos.begin(), pos.end(), m.vertices);
+            m.normals = (float*)RL_MALLOC(nrm.size() * sizeof(float)); std::copy(nrm.begin(), nrm.end(), m.normals);
+            m.texcoords = (float*)RL_MALLOC(m.vertexCount * 2 * sizeof(float));
+            for (int v = 0; v < m.vertexCount; v++) { m.texcoords[2 * v] = (float)(0.5 + (pos[3 * v] < 0 ? -1.2 : 1.2) / (2 * PI)); m.texcoords[2 * v + 1] = 0.36f; }
+            UploadMesh(&m, false);
+            hm.ears = m; hm.hasEars = true;
+        }
+    }
     if (L.hair == "short" || L.hair == "long" || L.hair == "ponytail" || L.hair == "bun") {
         // the hair: the head pushed out along its normals, more toward the crown, meeting the scalp at the hairline
         auto N = normals(P);
@@ -957,6 +971,7 @@ void drawCharacterBody(const NpcDef& n, const std::vector<Matrix>& M, const Colo
     if (hed >= 0 && n.bones[hed].body) {   // the head: built once per look, carried by its bone
         const HeadMesh& hm = headMesh(n.bones[hed], L);
         drawMeshTex(hm.head, M[hed], tint ? *tint : WHITE, hm.tex);
+        if (hm.hasEars) drawMeshTex(hm.ears, M[hed], tint ? *tint : WHITE, hm.tex);
         if (hm.hasHair) drawMeshTex(hm.hair, M[hed], tint ? *tint : WHITE, hm.tex);
         if (hm.hasDrape) drawMeshTex(hm.drape, M[hed], tint ? *tint : WHITE, hm.tex);
     }

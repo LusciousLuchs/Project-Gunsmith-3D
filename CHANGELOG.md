@@ -8,6 +8,11 @@ Versions are `MAJOR.MINOR.PATCH-stage`, for example `0.1.0-alpha`.
 
 The version is set in one place, at the top of `CMakeLists.txt`.
 
+## 0.9.4-alpha
+
+- **Real ears**: a rolled rim, a hollow bowl and a lobe, standing out a little from the head, at the height between the brows and the nose. They were flat pills.
+- **Glasses that fit**: the lenses sit round the eyes, in front of the brow and nose; the arms run along the side of the head, clear of the skin and hair, and hook over the tops of the ears. They used to go straight into the ears.
+
 ## 0.9.3-alpha
 
 - **Better faces** for your character, customers and staff: a real forehead (the hairline sat almost on the eyebrows), bigger eyes with a white, an iris and a pupil, set closer together and less sunken, a softer nose, a fuller chin and mouth, and a wider jaw.
